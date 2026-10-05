@@ -492,7 +492,9 @@ ResponseImpl.prototype["json"] = function (this: FetchResponseJs): Promise<unkno
 
 ResponseImpl.prototype["arrayBuffer"] = function (this: FetchResponseJs): Promise<ArrayBuffer> {
   return collect(this).then(function (u8) {
-    if (u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength) return u8.buffer;
+    // Pipe bodies are never SharedArrayBuffer-backed.
+    if (u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength)
+      return u8.buffer as ArrayBuffer;
     return u8.slice().buffer;
   });
 };

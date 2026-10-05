@@ -31,8 +31,9 @@ function utcStamp(): string {
   );
 }
 
-function wait(p: unknown): Promise<void> | void {
+function wait(p: unknown): Promise<void> {
   if (p && typeof (p as Promise<void>).then === "function") return p as Promise<void>;
+  return Promise.resolve();
 }
 
 function warn(e: unknown, what: string): void {

@@ -219,17 +219,7 @@ declare var HttpRequest: {
   patch(url: string): HttpRequestBuilder;
   head(url: string): HttpRequestBuilder;
   method(m: string, url: string): HttpRequestBuilder;
-  addInterceptor(
-    fn: (chain: {
-      request: {
-        method: string;
-        url: string;
-        headers: HeaderEntry[];
-        body: HttpBody | null;
-      };
-      proceed: (req?: unknown) => Promise<HttpResponse>;
-    }) => Promise<HttpResponse>,
-  ): { remove(): void };
+  addInterceptor(fn: import("./protocol/http/intercept").HttpInterceptor): { remove(): void };
 };
 
 // WHATWG fetch (logic/yt/fetch.ts) — quoted names at runtime for eval'd base.js.
