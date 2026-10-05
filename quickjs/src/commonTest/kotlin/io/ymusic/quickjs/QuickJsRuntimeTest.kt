@@ -583,7 +583,7 @@ class QuickJsRuntimeTest {
         val rt = QuickJsRuntime.create()
         rt.onAccept("up") { pipe -> pipe.source.close() } // refuse to read anything
         try {
-            assertEquals("EPIPE: broken pipe", rt.probe("epipe-loop"))
+            assertTrue(Regex("""EPIPE: broken pipe \[#\d+ up]""").matches(rt.probe("epipe-loop")))
         } finally {
             rt.close()
         }

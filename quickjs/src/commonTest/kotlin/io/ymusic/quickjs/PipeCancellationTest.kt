@@ -184,7 +184,7 @@ class PipeCancellationTest {
             val out = Buffer()
             while (poke.source.receive(out, 64L) != -1L) { /* to EOF */ }
             poke.source.close()
-            assertEquals("EPIPE: broken pipe", out.readUtf8())
+            assertTrue(Regex("""EPIPE: broken pipe \[#\d+ test/keep]""").matches(out.readUtf8()))
         } finally {
             rt.close()
         }

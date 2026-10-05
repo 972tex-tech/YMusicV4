@@ -100,8 +100,9 @@ function stringifyJson(value: unknown): Uint8Array {
 const pipes: Record<number, TransportPipe> = {};
 const accepts: Record<string, (pipe: Pipe) => void | Promise<void>> = {};
 let nextId = 2; // JS opens even ids; Kotlin opens odd.
-function brokenPipe(): Error {
-  return new Error("EPIPE: broken pipe");
+/** Keeps the `EPIPE` prefix callers match on; the suffix names the pipe for logs. */
+function brokenPipe(id: number, command: string): Error {
+  return new Error("EPIPE: broken pipe [#" + id + " " + command + "]");
 }
 
 function makePipe(id: number, command: string): TransportPipe {
@@ -160,12 +161,12 @@ function makePipe(id: number, command: string): TransportPipe {
       l = len === undefined ? buffer.length - o : len;
     if (l === 0) return;
     if (weEnded) return Promise.reject(new Error("send() after close()")); // our own half-close is a misuse
-    if (peerReadClosed) return Promise.reject(brokenPipe());
+    if (peerReadClosed) return Promise.reject(brokenPipe(id, command));
     if (writer) throw new Error("concurrent send() on the same pipe"); // sequential: await one send first
     const written = nHostData(id, buffer, o, l);
     if (written < 0) {
       peerReadClosed = true;
-      return Promise.reject(brokenPipe());
+      return Promise.reject(brokenPipe(id, command));
     }
     if (written >= l) return;
     return new Promise<void>(function (res, rej) {
@@ -500,7 +501,7 @@ function makePipe(id: number, command: string): TransportPipe {
       const w = writer;
       if (w) {
         writer = null;
-        w.reject(brokenPipe());
+        w.reject(brokenPipe(id, command));
       }
     },
 
@@ -511,7 +512,7 @@ function makePipe(id: number, command: string): TransportPipe {
       if (written < 0) {
         writer = null;
         peerReadClosed = true;
-        w.reject(brokenPipe());
+        w.reject(brokenPipe(id, command));
         return;
       }
       w.pos += written;
