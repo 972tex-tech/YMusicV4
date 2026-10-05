@@ -426,16 +426,9 @@ class MsePlayer internal constructor(
     }
 
     private suspend fun applyCaptionConfig(enginePlayer: DynamicEnginePlayer, config: PlaybackConfig) {
-        val visible = config.captionVisible
-        val key = config.preferCaptionLanguage.first
-            .takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE }
-        val tracks = _captions.value.tracks
-        val picked = key?.let { language ->
-            tracks.firstOrNull { it.id == language || it.vssId == language || it.languageCode == language }
-        } ?: tracks.firstOrNull { it.kind == "asr" } ?: tracks.firstOrNull()
-        val vssId = if (visible) picked?.id ?: key else null
-        enginePlayer.setCaption(vssId, log)
-        syncCaptionSession(enginePlayer, visible)
+        val preferred = config.preferCaptionLanguage.first.takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE }
+        enginePlayer.setCaption(preferred, log, visible = config.captionVisible)
+        syncCaptionSession(enginePlayer, config.captionVisible)
     }
 
     private fun syncCaptionSession(enginePlayer: DynamicEnginePlayer, visible: Boolean) {
@@ -571,10 +564,7 @@ class MsePlayer internal constructor(
             actualQuality = actual,
             preferredQuality = prefer,
         )
-        val tracks = json.captionTracks()
-        val tracksChanged = tracks != _captions.value.tracks
-        _captions.value = CaptionState(tracks = tracks, selectedLanguage = json.str("caption"))
-        if (tracksChanged && config.captionVisible) send { applyCaptionConfig(it, config) }
+        _captions.value = CaptionState(tracks = json.captionTracks(), selectedLanguage = json.str("caption"))
     }
 
     private fun fail(error: Throwable, message: String, needReset: Boolean) {
