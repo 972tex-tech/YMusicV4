@@ -158,7 +158,6 @@ class MsePlayer internal constructor(
         val activeSession = session ?: return
         this.config = config
         val previous = activeSession.config
-        val previousLoop = activeSession.loop
         val loop = config.loop && !source.live
         activeSession.config = config
         activeSession.loop = loop
@@ -178,6 +177,10 @@ class MsePlayer internal constructor(
                     height = height,
                     audioOnly = config.audioOnly,
                     startPositionMs = startPositionMs,
+                    playWhenReady = playWhenReady,
+                    speed = config.speed.coerceIn(0.25f, 3f),
+                    pitch = config.pitchFactor.coerceIn(0.5f, 2f),
+                    loop = loop,
                 )
             } catch (error: CancellationException) {
                 throw error
@@ -190,9 +193,6 @@ class MsePlayer internal constructor(
                 fail(error, "mse load failed", needReset = false)
                 return@send
             }
-            if (loop != previousLoop) enginePlayer.setLoop(loop, log)
-            if (playWhenReady) enginePlayer.play(log) else enginePlayer.pause(log)
-            if (speedPitchChanged(previous, config)) applySpeedPitch(enginePlayer, config)
             refreshTracks(enginePlayer)
             applyCaptionConfig(enginePlayer, config)
         }
@@ -272,7 +272,9 @@ class MsePlayer internal constructor(
                 enginePlayer.setQuality(nextQuality, config.audioOnly, log)
             }
             if (loop != previousLoop) enginePlayer.setLoop(loop, log)
-            if (speedPitchChanged(previous, config)) applySpeedPitch(enginePlayer, config)
+            if (previous == null || config.speed != previous.speed || config.pitchFactor != previous.pitchFactor) {
+                enginePlayer.setSpeedPitch(config.speed.coerceIn(0.25f, 3f), config.pitchFactor.coerceIn(0.5f, 2f), log)
+            }
             if (previous == null ||
                 config.captionVisible != previous.captionVisible ||
                 config.preferCaptionLanguage != previous.preferCaptionLanguage
@@ -427,13 +429,6 @@ class MsePlayer internal constructor(
                 config.virtualizer.coerceIn(0f, 2f),
             )
         }
-    }
-
-    private fun speedPitchChanged(previous: PlaybackConfig?, config: PlaybackConfig): Boolean =
-        previous == null || config.speed != previous.speed || config.pitchFactor != previous.pitchFactor
-
-    private suspend fun applySpeedPitch(enginePlayer: DynamicEnginePlayer, config: PlaybackConfig) {
-        enginePlayer.setSpeedPitch(config.speed.coerceIn(0.25f, 3f), config.pitchFactor.coerceIn(0.5f, 2f), log)
     }
 
     private suspend fun applyCaptionConfig(enginePlayer: DynamicEnginePlayer, config: PlaybackConfig) {
