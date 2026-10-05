@@ -101,6 +101,9 @@ class MsePlayer internal constructor(
         val commands = Channel<suspend (DynamicEnginePlayer) -> Unit>(Channel.UNLIMITED)
         var player: DynamicEnginePlayer? = null
         var captionJob: Job? = null
+
+        /** What this session's JS has applied; null until the first push, so that one sends everything. */
+        var config: PlaybackConfig? = null
     }
 
     private var session: Session? = null
@@ -112,8 +115,6 @@ class MsePlayer internal constructor(
     /** Latest config from the caller. */
     private var config = PlaybackConfig()
 
-    /** What the current session's JS has applied; [setConfig] diffs against it. */
-    private var sessionConfig = PlaybackConfig()
     private var loadingVideoId: String? = null
     private var loadedVideoId: String? = null
     private var loadTimeoutJob: Job? = null
@@ -151,7 +152,7 @@ class MsePlayer internal constructor(
             return
         }
         this.config = config
-        sessionConfig = config
+        session?.config = config
         loadingVideoId = source.videoId
         _progress.value = Progress(positionMs = startPositionMs)
         applySurfaceAudio(config)
@@ -243,22 +244,24 @@ class MsePlayer internal constructor(
         this.config = config
         applySurfaceAudio(config)
         if (!_status.value.state.readyToLoad) return
-        val prev = sessionConfig
+        val s = session ?: return
+        val prev = s.config
         if (prev == config) return
-        sessionConfig = config
+        s.config = config
         send { p ->
-            val prevQ = prev.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY }
+            val prevQ = prev?.preferVideoQuality?.first?.takeIf { it != VideoQualityState.AUDIO_ONLY }
                 ?: VideoQualityState.AUTO
             val nextQ = config.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY }
                 ?: VideoQualityState.AUTO
-            if (config.audioOnly != prev.audioOnly || nextQ != prevQ) {
+            if (prev == null || config.audioOnly != prev.audioOnly || nextQ != prevQ) {
                 p.setQuality(nextQ, config.audioOnly, log)
             }
-            if (config.loop != prev.loop) p.setLoop(config.loop, log)
-            if (config.speed != prev.speed || config.pitchFactor != prev.pitchFactor) {
+            if (prev == null || config.loop != prev.loop) p.setLoop(config.loop, log)
+            if (prev == null || config.speed != prev.speed || config.pitchFactor != prev.pitchFactor) {
                 p.setSpeedPitch(config.speed.coerceIn(0.25f, 3f), config.pitchFactor.coerceIn(0.5f, 2f), log)
             }
-            if (config.captionVisible != prev.captionVisible ||
+            if (prev == null ||
+                config.captionVisible != prev.captionVisible ||
                 config.preferCaptionLanguage != prev.preferCaptionLanguage
             ) {
                 applyCaptionConfig(p, config)
@@ -319,7 +322,6 @@ class MsePlayer internal constructor(
     }
 
     private fun startSession() {
-        sessionConfig = PlaybackConfig()
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true), videoSize = null) }
         val s = Session(SupervisorJob(mainScope.coroutineContext[Job]))
         session = s
