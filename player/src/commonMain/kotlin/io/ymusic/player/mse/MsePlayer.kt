@@ -156,33 +156,33 @@ class MsePlayer internal constructor(
         loadingVideoId = source.videoId
         _progress.value = Progress(positionMs = startPositionMs)
         applySurfaceAudio(config)
-        val w = viewportW
-        val h = viewportH
-        send { p ->
+        val width = viewportW
+        val height = viewportH
+        send { enginePlayer ->
             try {
-                p.load(
+                enginePlayer.load(
                     source.videoId,
                     log,
                     quality = config.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY },
-                    width = w,
-                    height = h,
+                    width = width,
+                    height = height,
                     audioOnly = config.audioOnly,
                     startPositionMs = startPositionMs,
                 )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
                 loadingVideoId = null
                 loadTimeoutJob?.cancel()
                 loadTimeoutJob = null
-                fail(e, "mse load failed", needReset = false)
+                fail(error, "mse load failed", needReset = false)
                 return@send
             }
-            p.setLoop(config.loop && !source.live, log)
-            if (playWhenReady) p.play(log) else p.pause(log)
-            p.setSpeedPitch(config.speed.coerceIn(0.25f, 3f), config.pitchFactor.coerceIn(0.5f, 2f), log)
-            refreshTracks(p)
-            applyCaptionConfig(p, config)
+            enginePlayer.setLoop(config.loop && !source.live, log)
+            if (playWhenReady) enginePlayer.play(log) else enginePlayer.pause(log)
+            enginePlayer.setSpeedPitch(config.speed.coerceIn(0.25f, 3f), config.pitchFactor.coerceIn(0.5f, 2f), log)
+            refreshTracks(enginePlayer)
+            applyCaptionConfig(enginePlayer, config)
         }
         loadTimeoutJob?.cancel()
         loadTimeoutJob = mainScope.launch {
@@ -244,27 +244,27 @@ class MsePlayer internal constructor(
         this.config = config
         applySurfaceAudio(config)
         if (!_status.value.state.readyToLoad) return
-        val s = session ?: return
-        val prev = s.config
-        if (prev == config) return
-        s.config = config
-        send { p ->
-            val prevQ = prev?.preferVideoQuality?.first?.takeIf { it != VideoQualityState.AUDIO_ONLY }
+        val activeSession = session ?: return
+        val previous = activeSession.config
+        if (previous == config) return
+        activeSession.config = config
+        send { enginePlayer ->
+            val previousQuality = previous?.preferVideoQuality?.first?.takeIf { it != VideoQualityState.AUDIO_ONLY }
                 ?: VideoQualityState.AUTO
-            val nextQ = config.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY }
+            val nextQuality = config.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY }
                 ?: VideoQualityState.AUTO
-            if (prev == null || config.audioOnly != prev.audioOnly || nextQ != prevQ) {
-                p.setQuality(nextQ, config.audioOnly, log)
+            if (previous == null || config.audioOnly != previous.audioOnly || nextQuality != previousQuality) {
+                enginePlayer.setQuality(nextQuality, config.audioOnly, log)
             }
-            if (prev == null || config.loop != prev.loop) p.setLoop(config.loop, log)
-            if (prev == null || config.speed != prev.speed || config.pitchFactor != prev.pitchFactor) {
-                p.setSpeedPitch(config.speed.coerceIn(0.25f, 3f), config.pitchFactor.coerceIn(0.5f, 2f), log)
+            if (previous == null || config.loop != previous.loop) enginePlayer.setLoop(config.loop, log)
+            if (previous == null || config.speed != previous.speed || config.pitchFactor != previous.pitchFactor) {
+                enginePlayer.setSpeedPitch(config.speed.coerceIn(0.25f, 3f), config.pitchFactor.coerceIn(0.5f, 2f), log)
             }
-            if (prev == null ||
-                config.captionVisible != prev.captionVisible ||
-                config.preferCaptionLanguage != prev.preferCaptionLanguage
+            if (previous == null ||
+                config.captionVisible != previous.captionVisible ||
+                config.preferCaptionLanguage != previous.preferCaptionLanguage
             ) {
-                applyCaptionConfig(p, config)
+                applyCaptionConfig(enginePlayer, config)
             }
         }
     }
@@ -282,17 +282,17 @@ class MsePlayer internal constructor(
     fun setViewport(width: Int, height: Int) {
         requireMainThread()
         if (released) return
-        var w = width.coerceAtLeast(1)
-        var h = height.coerceAtLeast(1)
-        if (h < 360) {
-            w = (w * 360.0 / h).toInt().coerceAtLeast(1)
-            h = 360
+        var holeWidth = width.coerceAtLeast(1)
+        var holeHeight = height.coerceAtLeast(1)
+        if (holeHeight < 360) {
+            holeWidth = (holeWidth * 360.0 / holeHeight).toInt().coerceAtLeast(1)
+            holeHeight = 360
         }
-        if (w == viewportW && h == viewportH) return
-        viewportW = w
-        viewportH = h
+        if (holeWidth == viewportW && holeHeight == viewportH) return
+        viewportW = holeWidth
+        viewportH = holeHeight
         if (!_status.value.state.readyToLoad) return
-        send { it.setViewport(w, h, log) }
+        send { it.setViewport(holeWidth, holeHeight, log) }
     }
 
     override suspend fun requestPlayerResponse(videoId: String): String =
@@ -312,9 +312,9 @@ class MsePlayer internal constructor(
         if (released) return
         released = true
         tearDownSession()
-        val last = closing
+        val lastClose = closing
         mainScope.launch {
-            last?.join()
+            lastClose?.join()
             engineDispatcher.close()
             mainScope.cancel()
         }
@@ -324,44 +324,44 @@ class MsePlayer internal constructor(
     private fun startSession() {
         check(session == null) { "mse session already running" }
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true), videoSize = null) }
-        val s = Session(SupervisorJob(mainScope.coroutineContext[Job]))
-        session = s
-        val previous = closing
-        s.scope.launch {
+        val newSession = Session(SupervisorJob(mainScope.coroutineContext[Job]))
+        session = newSession
+        val previousClose = closing
+        newSession.scope.launch {
             // NonCancellable so a reset-during-reset still chains behind the older close.
-            withContext(NonCancellable) { previous?.join() }
+            withContext(NonCancellable) { previousClose?.join() }
             ensureActive()
-            var p: DynamicEnginePlayer? = null
+            var enginePlayer: DynamicEnginePlayer? = null
             try {
                 // Boot is a blocking eval on the engine thread; a built engine must reach the finally.
-                p = withContext(engineDispatcher + NonCancellable) { buildPlayer() }
-                s.player = p
-                if (hasPendingVideoSurface) p.setVideoSurface(pendingVideoSurface)
-                p.init(log, viewportW, viewportH)
-                listen(s, p)
+                enginePlayer = withContext(engineDispatcher + NonCancellable) { buildPlayer() }
+                newSession.player = enginePlayer
+                if (hasPendingVideoSurface) enginePlayer.setVideoSurface(pendingVideoSurface)
+                enginePlayer.init(log, viewportW, viewportH)
+                listen(newSession, enginePlayer)
                 _status.update {
                     if (it.state is PlaybackState.Uninitialized) it.copy(state = PlaybackState.Idle) else it
                 }
-                for (cmd in s.commands) {
+                for (command in newSession.commands) {
                     try {
-                        cmd(p)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        log?.log(Logger.Level.WARN, "mse command failed", e)
+                        command(enginePlayer)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Throwable) {
+                        log?.log(Logger.Level.WARN, "mse command failed", error)
                     }
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                if (session === s) fail(e, "mse init failed", needReset = true)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (session === newSession) fail(error, "mse init failed", needReset = true)
             } finally {
-                if (p != null) {
+                if (enginePlayer != null) {
                     withContext(NonCancellable) {
                         try {
-                            p.close()
-                        } catch (e: Throwable) {
-                            log?.log(Logger.Level.WARN, "mse close failed", e)
+                            enginePlayer.close()
+                        } catch (error: Throwable) {
+                            log?.log(Logger.Level.WARN, "mse close failed", error)
                         }
                     }
                 }
@@ -376,75 +376,75 @@ class MsePlayer internal constructor(
         loadTimeoutJob?.cancel()
         loadTimeoutJob = null
         _captionLines.value = emptyList()
-        val s = session ?: return
+        val oldSession = session ?: return
         session = null
-        s.commands.close()
-        s.job.cancel()
-        closing = s.job
+        oldSession.commands.close()
+        oldSession.job.cancel()
+        closing = oldSession.job
     }
 
-    private fun send(cmd: suspend (DynamicEnginePlayer) -> Unit) {
-        session?.commands?.trySend(cmd)
+    private fun send(command: suspend (DynamicEnginePlayer) -> Unit) {
+        session?.commands?.trySend(command)
     }
 
     private suspend fun readyPlayer(): DynamicEnginePlayer = withContext(Dispatchers.Main.immediate) {
         if (released) throw TechnicalException("E60034", "mse engine released")
         init()
         val state = _status.first { it.state.readyToLoad || it.state is PlaybackState.Error }.state
-        val p = session?.player
-        if (!state.readyToLoad || p == null) {
+        val enginePlayer = session?.player
+        if (!state.readyToLoad || enginePlayer == null) {
             throw TechnicalException("E60034", "mse engine not ready: $state")
         }
-        p
+        enginePlayer
     }
 
     private fun applySurfaceAudio(config: PlaybackConfig) {
         videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
         videoSurface.setAudioEffect(
-            FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } },
+            FloatArray(10) { index -> config.eqBands.getOrElse(index) { 0f } },
             config.bassBoostDb.coerceIn(0f, 12f),
             config.virtualizer.coerceIn(0f, 2f),
         )
     }
 
-    private suspend fun applyCaptionConfig(p: DynamicEnginePlayer, config: PlaybackConfig) {
-        val want = config.captionVisible
+    private suspend fun applyCaptionConfig(enginePlayer: DynamicEnginePlayer, config: PlaybackConfig) {
+        val visible = config.captionVisible
         val key = config.preferCaptionLanguage.first
             .takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE }
         val tracks = _captions.value.tracks
-        val picked = key?.let { k ->
-            tracks.firstOrNull { it.id == k || it.vssId == k || it.languageCode == k }
+        val picked = key?.let { language ->
+            tracks.firstOrNull { it.id == language || it.vssId == language || it.languageCode == language }
         } ?: tracks.firstOrNull { it.kind == "asr" } ?: tracks.firstOrNull()
-        val vss = if (want) picked?.id ?: key else null
-        p.setCaption(vss, log)
-        syncCaptionSession(p, want)
+        val vssId = if (visible) picked?.id ?: key else null
+        enginePlayer.setCaption(vssId, log)
+        syncCaptionSession(enginePlayer, visible)
     }
 
-    private fun syncCaptionSession(p: DynamicEnginePlayer, visible: Boolean) {
-        val s = session ?: return
+    private fun syncCaptionSession(enginePlayer: DynamicEnginePlayer, visible: Boolean) {
+        val activeSession = session ?: return
         if (!visible) {
-            s.captionJob?.cancel()
-            s.captionJob = null
+            activeSession.captionJob?.cancel()
+            activeSession.captionJob = null
             _captionLines.value = emptyList()
             return
         }
-        if (s.captionJob?.isActive == true) return
-        s.captionJob = s.scope.launch {
+        if (activeSession.captionJob?.isActive == true) return
+        activeSession.captionJob = activeSession.scope.launch {
             try {
-                p.collectCaptionLines({ rows ->
+                enginePlayer.collectCaptionLines({ rows ->
                     _captionLines.value = rows.map { CaptionLine(it.id, it.text) }
                 }, log)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                log?.log(Logger.Level.WARN, "mse caption stream failed", e)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "mse caption stream failed", error)
                 _captionLines.value = emptyList()
             }
         }
     }
 
-    private suspend fun refreshTracks(p: DynamicEnginePlayer) {
-        val tracks = p.captionTracks(log).filter { it.kind != "asrt" }
+    private suspend fun refreshTracks(enginePlayer: DynamicEnginePlayer) {
+        val tracks = enginePlayer.captionTracks(log).filter { it.kind != "asrt" }
         val selected = config.preferCaptionLanguage.first
             .takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE && config.captionVisible }
         _captions.value = CaptionState(
@@ -453,35 +453,35 @@ class MsePlayer internal constructor(
         )
     }
 
-    private fun listen(s: Session, p: DynamicEnginePlayer) {
-        s.scope.launch {
+    private fun listen(activeSession: Session, enginePlayer: DynamicEnginePlayer) {
+        activeSession.scope.launch {
             try {
-                p.collectStatus({ applyListen(it) }, log)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                if (session === s) fail(e, "mse status stream failed", needReset = true)
+                enginePlayer.collectStatus({ applyListen(it) }, log)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (session === activeSession) fail(error, "mse status stream failed", needReset = true)
             }
         }
-        s.scope.launch {
+        activeSession.scope.launch {
             try {
-                p.collectCatalog({ applyCatalog(it) }, log)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                log?.log(Logger.Level.WARN, "mse catalog stream failed", e)
+                enginePlayer.collectCatalog({ applyCatalog(it) }, log)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "mse catalog stream failed", error)
             }
         }
     }
 
-    private fun applyListen(st: JsonObject) {
-        (st["progress"] as? JsonObject)?.let { applyProgress(it) }
-        (st["state"] as? JsonObject)?.let { applyState(it) }
-        (st["picture"] as? JsonObject)?.let { applyPicture(it) }
+    private fun applyListen(json: JsonObject) {
+        (json["progress"] as? JsonObject)?.let { applyProgress(it) }
+        (json["state"] as? JsonObject)?.let { applyState(it) }
+        (json["picture"] as? JsonObject)?.let { applyPicture(it) }
     }
 
-    private fun applyProgress(st: JsonObject) {
-        val videoId = st.str("videoId")
+    private fun applyProgress(json: JsonObject) {
+        val videoId = json.str("videoId")
         val loading = loadingVideoId
         if (loading != null) {
             if (videoId != loading) return
@@ -492,37 +492,37 @@ class MsePlayer internal constructor(
         } else if (videoId != loadedVideoId) {
             return
         }
-        val dur = if (st["duration"] != null) st.long("duration") else st.long("durationMs")
-        val skStart = st.long("seekableStartMs")
-        val skEnd = st.long("seekableEndMs")
-        /* Engine already maps the DVR window onto progress/duration (0..bar). */
-        val bar = if (st["progress"] != null) st.long("progress") else st.long("positionMs")
+        val durationMs = if (json["duration"] != null) json.long("duration") else json.long("durationMs")
+        val seekableStartMs = json.long("seekableStartMs")
+        val seekableEndMs = json.long("seekableEndMs")
+        /* Engine already maps the DVR window onto progress/duration (0..positionMs). */
+        val positionMs = if (json["progress"] != null) json.long("progress") else json.long("positionMs")
         _progress.value = Progress(
-            positionMs = bar,
-            durationMs = if (dur > 0L) dur else Progress.DURATION_UNKNOWN,
-            bufferedPositionMs = st.long("bufferedMs"),
-            seekable = st.bool("seekable", default = dur > 0L),
-            isLive = st.bool("live", default = _status.value.live),
-            seekableStartMs = skStart,
-            seekableEndMs = if (skEnd > skStart) skEnd else if (dur > 0L) dur else 0L,
+            positionMs = positionMs,
+            durationMs = if (durationMs > 0L) durationMs else Progress.DURATION_UNKNOWN,
+            bufferedPositionMs = json.long("bufferedMs"),
+            seekable = json.bool("seekable", default = durationMs > 0L),
+            isLive = json.bool("live", default = _status.value.live),
+            seekableStartMs = seekableStartMs,
+            seekableEndMs = if (seekableEndMs > seekableStartMs) seekableEndMs else if (durationMs > 0L) durationMs else 0L,
         )
     }
 
-    private fun applyState(st: JsonObject) {
-        val newState = st.str("newState") ?: return
-        val pwr = st.bool("playWhenReady", default = false)
-        val live = st.bool("live", default = false)
+    private fun applyState(json: JsonObject) {
+        val newState = json.str("newState") ?: return
+        val playWhenReady = json.bool("playWhenReady", default = false)
+        val live = json.bool("live", default = false)
         val state = when (newState) {
             "idle" -> PlaybackState.Idle
-            "buffering" -> PlaybackState.Prepared(pwr, buffering = true, ended = false)
-            "ready" -> PlaybackState.Prepared(pwr, buffering = false, ended = false)
+            "buffering" -> PlaybackState.Prepared(playWhenReady, buffering = true, ended = false)
+            "ready" -> PlaybackState.Prepared(playWhenReady, buffering = false, ended = false)
             "ended" -> PlaybackState.Prepared(playWhenReady = false, buffering = false, ended = true)
             "error" -> PlaybackState.Error(
                 PlayerError(
-                    st.str("code") ?: "E60033",
-                    st.str("message"),
-                    canRetry = st.bool("canRetry", default = true),
-                    needReset = st.bool("needReset", default = false),
+                    json.str("code") ?: "E60033",
+                    json.str("message"),
+                    canRetry = json.bool("canRetry", default = true),
+                    needReset = json.bool("needReset", default = false),
                 ),
             )
             else -> return
@@ -534,26 +534,26 @@ class MsePlayer internal constructor(
         _status.update { it.copy(state = state, live = live) }
     }
 
-    private fun applyPicture(st: JsonObject) {
-        val w = (st["videoWidth"] as? JsonPrimitive)?.intOrNull ?: 0
-        val h = (st["videoHeight"] as? JsonPrimitive)?.intOrNull ?: 0
-        if (w <= 0 || h <= 0) return
-        _status.update { it.copy(videoSize = VideoSize(w, h)) }
+    private fun applyPicture(json: JsonObject) {
+        val videoWidth = (json["videoWidth"] as? JsonPrimitive)?.intOrNull ?: 0
+        val videoHeight = (json["videoHeight"] as? JsonPrimitive)?.intOrNull ?: 0
+        if (videoWidth <= 0 || videoHeight <= 0) return
+        _status.update { it.copy(videoSize = VideoSize(videoWidth, videoHeight)) }
     }
 
-    private fun applyCatalog(st: JsonObject) {
-        val audioOnly = st.bool("audioOnly", default = false)
+    private fun applyCatalog(json: JsonObject) {
+        val audioOnly = json.bool("audioOnly", default = false)
         val actual = if (audioOnly) {
             VideoQualityState.AUDIO_ONLY
         } else {
-            st.str("quality") ?: VideoQualityState.AUTO
+            json.str("quality") ?: VideoQualityState.AUTO
         }
         val prefer = if (audioOnly) {
             VideoQualityState.AUDIO_ONLY
         } else {
-            st.str("preferQuality") ?: config.preferVideoQuality.first
+            json.str("preferQuality") ?: config.preferVideoQuality.first
         }
-        val engineOptions = st.qualityOptions().filter {
+        val engineOptions = json.qualityOptions().filter {
             it.quality != VideoQualityState.AUDIO_ONLY && it.quality != "tiny"
         }
         val options = listOf(VideoQualityOption(VideoQualityState.AUDIO_ONLY, "Audio-only")) +
@@ -563,9 +563,9 @@ class MsePlayer internal constructor(
             actualQuality = actual,
             preferredQuality = prefer,
         )
-        val cap = st.str("caption")
-        if (cap != _captions.value.selectedLanguage) {
-            _captions.update { it.copy(selectedLanguage = cap) }
+        val caption = json.str("caption")
+        if (caption != _captions.value.selectedLanguage) {
+            _captions.update { it.copy(selectedLanguage = caption) }
         }
     }
 
@@ -622,15 +622,15 @@ private fun JsonObject.long(key: String): Long =
     (this[key] as? JsonPrimitive)?.longOrNull ?: 0L
 
 private fun JsonObject.bool(key: String, default: Boolean): Boolean {
-    val p = this[key] as? JsonPrimitive ?: return default
-    return p.booleanOrNull ?: (p.content == "true")
+    val primitive = this[key] as? JsonPrimitive ?: return default
+    return primitive.booleanOrNull ?: (primitive.content == "true")
 }
 
 private fun JsonObject.qualityOptions(): List<VideoQualityOption> {
-    val arr = this["qualities"] as? JsonArray ?: return emptyList()
-    return arr.mapNotNull { el ->
-        val o = el as? JsonObject ?: return@mapNotNull null
-        val q = (o["quality"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
-        VideoQualityOption(q, (o["label"] as? JsonPrimitive)?.contentOrNull ?: q)
+    val qualities = this["qualities"] as? JsonArray ?: return emptyList()
+    return qualities.mapNotNull { element ->
+        val option = element as? JsonObject ?: return@mapNotNull null
+        val quality = (option["quality"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+        VideoQualityOption(quality, (option["label"] as? JsonPrimitive)?.contentOrNull ?: quality)
     }
 }
