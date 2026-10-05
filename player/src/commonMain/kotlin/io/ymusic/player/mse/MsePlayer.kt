@@ -189,8 +189,6 @@ class MsePlayer internal constructor(
                 fail(error, "mse load failed", needReset = true)
                 return@send
             }
-            refreshTracks(enginePlayer)
-            applyCaptionConfig(enginePlayer, config)
         }
         loadTimeoutJob?.cancel()
         loadTimeoutJob = mainScope.launch {
@@ -463,16 +461,6 @@ class MsePlayer internal constructor(
         }
     }
 
-    private suspend fun refreshTracks(enginePlayer: DynamicEnginePlayer) {
-        val tracks = enginePlayer.captionTracks(log).filter { it.kind != "asrt" }
-        val selected = config.preferCaptionLanguage.first
-            .takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE && config.captionVisible }
-        _captions.value = CaptionState(
-            tracks = tracks.map { CaptionTrack(it.languageCode, it.displayName, it.vssId, it.kind) },
-            selectedLanguage = selected,
-        )
-    }
-
     private fun listen(activeSession: Session, enginePlayer: DynamicEnginePlayer) {
         activeSession.scope.launch {
             try {
@@ -583,10 +571,10 @@ class MsePlayer internal constructor(
             actualQuality = actual,
             preferredQuality = prefer,
         )
-        val caption = json.str("caption")
-        if (caption != _captions.value.selectedLanguage) {
-            _captions.update { it.copy(selectedLanguage = caption) }
-        }
+        val tracks = json.captionTracks()
+        val tracksChanged = tracks != _captions.value.tracks
+        _captions.value = CaptionState(tracks = tracks, selectedLanguage = json.str("caption"))
+        if (tracksChanged && config.captionVisible) send { applyCaptionConfig(it, config) }
     }
 
     private fun fail(error: Throwable, message: String, needReset: Boolean) {
@@ -644,6 +632,20 @@ private fun JsonObject.long(key: String): Long =
 private fun JsonObject.bool(key: String, default: Boolean): Boolean {
     val primitive = this[key] as? JsonPrimitive ?: return default
     return primitive.booleanOrNull ?: (primitive.content == "true")
+}
+
+private fun JsonObject.captionTracks(): List<CaptionTrack> {
+    val rows = this["captionTracks"] as? JsonArray ?: return emptyList()
+    return rows.mapNotNull { element ->
+        val row = element as? JsonObject ?: return@mapNotNull null
+        val vssId = row.str("vssId") ?: return@mapNotNull null
+        CaptionTrack(
+            languageCode = row.str("languageCode").orEmpty(),
+            displayName = row.str("displayName") ?: vssId,
+            vssId = vssId,
+            kind = row.str("kind").orEmpty(),
+        )
+    }
 }
 
 private fun JsonObject.qualityOptions(): List<VideoQualityOption> {
