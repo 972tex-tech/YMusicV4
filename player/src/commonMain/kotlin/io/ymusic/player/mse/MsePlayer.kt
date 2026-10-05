@@ -322,6 +322,7 @@ class MsePlayer internal constructor(
     }
 
     private fun startSession() {
+        check(session == null) { "mse session already running" }
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true), videoSize = null) }
         val s = Session(SupervisorJob(mainScope.coroutineContext[Job]))
         session = s
