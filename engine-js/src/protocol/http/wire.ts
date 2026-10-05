@@ -3,8 +3,8 @@
 // and the response body as raw bytes to EOF; a request body rides its OWN pipe — a one-shot command
 // named in the head ("bodyCmd") that the server opens lazily on the transport's first pull, raw
 // bytes, END = done. Headers cross as [[name, value], …], so head injection is impossible by
-// construction. The control pipe's outbound side carries NOTHING after the head except a possible
-// [int32 -1] — cancellation is observable at every stage.
+// construction. The control pipe's outbound side carries NOTHING after the head: END = done,
+// RESET = cancel — cancellation is observable at every stage.
 
 import type { LogWire } from "../logger";
 

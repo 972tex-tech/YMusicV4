@@ -181,12 +181,12 @@ value is just data — head injection is impossible by construction.
 JS → K:  {"method":"POST","url":"https://…","headers":[["k","v"],…],
           "opts":{"timeoutMs":5000,"followRedirects":false},"bodyCmd":"http/body/8",
           "log":{"key":3,"trail":[["js:yt-home"],["js:browse"]]}}
-         …then NOTHING, except an optional [int32 -1] = cancel        (write side stays open)
+         …then NOTHING; END = done, RESET = cancel                   (write side stays open)
 K → JS:  {"status":200,"message":"OK","url":"<final URL after redirects>","headers":[["k","v"],…]}
          <raw response body bytes> … then close() (END)
 ```
 - The server's cancel **watcher arms right after the head** — the JS→K direction is otherwise
-  empty, so `-1` (or a RESET of that direction) is observable at **every** stage, including a
+  empty, so a RESET of that direction is observable at **every** stage, including a
   transport parked in `execute` with the body never pulled. Clean EOF = the client closed after
   consuming the response; anything else on the control pipe is a protocol violation (exchange torn
   down, RESET with the reason).
@@ -236,15 +236,14 @@ still trust:
 - Failure mid-body → `{code:"network", message:"response body failed: …"}`; the client's in-flight
   read throws the reason (§6). Never a clean EOF — that would read as a complete, silently
   truncated body.
-- Protocol violations (junk after the head → `E20010`, a torn cancel int) and server bugs throw
+- Protocol violations (any data after the head → `E20010`) and server bugs throw
   out of the handler; the runtime's backstop RESETs with the raw message.
-- Client abandons the body → `res.close()` / `res.cancel()` = `[-1]` down the control pipe + closing our read end: the
+- Client abandons the body → `res.close()` / `res.cancel()` = RESET of the control pipe's request direction + closing our read end: the
   watcher aborts the exchange promptly (even mid-transport), and any in-flight server write fails
   EPIPE. The same abort runs if the `Response` is garbage-collected without being consumed, or if
   `timeoutMs` elapses before the first body read (15s when omitted).
-- `HttpCall.cancel()` before a `Response` exists RESETs the control pipe's request direction
-  instead (`-1` needs an idle sink; RESET is legal mid-write) — the watcher treats RESET and `-1`
-  alike. Either way the body registration/pipe is retired.
+- `HttpCall.cancel()` before a `Response` exists RESETs the same direction (legal mid-write).
+  Either way the body registration/pipe is retired.
 
 ### Host client
 The server side runs directly on a `kmphttp.KmpHttpClient` (`installHttp(client)`): request built
@@ -603,7 +602,7 @@ whatever module wires the host handlers (the engine host, not the binding).
 
 | Protocol   | command  | shape                          | notes                                                    |
 |------------|----------|--------------------------------|----------------------------------------------------------|
-| HTTP       | `http`   | control pipe + lazy body pipe  | JSON heads; raw EOF-framed bodies; `-1` on control = cancel at any stage |
+| HTTP       | `http`   | control pipe + lazy body pipe  | JSON heads; raw EOF-framed bodies; RESET on control = cancel at any stage |
 | Cookies    | `cookie/get`, `cookie/set` | one-shot, EOF-framed | on `client.cookieJar`; get → name→value object, set → `Set-Cookie[]`, no body; `E20040`/`E20041` |
 | Cache      | `cache/get\|put\|delete\|list` | one-shot, **streamed** values | **scoped** keyed blob store; host-stamped size/updatedAt/lastUsed + custom `meta`; JS owns eviction (scopedCache + evictors); `E20050`/`E20051` |
 | Settings   | `settings/get`, `settings/set` | one-shot, EOF-framed | app's shared typed string/boolean/int store; `E20060`/`E20061` |

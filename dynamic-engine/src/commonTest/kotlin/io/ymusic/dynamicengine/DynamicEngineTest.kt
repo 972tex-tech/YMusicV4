@@ -231,7 +231,7 @@ class DynamicEngineTest {
         }
         val e = createTestEngine(client)
         try {
-            assertEquals("ERR:E20010 unexpected data on the control pipe (5)", e.scenario("raw-junk"))
+            assertEquals("ERR:E20010 unexpected data on the control pipe", e.scenario("raw-junk"))
             withContext(Dispatchers.Default) { // the violation aborts the parked exchange
                 withTimeout(5_000) { aborted.await() }
             }

@@ -27,8 +27,7 @@ function httpLife(io: Pipe, retire: (reason: string) => void, timeoutMs: number)
       stopIdle();
       if (!done) {
         done = true;
-        swallow(io.sink.writeInt(-1));
-        swallow(io.sink.close());
+        io.sink.close("cancelled"); // RESET: legal at any stage, never flushes
         retire("cancelled");
       }
       io.source.close();
@@ -208,7 +207,7 @@ export class Response implements HttpResponse {
     this._take();
     return new BodyStream(this);
   }
-  // Abort the body: -1 down the still-open write side cancels the exchange server-side even if
+  // Abort the body: a RESET of the still-open write side cancels the exchange server-side even if
   // it is parked inside the transport; closeRead drops buffered bytes and EPIPEs any in-flight
   // server write. Safe at any point, even mid-stream() or after consumption.
   cancel(): void {

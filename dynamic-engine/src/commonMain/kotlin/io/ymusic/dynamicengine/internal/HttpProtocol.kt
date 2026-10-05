@@ -47,15 +47,14 @@ import kotlin.time.Duration.Companion.milliseconds
  * every stage:
  * ```
  * control  JS→K: {"method":"POST","url":…,"headers":[["k","v"],…],"opts":{…},"bodyCmd":"http/body/8"}
- *                …then nothing except an optional [int32 -1] = cancel
+ *                …then nothing: END = done, RESET = cancel
  * control  K→JS: {"status":…,"message":…,"url":"<final URL>","headers":[…]} + raw body bytes to EOF
  * body     K opens `bodyCmd` lazily on the transport's FIRST pull; JS writes raw bytes, END = done
  * ```
  * Both heads are compact JSON (self-framing — [JsonReader] stops at the value's end); both bodies
  * are EOF-delimited raw bytes, streamed — neither side ever holds a whole body. The watcher arms
- * right after the head: a `-1` (or a RESET of the control pipe's request direction —
- * `HttpCall.cancel` mid-flight) cancels the exchange even while it is parked inside
- * [KmpHttpClient.execute] with the body never pulled.
+ * right after the head: a RESET of the control pipe's request direction cancels the exchange
+ * even while it is parked inside [KmpHttpClient.execute] with the body never pulled.
  *
  * Expected failures RESET the control pipe with a **structured, origin-classified** reason
  * `{code, message}` — the code is decided HERE, where the real exception is understood, not guessed
@@ -225,22 +224,14 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                 }
             }
             // Cancel watcher, armed immediately: the control pipe carries nothing after the head,
-            // so -1 (or a RESET — HttpCall.cancel mid-flight) is observable at EVERY stage, even a
-            // transport parked before pulling the body. Clean EOF = the client closed after
-            // consuming the response. Anything else on the control pipe is a protocol violation
-            // that throws to the backstop.
+            // so a RESET (the client's cancel) is observable at EVERY stage, even a transport
+            // parked before pulling the body. Clean EOF = the client closed after consuming the
+            // response. Any data is a protocol violation that throws to the backstop.
             val watcher = launch {
                 try {
-                    while (src.request(1)) {
-                        val n = src.readInt()
-                        if (n == -1) {
-                            exchange.cancel()
-                        } else {
-                            error("E20010 unexpected data on the control pipe ($n)")
-                        }
-                    }
-                } catch (e: PipeResetException) {
-                    exchange.cancel() // the second cancel signal, not a failure
+                    if (src.request(1)) error("E20010 unexpected data on the control pipe")
+                } catch (_: PipeResetException) {
+                    exchange.cancel()
                 }
             }
             exchange.join()
