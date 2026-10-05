@@ -913,6 +913,9 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
     @Volatile private var img: BufferedImage? = null
 
     @Volatile private var hardware = false
+
+    /** Latest native-present state, kept while [covered] so uncovering restores it. */
+    @Volatile private var nativeLive = false
     var covered = false
         private set
 
@@ -1047,6 +1050,8 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
             canvas.repaint()
         } else {
             FileAvNative.setOverlayHidden(false)
+            hardware = nativeLive
+            if (nativeLive) img = null
             overlayX = Int.MIN_VALUE
             layoutOverlay()
             canvas.repaint()
@@ -1054,6 +1059,7 @@ private class MseVideoPanel : JPanel(BorderLayout()) {
     }
 
     fun setHardware(on: Boolean) {
+        nativeLive = on
         if (covered) return
         hardware = on
         if (on) img = null
