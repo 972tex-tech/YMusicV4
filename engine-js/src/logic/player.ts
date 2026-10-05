@@ -24,7 +24,7 @@ import {
 } from "./player/boot";
 import { applyViewport } from "./player/viewport";
 import { runCatalogSession, listenPlayerStatus } from "./player/push";
-import { listCaptionTracks, runCaptionSession, setCaptionVss } from "./player/captions";
+import { listCaptionTracks, runCaptionSession, setCaptionPreference } from "./player/captions";
 import { downloadWaitMs, peekDownloadJson, waitDownloadJson } from "./player/player_res";
 
 onAccept(
@@ -250,8 +250,9 @@ onAccept(
   commandHandler(async (src, out) => {
     const a = await src.readJsonObject();
     const vss = a["vssId"] == null || a["vssId"] === "" ? null : String(a["vssId"]);
-    setCaptionVss(vss);
-    const p = out.writeObjectAsJson({ "ok": true, "vssId": vss });
+    const visible = a["visible"] == null ? vss != null : a["visible"] === true;
+    setCaptionPreference(visible, vss);
+    const p = out.writeObjectAsJson({ "ok": true, "vssId": vss, "visible": visible });
     if (p) await p;
   }),
 );

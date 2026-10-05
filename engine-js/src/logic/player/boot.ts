@@ -23,7 +23,7 @@ import {
   captionTrackRows,
   installCaptionMinter,
   onCaptionSeek,
-  onCaptionTracksChanged,
+  onCaptionsChanged,
   selectedCaptionVss,
 } from "./captions";
 import { playerStorageReady } from "./storage";
@@ -1424,7 +1424,7 @@ function notifyCatalog(): void {
   if (catalogHook) catalogHook();
 }
 
-onCaptionTracksChanged(notifyCatalog);
+onCaptionsChanged(notifyCatalog);
 
 function notifyListen(kind: ListenKind): void {
   if (listenHook) listenHook(kind);

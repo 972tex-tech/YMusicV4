@@ -23,6 +23,10 @@ type Line = { id: number; text: string };
 let tracks: CaptionTrack[] = [];
 let videoId = "";
 let selectedVss: string | null = null;
+/* The viewer's pick outlives the video: each ingest re-selects from it, like youtube.com. */
+let captionOn = false;
+let preferVss: string | null = null;
+let preferLanguage: string | null = null;
 let cues: Cue[] = [];
 let mintPo: ((id: string) => Promise<string>) | null = null;
 let sessionSink: PipeSink | null = null;
@@ -133,26 +137,20 @@ export function ingestPlayerCaptions(rec: Record<string, unknown>): void {
     }
   }
   tracks = out;
-  if (selectedVss) {
-    let ok = false;
-    for (let i = 0; i < tracks.length; i++) {
-      if (tracks[i]!.vssId === selectedVss) ok = true;
-    }
-    if (!ok) selectedVss = null;
-  }
+  selectedVss = captionOn ? pickTrack() : null;
   cues = [];
   debug(function () {
     return "caption ingest tracks=" + out.length + " vid=" + videoId;
   });
   noteIngest();
   if (sessionSink) void reloadCues();
-  if (tracksChanged) tracksChanged();
+  if (captionsChanged) captionsChanged();
 }
 
-let tracksChanged: (() => void) | null = null;
+let captionsChanged: (() => void) | null = null;
 
-export function onCaptionTracksChanged(fn: (() => void) | null): void {
-  tracksChanged = fn;
+export function onCaptionsChanged(fn: (() => void) | null): void {
+  captionsChanged = fn;
 }
 
 export function listCaptionTracks(): Record<string, unknown> {
@@ -179,10 +177,37 @@ export function selectedCaptionVss(): string | null {
   return selectedVss;
 }
 
-export function setCaptionVss(vss: string | null): void {
-  selectedVss = vss && vss.length ? vss : null;
+/** [key] is a vssId or a language code; it becomes the preference kept across videos. */
+export function setCaptionPreference(visible: boolean, key: string | null): void {
+  captionOn = visible;
+  if (key) {
+    const track = findTrack(key);
+    preferVss = track ? track.vssId : null;
+    preferLanguage = track ? track.languageCode : key;
+  }
+  selectedVss = captionOn ? pickTrack() : null;
   cues = [];
   if (sessionSink) void reloadCues();
+  if (captionsChanged) captionsChanged();
+}
+
+/** Exact pick, then the same language (human before auto), then auto-generated, then any. */
+function pickTrack(): string | null {
+  if (preferVss && findTrack(preferVss)) return preferVss;
+  let sameLanguageAuto: CaptionTrack | null = null;
+  let firstAuto: CaptionTrack | null = null;
+  let firstHuman: CaptionTrack | null = null;
+  for (let i = 0; i < tracks.length; i++) {
+    const track = tracks[i]!;
+    if (track.languageCode === preferLanguage) {
+      if (track.kind !== "asr" && track.kind !== "asrt") return track.vssId;
+      if (!sameLanguageAuto || sameLanguageAuto.kind === "asrt") sameLanguageAuto = track;
+    }
+    if (track.kind === "asr" && !firstAuto) firstAuto = track;
+    if (track.kind !== "asr" && track.kind !== "asrt" && !firstHuman) firstHuman = track;
+  }
+  const picked = sameLanguageAuto || firstAuto || firstHuman;
+  return picked ? picked.vssId : null;
 }
 
 function findTrack(vss: string): CaptionTrack | null {
