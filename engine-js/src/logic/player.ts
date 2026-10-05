@@ -48,8 +48,17 @@ onAccept(
     const quality = a["quality"] != null ? String(a["quality"]) : undefined;
     const audioOnly = a["audioOnly"] === true;
     const startMs = Number(a["startPositionMs"]);
-    const startSeconds = Number.isFinite(startMs) && startMs > 0 ? startMs / 1000 : 0;
-    const result = await loadPlayer(id, quality, audioOnly, startSeconds);
+    const speed = Number(a["speed"]);
+    const pitch = Number(a["pitch"]);
+    const result = await loadPlayer(id, {
+      quality: quality,
+      audioOnly: audioOnly,
+      startSeconds: Number.isFinite(startMs) && startMs > 0 ? startMs / 1000 : 0,
+      playWhenReady: a["playWhenReady"] !== false,
+      speed: Number.isFinite(speed) ? speed : 1,
+      pitch: Number.isFinite(pitch) ? pitch : 1,
+      loop: a["loop"] === true,
+    });
     const p = out.writeObjectAsJson(result);
     if (p) await p;
   }),

@@ -636,6 +636,17 @@ async function fetchPlayerConfig(): Promise<Record<string, unknown>> {
   });
 }
 
+/** Everything `player/load` applies before the first frame, so the host needs one round-trip. */
+export interface PlayerLoadOptions {
+  quality: string | undefined;
+  audioOnly: boolean;
+  startSeconds: number;
+  playWhenReady: boolean;
+  speed: number;
+  pitch: number;
+  loop: boolean;
+}
+
 class Player {
   private player: YtApp | null = null;
   private speed = 1;
@@ -880,15 +891,10 @@ class Player {
     }
   }
 
-  async load(
-    videoId: string,
-    quality?: string,
-    audioOnly?: boolean,
-    startSeconds?: number,
-  ): Promise<Record<string, unknown>> {
+  async load(videoId: string, options: PlayerLoadOptions): Promise<Record<string, unknown>> {
     const initOut = await this.init();
-    const ao = audioOnly === true;
-    const q = quality && quality.length ? quality : undefined;
+    const ao = options.audioOnly;
+    const q = options.quality && options.quality.length ? options.quality : undefined;
     const out: Record<string, unknown> = {
       "videoId": videoId,
       "quality": q || "auto",
@@ -902,8 +908,12 @@ class Player {
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. */
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
     this.setQuality(q || "auto", ao);
+    this.setLoop(options.loop);
+    this.setSpeedPitch(options.speed, options.pitch);
     try {
-      this.loadById(videoId, startSeconds && startSeconds > 0 ? startSeconds : 0);
+      this.loadById(videoId, options.startSeconds > 0 ? options.startSeconds : 0);
+      /* Same JS turn as loadVideoById: no frame plays before the pause lands. */
+      if (!options.playWhenReady) this.pause();
     } catch (e) {
       throw new JsEngineErrorImpl(
         "loadVideoById: " + (e instanceof Error ? e.message : String(e)),
@@ -1319,11 +1329,9 @@ export function initPlayer(): Promise<Record<string, unknown>> {
 
 export function loadPlayer(
   videoId: string,
-  quality?: string,
-  audioOnly?: boolean,
-  startSeconds?: number,
+  options: PlayerLoadOptions,
 ): Promise<Record<string, unknown>> {
-  return ytPlayer.load(videoId, quality, audioOnly, startSeconds);
+  return ytPlayer.load(videoId, options);
 }
 
 export function preloadPlayer(videoId: string): Promise<Record<string, unknown>> {
