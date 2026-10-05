@@ -56,6 +56,7 @@ E60010 - ExoPlayer playback error (player android)
 E60020 - libVLC not found at construction (player jvm)
 E60021 - libVLC playback error (player jvm)
 E60033 - YouTube playback error, no engine-supplied code (MsePlayer fallback)
+E60034 - MsePlayer download request (playerResponse/PO token) while the engine is released or in a failed session
 E60050 - queue item needs the YouTube engine but none is configured (player facade)
 E60051 - MsePlayer load timed out waiting for progress of the requested videoId
 E60052 - PlayerImpl tryMakePlayerReady timed out waiting for readyToLoad
