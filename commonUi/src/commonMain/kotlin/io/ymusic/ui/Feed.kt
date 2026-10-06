@@ -90,7 +90,7 @@ import org.jetbrains.compose.resources.stringResource
  *  of an eternal spinner. */
 class Pager(
     private val scope: CoroutineScope,
-    private val fetchTimeoutMs: Long = 45_000,
+    private val fetchTimeoutMs: Long = 15_000,
     private val logger: Logger? = null,
     private val fetch: suspend (continuation: String?) -> io.ymusic.dynamicengine.yt.YtFeedPage,
 ) {
