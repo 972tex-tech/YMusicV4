@@ -12,6 +12,7 @@ import io.ymusic.download.DownloadFormat
 import io.ymusic.download.DownloadOptions
 import io.ymusic.download.DownloadRequest
 import io.ymusic.download.DownloadService
+import io.ymusic.download.LiveVideoException
 import io.ymusic.download.VideoOption
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.ui.resources.Res
@@ -46,6 +47,10 @@ internal class DownloadOptionsState(
     var errorCode by mutableStateOf<String?>(null)
         private set
 
+    /** The probe found a live broadcast — nothing to download, so no retry either. */
+    var isLive by mutableStateOf(video.live)
+        private set
+
     var audioOnly by mutableStateOf(LastDownloadChoice.audioOnly)
     var audioFormat by mutableStateOf(LastDownloadChoice.audioFormat)
     var container by mutableStateOf(LastDownloadChoice.container)
@@ -78,6 +83,7 @@ internal class DownloadOptionsState(
 
     suspend fun load(log: Logger?) {
         errorCode = null
+        if (isLive) return
         try {
             val probed = downloads.probe(video.id)
             if (probed.audio.none { it.format == audioFormat }) audioFormat = probed.audio.first().format
@@ -87,6 +93,8 @@ internal class DownloadOptionsState(
             options = probed
         } catch (c: CancellationException) {
             throw c
+        } catch (e: LiveVideoException) {
+            isLive = true
         } catch (e: Exception) {
             log?.fork("download-options", mapOf("videoId" to video.id))?.log(Logger.Level.WARN, "probe failed", e)
             errorCode = e.codedError()?.code ?: "E70043"

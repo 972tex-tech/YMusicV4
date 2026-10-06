@@ -661,7 +661,7 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
                 add(stringResource(Res.string.menu_start_radio) to { coordinator.playNow(item) })
                 add(stringResource(Res.string.queue_next) to { coordinator.playNext(item) })
                 add(stringResource(Res.string.queue_last) to { coordinator.playLater(item) })
-                if (downloadLauncher != null) {
+                if (downloadLauncher != null && !item.live) {
                     add(stringResource(Res.string.cd_download) to { downloadLauncher.launch(item) })
                 }
                 if (removeFromTopTracks != null) {

@@ -124,6 +124,7 @@ internal fun DownloadDialogDesktop(
                     ) {
                         val options = state.options
                         when {
+                            state.isLive -> LiveNotDownloadable()
                             options == null && state.errorCode != null -> ProbeFailed(state.errorCode!!, onRetry)
                             options == null -> Text(
                                 stringResource(Res.string.download_loading),
@@ -151,10 +152,10 @@ private fun LeftPane(state: DownloadOptionsState, locationName: String?, onPickL
             ThumbImage(state.video.thumbs, 200.dp, RoundedCornerShape(10.dp)) {
                 ThumbPlaceholder(Icons.Outlined.Image, 26.dp)
             }
+            Badges(state.video, Modifier.align(Alignment.BottomEnd).padding(DesignSpacing.Space8), textSize = 11, iconSize = 14.dp)
         }
         Column(verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
             Text(state.video.title, style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink, lineHeight = 18.sp), maxLines = 3)
-            state.video.duration?.let { Text(it, style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary)) }
         }
         FileNameField(state)
         Column(verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
@@ -366,7 +367,7 @@ private fun Footer(state: DownloadOptionsState, onDownload: () -> Unit, onDismis
         }
         Button(
             onClick = onDownload,
-            enabled = state.options != null && DownloadFileNames.finalize(state.fileName).isNotEmpty(),
+            enabled = state.options != null && !state.isLive && DownloadFileNames.finalize(state.fileName).isNotEmpty(),
             shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(containerColor = downloadPrimary, contentColor = Color.White),
         ) { Text(stringResource(Res.string.download_action), fontWeight = FontWeight.Bold) }

@@ -61,6 +61,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -89,6 +90,7 @@ import io.ymusic.ui.resources.download_file_name
 import io.ymusic.ui.resources.download_forbidden_hint
 import io.ymusic.ui.resources.download_format
 import io.ymusic.ui.resources.download_less
+import io.ymusic.ui.resources.download_live_unsupported
 import io.ymusic.ui.resources.download_loading
 import io.ymusic.ui.resources.download_location_not_set
 import io.ymusic.ui.resources.download_m4a_detail
@@ -140,6 +142,7 @@ internal fun DownloadSheet(
             SheetHeader(state, onRename = { renaming = true })
             val options = state.options
             when {
+                state.isLive -> LiveNotDownloadable()
                 options == null && state.errorCode != null -> ProbeFailed(state.errorCode!!, onRetry)
                 options == null -> ProbeLoading()
                 else -> {
@@ -190,6 +193,7 @@ private fun SheetHeader(state: DownloadOptionsState, onRename: () -> Unit) {
             ThumbImage(state.video.thumbs, 64.dp, RoundedCornerShape(8.dp)) {
                 ThumbPlaceholder(Icons.Outlined.MusicNote, 24.dp)
             }
+            Badges(state.video, Modifier.align(Alignment.BottomEnd).padding(DesignSpacing.Space4), textSize = 10, iconSize = 12.dp)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
             Text(
@@ -199,9 +203,6 @@ private fun SheetHeader(state: DownloadOptionsState, onRename: () -> Unit) {
                 },
                 style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink, lineHeight = 20.sp),
             )
-            state.video.duration?.let {
-                Text(it, style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary))
-            }
         }
         IconButton(onClick = onRename) {
             Icon(Icons.Outlined.Edit, stringResource(Res.string.download_edit_name), tint = DesignColors.InkSoft)
@@ -219,6 +220,15 @@ private fun ProbeLoading() {
         CircularProgressIndicator(Modifier.size(20.dp), color = DesignColors.Accent, strokeWidth = 2.dp)
         Text(stringResource(Res.string.download_loading), style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary))
     }
+}
+
+@Composable
+internal fun LiveNotDownloadable() {
+    Text(
+        stringResource(Res.string.download_live_unsupported),
+        Modifier.fillMaxWidth().padding(vertical = DesignSpacing.Space24),
+        style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary, textAlign = TextAlign.Center),
+    )
 }
 
 @Composable
@@ -494,7 +504,7 @@ private fun DownloadButton(state: DownloadOptionsState, onDownload: () -> Unit) 
     val what = if (state.format.kind == io.ymusic.download.DownloadKind.VIDEO) state.selectedVideo?.label() else state.format.displayName()
     Button(
         onClick = onDownload,
-        enabled = state.options != null,
+        enabled = state.options != null && !state.isLive,
         modifier = Modifier.fillMaxWidth().height(52.dp),
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(containerColor = downloadPrimary, contentColor = Color.White),

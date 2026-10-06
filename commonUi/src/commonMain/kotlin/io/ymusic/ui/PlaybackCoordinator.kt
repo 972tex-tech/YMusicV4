@@ -106,9 +106,10 @@ class PlaybackCoordinator(
         }
     }
 
-    /** The video to hand the download launcher — only a YouTube item is downloadable (local → null).
+    /** The video to hand the download launcher — only a non-live YouTube item is downloadable (local or
+     *  live → null).
      *  The one place a queue item is rebuilt into a [YtFeedItem], for the launcher's API. */
-    fun downloadable(item: PlayableItem?): YtFeedItem? = (item as? PlayableItem.YtMedia)?.let {
+    fun downloadable(item: PlayableItem?): YtFeedItem? = (item as? PlayableItem.YtMedia)?.takeIf { !it.live }?.let {
         YtFeedItem(
             kind = YtFeedItem.KIND_VIDEO,
             id = it.videoId,
