@@ -47,6 +47,8 @@ data class YtFeedItem(
     val live: Boolean = false,
     /** The thumbnail's time-status overlay carried the MUSIC icon — a music video. */
     val musicVideo: Boolean = false,
+    /** The signed-in user's watch progress on this video, 1–100 (%); null = unwatched. */
+    val watchedPercent: Int? = null,
     /** An auto-generated album playlist — rendered with the album mark. */
     val album: Boolean = false,
     /** The owner channel's badge (see [OWNER_BADGE_ARTIST]/[OWNER_BADGE_VERIFIED]); null = none. */
