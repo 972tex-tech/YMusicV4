@@ -514,7 +514,8 @@ function onCaptionPause(): void {
   void emitWindow();
 }
 
-async function reloadCues(): Promise<void> {
+/* YouTube refuses auto-translate fetches (429, or 200 with an empty body); the source language beats no captions. */
+async function reloadCues(untranslated = false): Promise<void> {
   stopTimer();
   cues = [];
   lastLinesJson = "";
@@ -530,7 +531,8 @@ async function reloadCues(): Promise<void> {
   }
   const g = ++fetchGen;
   let url = withFmtJson3(tr.baseUrl);
-  if (tr.tlang) url = setQuery(url, "tlang", tr.tlang);
+  const translate = !!tr.tlang && !untranslated;
+  if (translate) url = setQuery(url, "tlang", tr.tlang!);
   if (mintPo && videoId) {
     try {
       const pot = await mintPo(videoId);
@@ -567,8 +569,11 @@ async function reloadCues(): Promise<void> {
       return;
     }
     if (!res.ok) {
-      console.warn("caption timedtext HTTP " + res.status);
+      console.warn(
+        "caption timedtext HTTP " + res.status + (translate ? " tlang=" + tr.tlang : ""),
+      );
       res.close();
+      if (translate) return reloadCues(true);
       await emitWindow();
       return;
     }
@@ -593,7 +598,9 @@ async function reloadCues(): Promise<void> {
       });
     } else {
       console.warn(
-        "caption timedtext ok status=" +
+        "caption timedtext empty" +
+          (translate ? " tlang=" + tr.tlang : "") +
+          " status=" +
           res.status +
           " bytes=" +
           body.length +
@@ -604,10 +611,12 @@ async function reloadCues(): Promise<void> {
           " head=" +
           body.slice(0, 80).replace(/\n/g, " "),
       );
+      if (translate) return reloadCues(true);
     }
   } catch (e) {
     if (g !== fetchGen) return;
     console.warn("caption timedtext failed: " + (e instanceof Error ? e.message : String(e)));
+    if (translate) return reloadCues(true);
     await emitWindow();
     return;
   }
