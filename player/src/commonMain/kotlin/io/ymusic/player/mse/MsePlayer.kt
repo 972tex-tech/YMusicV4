@@ -315,10 +315,13 @@ class MsePlayer internal constructor(
         readyPlayer().mintContentPoToken(videoId, log)
 
     override fun pcmLevels(out: FloatArray): Int =
-        if (released || out.isEmpty()) 0 else videoSurface.pcmLevels(out)
+        if (!hostLive() || out.isEmpty()) 0 else videoSurface.pcmLevels(out)
 
     override fun presentedFrames(): Int =
-        if (released) 0 else videoSurface.presentedFrames()
+        if (!hostLive()) 0 else videoSurface.presentedFrames()
+
+    /** A closing session frees its native host off main, only after main has cleared its player. */
+    private fun hostLive(): Boolean = !released && session?.player != null
 
     override fun release() {
         requireMainThread()
@@ -369,6 +372,7 @@ class MsePlayer internal constructor(
             } catch (error: Throwable) {
                 if (session === newSession) fail(error, "mse init failed", needReset = true)
             } finally {
+                newSession.player = null
                 withContext(Dispatchers.Default + NonCancellable) {
                     if (enginePlayer != null) closePlayerBounded(enginePlayer)
                     closeEngineThread(engineThread)
@@ -438,6 +442,7 @@ class MsePlayer internal constructor(
 
     /** Native host audio; the host is per session, so [previous] is that session's last push. */
     private fun applySurfaceAudio(previous: PlaybackConfig?, config: PlaybackConfig) {
+        if (!hostLive()) return
         if (previous == null || config.volume != previous.volume) {
             videoSurface.setVolume(config.volume.coerceIn(0f, 1f))
         }
