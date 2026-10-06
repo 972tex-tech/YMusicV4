@@ -302,7 +302,7 @@ private fun FormatDropdown(state: DownloadOptionsState) {
 }
 
 @Composable
-private fun MenuGroupLabel(text: String) {
+internal fun MenuGroupLabel(text: String) {
     Text(
         text.uppercase(),
         Modifier.padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space8),

@@ -20,8 +20,12 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -67,7 +71,8 @@ import io.ymusic.ui.resources.download_captions
 import io.ymusic.ui.resources.download_captions_off
 import io.ymusic.ui.resources.download_default_track
 import io.ymusic.ui.resources.download_format
-import io.ymusic.ui.resources.download_quality
+import io.ymusic.ui.resources.download_location_not_set
+import io.ymusic.ui.resources.download_save_to
 import io.ymusic.ui.resources.download_video
 import io.ymusic.ui.resources.playlist_added
 import io.ymusic.ui.resources.playlist_check_all
@@ -120,6 +125,7 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
     val scope = rememberCoroutineScope()
     val snackbar = LocalSnackbar.current
     val count = videos.count { it.id in session.checked && !it.live }
+    val locationName = rememberDownloadLocationName(graph)
 
     Column(Modifier.fillMaxSize().background(DesignColors.Surface)) {
         ElevatedBarColumn {
@@ -133,7 +139,13 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
                 LoadedHeader(session, ready, videos, offline)
             }
             item {
-                OptionsCard(session, languages, ffmpegAvailable = downloads.ffmpegAvailable)
+                OptionsCard(
+                    session,
+                    languages,
+                    ffmpegAvailable = downloads.ffmpegAvailable,
+                    locationName = locationName,
+                    onPickLocation = { scope.launch { pickDownloadFolder(graph) } },
+                )
             }
             items(videos, key = { it.id }) { video ->
                 VideoCheckRow(video, checked = video.id in session.checked, downloaded = video.id in offline) { on ->
@@ -187,15 +199,21 @@ private fun LoadedHeader(session: PlaylistDownloadSession, ready: Pager.State.Re
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
             Text(
                 pluralStringResource(Res.plurals.playlist_videos_loaded, videos.size, videos.size),
-                Modifier.weight(1f),
-                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+                Modifier
+                    .border(1.dp, DesignColors.Outline, RoundedCornerShape(8.dp))
+                    .padding(horizontal = DesignSpacing.Space8, vertical = DesignSpacing.Space4),
+                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSoft),
             )
             when {
                 ready?.loadingMore == true -> CircularProgressIndicator(Modifier.size(18.dp), color = DesignColors.Accent, strokeWidth = 2.dp)
-                ready?.continuation != null -> OutlinedButton(onClick = { session.pager.loadMore() }, shape = RoundedCornerShape(8.dp)) {
-                    Text(stringResource(Res.string.playlist_load_more), color = DesignColors.Ink)
-                }
+                ready?.continuation != null -> AssistChip(
+                    onClick = { session.pager.loadMore() },
+                    label = { Text(stringResource(Res.string.playlist_load_more)) },
+                    leadingIcon = { Icon(Icons.Default.Add, null, Modifier.size(16.dp)) },
+                    colors = AssistChipDefaults.assistChipColors(labelColor = DesignColors.Ink, leadingIconContentColor = DesignColors.Accent),
+                )
             }
+            Box(Modifier.weight(1f))
             Box {
                 IconButton(onClick = { menuOpen = true }) {
                     Icon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), tint = DesignColors.InkSoft)
@@ -222,7 +240,13 @@ private fun LoadedHeader(session: PlaylistDownloadSession, ready: Pager.State.Re
 }
 
 @Composable
-private fun OptionsCard(session: PlaylistDownloadSession, languages: List<YtLocaleOption>, ffmpegAvailable: Boolean) {
+private fun OptionsCard(
+    session: PlaylistDownloadSession,
+    languages: List<YtLocaleOption>,
+    ffmpegAvailable: Boolean,
+    locationName: String?,
+    onPickLocation: () -> Unit,
+) {
     val preset = session.preset
     Column(
         Modifier
@@ -238,17 +262,24 @@ private fun OptionsCard(session: PlaylistDownloadSession, languages: List<YtLoca
             stringResource(Res.string.playlist_options).uppercase(),
             style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp, color = DesignColors.InkSecondary),
         )
-        val formats = if (ffmpegAvailable) {
-            listOf(DownloadFormat.AUDIO_WEBM, DownloadFormat.M4A, DownloadFormat.MP3, DownloadFormat.VIDEO_MP4, DownloadFormat.VIDEO_WEBM)
-        } else {
-            listOf(DownloadFormat.M4A)
-        }
-        OptionLine(stringResource(Res.string.download_format), formatName(preset.format)) { close ->
-            ChoiceMenuItems(formats.map { f -> Choice(formatName(f), f == preset.format) { session.preset = preset.copy(format = f) } }, close)
-        }
-        if (preset.format.kind == DownloadKind.VIDEO) {
-            OptionLine(stringResource(Res.string.download_quality), heightLabel(preset.height ?: 1080)) { close ->
-                ChoiceMenuItems(PLAYLIST_HEIGHTS.map { h -> Choice(heightLabel(h), h == preset.height) { session.preset = preset.copy(height = h) } }, close)
+        val audioFormats = if (ffmpegAvailable) listOf(DownloadFormat.AUDIO_WEBM, DownloadFormat.M4A, DownloadFormat.MP3) else listOf(DownloadFormat.M4A)
+        val videoFormats = if (ffmpegAvailable) listOf(DownloadFormat.VIDEO_MP4, DownloadFormat.VIDEO_WEBM) else emptyList()
+        OptionLine(stringResource(Res.string.download_format), presetLabel(preset)) { close ->
+            MenuGroupLabel(stringResource(Res.string.download_audio_only))
+            ChoiceMenuItems(
+                audioFormats.map { f -> Choice(f.displayName(), f == preset.format) { session.preset = preset.copy(format = f) } },
+                close,
+            )
+            videoFormats.forEach { container ->
+                MenuGroupLabel("${stringResource(Res.string.download_video)} · ${container.displayName()}")
+                ChoiceMenuItems(
+                    PLAYLIST_HEIGHTS.map { h ->
+                        Choice(heightLabel(h), container == preset.format && h == preset.height) {
+                            session.preset = preset.copy(format = container, height = h)
+                        }
+                    },
+                    close,
+                )
             }
         }
         val default = stringResource(Res.string.download_default_track)
@@ -266,6 +297,29 @@ private fun OptionsCard(session: PlaylistDownloadSession, languages: List<YtLoca
                     listOf(Choice(off, preset.captionLanguage == null) { session.preset = preset.copy(captionLanguage = null) }) +
                         languages.map { lang -> Choice(lang.label, lang.code == preset.captionLanguage) { session.preset = preset.copy(captionLanguage = lang.code) } },
                     close,
+                )
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
+            Text(
+                stringResource(Res.string.download_save_to),
+                Modifier.width(112.dp),
+                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            )
+            OutlinedButton(
+                onClick = onPickLocation,
+                modifier = Modifier.weight(1f).height(36.dp),
+                shape = RoundedCornerShape(9.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, DesignColors.Outline),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = DesignSpacing.Space8),
+            ) {
+                Icon(Icons.Outlined.Folder, null, Modifier.size(16.dp), tint = DesignColors.InkSoft)
+                Text(
+                    locationName ?: stringResource(Res.string.download_location_not_set),
+                    Modifier.weight(1f).padding(start = DesignSpacing.Space8),
+                    style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -335,12 +389,14 @@ private fun rememberYtLanguages(graph: AppGraph): List<YtLocaleOption> {
 private fun languageName(code: String?, languages: List<YtLocaleOption>): String? =
     code?.let { c -> languages.firstOrNull { it.code == c }?.label ?: c }
 
-/** "M4A · Audio only", "MP4 · Video" — WebM exists as both. */
+/** "M4A · Audio only", "MP4 · 1080p". */
 @Composable
-private fun formatName(format: DownloadFormat): String {
-    val kind = stringResource(if (format.kind == DownloadKind.AUDIO) Res.string.download_audio_only else Res.string.download_video)
-    return "${format.displayName()} · $kind"
-}
+private fun presetLabel(preset: QuickDownloadPreset): String =
+    if (preset.format.kind == DownloadKind.AUDIO) {
+        "${preset.format.displayName()} · ${stringResource(Res.string.download_audio_only)}"
+    } else {
+        "${preset.format.displayName()} · ${heightLabel(preset.height ?: 1080)}"
+    }
 
 private fun heightLabel(height: Int): String = when {
     height >= 4320 -> "8K"
