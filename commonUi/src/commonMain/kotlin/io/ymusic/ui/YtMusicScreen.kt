@@ -1,8 +1,20 @@
 package io.ymusic.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -11,7 +23,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.extractMusicBrowse
 import io.ymusic.dynamicengine.yt.extractMusicCharts
@@ -21,6 +39,7 @@ import io.ymusic.dynamicengine.yt.extractMusicLibrary
 import io.ymusic.dynamicengine.yt.extractMusicNewReleases
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.detail_playlist
+import io.ymusic.ui.resources.play_all
 import io.ymusic.ui.resources.ytmusic_explore_empty
 import io.ymusic.ui.resources.ytmusic_home_empty
 import io.ymusic.ui.resources.ytmusic_library_empty
@@ -201,7 +220,7 @@ fun MusicDetailScreen(
                 { tapped -> coordinator.playAll(videos, startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0)) }
             },
             topContent = if (isFeed) {
-                null
+                if (videos.isEmpty()) null else ({ PlayAllBar { coordinator.playAll(videos) } })
             } else {
                 {
                     PlaylistHeader(
@@ -215,5 +234,26 @@ fun MusicDetailScreen(
             listState = session.feed.listState,
             onDeeplink = onDeeplink,
         )
+    }
+}
+
+@Composable
+private fun PlayAllBar(onPlayAll: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space8)) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(DesignColors.InkStrong)
+                .clickable(onClick = onPlayAll)
+                .padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space8),
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp), tint = DesignColors.OnInk)
+            Text(
+                stringResource(Res.string.play_all),
+                style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.OnInk),
+            )
+        }
     }
 }
