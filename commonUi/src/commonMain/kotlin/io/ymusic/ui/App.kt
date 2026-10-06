@@ -321,6 +321,34 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         var discoverDrag by remember { mutableFloatStateOf(0f) }
         val nowPlayingOpen by graph.pip.nowPlayingOpen.collectAsState()
         var nowPlayingPeeking by remember { mutableStateOf(false) }
+        val snackbarHostState = remember { SnackbarHostState() }
+        val showSnackbar: (String) -> Unit = { message ->
+            scope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarHostState.showSnackbar(message)
+            }
+        }
+        // Download entry points (any video menu, Now Playing) set these; the hosts below show the options
+        // dialog / run a Quick download. Hoisted to the root so Now Playing — drawn over the shell — has
+        // them too. Null launcher when there is no download service.
+        var pendingDownload by remember { mutableStateOf<io.ymusic.dynamicengine.yt.YtFeedItem?>(null) }
+        var pendingQuickDownload by remember { mutableStateOf<io.ymusic.dynamicengine.yt.YtFeedItem?>(null) }
+        val downloadLauncher = remember(graph) {
+            graph.downloads?.let {
+                object : DownloadLauncher {
+                    override fun launch(video: io.ymusic.dynamicengine.yt.YtFeedItem) {
+                        pendingDownload = video
+                    }
+
+                    override val quickPreset = graph.quickDownload
+
+                    override fun quickLaunch(video: io.ymusic.dynamicengine.yt.YtFeedItem) {
+                        pendingQuickDownload = video
+                    }
+                }
+            }
+        }
+        val availableOffline = rememberAvailableOffline(graph)
         LaunchedEffect(coordinator) {
             coordinator.player.queue.collect {
                 if (it.items.isEmpty()) {
@@ -609,35 +637,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                 }
                             }
                         }
-                        val snackbarHostState = remember { SnackbarHostState() }
-                        val showSnackbar: (String) -> Unit = { message ->
-                            scope.launch {
-                                snackbarHostState.currentSnackbarData?.dismiss()
-                                snackbarHostState.showSnackbar(message)
-                            }
-                        }
                         // Scan results are notification-class: show them on whatever screen is open.
                         LaunchedEffect(scanController) {
                             scanController.summaries.collect { showSnackbar(it) }
-                        }
-                        // Download-format picker: any video menu sets this to a video; DownloadDialogHost shows
-                        // the format dialog and enqueues into graph.downloads. Null launcher when no service.
-                        var pendingDownload by remember { mutableStateOf<io.ymusic.dynamicengine.yt.YtFeedItem?>(null) }
-                        var pendingQuickDownload by remember { mutableStateOf<io.ymusic.dynamicengine.yt.YtFeedItem?>(null) }
-                        val downloadLauncher = remember(graph) {
-                            graph.downloads?.let {
-                                object : DownloadLauncher {
-                                    override fun launch(video: io.ymusic.dynamicengine.yt.YtFeedItem) {
-                                        pendingDownload = video
-                                    }
-
-                                    override val quickPreset = graph.quickDownload
-
-                                    override fun quickLaunch(video: io.ymusic.dynamicengine.yt.YtFeedItem) {
-                                        pendingQuickDownload = video
-                                    }
-                                }
-                            }
                         }
                         CompositionLocalProvider(
                             LocalScrollHost provides scrollHost,
@@ -645,12 +647,10 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                             LocalScanController provides scanController,
                             LocalOpenNavDrawer provides { scope.launch { drawer.open() } },
                             LocalDownloadLauncher provides downloadLauncher,
-                            LocalAvailableOffline provides rememberAvailableOffline(graph),
+                            LocalAvailableOffline provides availableOffline,
                             LocalNavigateToSection provides { onSection(it) },
                             LocalLibraryFolderReveal provides libraryReveal,
                         ) {
-                            DownloadDialogHost(graph, pendingDownload) { pendingDownload = null }
-                            QuickDownloadHost(graph, pendingQuickDownload) { pendingQuickDownload = null }
                             DefaultDownloadLocationPrompt(graph)
                             Scaffold(
                                 modifier = Modifier.nestedScroll(collapseConnection),
@@ -879,16 +879,24 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 }
                 UpdateDialog(graph)
             }
-            if (nowPlayingOpen) {
-                NowPlayingScreen(
-                    graph,
-                    coordinator,
-                    onClose = {
-                        graph.pip.nowPlayingOpen.value = false
-                        nowPlayingPeeking = false
-                    },
-                    onPeek = { nowPlayingPeeking = it > 0.5f },
-                )
+            CompositionLocalProvider(
+                LocalSnackbar provides showSnackbar,
+                LocalDownloadLauncher provides downloadLauncher,
+                LocalAvailableOffline provides availableOffline,
+            ) {
+                if (nowPlayingOpen) {
+                    NowPlayingScreen(
+                        graph,
+                        coordinator,
+                        onClose = {
+                            graph.pip.nowPlayingOpen.value = false
+                            nowPlayingPeeking = false
+                        },
+                        onPeek = { nowPlayingPeeking = it > 0.5f },
+                    )
+                }
+                DownloadDialogHost(graph, pendingDownload) { pendingDownload = null }
+                QuickDownloadHost(graph, pendingQuickDownload) { pendingQuickDownload = null }
             }
         }
     }

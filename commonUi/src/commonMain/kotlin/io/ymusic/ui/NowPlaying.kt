@@ -916,13 +916,14 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
     ) {
         ActionIcon(Icons.Default.KeyboardArrowDown, stringResource(Res.string.cd_close), onClick = onClose)
         Box(Modifier.weight(1f))
-        // Enabled once there's a download service and the current item is a YouTube video.
-        ActionIcon(
-            Icons.Outlined.FileDownload,
-            stringResource(Res.string.cd_download),
-            enabled = downloadLauncher != null && downloadable != null,
-            onClick = { downloadable?.let { downloadLauncher?.launch(it) } },
-        )
+        // Only for a downloadable item (a non-live YouTube video) where there is a download service.
+        if (downloadLauncher != null && downloadable != null) {
+            ActionIcon(
+                Icons.Outlined.FileDownload,
+                stringResource(Res.string.cd_download),
+                onClick = { downloadLauncher.launch(downloadable) },
+            )
+        }
         if (sbState != SponsorBlockState.Unavailable) {
             val included = sbState == SponsorBlockState.Available
             ActionIcon(
