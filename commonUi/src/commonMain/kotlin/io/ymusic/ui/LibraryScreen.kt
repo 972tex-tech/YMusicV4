@@ -1110,7 +1110,7 @@ private fun PlaylistsToolbar(sort: SortState, onCreate: () -> Unit) {
  *  runs the store mutation; the dialog closes after it (or on cancel). Confirm is disabled while the
  *  field is blank or the mutation is running. */
 @Composable
-private fun PlaylistNameDialog(
+internal fun PlaylistNameDialog(
     title: String,
     confirmLabel: String,
     initial: String,

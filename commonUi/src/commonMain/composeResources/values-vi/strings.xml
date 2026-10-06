@@ -319,5 +319,8 @@
     <plurals name="playlist_added">
         <item quantity="other">Đã thêm %1$d video vào danh sách tải</item>
     </plurals>
-    <string name="playlist_add_to_library">Thêm vào danh sách phát Thư viện “%1$s”</string>
+    <string name="playlist_add_to">Thêm vào danh sách phát</string>
+    <string name="playlist_select_library">Chọn danh sách phát Thư viện</string>
+    <string name="playlist_target_none">Không</string>
+    <string name="playlist_target_create">+ Tạo mới</string>
 </resources>

@@ -62,6 +62,8 @@ import io.ymusic.download.DownloadKind
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtLocaleOption
 import io.ymusic.dynamicengine.yt.ytLocaleOptions
+import io.ymusic.mediastore.BetterMediaStore
+import io.ymusic.mediastore.model.Playlist
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_back
 import io.ymusic.ui.resources.cd_more
@@ -74,14 +76,19 @@ import io.ymusic.ui.resources.download_format
 import io.ymusic.ui.resources.download_location_not_set
 import io.ymusic.ui.resources.download_save_to
 import io.ymusic.ui.resources.download_video
-import io.ymusic.ui.resources.playlist_add_to_library
+import io.ymusic.ui.resources.playlist_add_to
 import io.ymusic.ui.resources.playlist_added
 import io.ymusic.ui.resources.playlist_check_all
 import io.ymusic.ui.resources.playlist_check_not_downloaded
+import io.ymusic.ui.resources.playlist_create_confirm
+import io.ymusic.ui.resources.playlist_create_title
 import io.ymusic.ui.resources.playlist_download_action
 import io.ymusic.ui.resources.playlist_download_title
 import io.ymusic.ui.resources.playlist_load_more
 import io.ymusic.ui.resources.playlist_options
+import io.ymusic.ui.resources.playlist_select_library
+import io.ymusic.ui.resources.playlist_target_create
+import io.ymusic.ui.resources.playlist_target_none
 import io.ymusic.ui.resources.playlist_uncheck_all
 import io.ymusic.ui.resources.playlist_uncheck_downloaded
 import io.ymusic.ui.resources.playlist_videos_loaded
@@ -105,8 +112,8 @@ class PlaylistDownloadSession(val title: String, val pager: Pager, initialPreset
     var preset by mutableStateOf(initialPreset ?: QuickDownloadPreset(DownloadFormat.M4A, 1080, null, null))
     var checked by mutableStateOf<Set<String>>(emptySet())
 
-    /** Also collect the downloads into a Library playlist named after this one. */
-    var addToLibraryPlaylist by mutableStateOf(false)
+    /** The Library playlist the downloads join (each song shows up there as it lands); null = none. */
+    var targetPlaylist by mutableStateOf<Playlist?>(null)
 
     /** Every video id listed so far: a newly loaded page arrives checked, a seen one keeps its box. */
     private val seen = mutableSetOf<String>()
@@ -149,7 +156,7 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
                     ffmpegAvailable = downloads.ffmpegAvailable,
                     locationName = locationName,
                     onPickLocation = { scope.launch { pickDownloadFolder(graph) } },
-                    libraryPlaylists = graph.mediaStore != null,
+                    libraryStore = graph.mediaStore,
                 )
             }
             items(videos, key = { it.id }) { video ->
@@ -171,11 +178,9 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
                         val gated = graph.mediaStore != null && graph.libraryFolderPicker != null
                         if (gated && !hasUsableDownloadLocation(graph) && !pickDownloadFolder(graph)) return@launch
                         picked.forEach { downloads.enqueue(preset.request(it)) }
+                        val target = session.targetPlaylist
                         val store = graph.mediaStore
-                        if (session.addToLibraryPlaylist && store != null) {
-                            val playlist = store.playlists().firstOrNull { it.name == session.title } ?: store.createPlaylist(session.title)
-                            store.addCodesToPlaylist(playlist.id, picked.map { it.id })
-                        }
+                        if (target != null && store != null) store.addCodesToPlaylist(target.id, picked.map { it.id })
                         snackbar(getPluralString(Res.plurals.playlist_added, picked.size, picked.size))
                         onBack()
                     }
@@ -261,7 +266,7 @@ private fun OptionsCard(
     ffmpegAvailable: Boolean,
     locationName: String?,
     onPickLocation: () -> Unit,
-    libraryPlaylists: Boolean,
+    libraryStore: BetterMediaStore?,
 ) {
     val preset = session.preset
     Column(
@@ -339,25 +344,35 @@ private fun OptionsCard(
                 )
             }
         }
-        if (libraryPlaylists) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .toggleable(value = session.addToLibraryPlaylist, role = Role.Checkbox) { session.addToLibraryPlaylist = it },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
-            ) {
-                Checkbox(
-                    checked = session.addToLibraryPlaylist,
-                    onCheckedChange = null,
-                    colors = CheckboxDefaults.colors(checkedColor = DesignColors.Accent),
+        val store = libraryStore
+        if (store != null) {
+            var reload by remember { mutableStateOf(0) }
+            var creating by remember { mutableStateOf(false) }
+            val playlists by produceState(emptyList<Playlist>(), store, reload) { value = store.playlists() }
+            val none = stringResource(Res.string.playlist_target_none)
+            OptionLine(
+                stringResource(Res.string.playlist_add_to),
+                session.targetPlaylist?.name ?: stringResource(Res.string.playlist_select_library),
+            ) { close ->
+                ChoiceMenuItems(
+                    listOf(
+                        Choice(none, session.targetPlaylist == null) { session.targetPlaylist = null },
+                        Choice(stringResource(Res.string.playlist_target_create), selected = false) { creating = true },
+                    ) + playlists.map { pl -> Choice(pl.name, pl.id == session.targetPlaylist?.id) { session.targetPlaylist = pl } },
+                    close,
                 )
-                Text(
-                    stringResource(Res.string.playlist_add_to_library, session.title),
-                    style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+            }
+            if (creating) {
+                PlaylistNameDialog(
+                    title = stringResource(Res.string.playlist_create_title),
+                    confirmLabel = stringResource(Res.string.playlist_create_confirm),
+                    initial = session.title,
+                    existingNames = playlists.map { it.name },
+                    onDismiss = { creating = false },
+                    onConfirm = { name ->
+                        session.targetPlaylist = store.createPlaylist(name)
+                        reload++
+                    },
                 )
             }
         }
