@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Subtitles
@@ -68,6 +69,7 @@ import io.ymusic.download.AudioOption
 import io.ymusic.download.CaptionOption
 import io.ymusic.download.DownloadFileNames
 import io.ymusic.download.DownloadFormat
+import io.ymusic.download.DownloadKind
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.download_action
@@ -78,6 +80,7 @@ import io.ymusic.ui.resources.download_caption_translated
 import io.ymusic.ui.resources.download_captions
 import io.ymusic.ui.resources.download_captions_as_lyrics
 import io.ymusic.ui.resources.download_captions_off
+import io.ymusic.ui.resources.download_container
 import io.ymusic.ui.resources.download_default_track
 import io.ymusic.ui.resources.download_down_to
 import io.ymusic.ui.resources.download_edit_name
@@ -143,6 +146,14 @@ internal fun DownloadSheet(
                     if (state.hasVideo) TypeSegments(state)
                     if (state.hasVideo && !state.audioOnly) QualityGrid(state) else AudioFormats(state, options.audio)
                     Column {
+                        if (state.format.kind == DownloadKind.VIDEO) {
+                            DropdownOptionRow(
+                                Icons.Outlined.InsertDriveFile,
+                                stringResource(Res.string.download_container),
+                                state.container.displayName(),
+                                containerChoices(state),
+                            )
+                        }
                         DropdownOptionRow(
                             Icons.Outlined.RecordVoiceOver,
                             stringResource(Res.string.download_audio_track),
@@ -442,6 +453,11 @@ internal fun audioTrackChoices(state: DownloadOptionsState): List<Choice> {
     if (tracks.isEmpty()) return listOf(Choice(stringResource(Res.string.download_default_track), selected = true) {})
     return tracks.map { track -> Choice(track.name, track.id == state.audioTrackId) { state.audioTrackId = track.id } }
 }
+
+internal fun containerChoices(state: DownloadOptionsState): List<Choice> =
+    listOf(DownloadFormat.VIDEO_MP4, DownloadFormat.VIDEO_WEBM).map { container ->
+        Choice(container.displayName(), state.container == container) { state.container = container }
+    }
 
 @Composable
 internal fun captionChoices(state: DownloadOptionsState): List<Choice> =
