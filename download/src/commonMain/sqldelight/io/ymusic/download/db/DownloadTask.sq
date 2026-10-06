@@ -18,7 +18,9 @@ CREATE TABLE downloadTask (
     file_name         TEXT,
     audio_track_id    TEXT,
     -- NULL = no per-task choice (settings preference); '' = explicitly none; else comma-joined codes.
-    caption_langs     TEXT
+    caption_langs     TEXT,
+    audio_language    TEXT,
+    caption_language  TEXT
 );
 
 CREATE INDEX downloadTask_created ON downloadTask(created_at);
@@ -27,8 +29,8 @@ upsert:
 INSERT OR REPLACE INTO downloadTask(
     id, video_id, title, artist, thumbnail_url, format, requested_height,
     state, downloaded_bytes, total_bytes, file_path, error_message, created_at, updated_at,
-    file_name, audio_track_id, caption_langs
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    file_name, audio_track_id, caption_langs, audio_language, caption_language
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateState:
 UPDATE downloadTask SET state = ?, error_message = ?, updated_at = ? WHERE id = ?;

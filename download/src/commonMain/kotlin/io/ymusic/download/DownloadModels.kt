@@ -77,8 +77,14 @@ class DownloadRequest(
     val fileName: String? = null,
     /** The `audioTrack.id` to download (a dubbed language); null = the video's default track. */
     val audioTrackId: String? = null,
-    /** The caption tracks to fetch; null = the settings-driven [CaptionPreference]. */
+    /** The caption tracks to fetch; null = [captionLanguage], else the settings-driven [CaptionPreference]. */
     val captions: CaptionChoice? = null,
+    /** A preferred audio language (`en`), resolved when the download runs: the dubbed track in it, else
+     *  the default track. Used when [audioTrackId] is null. */
+    val audioLanguage: String? = null,
+    /** A preferred caption language, resolved when the download runs: the track in it (uploaded,
+     *  auto-generated or auto-translated), else the video's default caption. Used when [captions] is null. */
+    val captionLanguage: String? = null,
 )
 
 /** Captions picked for one download — caption keys ([captionKey]). Embedded as subtitle tracks; MP3,
@@ -111,6 +117,8 @@ class DownloadTask(
     val fileName: String? = null,
     val audioTrackId: String? = null,
     val captions: CaptionChoice? = null,
+    val audioLanguage: String? = null,
+    val captionLanguage: String? = null,
 ) {
     /** 0f..1f, or null when the total isn't known yet (before the first MEDIA_HEADER). */
     val progress: Float?
@@ -126,7 +134,7 @@ class DownloadTask(
     ) = DownloadTask(
         id, videoId, title, artist, thumbnailUrl, format, requestedHeight,
         state, downloadedBytes, totalBytes, fileUri, errorMessage, createdAt, updatedAt,
-        fileName, audioTrackId, captions,
+        fileName, audioTrackId, captions, audioLanguage, captionLanguage,
     )
 }
 

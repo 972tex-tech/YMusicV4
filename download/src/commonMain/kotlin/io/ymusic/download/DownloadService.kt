@@ -132,6 +132,8 @@ class DownloadService(
             fileName = request.fileName,
             audioTrackId = request.audioTrackId,
             captions = request.captions,
+            audioLanguage = request.audioLanguage,
+            captionLanguage = request.captionLanguage,
             state = DownloadState.QUEUED,
             downloadedBytes = 0,
             totalBytes = 0,

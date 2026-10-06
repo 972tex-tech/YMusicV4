@@ -25,15 +25,24 @@ class CaptionPreference(val languages: Set<String>, val includeDefault: Boolean)
     }
 }
 
-/** Caption tracks to fetch: the ones a per-task [choice] names (MP3 takes them as lyrics), or without
- *  one the preference-driven [selectCaptions] — none for MP3, whose captions are opt-in per download. */
+/** Caption tracks to fetch: the ones a per-task [choice] names (MP3 takes them as lyrics); else the
+ *  track in [preferredLanguage] or, lacking it, the video's default; else the preference-driven
+ *  [selectCaptions] — none for MP3, whose captions are opt-in per download. */
 internal fun captionsToDownload(
     format: DownloadFormat,
     tracks: List<CaptionTrack>,
     choice: CaptionChoice?,
     pref: CaptionPreference,
+    preferredLanguage: String? = null,
 ): List<CaptionTrack> = when {
     choice != null -> choice.languages.mapNotNull { key -> tracks.firstOrNull { captionKey(it.languageCode, it.isAsr) == key } }
+    preferredLanguage != null -> listOfNotNull(
+        tracks.firstOrNull { it.languageCode.equals(preferredLanguage, ignoreCase = true) }
+            ?: tracks.firstOrNull { sameLanguage(it.languageCode, preferredLanguage) }
+            ?: tracks.firstOrNull { it.isDefault }
+            ?: tracks.firstOrNull { !it.isAsr }
+            ?: tracks.firstOrNull(),
+    )
     format == DownloadFormat.MP3 -> emptyList()
     else -> selectCaptions(tracks, pref)
 }
@@ -114,7 +123,7 @@ class YtStreamDownloader(
         onPreparing()
         var spec = resolveSpec(task.videoId)
         val (audioFmt, videoFmt) = selectFormats(task, spec.formats)
-        val captionPicks = captionsToDownload(task.format, spec.captionTracks, task.captions, captions)
+        val captionPicks = captionsToDownload(task.format, spec.captionTracks, task.captions, captions, task.captionLanguage)
 
         val audioScratch = storage.scratch(task.id, "audio")
         val videoScratch = if (videoFmt != null) storage.scratch(task.id, "video") else null
@@ -154,7 +163,7 @@ class YtStreamDownloader(
     /** Choose the audio (and, for video outputs, video) [AdaptiveFormat]s for the task. */
     private fun selectFormats(task: DownloadTask, formats: List<AdaptiveFormat>): Pair<AdaptiveFormat, AdaptiveFormat?> {
         val preferAac = task.format == DownloadFormat.M4A || task.format == DownloadFormat.VIDEO_MP4
-        val audio = FormatSelection.bestAudio(formats, preferAac = preferAac, audioTrackId = task.audioTrackId)
+        val audio = FormatSelection.bestAudio(formats, preferAac = preferAac, audioTrackId = task.audioTrackId, audioLanguage = task.audioLanguage)
             ?: throw TechnicalException("E70011", "no audio format for ${task.videoId}")
         val video = if (task.format.kind == DownloadKind.VIDEO) {
             FormatSelection.videoNearest(formats, task.requestedHeight, task.format)
