@@ -124,6 +124,8 @@ export interface WireSectionHeader {
   /** App-internal navigation for the CTA — "/playlist?list=<id>" or "/channel/<id>[?params=<tab>]".
    *  The engine composes it (it knows the endpoint shapes); the app only parses this one scheme. */
   ctaDeeplink?: string;
+  /** "playAll" = the CTA plays this section's videos as the queue, in order (no navigation). */
+  ctaAction?: string;
 }
 
 // A run of items under one header. `layout` is the engine's INTENT ("list" | "grid" — open string

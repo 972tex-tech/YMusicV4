@@ -284,13 +284,27 @@ function collectMusicItems(node: unknown): WireFeedItem[] {
 
 // ---- Sections ----------------------------------------------------------------------------------
 
-/** A carousel/shelf title + its optional "more" browse CTA → a section header. */
-function shelfHeader(titleNode: unknown, moreEndpoint: unknown): WireSectionHeader | undefined {
+/** A carousel/shelf title + its optional "more" CTA → a section header. A CTA that opens the player
+ *  rather than a page ("Play all") plays the shelf's own songs in order — its params encode exactly them. */
+function shelfHeader(
+  titleNode: unknown,
+  moreEndpoint: unknown,
+  moreText?: unknown,
+): WireSectionHeader | undefined {
   const title = textOf(titleNode);
   if (title === undefined) return undefined;
   const header: WireSectionHeader = { "title": title };
   const browseId = asString(get(moreEndpoint, "browseEndpoint", "browseId"));
-  if (browseId !== undefined) header["ctaDeeplink"] = musicBrowseUrl(browseId);
+  if (browseId !== undefined) {
+    header["ctaDeeplink"] = musicBrowseUrl(browseId);
+  } else if (
+    get(moreEndpoint, "watchEndpoint") !== undefined ||
+    get(moreEndpoint, "watchPlaylistEndpoint") !== undefined
+  ) {
+    header["ctaAction"] = "playAll";
+    const label = textOf(moreText);
+    if (label !== undefined) header["ctaText"] = label;
+  }
   return header;
 }
 
@@ -478,16 +492,12 @@ export function collectMusicPage(root: Record<string, unknown>): WireFeedPage {
     }
 
     if (key === "musicCarouselShelfRenderer" || key === "musicImmersiveCarouselShelfRenderer") {
+      const headerRenderer = get(value, "header", "musicCarouselShelfBasicHeaderRenderer");
+      const moreButton = get(headerRenderer, "moreContentButton", "buttonRenderer");
       const header = shelfHeader(
-        get(value, "header", "musicCarouselShelfBasicHeaderRenderer", "title"),
-        get(
-          value,
-          "header",
-          "musicCarouselShelfBasicHeaderRenderer",
-          "moreContentButton",
-          "buttonRenderer",
-          "navigationEndpoint",
-        ),
+        get(headerRenderer, "title"),
+        get(moreButton, "navigationEndpoint"),
+        get(moreButton, "text"),
       );
       const items = collectMusicItems(value["contents"]);
       if (items.length > 0) {
