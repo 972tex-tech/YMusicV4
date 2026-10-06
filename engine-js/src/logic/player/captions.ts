@@ -365,19 +365,20 @@ function windowAt(nowMs: number): Line[] {
   const next = cur + 1 < cues.length ? cues[cur + 1] : null;
   if (ended && (!next || next.startMs > nowMs)) return [];
   const track = selectedVss ? findTrack(selectedVss) : null;
-  if (!track || track.kind !== "asr") {
-    if (ended) return [];
-    const text = cueRows(fullText(c));
-    return text.length ? [{ id: c.id, text: text }] : [];
-  }
+  const asr = !!track && track.kind === "asr";
   const lines: Line[] = [];
   if (cur > 0) {
     const prev = cues[cur - 1]!;
-    lines.push({ id: prev.id, text: cueRows(fullText(prev)) });
+    /* Authored cues roll up only from a back-to-back predecessor; one from before a gap stays gone. */
+    if (asr || prev.startMs + prev.durationMs >= c.startMs - ROLL_UP_GAP_MS) {
+      lines.push({ id: prev.id, text: cueRows(fullText(prev)) });
+    }
   }
-  lines.push({ id: c.id, text: cueRows(prefixOf(c, nowMs)) });
+  lines.push({ id: c.id, text: cueRows(asr ? prefixOf(c, nowMs) : fullText(c)) });
   return lines;
 }
+
+const ROLL_UP_GAP_MS = 250;
 
 function fullText(cue: Cue): string {
   let text = "";
