@@ -101,6 +101,10 @@ interface BetterMediaStore {
 
     /** Append items to the end of the playlist by their [MediaStoreItem.playlistCode] (existing members ignored). */
     suspend fun addToPlaylist(playlistId: Long, items: List<MediaStoreItem>)
+
+    /** Append by raw [MediaStoreItem.playlistCode]s — a YouTube video id joins before its file exists and
+     *  resolves (shows up) once a Library item carries that id. */
+    suspend fun addCodesToPlaylist(playlistId: Long, codes: List<String>)
     suspend fun removeFromPlaylist(playlistId: Long, code: String)
 
     /** Replace the playlist's order with [orderedCodes] (the codes already in it, in the new order). */

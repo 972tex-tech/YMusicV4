@@ -276,14 +276,17 @@ internal class BetterMediaStoreImpl(
     // all store operations run on the single confinement thread (storeDispatcher).
     private var lastSortKey = 0L
 
-    override suspend fun addToPlaylist(playlistId: Long, items: List<MediaStoreItem>): Unit =
+    override suspend fun addToPlaylist(playlistId: Long, items: List<MediaStoreItem>) =
+        addCodesToPlaylist(playlistId, items.map { it.playlistCode })
+
+    override suspend fun addCodesToPlaylist(playlistId: Long, codes: List<String>): Unit =
         withContext(io) {
-            if (items.isEmpty()) return@withContext
+            if (codes.isEmpty()) return@withContext
             db.transaction {
                 val ts = now()
-                for (item in items) {
+                for (code in codes) {
                     lastSortKey = maxOf(now(), lastSortKey + 1)
-                    plItemQ.addPlaylistItem(playlistId, item.playlistCode, lastSortKey, ts)
+                    plItemQ.addPlaylistItem(playlistId, code, lastSortKey, ts)
                 }
             }
         }
