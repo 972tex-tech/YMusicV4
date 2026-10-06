@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -312,6 +313,7 @@ fun FeedGridCard(
                 ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(5.dp)) {
                     ThumbPlaceholder(Icons.Outlined.Image, 22.dp)
                 }
+                WatchedBar(item, Modifier.align(Alignment.BottomCenter))
                 Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 11, iconSize = 14.dp)
             }
         }
@@ -494,6 +496,7 @@ private fun RectThumb(item: YtFeedItem, width: androidx.compose.ui.unit.Dp, heig
         ThumbImage(item.thumbs, width, RoundedCornerShape(6.dp)) {
             ThumbPlaceholder(Icons.Outlined.Image, if (height < 80.dp) 21.dp else 30.dp)
         }
+        WatchedBar(item, Modifier.align(Alignment.BottomCenter))
         Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 11, iconSize = 14.dp)
     }
 }
@@ -508,6 +511,15 @@ val GRID_CARD_MAX_WIDTH = 324.dp
 
 /** The hover/ripple's breathing room inside a grid card; grid gaps subtract it (2× between cards). */
 val GRID_CARD_INSET = 8.dp
+
+/** YouTube's watch-progress bar along the thumbnail's bottom edge; nothing when unwatched. */
+@Composable
+internal fun WatchedBar(item: YtFeedItem, modifier: Modifier) {
+    val percent = item.watchedPercent ?: return
+    Box(modifier.fillMaxWidth().height(3.dp).background(DesignColors.WatchedTrack)) {
+        Box(Modifier.fillMaxWidth(percent / 100f).fillMaxHeight().background(DesignColors.WatchedFill))
+    }
+}
 
 /** Duration / item-count / LIVE badge in the thumbnail's bottom-right corner. A Mix (RD… id, the
  *  endless YouTube radio) swaps the playlist glyph for the infinity mark. */

@@ -56,6 +56,8 @@ class DesignPalette(
     /** On-artwork badge fill — fixed across themes (sits on imagery, not the surface). */
     val BadgeInk = Color(0xFF333333)
     val BadgeScrim = Color(0xB8000000)
+    val WatchedTrack = Color(0x66FFFFFF)
+    val WatchedFill = Color(0xFFFF0000)
 }
 
 val LightDesignColors = DesignPalette(
