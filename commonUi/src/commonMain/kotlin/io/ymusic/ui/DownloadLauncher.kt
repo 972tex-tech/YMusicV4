@@ -42,7 +42,7 @@ val LocalDownloadLauncher = staticCompositionLocalOf<DownloadLauncher?> { null }
 /** The window the two-pane dialog needs; anything smaller (a phone, in either orientation) gets the
  *  scrolling bottom sheet. The height covers the dialog's header, 360dp panes, footer and margins. */
 private val DIALOG_MIN_WINDOW_WIDTH = 750.dp
-private val DIALOG_MIN_WINDOW_HEIGHT = 560.dp
+private val DIALOG_MIN_WINDOW_HEIGHT = 600.dp
 
 @Composable
 internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss: () -> Unit) {
