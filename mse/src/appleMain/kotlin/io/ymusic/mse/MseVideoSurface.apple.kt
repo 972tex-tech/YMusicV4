@@ -2,9 +2,11 @@ package io.ymusic.mse
 
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlin.concurrent.Volatile
 
 actual class MseVideoSurface {
     /** C `MseHost*` as a Long, set by bindNativeMse. 0 = none. */
+    @Volatile
     var host: Long = 0L
 
     /** Borrowed `AVSampleBufferDisplayLayer*`. Kotlin owns the layer. */

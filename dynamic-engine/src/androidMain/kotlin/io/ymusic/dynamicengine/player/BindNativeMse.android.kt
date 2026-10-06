@@ -20,6 +20,8 @@ internal actual fun bindNativeMse(runtime: QuickJsRuntime, surface: MseVideoSurf
         }
 
         override fun close() {
+            // A successor session may already own the shared surface.
+            if (surface.host == host) surface.host = 0L
             MseHostNative.setVideoSurface(host, null)
             MseHostNative.destroy(host)
         }

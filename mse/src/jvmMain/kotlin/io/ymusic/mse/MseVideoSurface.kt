@@ -11,6 +11,7 @@ actual class MseVideoSurface {
     val frame: StateFlow<BufferedImage?> = _frame.asStateFlow()
 
     /** C `MseHost*` as a Long, set by bindNativeMse. 0 = none. */
+    @Volatile
     var host: Long = 0L
         set(value) {
             field = value
