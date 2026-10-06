@@ -62,16 +62,16 @@ import kotlinx.serialization.json.longOrNull
 
 /**
  * YouTube [YtEngine] over engine-js + C MSE, mirroring legacy `WebViewYtPlayer`. Each [init]/[reset]
- * starts a [Session] (the legacy embed page): its own engine thread from [newDispatcher], one
+ * starts a [Session] (the legacy embed page): its own [newEngineThread] (single-threaded), one
  * [DynamicEnginePlayer] built on it, `player/init`, then a FIFO command queue. Control is
  * main-thread; commands run in call order.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class MsePlayer internal constructor(
-    private val newDispatcher: () -> CloseableCoroutineDispatcher,
+    private val newEngineThread: () -> CloseableCoroutineDispatcher,
     val videoSurface: MseVideoSurface,
     private val log: Logger?,
-    private val buildPlayer: (CoroutineDispatcher) -> DynamicEnginePlayer,
+    private val buildPlayer: (engineThread: CoroutineDispatcher) -> DynamicEnginePlayer,
 ) : YtEngine {
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -341,11 +341,11 @@ class MsePlayer internal constructor(
             // NonCancellable so a reset-during-reset still chains behind the older close.
             withContext(NonCancellable) { previousClose?.join() }
             ensureActive()
-            val dispatcher = newDispatcher()
+            val engineThread = newEngineThread()
             var enginePlayer: DynamicEnginePlayer? = null
             try {
                 // Boot is a blocking eval on the engine thread; a built engine must reach the finally.
-                enginePlayer = withContext(dispatcher + NonCancellable) { buildPlayer(dispatcher) }
+                enginePlayer = withContext(engineThread + NonCancellable) { buildPlayer(engineThread) }
                 newSession.player = enginePlayer
                 if (hasPendingVideoSurface) enginePlayer.setVideoSurface(pendingVideoSurface)
                 enginePlayer.init(log, viewportW, viewportH)
@@ -375,7 +375,7 @@ class MsePlayer internal constructor(
                             log?.log(Logger.Level.WARN, "mse close failed", error)
                         }
                     }
-                    dispatcher.close()
+                    engineThread.close()
                 }
             }
         }
@@ -601,9 +601,9 @@ class MsePlayer internal constructor(
             mediaProxy: LocalMediaProxy? = null,
         ): MsePlayer {
             val engineClient = if (mediaProxy != null) SabrProxyHttpClient(client, mediaProxy) else client
-            return MsePlayer({ QuickJsRuntime.newDispatcher() }, videoSurface, logger) { engineDispatcher ->
+            return MsePlayer({ QuickJsRuntime.newDispatcher() }, videoSurface, logger) { engineThread ->
                 DynamicEnginePlayer.create(
-                    engineClient, appVersion, engineDispatcher, logger,
+                    engineClient, appVersion, engineThread, logger,
                     cacheStore = cacheStore,
                     cookieJar = cookieJar,
                     settings = settings,
