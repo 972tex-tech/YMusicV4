@@ -65,6 +65,7 @@ function videoItem(r: Record<string, unknown>): WireFeedItem | null {
   const published = textOf(r["publishedTimeText"]);
   if (isLiveBadged(r["badges"]) || isLiveOverlay(r["thumbnailOverlays"])) item["live"] = true;
   if (hasMusicOverlay(r["thumbnailOverlays"])) item["musicVideo"] = true;
+  setWatchedPercent(item, resumeOverlayOf(r["thumbnailOverlays"]));
   const ownerBadge = ownerBadgeOf(r["ownerBadges"]);
   if (ownerBadge !== undefined) item["ownerBadge"] = ownerBadge;
   setLines(item, [byline, joinDot([views, published])]);
@@ -79,6 +80,21 @@ function hasMusicOverlay(overlays: unknown): boolean {
       return true;
   }
   return false;
+}
+
+function setWatchedPercent(item: WireFeedItem, percent: unknown): void {
+  if (typeof percent !== "number") return;
+  const rounded = Math.min(100, Math.round(percent));
+  if (rounded > 0) item["watchedPercent"] = rounded;
+}
+
+function resumeOverlayOf(overlays: unknown): unknown {
+  if (!Array.isArray(overlays)) return undefined;
+  for (const o of overlays) {
+    const percent = get(o, "thumbnailOverlayResumePlaybackRenderer", "percentDurationWatched");
+    if (percent !== undefined) return percent;
+  }
+  return undefined;
 }
 
 // ---- App-internal urls -------------------------------------------------------------------------
@@ -421,7 +437,12 @@ function lockupItem(lv: Record<string, unknown>): WireFeedItem | null {
   // Thumbnail badges: a time-shaped badge is the duration; a LIVE style marks live; on a playlist
   // any other badge is the count overlay ("16 videos", "Mix", "50+") — without it a playlist row
   // is visually a video row. A MUSIC badge icon marks a music video (home lockups, live 2026-07-22).
+  // The progress bar beside the badges is the signed-in user's watch progress.
   walk(get(lv, "contentImage"), (key, value) => {
+    if (key === "thumbnailOverlayProgressBarViewModel" && isObj(value)) {
+      if (kind === "video") setWatchedPercent(item, value["startPercent"]);
+      return true;
+    }
     if (key !== "thumbnailBadgeViewModel" || !isObj(value)) return;
     const text = asString(value["text"]);
     if (text !== undefined && /^\d+(:\d+)+$/.test(text)) {

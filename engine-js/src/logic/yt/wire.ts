@@ -44,6 +44,8 @@ export interface WireFeedItem {
   live?: boolean;
   /** The time-status overlay carried the MUSIC icon — this video is a music video. */
   musicVideo?: boolean;
+  /** The signed-in user's watch progress on this video, 1–100 (%); absent = unwatched. */
+  watchedPercent?: number;
   /** An auto-generated album playlist (OLAK5uy_…) — the app renders the album mark. */
   album?: boolean;
   /** The owner channel's badge: "artist" (Official Artist Channel) or "verified". */
