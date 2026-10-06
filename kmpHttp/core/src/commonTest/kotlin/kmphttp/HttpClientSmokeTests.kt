@@ -285,7 +285,7 @@ class HttpClientSmokeTests {
     @Test
     fun testExecuteTimeout() = runTest {
         val request = RequestBuilder().url(TestServer.url("/delay/3")).get().build()
-        assertFailsWith<TimeoutCancellationException> {
+        assertFailsWith<HttpTimeoutException> {
             client.execute(request, timeout = 500.milliseconds)
         }
     }

@@ -23,7 +23,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import okio.Buffer
 import okio.IOException
 import platform.Foundation.HTTPBodyStream
@@ -172,11 +171,7 @@ class UrlSessionKmpHttpClient(builder: Builder) : KmpHttpClient {
             request = request,
             options = options
         )
-        if (timeout == null) {
-            chain.proceed(request)
-        } else {
-            withTimeout(timeout) { chain.proceed(request) }
-        }
+        withExecuteTimeout(timeout) { chain.proceed(request) }
     }
 
     /** Invalidates the underlying NSURLSession. The client is unusable afterwards. */

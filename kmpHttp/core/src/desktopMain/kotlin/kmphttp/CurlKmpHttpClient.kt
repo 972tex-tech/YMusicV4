@@ -10,7 +10,6 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.convert
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import libcurl.CURL_GLOBAL_DEFAULT
 import libcurl.curl_global_init
 import kotlin.time.Duration
@@ -76,11 +75,7 @@ class CurlKmpHttpClient(builder: Builder) : KmpHttpClient {
             request = request,
             options = options
         )
-        if (timeout == null) {
-            chain.proceed(request)
-        } else {
-            withTimeout(timeout) { chain.proceed(request) }
-        }
+        withExecuteTimeout(timeout) { chain.proceed(request) }
     }
 
     override fun newBuilder(): Builder = Builder(this)

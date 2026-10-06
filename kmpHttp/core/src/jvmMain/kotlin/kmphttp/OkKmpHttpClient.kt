@@ -8,7 +8,6 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import kotlin.coroutines.resumeWithException
@@ -121,13 +120,7 @@ class OkKmpHttpClient : KmpHttpClient {
                 request = request,
                 options = options
             )
-            if (timeout == null) {
-                asyncChain.proceed(request)
-            } else {
-                withTimeout(timeout) {
-                    asyncChain.proceed(request)
-                }
-            }
+            withExecuteTimeout(timeout) { asyncChain.proceed(request) }
         }
     }
 
