@@ -1,27 +1,20 @@
 package io.ymusic.ui
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import io.ymusic.download.DownloadFormat
-import io.ymusic.download.DownloadRequest
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
+import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.download_added
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Opens the download-format picker for a video. Provided app-wide by [DownloadDialogHost] (null when the
@@ -36,7 +29,8 @@ fun interface DownloadLauncher {
 val LocalDownloadLauncher = staticCompositionLocalOf<DownloadLauncher?> { null }
 
 /**
- * Hosts the format-choice dialog for the currently-[pending] video and enqueues the pick into
+ * Hosts the download options dialog for the currently-[pending] video — the bottom sheet on touch
+ * platforms, the two-pane dialog on desktop — and enqueues the pick into
  * `graph.downloads`. Rendered once inside the app's CompositionLocal scope so it can reach
  * [LocalSnackbar]; a no-op when nothing is pending. MP3 and video (mux) options are hidden where ffmpeg
  * is absent (iOS) — only the raw-stream M4A remains.
@@ -64,48 +58,29 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
         }
     }
 
-    fun pick(format: DownloadFormat, height: Int?) {
-        downloads.enqueue(
-            DownloadRequest(
-                videoId = video.id,
-                title = video.title,
-                // subtitleLine1 is the view/date line for feed videos, not an artist — leave null until
-                // we resolve a real artist (music-video artist, channel-name fallback). See TODO board.
-                artist = null,
-                thumbnailUrl = video.thumbs.firstOrNull()?.url,
-                format = format,
-                requestedHeight = height,
-            ),
+    val scope = rememberCoroutineScope()
+    val log = graph.logger
+    val state = remember(video.id) {
+        DownloadOptionsState(
+            video = video,
+            downloads = downloads,
+            preferredCaptionLanguages = graph.settings.flow(AppSettings.preferredCaptionLanguages).value,
+            includeDefaultCaption = graph.settings.flow(AppSettings.downloadDefaultCaption).value,
         )
-        snackbar("Added to downloads")
+    }
+    LaunchedEffect(state) { state.load(log) }
+    val locationName = rememberDownloadLocationName(graph)
+    val added = stringResource(Res.string.download_added)
+    val onDownload = {
+        downloads.enqueue(state.request())
+        snackbar(added)
         onDismiss()
     }
-
-    ElevatedBarDialog(
-        title = "Download",
-        onDismiss = onDismiss,
-        canScrollBackward = false,
-        canScrollForward = false,
-        buttons = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    ) {
-        Column(Modifier.fillMaxWidth()) {
-            // Audio-only M4A is the raw best-AAC stream — the one output that needs no ffmpeg.
-            DownloadOption("Audio · M4A") { pick(DownloadFormat.M4A, null) }
-            if (downloads.ffmpegAvailable) {
-                DownloadOption("Audio · MP3") { pick(DownloadFormat.MP3, null) }
-                DownloadOption("Video · 1080p (MP4)") { pick(DownloadFormat.VIDEO_MP4, 1080) }
-                DownloadOption("Video · 720p (MP4)") { pick(DownloadFormat.VIDEO_MP4, 720) }
-            }
-        }
+    val onPickLocation: () -> Unit = { scope.launch { pickDownloadFolder(graph) } }
+    val onRetry: () -> Unit = { scope.launch { state.load(log) } }
+    if (platformUsesTouch) {
+        DownloadSheet(state, locationName, onPickLocation, onRetry, onDownload, onDismiss)
+    } else {
+        DownloadDialogDesktop(state, locationName, onPickLocation, onRetry, onDownload, onDismiss)
     }
-}
-
-/** A full-bleed picker row matching the region/add-to-playlist dialogs (24/12 inset, 14sp). */
-@Composable
-private fun DownloadOption(label: String, onClick: () -> Unit) {
-    Text(
-        label,
-        style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 12.dp),
-    )
 }

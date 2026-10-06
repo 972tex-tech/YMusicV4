@@ -54,13 +54,23 @@ internal fun DownloadSettingsSection(graph: AppGraph) {
 
 @Composable
 private fun DownloadLocationRow(graph: AppGraph) {
-    val mediaStore = graph.mediaStore ?: return
+    if (graph.mediaStore == null) return
     val scope = rememberCoroutineScope()
-    val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
+    val name = rememberDownloadLocationName(graph)
 
-    // Resolve the location uri to its (possibly non-root) bucket name; a single indexed lookup, not
-    // an allBuckets() scan. A folder that no longer exists (or is excluded) reads as "Not set" — the
-    // next download re-validates and re-picks.
+    // No dialog: tapping goes straight to the OS folder picker (adds the folder to the Library and
+    // sets it as the location). Existing folders are re-designated from the Library tab's menu instead.
+    SettingRow(title = "Download location", value = name ?: "Not set") {
+        scope.launch { pickDownloadFolder(graph) }
+    }
+}
+
+/** The download location's Library bucket name, or null when unset — or when its folder no longer exists
+ *  or is excluded (the next download re-validates and re-picks). One indexed lookup per change. */
+@Composable
+internal fun rememberDownloadLocationName(graph: AppGraph): String? {
+    val mediaStore = graph.mediaStore ?: return null
+    val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
     var name by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(location, mediaStore) {
         name = if (location.isBlank()) {
@@ -71,12 +81,7 @@ private fun DownloadLocationRow(graph: AppGraph) {
                 ?.let { it.aliasName?.takeIf(String::isNotBlank) ?: it.name }
         }
     }
-
-    // No dialog: tapping goes straight to the OS folder picker (adds the folder to the Library and
-    // sets it as the location). Existing folders are re-designated from the Library tab's menu instead.
-    SettingRow(title = "Download location", value = name ?: "Not set") {
-        scope.launch { pickDownloadFolder(graph) }
-    }
+    return name
 }
 
 /**

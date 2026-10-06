@@ -73,6 +73,7 @@ E70032 - a storage subclass' publishToUri failed, e.g. Android SAF (download Def
 E70040 - download options requested but the shell wired no player-response source (download DownloadService.probe)
 E70041 - download options: player response has no streamingData (download DownloadOptions.parse)
 E70042 - download options: player response has no audio format (download DownloadOptions.parse)
+E70043 - download options probe failed with an uncoded error (commonUi DownloadOptionsState.load)
 
 E80070 - MSE not available on this platform (mse apple)
 E80071 - MSE mime type not supported (mse)

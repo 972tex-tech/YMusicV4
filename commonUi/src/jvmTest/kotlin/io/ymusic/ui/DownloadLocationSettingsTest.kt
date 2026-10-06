@@ -56,7 +56,7 @@ class DownloadLocationSettingsTest {
         resolver = SabrSpecResolver { throw UnsupportedOperationException() },
         client = CannedHttp { _, _ -> throw UnsupportedOperationException() },
         userAgent = "test",
-        ffmpeg = null, // no ffmpeg → the format dialog shows only the M4A option
+        ffmpeg = null,
         storage = NoopStorage,
         downloadFolder = { "file:///tmp/dl" },
     )
@@ -90,8 +90,8 @@ class DownloadLocationSettingsTest {
                         DownloadDialogHost(graph, video) {}
                     }
                 }
-                // No dialog — the picker ran, set the location, and we land on the format dialog.
-                waitUntilAtLeastOneExists(hasText("Audio · M4A"), 5_000)
+                // No dialog — the picker ran, set the location, and we land on the download options dialog.
+                waitUntilAtLeastOneExists(hasText("File name"), 5_000)
                 assertEquals("file:///Picked", settings.flow(AppSettings.downloadLocation).value)
             }
         } finally {
@@ -159,8 +159,8 @@ class DownloadLocationSettingsTest {
                         DownloadDialogHost(graph, video) {}
                     }
                 }
-                // The stale location is invalid → picker runs → new folder adopted → format dialog.
-                waitUntilAtLeastOneExists(hasText("Audio · M4A"), 5_000)
+                // The stale location is invalid → picker runs → new folder adopted → download options dialog.
+                waitUntilAtLeastOneExists(hasText("File name"), 5_000)
                 assertEquals("file:///New", settings.flow(AppSettings.downloadLocation).value)
             }
         } finally {
