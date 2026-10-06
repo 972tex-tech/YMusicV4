@@ -697,6 +697,11 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
             downloadFolder = { settings.downloadLocationFolder()!! },
             onCompleted = { task, result -> registerCompletedDownload(mediaStore, settings, downloadScanner, task, result) },
             logger = rootLogger,
+            playerResponse = { videoId ->
+                withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
+                val yt = ytEngine ?: error("youtube engine missing")
+                WebViewSabrSpecResolver(yt).playerResponse(videoId)
+            },
         )
     }
 

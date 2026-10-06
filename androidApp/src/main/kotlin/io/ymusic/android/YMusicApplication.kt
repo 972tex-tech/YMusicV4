@@ -510,6 +510,11 @@ class YMusicApplication : Application() {
                     registerCompletedDownload(shared.mediaStore, shared.settings, downloadScanner, task, result)
                 },
                 logger = rootLogger,
+                playerResponse = { videoId ->
+                    withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
+                    val yt = ytEngine ?: error("youtube engine missing")
+                    WebViewSabrSpecResolver(yt).playerResponse(videoId)
+                },
             )
         }
 

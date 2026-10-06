@@ -26,4 +26,10 @@ class WebViewSabrSpecResolver(
         val poToken = player.requestPoToken(videoId)
         SabrSpecBuilder.build(videoId, playerResponse, poToken)
     }
+
+    /** The player response alone — what the download options dialog reads; no PO token minted. */
+    suspend fun playerResponse(videoId: String): String = mutex.withLock {
+        withContext(Dispatchers.Main) { player.init() }
+        player.requestPlayerResponse(videoId)
+    }
 }
