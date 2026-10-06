@@ -1,11 +1,23 @@
 package io.ymusic.download
 
 import io.ymusic.ytmedia.sabr.AdaptiveFormat
+import kmpcommon.error.CodedError
 import kmpcommon.error.TechnicalException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+
+/** The video is a live broadcast in progress: there is no finished file to download until it ends. A
+ *  well-known category ([code] `"live"`) the UI renders as its own message, not an error code. */
+class LiveVideoException(videoId: String?) : Exception("live video ${videoId.orEmpty()}"), CodedError {
+    override val code: String = CODE
+    override val userMessage: String? = null
+
+    companion object {
+        const val CODE = "live"
+    }
+}
 
 /** One downloadable video height; sizes are estimates for each container (video + its audio track). */
 class VideoOption(val height: Int, val fps: Int, val mp4Bytes: Long, val webmBytes: Long)
@@ -53,6 +65,8 @@ class DownloadOptions(
 
         fun parse(playerResponseJson: String, ffmpegAvailable: Boolean): DownloadOptions {
             val data = json.parseToJsonElement(playerResponseJson).jsonObject
+            val details = data["videoDetails"] as? JsonObject
+            if (details?.str("isLive")?.toBoolean() == true) throw LiveVideoException(details.str("videoId"))
             val streaming = data["streamingData"] as? JsonObject
                 ?: throw TechnicalException("E70041", "download options: no streamingData")
             val formats = SabrSpecBuilder.adaptiveFormats(streaming)
