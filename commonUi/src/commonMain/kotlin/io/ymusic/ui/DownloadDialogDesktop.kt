@@ -79,6 +79,7 @@ import io.ymusic.ui.resources.download_forbidden_hint
 import io.ymusic.ui.resources.download_format
 import io.ymusic.ui.resources.download_loading
 import io.ymusic.ui.resources.download_location_not_set
+import io.ymusic.ui.resources.download_lyrics_note
 import io.ymusic.ui.resources.download_mp4_note
 import io.ymusic.ui.resources.download_name_empty
 import io.ymusic.ui.resources.download_save_to
@@ -244,6 +245,9 @@ private fun TrackRows(state: DownloadOptionsState) {
                             ),
                         )
                     }
+                }
+                if (state.format == DownloadFormat.MP3) {
+                    Text(stringResource(Res.string.download_lyrics_note), style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary))
                 }
             }
         }

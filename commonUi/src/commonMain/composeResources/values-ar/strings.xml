@@ -302,4 +302,6 @@
     <string name="download_default_track">افتراضي</string>
     <string name="download_no_subtitles">لا يوجد</string>
     <string name="dialog_ok_done">تم</string>
+    <string name="download_captions_as_lyrics">%1$s · ككلمات أغنية</string>
+    <string name="download_lyrics_note">يحفظ MP3 الترجمة ككلمات أغنية، وتظهر في المشغلات التي تدعم الكلمات.</string>
 </resources>

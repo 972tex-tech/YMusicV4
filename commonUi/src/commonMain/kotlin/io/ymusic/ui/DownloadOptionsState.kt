@@ -60,8 +60,8 @@ internal class DownloadOptionsState(
 
     val extension: String get() = "." + format.fileExtension
 
-    /** Captions are muxed into the file: not into MP3 (no subtitle tracks), and not without ffmpeg (iOS). */
-    val captionsSupported: Boolean get() = format != DownloadFormat.MP3 && downloads.ffmpegAvailable
+    /** Captions go into the file — subtitle tracks, or lyrics for MP3 — which takes ffmpeg (absent on iOS). */
+    val captionsSupported: Boolean get() = downloads.ffmpegAvailable
 
     val selectedVideo: VideoOption? get() = options?.video?.firstOrNull { it.height == height }
 

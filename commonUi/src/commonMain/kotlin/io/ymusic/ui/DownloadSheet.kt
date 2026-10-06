@@ -74,6 +74,7 @@ import io.ymusic.ui.resources.download_action_detail
 import io.ymusic.ui.resources.download_audio_only
 import io.ymusic.ui.resources.download_audio_track
 import io.ymusic.ui.resources.download_captions
+import io.ymusic.ui.resources.download_captions_as_lyrics
 import io.ymusic.ui.resources.download_captions_off
 import io.ymusic.ui.resources.download_down_to
 import io.ymusic.ui.resources.download_edit_name
@@ -399,12 +400,13 @@ private fun OptionRow(icon: ImageVector, title: String, value: String, onClick: 
     }
 }
 
-/** "English, Vietnamese" or "Off". */
+/** "English, Vietnamese", "English · as lyrics" (MP3), or "Off". */
 @Composable
 internal fun captionSummary(state: DownloadOptionsState): String {
     val picked = state.options?.captions.orEmpty().filter { it.key in state.captions }
     if (picked.isEmpty()) return stringResource(Res.string.download_captions_off)
-    return picked.joinToString(", ") { it.name }
+    val names = picked.joinToString(", ") { it.name }
+    return if (state.format == DownloadFormat.MP3) stringResource(Res.string.download_captions_as_lyrics, names) else names
 }
 
 @Composable
