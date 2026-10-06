@@ -20,12 +20,9 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -212,26 +209,10 @@ private fun LoadedHeader(session: PlaylistDownloadSession, ready: Pager.State.Re
             overflow = TextOverflow.Ellipsis,
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-            Text(
-                pluralStringResource(Res.plurals.playlist_videos_loaded, videos.size, videos.size),
-                Modifier
-                    .border(1.dp, DesignColors.Outline, RoundedCornerShape(8.dp))
-                    .padding(horizontal = DesignSpacing.Space8, vertical = DesignSpacing.Space4),
-                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSoft),
-            )
+            FeedChip(pluralStringResource(Res.plurals.playlist_videos_loaded, videos.size, videos.size), selected = false, onClick = null)
             when {
                 ready?.loadingMore == true -> CircularProgressIndicator(Modifier.size(18.dp), color = DesignColors.Accent, strokeWidth = 2.dp)
-                ready?.continuation != null -> AssistChip(
-                    onClick = { session.pager.loadMore() },
-                    label = { Text(stringResource(Res.string.playlist_load_more)) },
-                    leadingIcon = { Icon(Icons.Default.Add, null, Modifier.size(16.dp)) },
-                    border = null,
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = DesignColors.SurfaceDim,
-                        labelColor = DesignColors.Ink,
-                        leadingIconContentColor = DesignColors.Accent,
-                    ),
-                )
+                ready?.continuation != null -> FeedChip(stringResource(Res.string.playlist_load_more), selected = true) { session.pager.loadMore() }
             }
             Box(Modifier.weight(1f))
             Box {

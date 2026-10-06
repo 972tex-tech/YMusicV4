@@ -390,7 +390,7 @@
     <string name="download_save_quick">Save as Quick download</string>
     <string name="quick_download_menu">Quick download · %1$s</string>
     <string name="playlist_download_title">Download playlist</string>
-    <string name="playlist_load_more">Load more</string>
+    <string name="playlist_load_more">+ Load more</string>
     <string name="playlist_check_all">Check all</string>
     <string name="playlist_check_not_downloaded">Check not downloaded</string>
     <string name="playlist_uncheck_all">Uncheck all</string>

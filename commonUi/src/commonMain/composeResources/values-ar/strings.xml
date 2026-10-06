@@ -309,7 +309,7 @@
     <string name="download_save_quick">حفظ كتنزيل سريع</string>
     <string name="quick_download_menu">تنزيل سريع · %1$s</string>
     <string name="playlist_download_title">تنزيل قائمة التشغيل</string>
-    <string name="playlist_load_more">تحميل المزيد</string>
+    <string name="playlist_load_more">+ تحميل المزيد</string>
     <string name="playlist_check_all">تحديد الكل</string>
     <string name="playlist_check_not_downloaded">تحديد غير المنزَّل</string>
     <string name="playlist_uncheck_all">إلغاء تحديد الكل</string>

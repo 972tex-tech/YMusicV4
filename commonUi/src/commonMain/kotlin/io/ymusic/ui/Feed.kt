@@ -764,9 +764,9 @@ private fun FeedSortMenu(options: List<YtChip>, modifier: Modifier = Modifier, o
     }
 }
 
-/** One feed filter pill. */
+/** One feed filter pill; [onClick] null = a non-interactive label in the same style. */
 @Composable
-fun FeedChip(title: String, selected: Boolean, onClick: () -> Unit) {
+fun FeedChip(title: String, selected: Boolean, onClick: (() -> Unit)?) {
     Text(
         title,
         style = TextStyle(fontSize = 12.sp, color = if (selected) Color.White else DesignColors.InkSoft),
@@ -775,7 +775,7 @@ fun FeedChip(title: String, selected: Boolean, onClick: () -> Unit) {
             .clip(RoundedCornerShape(999.dp))
             .background(if (selected) DesignColors.Accent else Color.Transparent)
             .border(1.dp, if (selected) DesignColors.Accent else DesignColors.Outline, RoundedCornerShape(999.dp))
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 12.dp, vertical = 5.dp),
     )
 }
