@@ -27,10 +27,11 @@ import androidx.compose.ui.unit.dp
 import io.ymusic.player.CaptionLine
 
 /**
- * YouTube-style caption box, centered: each [CaptionLine] is one cue whose `\n`s are hard breaks and whose
- * long rows wrap — never truncated. Shows up to two rows, more when the newest cue alone needs them; the
- * newest cue is at the bottom. A cue that joins an overlapping window (roll-up) scrolls in when it is a single
- * row; anything taller swaps.
+ * YouTube-style caption box: each [CaptionLine] is one cue whose `\n`s are hard breaks and whose long rows
+ * wrap — never truncated. Rows are left-aligned in a block centered on the box. Shows up to two rows, more when
+ * the newest cue alone needs them; the newest cue is at the bottom, and an older cue that no longer fits whole
+ * is dropped. A cue that joins an overlapping window (roll-up) scrolls in when it is a single row; anything
+ * taller swaps.
  */
 @Composable
 fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
@@ -61,11 +62,13 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
         val boxHeight = minOf(totalHeight, maxOf(rowPx * 2, placeables.lastOrNull()?.height ?: 0))
         val tailHeight = placeables.takeLast(frame.tailCount).sumOf { it.height }
         val rollUp = if (tailHeight < rowPx * 3 / 2) tailHeight else 0
+        val restTops = placeables.runningFold(boxHeight - totalHeight) { top, placeable -> top + placeable.height }
+        val blockWidth = placeables.filterIndexed { index, _ -> restTops[index] >= 0 }.maxOfOrNull { it.width } ?: 0
+        val left = (width - blockWidth) / 2
         layout(width, boxHeight) {
-            var y = boxHeight - totalHeight + (scroll.value * rollUp).toInt()
-            placeables.forEach { placeable ->
-                placeable.place((width - placeable.width) / 2, y)
-                y += placeable.height
+            val offset = (scroll.value * rollUp).toInt()
+            placeables.forEachIndexed { index, placeable ->
+                if (offset > 0 || restTops[index] >= 0) placeable.place(left, restTops[index] + offset)
             }
         }
     }
@@ -86,7 +89,7 @@ private fun CaptionCue(text: String, style: TextStyle) {
         text = text,
         color = Color.White,
         style = style,
-        textAlign = TextAlign.Center,
+        textAlign = TextAlign.Start,
         modifier = Modifier
             .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
             .padding(horizontal = DesignSpacing.Space8, vertical = DesignSpacing.Space2),
