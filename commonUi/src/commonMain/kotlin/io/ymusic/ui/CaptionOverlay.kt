@@ -17,16 +17,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.ymusic.player.CaptionLine
 
 /**
- * YouTube-style caption box, bottom-anchored: each [CaptionLine] is one cue whose `\n`s are hard breaks and
- * whose long rows wrap — never truncated. The box is at least two rows tall and grows to fit the newest cue.
- * A cue that joins an overlapping window (roll-up) scrolls in when it is a single row; anything taller swaps.
+ * YouTube-style caption box, centered: each [CaptionLine] is one cue whose `\n`s are hard breaks and whose
+ * long rows wrap — never truncated. Shows up to two rows, more when the newest cue alone needs them; the
+ * newest cue is at the bottom. A cue that joins an overlapping window (roll-up) scrolls in when it is a single
+ * row; anything taller swaps.
  */
 @Composable
 fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
@@ -46,22 +50,35 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
         },
         modifier = modifier.fillMaxWidth().clipToBounds(),
     ) { measurables, constraints ->
-        val rowPx = style.lineHeight.roundToPx() + (DesignSpacing.Space2 * 2).roundToPx()
-        val left = (constraints.maxWidth * 0.2f).toInt()
-        val cueWidth = (constraints.maxWidth - left - DesignSpacing.Space16.roundToPx()).coerceAtLeast(0)
+        val rowPx = captionRowHeight(style).roundToPx()
+        val width = constraints.maxWidth
+        val cueWidth = minOf(
+            width - (DesignSpacing.MarginCompact * 2).roundToPx(),
+            maxOf((width * 0.8f).toInt(), CaptionNarrowestWidth.roundToPx()),
+        ).coerceAtLeast(0)
         val placeables = measurables.map { it.measure(Constraints(maxWidth = cueWidth)) }
-        val boxHeight = maxOf(rowPx * 2, placeables.lastOrNull()?.height ?: 0)
+        val totalHeight = placeables.sumOf { it.height }
+        val boxHeight = minOf(totalHeight, maxOf(rowPx * 2, placeables.lastOrNull()?.height ?: 0))
         val tailHeight = placeables.takeLast(frame.tailCount).sumOf { it.height }
         val rollUp = if (tailHeight < rowPx * 3 / 2) tailHeight else 0
-        layout(constraints.maxWidth, boxHeight) {
-            var y = boxHeight - placeables.sumOf { it.height } + (scroll.value * rollUp).toInt()
+        layout(width, boxHeight) {
+            var y = boxHeight - totalHeight + (scroll.value * rollUp).toInt()
             placeables.forEach { placeable ->
-                placeable.place(left, y)
+                placeable.place((width - placeable.width) / 2, y)
                 y += placeable.height
             }
         }
     }
 }
+
+/** Below this, the 80%-of-picture cue width reads cramped; phones use the picture width minus margins. */
+private val CaptionNarrowestWidth = 480.dp
+
+private fun Density.captionRowHeight(style: TextStyle): Dp = style.lineHeight.toDp() + DesignSpacing.Space2 * 2
+
+/** Two caption rows: what the area below the picture must fit for captions to sit there. */
+@Composable
+fun captionTwoRowHeight(): Dp = with(LocalDensity.current) { captionRowHeight(MaterialTheme.typography.bodyLarge) * 2 }
 
 @Composable
 private fun CaptionCue(text: String, style: TextStyle) {
@@ -69,7 +86,7 @@ private fun CaptionCue(text: String, style: TextStyle) {
         text = text,
         color = Color.White,
         style = style,
-        textAlign = TextAlign.Start,
+        textAlign = TextAlign.Center,
         modifier = Modifier
             .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
             .padding(horizontal = DesignSpacing.Space8, vertical = DesignSpacing.Space2),

@@ -369,7 +369,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
                     onToggleFullscreen = onExit,
                 )
             }
-            PlayerCaptionOverlay(graph.player, VideoOverlayNative.showing)
+            PlayerCaptionOverlay(graph.player, VideoOverlayNative.showing, fill = fillScreen)
         }
     }
 }
@@ -719,18 +719,53 @@ private fun BoxScope.VideoOverlayControls(
     }
 }
 
+/** Height of the video controls' bottom strip, which captions on the picture stay above while it shows. */
+private val VideoControlsStrip = 72.dp
+
+/**
+ * Captions centered on the picture (the video's contain-fit rect, as [VideoHole] lays it out): in the bar
+ * below it when that bar fits two rows clear of the controls strip, otherwise over the picture's bottom.
+ */
 @Composable
 private fun BoxScope.PlayerCaptionOverlay(
     player: io.ymusic.player.Player,
     overlayVisible: Boolean,
+    fill: Boolean = false,
 ) {
     val lines by player.captionLines.collectAsState()
     if (lines.isEmpty()) return
-    val bottom by animateDpAsState(if (overlayVisible) 72.dp else 12.dp)
-    CaptionOverlay(
-        lines,
-        Modifier.align(Alignment.BottomStart).padding(bottom = bottom),
-    )
+    val status by player.status.collectAsState()
+    val config by player.config.collectAsState()
+    val controlsInset by animateDpAsState(if (overlayVisible) VideoControlsStrip else 12.dp)
+    val twoRows = captionTwoRowHeight()
+    BoxWithConstraints(Modifier.matchParentSize()) {
+        val ratio = status.videoSize?.aspectRatio?.takeIf { it > 0f } ?: (16f / 9f)
+        val pictureWidth: Dp
+        val pictureHeight: Dp
+        if (fill || config.audioOnly || maxWidth / maxHeight <= ratio) {
+            pictureWidth = maxWidth
+            pictureHeight = if (fill || config.audioOnly) maxHeight else maxWidth / ratio
+        } else {
+            pictureWidth = maxHeight * ratio
+            pictureHeight = maxHeight
+        }
+        val bar = (maxHeight - pictureHeight) / 2
+        if (bar >= twoRows + VideoControlsStrip + DesignSpacing.Space8) {
+            CaptionOverlay(
+                lines,
+                Modifier.align(Alignment.TopCenter)
+                    .padding(top = bar + pictureHeight + DesignSpacing.Space8)
+                    .width(pictureWidth),
+            )
+        } else {
+            CaptionOverlay(
+                lines,
+                Modifier.align(Alignment.BottomCenter)
+                    .padding(bottom = maxOf(bar + 12.dp, controlsInset))
+                    .width(pictureWidth),
+            )
+        }
+    }
 }
 
 /**
