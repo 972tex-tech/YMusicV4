@@ -39,7 +39,7 @@ val LocalDownloadLauncher = staticCompositionLocalOf<DownloadLauncher?> { null }
  * is absent (iOS) — only the raw-stream M4A remains.
  */
 /** Below this window width the options are a bottom sheet; the two-pane dialog needs more room. */
-private val SHEET_MAX_WINDOW_WIDTH = 600.dp
+private val SHEET_MAX_WINDOW_WIDTH = 750.dp
 
 @Composable
 internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss: () -> Unit) {
