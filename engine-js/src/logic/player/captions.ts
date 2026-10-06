@@ -363,7 +363,10 @@ function windowAt(nowMs: number): Line[] {
   const c = cues[cur]!;
   const ended = nowMs >= c.startMs + c.durationMs;
   const next = cur + 1 < cues.length ? cues[cur + 1] : null;
-  if (ended && (!next || next.startMs > nowMs)) return [];
+  if (ended && (!next || next.startMs > nowMs)) {
+    /* A short gap before the next cue holds this one, so the box rolls up rather than blanking. */
+    if (!next || next.startMs - (c.startMs + c.durationMs) > ROLL_UP_GAP_MS) return [];
+  }
   const track = selectedVss ? findTrack(selectedVss) : null;
   const asr = !!track && track.kind === "asr";
   const lines: Line[] = [];
