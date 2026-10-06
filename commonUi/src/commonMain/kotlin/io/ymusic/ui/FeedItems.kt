@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MusicNote
@@ -78,6 +79,7 @@ import io.ymusic.ui.resources.chart_top_songs_on_shorts_daily
 import io.ymusic.ui.resources.chart_top_songs_on_shorts_weekly
 import io.ymusic.ui.resources.chart_top_songs_weekly
 import io.ymusic.ui.resources.chart_trending_music_videos
+import io.ymusic.ui.resources.play_all
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -181,7 +183,7 @@ fun SectionHeader(
         when {
             // A navigable CTA owns the header slot even on a collapsible section — the collapse
             // toggle also lives in the Show-more pill under the rows, the View-all link only here.
-            onToggle != null && header?.ctaDeeplink == null -> ActionIcon(
+            onToggle != null && header?.ctaDeeplink == null && header?.ctaAction == null -> ActionIcon(
                 Icons.Default.KeyboardArrowDown,
                 stringResource(if (collapsed == false) Res.string.cd_collapse else Res.string.cd_expand),
                 Modifier.rotate(if (collapsed == false) 180f else 0f),
@@ -189,9 +191,10 @@ fun SectionHeader(
                 tint = DesignColors.InkSoft,
                 onClick = onToggle,
             )
-            header?.ctaText != null || header?.ctaToken != null || header?.ctaDeeplink != null -> {
-                val cta = if (onCta != null && header.ctaDeeplink != null) onCta else null
-                val label = stringResource(Res.string.cd_view_all)
+            header?.ctaText != null || header?.ctaToken != null || header?.ctaDeeplink != null || header?.ctaAction != null -> {
+                val playAll = header.ctaAction == YtSectionHeader.CTA_PLAY_ALL
+                val cta = if (onCta != null && (header.ctaDeeplink != null || playAll)) onCta else null
+                val label = header.ctaText ?: stringResource(if (playAll) Res.string.play_all else Res.string.cd_view_all)
                 Row(
                     if (cta != null) {
                         Modifier
@@ -204,11 +207,16 @@ fun SectionHeader(
                     },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (playAll) {
+                        Icon(Icons.Default.PlayArrow, null, Modifier.size(14.dp), tint = DesignColors.InkSoft)
+                    }
                     // A tappable CTA always says what it does — the engine's label when it sent
-                    // one, the app's localized "View all" otherwise (shelf endpoints carry no text).
-                    val text = header.ctaText ?: if (cta != null) stringResource(Res.string.cd_view_all) else null
+                    // one, the app's localized text otherwise (shelf endpoints carry no text).
+                    val text = if (header.ctaText != null || cta != null) label else null
                     text?.let { Text(it, style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSoft)) }
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(14.dp), tint = DesignColors.InkSoft)
+                    if (!playAll) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(14.dp), tint = DesignColors.InkSoft)
+                    }
                 }
             }
         }

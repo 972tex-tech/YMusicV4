@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtChip
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtSection
+import io.ymusic.dynamicengine.yt.YtSectionHeader
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_download
 import io.ymusic.ui.resources.cd_sort
@@ -537,10 +538,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                 section.header,
                 collapsed = if (section.collapsible) !expanded else null,
                 onToggle = if (section.collapsible) onToggle else null,
-                onCta = if (deeplink != null && onDeeplink != null) {
-                    { onDeeplink(deeplink, section.header?.title) }
-                } else {
-                    null
+                onCta = when {
+                    section.header?.ctaAction == YtSectionHeader.CTA_PLAY_ALL -> {
+                        { coordinator.playAll(section.items) }
+                    }
+                    deeplink != null && onDeeplink != null -> {
+                        { onDeeplink(deeplink, section.header?.title) }
+                    }
+                    else -> null
                 },
             )
         }
