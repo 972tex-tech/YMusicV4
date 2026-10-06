@@ -26,7 +26,8 @@ import kotlin.random.Random
  * list, only the [maxConcurrent] worker slots; it just dispatches [changes] events that a UI-owned
  * [DownloadTasksAggregator] folds into a list while the screen is shown.
  *
- * Queue model: up to [maxConcurrent] tasks run at once (priming the WebView still serializes). Adding a
+ * Queue model: up to [maxConcurrent] tasks run at once; their player-response fetches — and the options
+ * [probe] — go one at a time, at least 3s apart ([PlayerResponseGate]). Adding a
  * task fills a free slot; when a task finishes or is canceled, the next queued one takes the slot.
  * **[pause] is per-task** — it frees that slot and the queue keeps flowing; **[pauseAll] holds the whole
  * queue**. [resume]/[resumeAll] bring tasks back. Nothing auto-starts on [load] (a crash leaves tasks
@@ -45,8 +46,8 @@ class DownloadService(
     userAgent: String,
     ffmpeg: Ffmpeg?,
     private val storage: DownloadStorage,
-    /** How many downloads run at once. Priming (the WebView resolve) still serializes; this bounds the
-     *  concurrent byte-download + ffmpeg work. */
+    /** How many downloads run at once — the concurrent byte-download + ffmpeg work. Player-response
+     *  fetches are paced separately ([PlayerResponseGate]). */
     private val maxConcurrent: Int = 3,
     mediaCache: MediaCache? = null,
     /** Persistent segment index used to resume SABR downloads (share the player cache's index). */
@@ -69,8 +70,11 @@ class DownloadService(
 
     private val log = logger?.fork("download")?.fork("service")
 
+    private val playerGate = PlayerResponseGate()
+
     private val pipeline = DownloadPipeline(
-        resolver, client, userAgent, ffmpeg, storage, mediaCache, segmentIndex, logger,
+        SabrSpecResolver { videoId -> playerGate.run { resolver.resolve(videoId) } },
+        client, userAgent, ffmpeg, storage, mediaCache, segmentIndex, logger,
     )
 
     private val _changes = MutableSharedFlow<DownloadChange>(
@@ -115,7 +119,7 @@ class DownloadService(
     /** What [videoId] can be downloaded as — the options dialog's input. */
     suspend fun probe(videoId: String): DownloadOptions {
         val fetch = playerResponse ?: throw TechnicalException("E70040", "download options: no player-response source")
-        val json = fetch(videoId)
+        val json = playerGate.run { fetch(videoId) }
         return withContext(Dispatchers.Default) { DownloadOptions.parse(json, ffmpegAvailable) }
     }
 
