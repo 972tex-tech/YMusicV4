@@ -1,9 +1,8 @@
 // OkHttp-shaped interceptors on HttpCall.execute. fetch/XHR stay thin wrappers of HttpRequest.
 // Each interceptor may rewrite the request (url/headers/body) and/or wrap the response.
 
-import { stringifyJson } from "../../transport";
+import { utf8Decode } from "../../transport";
 import type { JsLogger } from "../logger";
-import { taggedJsonText } from "./tagged";
 import type { RequestOpts } from "./wire";
 
 export type HttpReq = {
@@ -56,40 +55,53 @@ function run(
   });
 }
 
-/** Response whose JSON was already parsed (and possibly rewritten) by an interceptor. */
-export class ParsedJsonResponse implements HttpResponse {
+/** A body an interceptor rewrote, held in memory. Read-once, like a network response. */
+export class BufferedResponse implements HttpResponse {
   readonly status: number;
   readonly statusText: string;
   readonly url: string;
   readonly ok: boolean;
   readonly headers: HttpResponse["headers"];
-  readonly record: Record<string, unknown>;
   private _inner: HttpResponse;
+  private _body: Uint8Array | null;
 
-  constructor(inner: HttpResponse, record: Record<string, unknown>) {
+  constructor(inner: HttpResponse, body: Uint8Array) {
     this._inner = inner;
     this.status = inner.status;
     this.statusText = inner.statusText;
     this.url = inner.url;
     this.ok = inner.ok;
     this.headers = inner.headers;
-    this.record = record;
+    this._body = body;
   }
 
-  jsonObject(): Promise<Record<string, unknown>> {
-    return Promise.resolve(this.record);
+  private _take(): Uint8Array {
+    const body = this._body;
+    if (body === null) throw new Error("Response body has already been consumed");
+    this._body = null;
+    return body;
   }
-  jsonArray(): Promise<unknown[]> {
-    return Promise.reject(new TypeError("ParsedJsonResponse is an object"));
+
+  async jsonObject(): Promise<Record<string, unknown>> {
+    const v = __parseJson(this._take());
+    if (v === null || typeof v !== "object" || Array.isArray(v)) {
+      throw new TypeError("response body is not a JSON object");
+    }
+    return v as Record<string, unknown>;
   }
-  text(): Promise<string> {
-    return Promise.resolve(taggedJsonText(this.record) as unknown as string);
+  async jsonArray(): Promise<unknown[]> {
+    const v = __parseJson(this._take());
+    if (!Array.isArray(v)) throw new TypeError("response body is not a JSON array");
+    return v;
   }
-  bytes(): Promise<Uint8Array> {
-    return Promise.resolve(stringifyJson(this.record));
+  async text(): Promise<string> {
+    return utf8Decode(this._take());
+  }
+  async bytes(): Promise<Uint8Array> {
+    return this._take();
   }
   stream(): HttpBodyStream {
-    const bytes = stringifyJson(this.record);
+    const bytes = this._take();
     let off = 0;
     return {
       read: function (buffer, offset, len) {
@@ -102,6 +114,7 @@ export class ParsedJsonResponse implements HttpResponse {
     };
   }
   cancel(): void {
+    this._body = null;
     this._inner.cancel();
   }
   close(): void {

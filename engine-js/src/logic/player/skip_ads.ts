@@ -2,11 +2,10 @@
 // transformPlayerRequest / transformPlayerResponse). No PO inject — OWL mints.
 // Hooked as an HttpCall interceptor so fetch/XHR stay thin HttpRequest wrappers.
 
-import { utf8Decode } from "../../transport";
+import { stringifyJson, utf8Decode } from "../../transport";
 import { addInterceptor } from "../../protocol/http/intercept";
 import type { HttpChain, HttpReq } from "../../protocol/http/intercept";
-import { ParsedJsonResponse } from "../../protocol/http/intercept";
-import { installJsonParseHook } from "../../protocol/http/tagged";
+import { BufferedResponse } from "../../protocol/http/intercept";
 import { ingestPlayerCaptions } from "./captions";
 import { is144pItag, recordFake144 } from "./itag_144";
 import type { Fake144Row } from "./itag_144";
@@ -153,7 +152,7 @@ async function playerAdsIntercept(chain: HttpChain): Promise<HttpResponse> {
   } catch (e) {
     console.warn("player ads: transformPlayerResponse failed: " + errText(e));
   }
-  return new ParsedJsonResponse(res, rec);
+  return new BufferedResponse(res, stringifyJson(rec));
 }
 
 let installed = false;
@@ -161,6 +160,5 @@ let installed = false;
 export function installPlayerAdStrip(): void {
   if (installed) return;
   installed = true;
-  installJsonParseHook();
   addInterceptor(playerAdsIntercept);
 }

@@ -766,17 +766,7 @@ class DynamicEngineTest {
     }
 
     @Test
-    fun tagged_json_parse_returns_the_rec() = runTest {
-        val e = createTestEngine(FakeHttpClient(CannedResponse.ofText("")))
-        try {
-            assertEquals("true|1|object|{}|true|2", e.scenario("tagged-json-parse"))
-        } finally {
-            e.close()
-        }
-    }
-
-    @Test
-    fun player_fetch_text_then_json_parse_keeps_the_rec() = runTest {
+    fun player_fetch_strips_ads_for_json_and_text() = runTest {
         val client = FakeHttpClient(
             CannedResponse.ofText(
                 """{"adPlacements":[{}],"playerAds":[1],"videoDetails":{"videoId":"abc"}}""",
@@ -785,7 +775,7 @@ class DynamicEngineTest {
         )
         val e = createTestEngine(client)
         try {
-            assertEquals("true|true|true|abc|true", e.scenario("player-fetch-json-tag"))
+            assertEquals("true|true|abc", e.scenario("player-fetch-strips-ads"))
         } finally {
             e.close()
         }
