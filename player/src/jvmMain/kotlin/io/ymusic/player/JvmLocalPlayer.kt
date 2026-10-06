@@ -701,11 +701,10 @@ internal class JvmLocalPlayer(
         }
         val src = if (usingSidecar) sidecarCues else synchronized(nativeCues) { nativeCues.toList() }
         val active = src.filter { posSec + 0.05 >= it.startSec && posSec < it.endSec }
-        val lines = active.flatMap { cue ->
-            cue.text.split('\n').map { it.trim() }.filter { it.isNotEmpty() }.map { line ->
-                CaptionLine(cue.id, line)
-            }
-        }.take(2)
+        val lines = active.mapNotNull { cue ->
+            val rows = cue.text.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+            if (rows.isEmpty()) null else CaptionLine(cue.id, rows.joinToString("\n"))
+        }
         if (lines != _captionLines.value) _captionLines.value = lines
     }
 
