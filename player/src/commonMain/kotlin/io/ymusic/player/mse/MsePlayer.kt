@@ -31,6 +31,7 @@ import kmphttp.CookieJar
 import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CloseableCoroutineDispatcher
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -61,15 +62,16 @@ import kotlinx.serialization.json.longOrNull
 
 /**
  * YouTube [YtEngine] over engine-js + C MSE, mirroring legacy `WebViewYtPlayer`. Each [init]/[reset]
- * starts a [Session] (the legacy embed page): one [DynamicEnginePlayer] built on [engineDispatcher],
- * `player/init`, then a FIFO command queue. Control is main-thread; commands run in call order.
+ * starts a [Session] (the legacy embed page): its own engine thread from [newDispatcher], one
+ * [DynamicEnginePlayer] built on it, `player/init`, then a FIFO command queue. Control is
+ * main-thread; commands run in call order.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class MsePlayer internal constructor(
-    private val engineDispatcher: CloseableCoroutineDispatcher,
+    private val newDispatcher: () -> CloseableCoroutineDispatcher,
     val videoSurface: MseVideoSurface,
     private val log: Logger?,
-    private val buildPlayer: () -> DynamicEnginePlayer,
+    private val buildPlayer: (CoroutineDispatcher) -> DynamicEnginePlayer,
 ) : YtEngine {
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -324,7 +326,6 @@ class MsePlayer internal constructor(
         val lastClose = closing
         mainScope.launch {
             lastClose?.join()
-            engineDispatcher.close()
             mainScope.cancel()
         }
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
@@ -340,10 +341,11 @@ class MsePlayer internal constructor(
             // NonCancellable so a reset-during-reset still chains behind the older close.
             withContext(NonCancellable) { previousClose?.join() }
             ensureActive()
+            val dispatcher = newDispatcher()
             var enginePlayer: DynamicEnginePlayer? = null
             try {
                 // Boot is a blocking eval on the engine thread; a built engine must reach the finally.
-                enginePlayer = withContext(engineDispatcher + NonCancellable) { buildPlayer() }
+                enginePlayer = withContext(dispatcher + NonCancellable) { buildPlayer(dispatcher) }
                 newSession.player = enginePlayer
                 if (hasPendingVideoSurface) enginePlayer.setVideoSurface(pendingVideoSurface)
                 enginePlayer.init(log, viewportW, viewportH)
@@ -365,14 +367,15 @@ class MsePlayer internal constructor(
             } catch (error: Throwable) {
                 if (session === newSession) fail(error, "mse init failed", needReset = true)
             } finally {
-                if (enginePlayer != null) {
-                    withContext(NonCancellable) {
+                withContext(NonCancellable) {
+                    if (enginePlayer != null) {
                         try {
                             enginePlayer.close()
                         } catch (error: Throwable) {
                             log?.log(Logger.Level.WARN, "mse close failed", error)
                         }
                     }
+                    dispatcher.close()
                 }
             }
         }
@@ -598,8 +601,7 @@ class MsePlayer internal constructor(
             mediaProxy: LocalMediaProxy? = null,
         ): MsePlayer {
             val engineClient = if (mediaProxy != null) SabrProxyHttpClient(client, mediaProxy) else client
-            val engineDispatcher = QuickJsRuntime.newDispatcher()
-            return MsePlayer(engineDispatcher, videoSurface, logger) {
+            return MsePlayer({ QuickJsRuntime.newDispatcher() }, videoSurface, logger) { engineDispatcher ->
                 DynamicEnginePlayer.create(
                     engineClient, appVersion, engineDispatcher, logger,
                     cacheStore = cacheStore,
