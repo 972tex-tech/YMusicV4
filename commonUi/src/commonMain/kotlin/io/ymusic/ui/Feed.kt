@@ -657,10 +657,8 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
     return ItemActions(
         if (item.kind == YtFeedItem.KIND_VIDEO) {
             buildList {
-                if (removeFromTopTracks != null) {
-                    add(stringResource(Res.string.menu_play_single) to { coordinator.playSingle(item) })
-                    add(stringResource(Res.string.menu_start_radio) to { coordinator.playNow(item) })
-                }
+                add(stringResource(Res.string.menu_play_single) to { coordinator.playSingle(item) })
+                add(stringResource(Res.string.menu_start_radio) to { coordinator.playNow(item) })
                 add(stringResource(Res.string.queue_next) to { coordinator.playNext(item) })
                 add(stringResource(Res.string.queue_last) to { coordinator.playLater(item) })
                 if (downloadLauncher != null) {
