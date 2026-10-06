@@ -28,7 +28,7 @@ import io.ymusic.player.CaptionLine
 
 /**
  * YouTube-style caption box: each [CaptionLine] is one cue whose `\n`s are hard breaks and whose long rows
- * wrap — never truncated. Rows are left-aligned in a block centered on the box. Shows up to two rows, more when
+ * wrap — never truncated. Rows are left-aligned at a fixed inset: 10% of the box, 20% from tablet width. Shows up to two rows, more when
  * the newest cue alone needs them; the newest cue is at the bottom, and an older cue that no longer fits whole
  * is dropped. A cue that joins an overlapping window (roll-up) scrolls in when it is a single row; anything
  * taller swaps.
@@ -53,18 +53,14 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
     ) { measurables, constraints ->
         val rowPx = captionRowHeight(style).roundToPx()
         val width = constraints.maxWidth
-        val cueWidth = minOf(
-            width - (DesignSpacing.MarginCompact * 2).roundToPx(),
-            maxOf((width * 0.8f).toInt(), CaptionNarrowestWidth.roundToPx()),
-        ).coerceAtLeast(0)
+        val left = (width * if (width >= CaptionTabletWidth.roundToPx()) 0.2f else 0.1f).toInt()
+        val cueWidth = (width - left * 2).coerceAtLeast(0)
         val placeables = measurables.map { it.measure(Constraints(maxWidth = cueWidth)) }
         val totalHeight = placeables.sumOf { it.height }
         val boxHeight = minOf(totalHeight, maxOf(rowPx * 2, placeables.lastOrNull()?.height ?: 0))
         val tailHeight = placeables.takeLast(frame.tailCount).sumOf { it.height }
         val rollUp = if (tailHeight < rowPx * 3 / 2) tailHeight else 0
         val restTops = placeables.runningFold(boxHeight - totalHeight) { top, placeable -> top + placeable.height }
-        val blockWidth = placeables.filterIndexed { index, _ -> restTops[index] >= 0 }.maxOfOrNull { it.width } ?: 0
-        val left = (width - blockWidth) / 2
         layout(width, boxHeight) {
             val offset = (scroll.value * rollUp).toInt()
             placeables.forEachIndexed { index, placeable ->
@@ -74,8 +70,8 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
     }
 }
 
-/** Below this, the 80%-of-picture cue width reads cramped; phones use the picture width minus margins. */
-private val CaptionNarrowestWidth = 480.dp
+/** Picture width from which captions take the tablet inset (20% each side) instead of the phone one (10%). */
+private val CaptionTabletWidth = 600.dp
 
 private fun Density.captionRowHeight(style: TextStyle): Dp = style.lineHeight.toDp() + DesignSpacing.Space2 * 2
 
