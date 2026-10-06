@@ -60,6 +60,7 @@ import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_download
 import io.ymusic.ui.resources.cd_sort
 import io.ymusic.ui.resources.error_generic
+import io.ymusic.ui.resources.error_network
 import io.ymusic.ui.resources.feed_empty
 import io.ymusic.ui.resources.menu_play_single
 import io.ymusic.ui.resources.menu_remove
@@ -87,12 +88,13 @@ import kotlinx.coroutines.withTimeout
 import org.jetbrains.compose.resources.stringResource
 
 /** Paged feed loading over any yt page source (browse / search / watch-next continuations).
- *  [fetchTimeoutMs] is the watchdog: a wedged engine/HTTP call (seen live: Android CookieManager
- *  deadlocking against WebView browser-process startup) becomes a Failed page with Retry instead
- *  of an eternal spinner. */
+ *  [fetchTimeoutMs] is the watchdog for a wedged engine (seen live: Android CookieManager deadlocking
+ *  against WebView browser-process startup) — a Failed page with Retry instead of an eternal spinner.
+ *  It must outlast the HTTP execute timeout (15s), so a plain network stall fails first as the
+ *  network error, and [TIMEOUT_CODE] means the engine itself hung. */
 class Pager(
     private val scope: CoroutineScope,
-    private val fetchTimeoutMs: Long = 15_000,
+    private val fetchTimeoutMs: Long = 20_000,
     private val logger: Logger? = null,
     private val fetch: suspend (continuation: String?) -> io.ymusic.dynamicengine.yt.YtFeedPage,
 ) {
@@ -158,7 +160,7 @@ class Pager(
                 throw e // a newer refresh took over the state — this coroutine just dies
             } catch (e: Exception) {
                 logger?.captureError(e)
-                State.Failed((e as? CodedError)?.code ?: "E20030", e.message)
+                State.Failed((e as? CodedError)?.code ?: "E20032", e.message)
             }
         }
     }
@@ -189,7 +191,7 @@ class Pager(
                 current.copy(refreshing = false)
             } catch (e: Exception) {
                 logger?.captureError(e)
-                _errors.tryEmit((e as? CodedError)?.code ?: "E20030")
+                _errors.tryEmit((e as? CodedError)?.code ?: "E20033")
                 current.copy(refreshing = false)
             }
         }
@@ -329,7 +331,7 @@ fun FeedList(
     var errorCode by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(pager) { pager.errors.collect { errorCode = it } }
     errorCode?.let { code ->
-        val message = stringResource(Res.string.error_generic, code)
+        val message = errorMessage(code)
         LaunchedEffect(code, message) {
             showSnackbar(message)
             errorCode = null
@@ -420,6 +422,14 @@ internal fun EmptyState(
 }
 
 /** Full-surface error page: picture + "Something went wrong (code)" + an emphasized retry action. */
+/** A failure for the user: a known category as its own message, any other code as "Something went
+ *  wrong (E…)" for them to report. */
+@Composable
+internal fun errorMessage(code: String): String = when (code) {
+    "network" -> stringResource(Res.string.error_network)
+    else -> stringResource(Res.string.error_generic, code)
+}
+
 @Composable
 internal fun ErrorState(code: String, modifier: Modifier = Modifier, onRetry: () -> Unit) {
     CenteredBox(modifier) {
@@ -430,7 +440,7 @@ internal fun ErrorState(code: String, modifier: Modifier = Modifier, onRetry: ()
                 Modifier.size(56.dp).padding(bottom = 4.dp),
                 tint = DesignColors.PlaceholderIcon,
             )
-            Text(stringResource(Res.string.error_generic, code), color = MaterialTheme.colorScheme.error)
+            Text(errorMessage(code), color = MaterialTheme.colorScheme.error)
             Button(onClick = onRetry, modifier = Modifier.padding(top = 8.dp)) {
                 Text(stringResource(Res.string.retry))
             }

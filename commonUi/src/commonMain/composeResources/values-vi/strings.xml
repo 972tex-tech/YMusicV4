@@ -331,4 +331,5 @@
     <plurals name="playlist_redownload_message">
         <item quantity="other">%1$d video đã chọn đã có trong Thư viện.</item>
     </plurals>
+    <string name="error_network">Không kết nối được YouTube. Hãy kiểm tra mạng và thử lại.</string>
 </resources>

@@ -119,7 +119,7 @@ class PagerChipsTest {
 
         fail = true
         pager.reload(chipToken = "all")
-        assertEquals("E20030", awaitError.await(), "the failure surfaced as an error event")
+        assertEquals("E20033", awaitError.await(), "the failure surfaced as an error event")
 
         val state = pager.state.value
         assertTrue(state is Pager.State.Ready, "kept the list, not an error page: $state")

@@ -340,4 +340,5 @@
         <item quantity="one">فيديو واحد من المحددة موجود بالفعل في مكتبتك.</item>
         <item quantity="other">%1$d من الفيديوهات المحددة موجودة بالفعل في مكتبتك.</item>
     </plurals>
+    <string name="error_network">تعذّر الوصول إلى YouTube. تحقق من اتصالك وحاول مرة أخرى.</string>
 </resources>
