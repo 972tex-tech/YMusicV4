@@ -102,6 +102,22 @@ function flattenCaptions(rec: Record<string, unknown>): Record<string, unknown>[
   return out;
 }
 
+function flattenTranslations(rec: Record<string, unknown>): Record<string, unknown>[] {
+  const caps = asRec(rec["captions"]);
+  const list = caps ? asRec(caps["playerCaptionsTracklistRenderer"]) : null;
+  const raw = list ? list["translationLanguages"] : null;
+  const out: Record<string, unknown>[] = [];
+  if (!Array.isArray(raw)) return out;
+  for (let i = 0; i < raw.length; i++) {
+    const t = asRec(raw[i]);
+    if (!t) continue;
+    const lang = typeof t["languageCode"] === "string" ? t["languageCode"] : "";
+    if (!lang) continue;
+    out.push({ "languageCode": lang, "name": simpleName(t["languageName"]) || lang });
+  }
+  return out;
+}
+
 function ustreamerConfig(rec: Record<string, unknown>): string {
   const pc = asRec(rec["playerConfig"]);
   const mc = pc ? asRec(pc["mediaCommonConfig"]) : null;
@@ -174,6 +190,7 @@ function buildDownloadJson(e: Entry): Record<string, unknown> {
     "streamingData": streaming,
     "captions": rec["captions"],
     "captionTracks": flattenCaptions(rec),
+    "translationLanguages": flattenTranslations(rec),
     "videoPlaybackUstreamerConfig": ustreamerConfig(rec),
   };
 }
