@@ -408,4 +408,5 @@
         <item quantity="one">Added %1$d video to downloads</item>
         <item quantity="other">Added %1$d videos to downloads</item>
     </plurals>
+    <string name="playlist_add_to_library">Add to Library playlist “%1$s”</string>
 </resources>

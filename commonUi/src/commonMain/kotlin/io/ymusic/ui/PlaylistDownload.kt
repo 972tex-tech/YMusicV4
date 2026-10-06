@@ -74,6 +74,7 @@ import io.ymusic.ui.resources.download_format
 import io.ymusic.ui.resources.download_location_not_set
 import io.ymusic.ui.resources.download_save_to
 import io.ymusic.ui.resources.download_video
+import io.ymusic.ui.resources.playlist_add_to_library
 import io.ymusic.ui.resources.playlist_added
 import io.ymusic.ui.resources.playlist_check_all
 import io.ymusic.ui.resources.playlist_check_not_downloaded
@@ -103,6 +104,9 @@ private val PLAYLIST_HEIGHTS = listOf(2160, 1440, 1080, 720, 480, 360)
 class PlaylistDownloadSession(val title: String, val pager: Pager, initialPreset: QuickDownloadPreset?) {
     var preset by mutableStateOf(initialPreset ?: QuickDownloadPreset(DownloadFormat.M4A, 1080, null, null))
     var checked by mutableStateOf<Set<String>>(emptySet())
+
+    /** Also collect the downloads into a Library playlist named after this one. */
+    var addToLibraryPlaylist by mutableStateOf(false)
 
     /** Every video id listed so far: a newly loaded page arrives checked, a seen one keeps its box. */
     private val seen = mutableSetOf<String>()
@@ -145,6 +149,7 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
                     ffmpegAvailable = downloads.ffmpegAvailable,
                     locationName = locationName,
                     onPickLocation = { scope.launch { pickDownloadFolder(graph) } },
+                    libraryPlaylists = graph.mediaStore != null,
                 )
             }
             items(videos, key = { it.id }) { video ->
@@ -166,6 +171,11 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
                         val gated = graph.mediaStore != null && graph.libraryFolderPicker != null
                         if (gated && !hasUsableDownloadLocation(graph) && !pickDownloadFolder(graph)) return@launch
                         picked.forEach { downloads.enqueue(preset.request(it)) }
+                        val store = graph.mediaStore
+                        if (session.addToLibraryPlaylist && store != null) {
+                            val playlist = store.playlists().firstOrNull { it.name == session.title } ?: store.createPlaylist(session.title)
+                            store.addCodesToPlaylist(playlist.id, picked.map { it.id })
+                        }
                         snackbar(getPluralString(Res.plurals.playlist_added, picked.size, picked.size))
                         onBack()
                     }
@@ -210,7 +220,12 @@ private fun LoadedHeader(session: PlaylistDownloadSession, ready: Pager.State.Re
                     onClick = { session.pager.loadMore() },
                     label = { Text(stringResource(Res.string.playlist_load_more)) },
                     leadingIcon = { Icon(Icons.Default.Add, null, Modifier.size(16.dp)) },
-                    colors = AssistChipDefaults.assistChipColors(labelColor = DesignColors.Ink, leadingIconContentColor = DesignColors.Accent),
+                    border = null,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = DesignColors.SurfaceDim,
+                        labelColor = DesignColors.Ink,
+                        leadingIconContentColor = DesignColors.Accent,
+                    ),
                 )
             }
             Box(Modifier.weight(1f))
@@ -246,6 +261,7 @@ private fun OptionsCard(
     ffmpegAvailable: Boolean,
     locationName: String?,
     onPickLocation: () -> Unit,
+    libraryPlaylists: Boolean,
 ) {
     val preset = session.preset
     Column(
@@ -319,6 +335,28 @@ private fun OptionsCard(
                     Modifier.weight(1f).padding(start = DesignSpacing.Space8),
                     style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (libraryPlaylists) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .toggleable(value = session.addToLibraryPlaylist, role = Role.Checkbox) { session.addToLibraryPlaylist = it },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+            ) {
+                Checkbox(
+                    checked = session.addToLibraryPlaylist,
+                    onCheckedChange = null,
+                    colors = CheckboxDefaults.colors(checkedColor = DesignColors.Accent),
+                )
+                Text(
+                    stringResource(Res.string.playlist_add_to_library, session.title),
+                    style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

@@ -327,4 +327,5 @@
         <item quantity="one">تمت إضافة فيديو واحد إلى التنزيلات</item>
         <item quantity="other">تمت إضافة %1$d فيديو إلى التنزيلات</item>
     </plurals>
+    <string name="playlist_add_to_library">إضافة إلى قائمة تشغيل المكتبة “%1$s”</string>
 </resources>
