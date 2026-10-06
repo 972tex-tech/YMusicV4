@@ -18,17 +18,19 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import io.ymusic.player.CaptionLine
 
 /**
  * YouTube-style caption box: each [CaptionLine] is one cue whose `\n`s are hard breaks and whose long rows
- * wrap — never truncated. Rows are left-aligned at a fixed inset: 10% of the box, 20% from tablet width. Shows up to two rows, more when
+ * wrap — never truncated. Rows are left-aligned at a fixed inset ([captionInsetFraction]). Shows up to two rows, more when
  * the newest cue alone needs them; the newest cue is at the bottom, and an older cue that no longer fits whole
  * is dropped. A cue that joins an overlapping window (roll-up) scrolls in when it is a single row; anything
  * taller swaps.
@@ -36,6 +38,7 @@ import io.ymusic.player.CaptionLine
 @Composable
 fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
     val style = MaterialTheme.typography.bodyLarge
+    val inset = captionInsetFraction()
     val strip = remember { CaptionStrip() }
     val frame = strip.advance(lines)
     val scroll = remember(frame.generation) { Animatable(if (frame.tailCount > 0) 1f else 0f) }
@@ -53,7 +56,7 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
     ) { measurables, constraints ->
         val rowPx = captionRowHeight(style).roundToPx()
         val width = constraints.maxWidth
-        val left = (width * if (width >= CaptionTabletWidth.roundToPx()) 0.2f else 0.1f).toInt()
+        val left = (width * inset).toInt()
         val cueWidth = (width - left * 2).coerceAtLeast(0)
         val placeables = measurables.map { it.measure(Constraints(maxWidth = cueWidth)) }
         val totalHeight = placeables.sumOf { it.height }
@@ -70,8 +73,18 @@ fun CaptionOverlay(lines: List<CaptionLine>, modifier: Modifier = Modifier) {
     }
 }
 
-/** Picture width from which captions take the tablet inset (20% each side) instead of the phone one (10%). */
-private val CaptionTabletWidth = 600.dp
+/**
+ * Left/right caption inset as a fraction of the picture: phones (window's short side under 600dp) 3% portrait,
+ * 5% landscape; larger windows grow from 10% at 600dp wide to 20% at 1920dp.
+ */
+@Composable
+private fun captionInsetFraction(): Float {
+    val window = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.toSize().toDpSize() }
+    val portrait = window.height > window.width
+    if (minOf(window.width, window.height) < 600.dp) return if (portrait) 0.03f else 0.05f
+    val growth = ((window.width - 600.dp) / (1920.dp - 600.dp)).coerceIn(0f, 1f)
+    return 0.1f + 0.1f * growth
+}
 
 private fun Density.captionRowHeight(style: TextStyle): Dp = style.lineHeight.toDp() + DesignSpacing.Space2 * 2
 
