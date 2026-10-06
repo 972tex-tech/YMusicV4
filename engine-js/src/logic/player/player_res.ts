@@ -76,12 +76,24 @@ function ytcfgStr(key: string): string {
   return typeof v === "string" ? v : "";
 }
 
+// The video's own default caption, as the player resolves it: the default audio track's
+// defaultCaptionTrackIndex into the raw captionTracks. -1 when the video sets none (captions start off).
+function defaultCaptionIndex(list: Record<string, unknown> | null): number {
+  const tracks = list ? list["audioTracks"] : null;
+  if (!Array.isArray(tracks)) return -1;
+  const at = list ? list["defaultAudioTrackIndex"] : null;
+  const audio = asRec(tracks[typeof at === "number" ? at : 0]);
+  const index = audio ? audio["defaultCaptionTrackIndex"] : null;
+  return typeof index === "number" ? index : -1;
+}
+
 function flattenCaptions(rec: Record<string, unknown>): Record<string, unknown>[] {
   const caps = asRec(rec["captions"]);
   const list = caps ? asRec(caps["playerCaptionsTracklistRenderer"]) : null;
   const raw = list ? list["captionTracks"] : null;
   const out: Record<string, unknown>[] = [];
   if (!Array.isArray(raw)) return out;
+  const defaultIndex = defaultCaptionIndex(list);
   for (let i = 0; i < raw.length; i++) {
     const t = asRec(raw[i]);
     if (!t) continue;
@@ -89,14 +101,13 @@ function flattenCaptions(rec: Record<string, unknown>): Record<string, unknown>[
     const lang = typeof t["languageCode"] === "string" ? t["languageCode"] : "";
     if (!url || !lang) continue;
     const kind = typeof t["kind"] === "string" ? t["kind"] : "";
-    const vss = typeof t["vssId"] === "string" ? t["vssId"] : "";
     const name = simpleName(t["name"]) || lang;
     out.push({
       "languageCode": lang,
       "name": kind === "asr" ? name + " (auto)" : name,
       "baseUrl": url,
       "isAsr": kind === "asr",
-      "isDefault": vss.indexOf(".") === 0,
+      "isDefault": i === defaultIndex,
     });
   }
   return out;
