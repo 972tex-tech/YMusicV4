@@ -1320,6 +1320,8 @@ class Player {
     for (let i = 0; i < list.length; i++) {
       const o = asRec(list[i]);
       if (!o) continue;
+      // A paygated upsell ("1080p Premium" on a non-Premium account) is listed but unplayable.
+      if (o["isPlayable"] === false) continue;
       const q = o["quality"] != null ? String(o["quality"]) : "";
       const lab = o["qualityLabel"] != null ? String(o["qualityLabel"]) : "";
       add(q, lab);
