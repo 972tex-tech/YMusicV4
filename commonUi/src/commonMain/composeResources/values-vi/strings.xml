@@ -275,9 +275,6 @@
     <string name="download_audio_track">Bản âm thanh</string>
     <string name="download_captions">Phụ đề</string>
     <string name="download_captions_off">Tắt</string>
-    <string name="download_captions_in_file">%1$s · trong tệp</string>
-    <string name="download_captions_srt">%1$s · tệp .srt</string>
-    <string name="download_mp3_captions_note">MP3 không chứa được phụ đề — phụ đề được lưu cạnh bài hát dưới dạng tệp .srt.</string>
     <string name="download_save_to">Lưu vào</string>
     <string name="download_location_not_set">Chưa chọn</string>
     <string name="download_action">Tải xuống</string>
@@ -291,9 +288,6 @@
     <string name="download_loading">Đang tải định dạng…</string>
     <string name="download_failed">Không tải được định dạng (%1$s)</string>
     <string name="download_subtitles">Phụ đề</string>
-    <string name="download_embed">Nhúng vào tệp</string>
-    <string name="download_separate_srt">Tệp .srt riêng</string>
-    <string name="download_srt_toggle">Lưu thành tệp .srt</string>
     <string name="download_container">Định dạng chứa</string>
     <string name="download_mp4_note">MP4 phát được trên mọi thiết bị</string>
     <string name="download_added">Đã thêm vào danh sách tải</string>

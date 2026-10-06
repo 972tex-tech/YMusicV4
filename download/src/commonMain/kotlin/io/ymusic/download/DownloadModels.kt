@@ -81,12 +81,9 @@ class DownloadRequest(
     val captions: CaptionChoice? = null,
 )
 
-/**
- * Captions picked for one download: the [languages] (caption keys — [captionKey]) and whether
- * they are written as `.srt` files beside the media ([sidecar]) instead of embedded as subtitle tracks.
- * MP3 can't carry a subtitle track, so it always gets sidecars.
- */
-class CaptionChoice(val languages: List<String>, val sidecar: Boolean)
+/** Captions picked for one download — caption keys ([captionKey]), embedded as subtitle tracks. MP3
+ *  can't carry a subtitle track, so it never gets any. */
+class CaptionChoice(val languages: List<String>)
 
 /**
  * One row of the download queue — the persisted, observable unit the UI renders. Immutable snapshot;

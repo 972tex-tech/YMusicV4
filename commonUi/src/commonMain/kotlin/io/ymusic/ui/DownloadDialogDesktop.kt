@@ -46,7 +46,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,7 +74,6 @@ import io.ymusic.ui.resources.download_action
 import io.ymusic.ui.resources.download_audio_language
 import io.ymusic.ui.resources.download_audio_only
 import io.ymusic.ui.resources.download_container
-import io.ymusic.ui.resources.download_embed
 import io.ymusic.ui.resources.download_file_name
 import io.ymusic.ui.resources.download_forbidden_hint
 import io.ymusic.ui.resources.download_format
@@ -84,7 +82,6 @@ import io.ymusic.ui.resources.download_location_not_set
 import io.ymusic.ui.resources.download_mp4_note
 import io.ymusic.ui.resources.download_name_empty
 import io.ymusic.ui.resources.download_save_to
-import io.ymusic.ui.resources.download_separate_srt
 import io.ymusic.ui.resources.download_subtitles
 import io.ymusic.ui.resources.download_title
 import io.ymusic.ui.resources.download_video
@@ -231,7 +228,7 @@ private fun TrackRows(state: DownloadOptionsState) {
             }
         }
     }
-    if (options.captions.isNotEmpty()) {
+    if (options.captions.isNotEmpty() && state.captionsSupported) {
         TrackRow(Icons.Outlined.Subtitles, stringResource(Res.string.download_subtitles), alignTop = true) {
             Column(verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
@@ -248,12 +245,6 @@ private fun TrackRows(state: DownloadOptionsState) {
                         )
                     }
                 }
-                val forced = state.format == DownloadFormat.MP3
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
-                    RadioLabel(stringResource(Res.string.download_embed), selected = !state.captionsAsSidecar, enabled = !forced) { state.sidecar = false }
-                    RadioLabel(stringResource(Res.string.download_separate_srt), selected = state.captionsAsSidecar, enabled = !forced) { state.sidecar = true }
-                }
-                if (forced) Mp3CaptionNote()
             }
         }
     }
@@ -353,23 +344,6 @@ private fun DropdownField(value: String, menu: @Composable ColumnScope.(close: (
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = DesignColors.Surface) {
             menu { open = false }
         }
-    }
-}
-
-@Composable
-private fun RadioLabel(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
-    ) {
-        RadioButton(
-            selected = selected,
-            onClick = null,
-            enabled = enabled,
-            colors = RadioButtonDefaults.colors(selectedColor = DesignColors.Accent),
-        )
-        Text(text, style = TextStyle(fontSize = 13.sp, color = if (enabled) DesignColors.Ink else DesignColors.InkFaint))
     }
 }
 

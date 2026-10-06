@@ -25,16 +25,16 @@ class CaptionPreference(val languages: Set<String>, val includeDefault: Boolean)
     }
 }
 
-/** Caption tracks to fetch: a per-task [choice] names them exactly (MP3 gets them as sidecar files);
- *  without one, the preference-driven [selectCaptions] — skipped for MP3, which can't embed them. */
+/** Caption tracks to fetch: none for MP3 — it can't carry a subtitle track — else the ones a per-task
+ *  [choice] names, or without one the preference-driven [selectCaptions]. */
 internal fun captionsToDownload(
     format: DownloadFormat,
     tracks: List<CaptionTrack>,
     choice: CaptionChoice?,
     pref: CaptionPreference,
 ): List<CaptionTrack> = when {
-    choice != null -> choice.languages.mapNotNull { key -> tracks.firstOrNull { captionKey(it.languageCode, it.isAsr) == key } }
     format == DownloadFormat.MP3 -> emptyList()
+    choice != null -> choice.languages.mapNotNull { key -> tracks.firstOrNull { captionKey(it.languageCode, it.isAsr) == key } }
     else -> selectCaptions(tracks, pref)
 }
 
@@ -59,8 +59,7 @@ internal fun selectCaptions(tracks: List<CaptionTrack>, pref: CaptionPreference)
 /** One downloaded elementary media stream: its selected [format] and the scratch file it landed in. */
 class DownloadedStream(val format: AdaptiveFormat, val scratch: DownloadScratch)
 
-/** One downloaded caption track: the source metadata plus the scratch file (`.vtt`, or `.srt` for a
- *  sidecar). */
+/** One downloaded caption track: the source metadata plus the scratch file (a `.vtt` document). */
 class DownloadedCaption(
     val languageCode: String,
     val isAsr: Boolean,
@@ -128,9 +127,8 @@ class YtStreamDownloader(
 
         // Captions are KB-scale; fetched after the media, whole (no range-resume), not folded into progress.
         // Best-effort: a caption that fails to download is logged and skipped — it must not fail the media.
-        val asSrt = task.format == DownloadFormat.MP3 || task.captions?.sidecar == true
         val captionFiles = captionPicks.mapNotNull { track ->
-            runCatching { downloadCaption(task.id, track, asSrt) }
+            runCatching { downloadCaption(task.id, track) }
                 .onFailure { log?.log(Logger.Level.WARN, "caption ${track.languageCode} failed: ${it.message}", it) }
                 .getOrNull()
         }
@@ -167,21 +165,16 @@ class YtStreamDownloader(
         return audio to video
     }
 
-    /** GET the caption's WebVTT into a scratch file — converted to SubRip when [asSrt] (a sidecar). The
-     *  baseUrl is already GET-ready (sig/n + pot). */
-    private suspend fun downloadCaption(taskId: String, track: CaptionTrack, asSrt: Boolean): DownloadedCaption {
-        val ext = if (asSrt) "srt" else "vtt"
-        val scratch = storage.scratch(taskId, "cc.${captionKey(track.languageCode, track.isAsr)}.$ext")
+    /** GET the caption's WebVTT into a scratch file. The baseUrl is already GET-ready (sig/n + pot). */
+    private suspend fun downloadCaption(taskId: String, track: CaptionTrack): DownloadedCaption {
+        val scratch = storage.scratch(taskId, "cc.${captionKey(track.languageCode, track.isAsr)}.vtt")
         scratch.delete() // tiny file — always refetch whole rather than resume a partial
         val url = track.baseUrl + (if ('?' in track.baseUrl) "&" else "?") + "fmt=vtt"
         val response = client.execute(RequestBuilder().url(url).header("user-agent", userAgent).get().build())
         try {
             if (!response.isSuccessful) throw IOException("caption ${track.languageCode} HTTP ${response.code}")
             val bytes = response.body.byteString()
-            scratch.appendSink().use { sink ->
-                if (asSrt) sink.writeUtf8(VttToSrt.convert(bytes.utf8())) else sink.write(bytes)
-                sink.flush()
-            }
+            scratch.appendSink().use { sink -> sink.write(bytes); sink.flush() }
         } finally {
             response.close()
         }

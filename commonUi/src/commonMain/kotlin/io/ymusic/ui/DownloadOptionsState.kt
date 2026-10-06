@@ -28,7 +28,6 @@ private object LastDownloadChoice {
     var audioFormat = DownloadFormat.M4A
     var container = DownloadFormat.VIDEO_MP4
     var height = 1080
-    var sidecar = false
 }
 
 /**
@@ -53,7 +52,6 @@ internal class DownloadOptionsState(
     var height by mutableStateOf<Int?>(null)
     var audioTrackId by mutableStateOf<String?>(null)
     var captions by mutableStateOf<Set<String>>(emptySet())
-    var sidecar by mutableStateOf(LastDownloadChoice.sidecar)
     var fileName by mutableStateOf(DownloadFileNames.fromTitle(video.title).ifEmpty { video.id })
 
     val hasVideo: Boolean get() = options?.video?.isNotEmpty() == true
@@ -62,8 +60,8 @@ internal class DownloadOptionsState(
 
     val extension: String get() = "." + format.fileExtension
 
-    /** MP3 can't embed captions, so they always go beside it. */
-    val captionsAsSidecar: Boolean get() = format == DownloadFormat.MP3 || sidecar
+    /** Captions are muxed into the file: not into MP3 (no subtitle tracks), and not without ffmpeg (iOS). */
+    val captionsSupported: Boolean get() = format != DownloadFormat.MP3 && downloads.ffmpegAvailable
 
     val selectedVideo: VideoOption? get() = options?.video?.firstOrNull { it.height == height }
 
@@ -103,7 +101,6 @@ internal class DownloadOptionsState(
         LastDownloadChoice.audioFormat = audioFormat
         LastDownloadChoice.container = container
         height?.let { LastDownloadChoice.height = it }
-        LastDownloadChoice.sidecar = sidecar
         val opts = options
         return DownloadRequest(
             videoId = video.id,
@@ -115,8 +112,7 @@ internal class DownloadOptionsState(
             fileName = DownloadFileNames.finalize(fileName).ifEmpty { null },
             audioTrackId = audioTrackId?.takeIf { opts?.audioTracks?.isNotEmpty() == true },
             captions = CaptionChoice(
-                languages = opts?.captions?.map { it.key }?.filter { it in captions }.orEmpty(),
-                sidecar = captionsAsSidecar,
+                if (captionsSupported) opts?.captions?.map { it.key }?.filter { it in captions }.orEmpty() else emptyList(),
             ),
         )
     }

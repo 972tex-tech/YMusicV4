@@ -280,9 +280,6 @@
     <string name="download_audio_track">المسار الصوتي</string>
     <string name="download_captions">الترجمة</string>
     <string name="download_captions_off">إيقاف</string>
-    <string name="download_captions_in_file">%1$s · داخل الملف</string>
-    <string name="download_captions_srt">%1$s · ملف ‎.srt</string>
-    <string name="download_mp3_captions_note">لا يمكن لملف MP3 أن يحتوي على الترجمة — تُحفظ بجانب الأغنية كملفات ‎.srt.</string>
     <string name="download_save_to">الحفظ في</string>
     <string name="download_location_not_set">غير محدد</string>
     <string name="download_action">تنزيل</string>
@@ -296,9 +293,6 @@
     <string name="download_loading">جارٍ تحميل التنسيقات…</string>
     <string name="download_failed">تعذّر تحميل التنسيقات (%1$s)</string>
     <string name="download_subtitles">الترجمات</string>
-    <string name="download_embed">تضمين في الملف</string>
-    <string name="download_separate_srt">ملفات ‎.srt منفصلة</string>
-    <string name="download_srt_toggle">الحفظ كملفات ‎.srt</string>
     <string name="download_container">الحاوية</string>
     <string name="download_mp4_note">يعمل MP4 على كل الأجهزة</string>
     <string name="download_added">تمت الإضافة إلى التنزيلات</string>

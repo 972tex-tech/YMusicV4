@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
@@ -25,7 +24,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Headphones
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Subtitles
@@ -43,8 +41,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -78,9 +74,7 @@ import io.ymusic.ui.resources.download_action_detail
 import io.ymusic.ui.resources.download_audio_only
 import io.ymusic.ui.resources.download_audio_track
 import io.ymusic.ui.resources.download_captions
-import io.ymusic.ui.resources.download_captions_in_file
 import io.ymusic.ui.resources.download_captions_off
-import io.ymusic.ui.resources.download_captions_srt
 import io.ymusic.ui.resources.download_down_to
 import io.ymusic.ui.resources.download_edit_name
 import io.ymusic.ui.resources.download_failed
@@ -92,14 +86,12 @@ import io.ymusic.ui.resources.download_loading
 import io.ymusic.ui.resources.download_location_not_set
 import io.ymusic.ui.resources.download_m4a_detail
 import io.ymusic.ui.resources.download_more_qualities
-import io.ymusic.ui.resources.download_mp3_captions_note
 import io.ymusic.ui.resources.download_mp3_detail
 import io.ymusic.ui.resources.download_name_empty
 import io.ymusic.ui.resources.download_quality
 import io.ymusic.ui.resources.download_rename
 import io.ymusic.ui.resources.download_save
 import io.ymusic.ui.resources.download_save_to
-import io.ymusic.ui.resources.download_srt_toggle
 import io.ymusic.ui.resources.download_video
 import io.ymusic.ui.resources.download_webm_detail
 import io.ymusic.ui.resources.retry
@@ -153,11 +145,10 @@ internal fun DownloadSheet(
                             val name = options.audioTracks.firstOrNull { it.id == state.audioTrackId }?.name.orEmpty()
                             OptionRow(Icons.Outlined.RecordVoiceOver, stringResource(Res.string.download_audio_track), name) { pickingTrack = true }
                         }
-                        if (options.captions.isNotEmpty()) {
+                        if (options.captions.isNotEmpty() && state.captionsSupported) {
                             OptionRow(Icons.Outlined.Subtitles, stringResource(Res.string.download_captions), captionSummary(state)) {
                                 pickingCaptions = true
                             }
-                            if (state.format == DownloadFormat.MP3 && state.captions.isNotEmpty()) Mp3CaptionNote()
                         }
                         OptionRow(
                             Icons.Outlined.Folder,
@@ -408,28 +399,12 @@ private fun OptionRow(icon: ImageVector, title: String, value: String, onClick: 
     }
 }
 
-/** "English · in file", "2 languages · .srt file", "Off". */
+/** "English, Vietnamese" or "Off". */
 @Composable
 internal fun captionSummary(state: DownloadOptionsState): String {
     val picked = state.options?.captions.orEmpty().filter { it.key in state.captions }
     if (picked.isEmpty()) return stringResource(Res.string.download_captions_off)
-    val names = picked.joinToString(", ") { it.name }
-    return if (state.captionsAsSidecar) {
-        stringResource(Res.string.download_captions_srt, names)
-    } else {
-        stringResource(Res.string.download_captions_in_file, names)
-    }
-}
-
-@Composable
-internal fun Mp3CaptionNote() {
-    Row(
-        Modifier.padding(bottom = DesignSpacing.Space8),
-        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
-    ) {
-        Icon(Icons.Outlined.Info, null, Modifier.size(14.dp).padding(top = DesignSpacing.Space2), tint = DesignColors.InkSecondary)
-        Text(stringResource(Res.string.download_mp3_captions_note), style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary, lineHeight = 17.sp))
-    }
+    return picked.joinToString(", ") { it.name }
 }
 
 @Composable
@@ -555,25 +530,6 @@ private fun CaptionsDialog(state: DownloadOptionsState, onDone: () -> Unit) {
                         Text(track.name, style = TextStyle(fontSize = 15.sp, color = DesignColors.Ink))
                     }
                 }
-                Spacer(Modifier.height(DesignSpacing.Space8))
-                val forced = state.format == DownloadFormat.MP3
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .toggleable(value = state.captionsAsSidecar, enabled = !forced, role = Role.Switch) { state.sidecar = it }
-                        .padding(vertical = DesignSpacing.Space8),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(stringResource(Res.string.download_srt_toggle), Modifier.weight(1f), style = TextStyle(fontSize = 15.sp, color = DesignColors.Ink))
-                    Spacer(Modifier.width(DesignSpacing.Space16))
-                    Switch(
-                        checked = state.captionsAsSidecar,
-                        onCheckedChange = null,
-                        enabled = !forced,
-                        colors = SwitchDefaults.colors(checkedTrackColor = DesignColors.Accent),
-                    )
-                }
-                if (forced) Mp3CaptionNote()
             }
         },
         confirmButton = { TextButton(onClick = onDone) { Text(stringResource(Res.string.dialog_ok_done), color = DesignColors.Accent) } },
