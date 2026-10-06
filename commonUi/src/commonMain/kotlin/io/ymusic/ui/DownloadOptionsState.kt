@@ -51,7 +51,8 @@ internal class DownloadOptionsState(
     var container by mutableStateOf(LastDownloadChoice.container)
     var height by mutableStateOf<Int?>(null)
     var audioTrackId by mutableStateOf<String?>(null)
-    var captions by mutableStateOf<Set<String>>(emptySet())
+    /** The one caption track to include ([CaptionOption.key]); null = none. */
+    var caption by mutableStateOf<String?>(null)
     var fileName by mutableStateOf(DownloadFileNames.fromTitle(video.title).ifEmpty { video.id })
 
     val hasVideo: Boolean get() = options?.video?.isNotEmpty() == true
@@ -82,7 +83,7 @@ internal class DownloadOptionsState(
             if (probed.audio.none { it.format == audioFormat }) audioFormat = probed.audio.first().format
             height = pickHeight(probed.video, LastDownloadChoice.height)
             audioTrackId = probed.audioTracks.firstOrNull { it.isDefault }?.id ?: probed.audioTracks.firstOrNull()?.id
-            captions = defaultCaptions(probed.captions)
+            caption = defaultCaption(probed.captions)
             options = probed
         } catch (c: CancellationException) {
             throw c
@@ -90,10 +91,6 @@ internal class DownloadOptionsState(
             log?.fork("download-options", mapOf("videoId" to video.id))?.log(Logger.Level.WARN, "probe failed", e)
             errorCode = e.codedError()?.code ?: "E70043"
         }
-    }
-
-    fun toggleCaption(key: String) {
-        captions = if (key in captions) captions - key else captions + key
     }
 
     fun request(): DownloadRequest {
@@ -112,7 +109,7 @@ internal class DownloadOptionsState(
             fileName = DownloadFileNames.finalize(fileName).ifEmpty { null },
             audioTrackId = audioTrackId?.takeIf { opts?.audioTracks?.isNotEmpty() == true },
             captions = CaptionChoice(
-                if (captionsSupported) opts?.captions?.map { it.key }?.filter { it in captions }.orEmpty() else emptyList(),
+                listOfNotNull(caption?.takeIf { key -> captionsSupported && opts?.captions?.any { it.key == key } == true }),
             ),
         )
     }
@@ -121,15 +118,13 @@ internal class DownloadOptionsState(
     private fun pickHeight(video: List<VideoOption>, preferred: Int): Int? =
         video.firstOrNull { it.height <= preferred }?.height ?: video.lastOrNull()?.height
 
-    /** The settings-preferred languages (manual tracks before auto-generated); the video's default track
-     *  when none match and the settings ask for it. */
-    private fun defaultCaptions(tracks: List<CaptionOption>): Set<String> {
+    /** The first settings-preferred language (a manual track before an auto-generated one); else the
+     *  video's default track when the settings ask for it. */
+    private fun defaultCaption(tracks: List<CaptionOption>): String? {
         val wanted = tracks.filter { it.languageCode in preferredCaptionLanguages || it.languageCode.substringBefore('-') in preferredCaptionLanguages }
-        val picked = wanted.filter { !it.isAsr }.ifEmpty { wanted }
-        if (picked.isNotEmpty()) return picked.map { it.key }.toSet()
-        if (!includeDefaultCaption) return emptySet()
-        val fallback = tracks.firstOrNull { it.isDefault } ?: tracks.firstOrNull { !it.isAsr } ?: tracks.firstOrNull()
-        return setOfNotNull(fallback?.key)
+        (wanted.firstOrNull { !it.isAsr } ?: wanted.firstOrNull())?.let { return it.key }
+        if (!includeDefaultCaption) return null
+        return (tracks.firstOrNull { it.isDefault } ?: tracks.firstOrNull { !it.isAsr } ?: tracks.firstOrNull())?.key
     }
 }
 

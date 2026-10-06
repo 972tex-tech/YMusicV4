@@ -16,11 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Headphones
@@ -31,9 +31,9 @@ import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,21 +61,24 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.download.AudioOption
+import io.ymusic.download.CaptionOption
 import io.ymusic.download.DownloadFileNames
 import io.ymusic.download.DownloadFormat
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.dialog_cancel
-import io.ymusic.ui.resources.dialog_ok_done
 import io.ymusic.ui.resources.download_action
 import io.ymusic.ui.resources.download_action_detail
 import io.ymusic.ui.resources.download_audio_only
 import io.ymusic.ui.resources.download_audio_track
+import io.ymusic.ui.resources.download_caption_translated
 import io.ymusic.ui.resources.download_captions
 import io.ymusic.ui.resources.download_captions_as_lyrics
 import io.ymusic.ui.resources.download_captions_off
+import io.ymusic.ui.resources.download_default_track
 import io.ymusic.ui.resources.download_down_to
 import io.ymusic.ui.resources.download_edit_name
 import io.ymusic.ui.resources.download_failed
@@ -118,8 +121,6 @@ internal fun DownloadSheet(
     onDismiss: () -> Unit,
 ) {
     var renaming by remember { mutableStateOf(false) }
-    var pickingTrack by remember { mutableStateOf(false) }
-    var pickingCaptions by remember { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -142,14 +143,19 @@ internal fun DownloadSheet(
                     if (state.hasVideo) TypeSegments(state)
                     if (state.hasVideo && !state.audioOnly) QualityGrid(state) else AudioFormats(state, options.audio)
                     Column {
-                        if (options.audioTracks.isNotEmpty()) {
-                            val name = options.audioTracks.firstOrNull { it.id == state.audioTrackId }?.name.orEmpty()
-                            OptionRow(Icons.Outlined.RecordVoiceOver, stringResource(Res.string.download_audio_track), name) { pickingTrack = true }
-                        }
+                        DropdownOptionRow(
+                            Icons.Outlined.RecordVoiceOver,
+                            stringResource(Res.string.download_audio_track),
+                            audioTrackLabel(state),
+                            audioTrackChoices(state),
+                        )
                         if (options.captions.isNotEmpty() && state.captionsSupported) {
-                            OptionRow(Icons.Outlined.Subtitles, stringResource(Res.string.download_captions), captionSummary(state)) {
-                                pickingCaptions = true
-                            }
+                            DropdownOptionRow(
+                                Icons.Outlined.Subtitles,
+                                stringResource(Res.string.download_captions),
+                                captionSummary(state),
+                                captionChoices(state),
+                            )
                         }
                         OptionRow(
                             Icons.Outlined.Folder,
@@ -164,8 +170,6 @@ internal fun DownloadSheet(
         }
     }
     if (renaming) RenameDialog(state, onDone = { renaming = false })
-    if (pickingTrack) AudioTrackDialog(state, onDone = { pickingTrack = false })
-    if (pickingCaptions) CaptionsDialog(state, onDone = { pickingCaptions = false })
 }
 
 @Composable
@@ -383,6 +387,21 @@ internal fun DownloadFormat.detail(): String = when (this) {
     DownloadFormat.VIDEO_WEBM, DownloadFormat.VIDEO_MP4 -> ""
 }
 
+/** An [OptionRow] that opens a dropdown of [choices] anchored under it. */
+@Composable
+private fun DropdownOptionRow(icon: ImageVector, title: String, value: String, choices: List<Choice>) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        OptionRow(icon, title, value) { open = true }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            offset = DpOffset(x = DesignSpacing.Space48, y = 0.dp),
+            containerColor = DesignColors.Surface,
+        ) { ChoiceMenuItems(choices) { open = false } }
+    }
+}
+
 @Composable
 private fun OptionRow(icon: ImageVector, title: String, value: String, onClick: () -> Unit) {
     Row(
@@ -400,13 +419,57 @@ private fun OptionRow(icon: ImageVector, title: String, value: String, onClick: 
     }
 }
 
-/** "English, Vietnamese", "English · as lyrics" (MP3), or "Off". */
+/** "English", "English · as lyrics" (MP3), or "Off". */
 @Composable
 internal fun captionSummary(state: DownloadOptionsState): String {
-    val picked = state.options?.captions.orEmpty().filter { it.key in state.captions }
-    if (picked.isEmpty()) return stringResource(Res.string.download_captions_off)
-    val names = picked.joinToString(", ") { it.name }
-    return if (state.format == DownloadFormat.MP3) stringResource(Res.string.download_captions_as_lyrics, names) else names
+    val name = state.options?.captions?.firstOrNull { it.key == state.caption }?.displayName()
+        ?: return stringResource(Res.string.download_captions_off)
+    return if (state.format == DownloadFormat.MP3) stringResource(Res.string.download_captions_as_lyrics, name) else name
+}
+
+/** One pickable entry of an options dropdown. */
+internal class Choice(val label: String, val selected: Boolean, val pick: () -> Unit)
+
+/** The chosen audio track's name — "Default" when the video has a single track. */
+@Composable
+internal fun audioTrackLabel(state: DownloadOptionsState): String =
+    state.options?.audioTracks?.firstOrNull { it.id == state.audioTrackId }?.name
+        ?: stringResource(Res.string.download_default_track)
+
+@Composable
+internal fun audioTrackChoices(state: DownloadOptionsState): List<Choice> {
+    val tracks = state.options?.audioTracks.orEmpty()
+    if (tracks.isEmpty()) return listOf(Choice(stringResource(Res.string.download_default_track), selected = true) {})
+    return tracks.map { track -> Choice(track.name, track.id == state.audioTrackId) { state.audioTrackId = track.id } }
+}
+
+@Composable
+internal fun captionChoices(state: DownloadOptionsState): List<Choice> =
+    listOf(Choice(stringResource(Res.string.download_captions_off), state.caption == null) { state.caption = null }) +
+        state.options?.captions.orEmpty().map { track -> Choice(track.displayName(), track.key == state.caption) { state.caption = track.key } }
+
+/** The track's name, marked when it is one of YouTube's auto-translations. */
+@Composable
+internal fun CaptionOption.displayName(): String =
+    if (isTranslated) stringResource(Res.string.download_caption_translated, name) else name
+
+/** The menu items for [choices], the selected one checked. */
+@Composable
+internal fun ChoiceMenuItems(choices: List<Choice>, close: () -> Unit) {
+    choices.forEach { choice ->
+        DropdownMenuItem(
+            text = { Text(choice.label, color = DesignColors.Ink) },
+            trailingIcon = if (choice.selected) {
+                { Icon(Icons.Default.Check, null, Modifier.size(18.dp), tint = DesignColors.Accent) }
+            } else {
+                null
+            },
+            onClick = {
+                choice.pick()
+                close()
+            },
+        )
+    }
 }
 
 @Composable
@@ -475,65 +538,5 @@ internal fun RenameDialog(state: DownloadOptionsState, onDone: () -> Unit) {
             ) { Text(stringResource(Res.string.download_save), color = if (blank) DesignColors.InkFaint else DesignColors.Accent) }
         },
         dismissButton = { TextButton(onClick = onDone) { Text(stringResource(Res.string.dialog_cancel), color = DesignColors.InkSoft) } },
-    )
-}
-
-@Composable
-private fun AudioTrackDialog(state: DownloadOptionsState, onDone: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDone,
-        containerColor = DesignColors.Surface,
-        title = { Text(stringResource(Res.string.download_audio_track), color = DesignColors.Ink) },
-        text = {
-            Column {
-                state.options?.audioTracks.orEmpty().forEach { track ->
-                    val selected = track.id == state.audioTrackId
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .selectable(selected = selected, role = Role.RadioButton) {
-                                state.audioTrackId = track.id
-                                onDone()
-                            }
-                            .padding(vertical = DesignSpacing.Space8),
-                        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = selected, onClick = null, colors = RadioButtonDefaults.colors(selectedColor = DesignColors.Accent))
-                        Text(track.name, style = TextStyle(fontSize = 15.sp, color = DesignColors.Ink))
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDone) { Text(stringResource(Res.string.dialog_cancel), color = DesignColors.InkSoft) } },
-    )
-}
-
-@Composable
-private fun CaptionsDialog(state: DownloadOptionsState, onDone: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDone,
-        containerColor = DesignColors.Surface,
-        title = { Text(stringResource(Res.string.download_captions), color = DesignColors.Ink) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                state.options?.captions.orEmpty().forEach { track ->
-                    val checked = track.key in state.captions
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .toggleable(value = checked, role = Role.Checkbox) { state.toggleCaption(track.key) }
-                            .padding(vertical = DesignSpacing.Space4),
-                        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(checked = checked, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = DesignColors.Accent))
-                        Text(track.name, style = TextStyle(fontSize = 15.sp, color = DesignColors.Ink))
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDone) { Text(stringResource(Res.string.dialog_ok_done), color = DesignColors.Accent) } },
     )
 }

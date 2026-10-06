@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -38,8 +37,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -216,36 +213,15 @@ private fun TrackRows(state: DownloadOptionsState) {
     TrackRow(Icons.Outlined.InsertDriveFile, stringResource(Res.string.download_format)) {
         FormatDropdown(state)
     }
-    if (options.audioTracks.isNotEmpty()) {
-        TrackRow(Icons.Outlined.VolumeUp, stringResource(Res.string.download_audio_language)) {
-            val current = options.audioTracks.firstOrNull { it.id == state.audioTrackId }?.name.orEmpty()
-            DropdownField(current) { close ->
-                options.audioTracks.forEach { track ->
-                    DropdownMenuItem(text = { Text(track.name) }, onClick = {
-                        state.audioTrackId = track.id
-                        close()
-                    })
-                }
-            }
-        }
+    TrackRow(Icons.Outlined.VolumeUp, stringResource(Res.string.download_audio_language)) {
+        val choices = audioTrackChoices(state)
+        DropdownField(audioTrackLabel(state)) { close -> ChoiceMenuItems(choices, close) }
     }
     if (options.captions.isNotEmpty() && state.captionsSupported) {
-        TrackRow(Icons.Outlined.Subtitles, stringResource(Res.string.download_subtitles), alignTop = true) {
-            Column(verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-                    options.captions.forEach { track ->
-                        FilterChip(
-                            selected = track.key in state.captions,
-                            onClick = { state.toggleCaption(track.key) },
-                            label = { Text(track.name) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = DesignColors.Accent.copy(alpha = 0.14f),
-                                selectedLabelColor = DesignColors.Ink,
-                                labelColor = DesignColors.InkSoft,
-                            ),
-                        )
-                    }
-                }
+        TrackRow(Icons.Outlined.Subtitles, stringResource(Res.string.download_subtitles), alignTop = state.format == DownloadFormat.MP3) {
+            Column(verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
+                val choices = captionChoices(state)
+                DropdownField(captionSummary(state)) { close -> ChoiceMenuItems(choices, close) }
                 if (state.format == DownloadFormat.MP3) {
                     Text(stringResource(Res.string.download_lyrics_note), style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary))
                 }
@@ -405,7 +381,7 @@ private fun summary(state: DownloadOptionsState): String {
         add(state.format.displayName())
         if (state.format.kind == DownloadKind.VIDEO) state.selectedVideo?.let { add(it.label()) }
         options.audioTracks.firstOrNull { it.id == state.audioTrackId }?.let { add(it.name) }
-        if (state.captions.isNotEmpty()) add(captionSummary(state))
+        if (state.caption != null && state.captionsSupported) add(captionSummary(state))
         state.selectedBytes?.let { add("≈ " + formatDownloadSize(it)) }
     }
     return parts.joinToString(" · ")

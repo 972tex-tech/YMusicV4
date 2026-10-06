@@ -299,4 +299,5 @@
     <string name="dialog_ok_done">Xong</string>
     <string name="download_captions_as_lyrics">%1$s · dạng lời bài hát</string>
     <string name="download_lyrics_note">MP3 lưu phụ đề dưới dạng lời bài hát, hiển thị trong trình phát hỗ trợ lời bài hát.</string>
+    <string name="download_caption_translated">%1$s (dịch tự động)</string>
 </resources>
