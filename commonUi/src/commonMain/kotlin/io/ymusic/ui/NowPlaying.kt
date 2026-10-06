@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -113,6 +114,7 @@ import io.ymusic.settings.flow
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.audio_only
 import io.ymusic.ui.resources.badge_live
+import io.ymusic.ui.resources.captions_auto_translate
 import io.ymusic.ui.resources.captions_off
 import io.ymusic.ui.resources.cd_captions
 import io.ymusic.ui.resources.cd_close
@@ -780,6 +782,17 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
     val config by player.config.collectAsState()
     if (captions.tracks.isEmpty()) return
     var open by remember { mutableStateOf(false) }
+    var translateOpen by remember { mutableStateOf(false) }
+    HoldVideoOverlay(open || translateOpen)
+    val (translations, tracks) = captions.tracks.partition { it.kind == AUTO_TRANSLATE_KIND }
+    fun isOn(track: io.ymusic.player.CaptionTrack) = config.captionVisible &&
+        (track.id == captions.selectedLanguage || track.languageCode == captions.selectedLanguage)
+    fun pick(track: io.ymusic.player.CaptionTrack) {
+        player.selectCaption(track.id)
+        player.setCaptionVisible(true)
+        open = false
+        translateOpen = false
+    }
     Box {
         ActionIcon(
             if (config.captionVisible) Icons.Default.ClosedCaption else Icons.Outlined.ClosedCaptionOff,
@@ -794,21 +807,43 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
                     text = { Text(if (off) "✓ ${stringResource(Res.string.captions_off)}" else stringResource(Res.string.captions_off)) },
                     onClick = { player.setCaptionVisible(false); open = false },
                 )
-                captions.tracks.forEach { t ->
-                    val on = config.captionVisible && (t.id == captions.selectedLanguage || t.languageCode == captions.selectedLanguage)
+                tracks.forEach { track ->
                     DropdownMenuItem(
-                        text = { Text(if (on) "✓ ${t.displayName}" else t.displayName) },
+                        text = { Text(if (isOn(track)) "✓ ${track.displayName}" else track.displayName) },
+                        onClick = { pick(track) },
+                    )
+                }
+                if (translations.isNotEmpty()) {
+                    val label = stringResource(Res.string.captions_auto_translate)
+                    val current = translations.firstOrNull { isOn(it) }
+                    DropdownMenuItem(
+                        text = { Text(if (current != null) "✓ $label · ${current.displayName}" else "$label ›") },
                         onClick = {
-                            player.selectCaption(t.id)
-                            player.setCaptionVisible(true)
                             open = false
+                            translateOpen = true
                         },
                     )
                 }
             }
         }
+        // ~150 languages: a lazy list, so opening it does not compose every row.
+        if (translateOpen) {
+            DropdownMenu(expanded = true, onDismissRequest = { translateOpen = false }) {
+                LazyColumn(Modifier.size(width = 240.dp, height = 360.dp)) {
+                    items(translations, key = { it.id }) { track ->
+                        DropdownMenuItem(
+                            text = { Text(if (isOn(track)) "✓ ${track.displayName}" else track.displayName) },
+                            onClick = { pick(track) },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
+
+/** Engine track kind for YouTube auto-translate languages (clones of a source track, one per language). */
+private const val AUTO_TRANSLATE_KIND = "asrt"
 
 /** "Failed (code)" + a Retry action when the error is retryable. */
 @Composable

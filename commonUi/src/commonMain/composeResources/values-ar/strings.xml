@@ -111,6 +111,7 @@
     <string name="audio_only">صوت فقط</string>
     <string name="video_quality_auto">تلقائي</string>
     <string name="captions_off">إيقاف الترجمة</string>
+    <string name="captions_auto_translate">ترجمة تلقائية</string>
     <string name="up_next">التالي في القائمة</string>
     <string name="remove_from_queue">إزالة من قائمة الانتظار</string>
     <string name="sleep_off_remaining">إيقاف (متبقٍ %1$s)</string>

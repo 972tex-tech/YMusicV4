@@ -161,8 +161,6 @@ export function captionTrackRows(): Record<string, unknown>[] {
   const rows: Record<string, unknown>[] = [];
   for (let i = 0; i < tracks.length; i++) {
     const t = tracks[i]!;
-    /* Auto-translate clones (~150 langs) freeze the desktop CC menu. */
-    if (t.kind === "asrt") continue;
     rows.push({
       "vssId": t.vssId,
       "languageCode": t.languageCode,
