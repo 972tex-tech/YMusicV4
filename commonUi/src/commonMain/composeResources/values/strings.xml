@@ -412,4 +412,13 @@
     <string name="playlist_select_library">Select a Library playlist</string>
     <string name="playlist_target_none">None</string>
     <string name="playlist_target_create">+ Create</string>
+    <string name="redownload_title">Already downloaded</string>
+    <string name="redownload_message">“%1$s” is already in your Library. Download it again as a new file?</string>
+    <string name="redownload_confirm">Download again</string>
+    <string name="playlist_skip_downloaded">Skip downloaded</string>
+    <string name="playlist_download_all">Download all</string>
+    <plurals name="playlist_redownload_message">
+        <item quantity="one">%1$d of the selected videos is already in your Library.</item>
+        <item quantity="other">%1$d of the selected videos are already in your Library.</item>
+    </plurals>
 </resources>

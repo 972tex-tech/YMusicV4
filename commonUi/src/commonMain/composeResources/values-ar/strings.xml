@@ -331,4 +331,13 @@
     <string name="playlist_select_library">اختر قائمة تشغيل من المكتبة</string>
     <string name="playlist_target_none">لا شيء</string>
     <string name="playlist_target_create">+ إنشاء</string>
+    <string name="redownload_title">تم التنزيل مسبقًا</string>
+    <string name="redownload_message">“%1$s” موجود بالفعل في مكتبتك. هل تريد تنزيله مرة أخرى كملف جديد؟</string>
+    <string name="redownload_confirm">تنزيل مرة أخرى</string>
+    <string name="playlist_skip_downloaded">تخطي المنزَّل</string>
+    <string name="playlist_download_all">تنزيل الكل</string>
+    <plurals name="playlist_redownload_message">
+        <item quantity="one">فيديو واحد من المحددة موجود بالفعل في مكتبتك.</item>
+        <item quantity="other">%1$d من الفيديوهات المحددة موجودة بالفعل في مكتبتك.</item>
+    </plurals>
 </resources>

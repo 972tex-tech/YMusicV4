@@ -4,9 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -91,12 +93,15 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
     LaunchedEffect(state) { state.load(log) }
     val locationName = rememberDownloadLocationName(graph)
     val added = stringResource(Res.string.download_added)
-    val onDownload = {
+    val start = {
         if (state.saveAsQuick) graph.quickDownload.value = state.quickPreset()
         downloads.enqueue(state.request())
         snackbar(added)
         onDismiss()
     }
+    val alreadyDownloaded = video.id in LocalAvailableOffline.current
+    var confirming by remember(video.id) { mutableStateOf(false) }
+    val onDownload = { if (alreadyDownloaded) confirming = true else start() }
     val onPickLocation: () -> Unit = { scope.launch { pickDownloadFolder(graph) } }
     val onRetry: () -> Unit = { scope.launch { state.load(log) } }
     val window = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.toSize().toDpSize() }
@@ -105,4 +110,5 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
     } else {
         DownloadDialogDesktop(state, locationName, onPickLocation, onRetry, onDownload, onDismiss)
     }
+    if (confirming) RedownloadDialog(video.title, onConfirm = start, onDismiss = { confirming = false })
 }

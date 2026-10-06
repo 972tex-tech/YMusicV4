@@ -323,4 +323,12 @@
     <string name="playlist_select_library">Chọn danh sách phát Thư viện</string>
     <string name="playlist_target_none">Không</string>
     <string name="playlist_target_create">+ Tạo mới</string>
+    <string name="redownload_title">Đã tải trước đó</string>
+    <string name="redownload_message">“%1$s” đã có trong Thư viện. Tải lại thành một tệp mới?</string>
+    <string name="redownload_confirm">Tải lại</string>
+    <string name="playlist_skip_downloaded">Bỏ qua mục đã tải</string>
+    <string name="playlist_download_all">Tải tất cả</string>
+    <plurals name="playlist_redownload_message">
+        <item quantity="other">%1$d video đã chọn đã có trong Thư viện.</item>
+    </plurals>
 </resources>

@@ -3,6 +3,10 @@ package io.ymusic.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import io.ymusic.download.CaptionChoice
 import io.ymusic.download.DownloadFileNames
 import io.ymusic.download.DownloadFormat
@@ -62,6 +66,12 @@ internal fun QuickDownloadHost(graph: AppGraph, pending: YtFeedItem?, onDone: ()
     val preset = graph.quickDownload.collectAsState().value
     val snackbar = LocalSnackbar.current
     val added = stringResource(Res.string.download_added)
+    val alreadyDownloaded = video.id in LocalAvailableOffline.current
+    var confirmed by remember(video.id) { mutableStateOf(false) }
+    if (alreadyDownloaded && !confirmed) {
+        RedownloadDialog(video.title, onConfirm = { confirmed = true }, onDismiss = onDone)
+        return
+    }
     LaunchedEffect(video) {
         val gated = graph.mediaStore != null && graph.libraryFolderPicker != null
         if (preset != null && (!gated || hasUsableDownloadLocation(graph) || pickDownloadFolder(graph))) {

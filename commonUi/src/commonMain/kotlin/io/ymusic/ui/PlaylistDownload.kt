@@ -133,6 +133,20 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
     val scope = rememberCoroutineScope()
     val snackbar = LocalSnackbar.current
     val count = videos.count { it.id in session.checked && !it.live }
+    var confirming by remember { mutableStateOf<List<YtFeedItem>?>(null) }
+    val startDownload: (List<YtFeedItem>) -> Unit = { picked ->
+        val preset = session.preset
+        scope.launch {
+            val gated = graph.mediaStore != null && graph.libraryFolderPicker != null
+            if (gated && !hasUsableDownloadLocation(graph) && !pickDownloadFolder(graph)) return@launch
+            picked.forEach { downloads.enqueue(preset.request(it)) }
+            val target = session.targetPlaylist
+            val store = graph.mediaStore
+            if (target != null && store != null) store.addCodesToPlaylist(target.id, picked.map { it.id })
+            snackbar(getPluralString(Res.plurals.playlist_added, picked.size, picked.size))
+            onBack()
+        }
+    }
     val locationName = rememberDownloadLocationName(graph)
 
     Column(Modifier.fillMaxSize().background(DesignColors.Surface)) {
@@ -170,17 +184,7 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
             Button(
                 onClick = {
                     val picked = videos.filter { it.id in session.checked && !it.live }
-                    val preset = session.preset
-                    scope.launch {
-                        val gated = graph.mediaStore != null && graph.libraryFolderPicker != null
-                        if (gated && !hasUsableDownloadLocation(graph) && !pickDownloadFolder(graph)) return@launch
-                        picked.forEach { downloads.enqueue(preset.request(it)) }
-                        val target = session.targetPlaylist
-                        val store = graph.mediaStore
-                        if (target != null && store != null) store.addCodesToPlaylist(target.id, picked.map { it.id })
-                        snackbar(getPluralString(Res.plurals.playlist_added, picked.size, picked.size))
-                        onBack()
-                    }
+                    if (picked.any { it.id in offline }) confirming = picked else startDownload(picked)
                 },
                 enabled = count > 0,
                 modifier = Modifier.widthIn(max = CONTENT_MAX_WIDTH).fillMaxWidth().height(48.dp),
@@ -190,6 +194,20 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
                 Text(pluralStringResource(Res.plurals.playlist_download_action, count, count), fontWeight = FontWeight.Bold)
             }
         }
+    }
+    confirming?.let { picked ->
+        PlaylistRedownloadDialog(
+            count = picked.count { it.id in offline },
+            onSkip = {
+                confirming = null
+                picked.filter { it.id !in offline }.takeIf { it.isNotEmpty() }?.let(startDownload)
+            },
+            onAll = {
+                confirming = null
+                startDownload(picked)
+            },
+            onDismiss = { confirming = null },
+        )
     }
 }
 
