@@ -5,7 +5,7 @@ import { JsEngineErrorImpl } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
 import { executeWithCookies } from "../yt/cookies";
 import { DESKTOP_UA } from "../yt/session";
-import { activeHtmlMedia } from "../../protocol/mse";
+import { activeHtmlMedia, onActiveHtmlMedia } from "../../protocol/mse";
 
 type CaptionTrack = {
   vssId: string;
@@ -453,6 +453,35 @@ async function emitWindow(): Promise<void> {
   });
 }
 
+/* The session can open before the first load creates the media element; it follows whichever is active. */
+let boundMedia: ReturnType<typeof activeHtmlMedia> = null;
+
+function bindMedia(): void {
+  const el = activeHtmlMedia();
+  if (!sessionSink || el === boundMedia) return;
+  unbindMedia();
+  if (!el) return;
+  el["addEventListener"]("timeupdate", onCaptionSeek);
+  el["addEventListener"]("play", onCaptionPlay);
+  el["addEventListener"]("pause", onCaptionPause);
+  boundMedia = el;
+}
+
+function unbindMedia(): void {
+  const el = boundMedia;
+  if (!el) return;
+  boundMedia = null;
+  el["removeEventListener"]("timeupdate", onCaptionSeek);
+  el["removeEventListener"]("play", onCaptionPlay);
+  el["removeEventListener"]("pause", onCaptionPause);
+}
+
+onActiveHtmlMedia(function () {
+  if (!sessionSink) return;
+  bindMedia();
+  void emitWindow().then(armTimer);
+});
+
 function mediaPaused(): boolean {
   const v = activeHtmlMedia();
   return !v || !!v["paused"];
@@ -599,12 +628,7 @@ export async function runCaptionSession(pipe: Pipe): Promise<void> {
   lastLinesJson = "";
   try {
     await reloadCues();
-    const v = activeHtmlMedia();
-    if (v) {
-      v["addEventListener"]("timeupdate", onCaptionSeek);
-      v["addEventListener"]("play", onCaptionPlay);
-      v["addEventListener"]("pause", onCaptionPause);
-    }
+    bindMedia();
     try {
       const r = pipe.source.readJsonObject();
       if (r && typeof (r as Promise<unknown>).then === "function") await r;
@@ -612,12 +636,7 @@ export async function runCaptionSession(pipe: Pipe): Promise<void> {
       /* host closed the session */
     }
   } finally {
-    const el = activeHtmlMedia();
-    if (el) {
-      el["removeEventListener"]("timeupdate", onCaptionSeek);
-      el["removeEventListener"]("play", onCaptionPlay);
-      el["removeEventListener"]("pause", onCaptionPause);
-    }
+    unbindMedia();
     stopTimer();
     fetchGen++;
     cues = [];

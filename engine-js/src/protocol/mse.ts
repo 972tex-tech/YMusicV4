@@ -1260,12 +1260,12 @@ function assignMediaSrc(el: HTMLMediaElement, url: string): void {
 function attachHtmlMedia(el: object): void {
   const rec0 = el as Record<string, unknown>;
   if (rec0["_mseAttached"]) {
-    activeMedia = el as HTMLMediaElement;
+    setActiveMedia(el as HTMLMediaElement);
     return;
   }
   rec0["_mseAttached"] = 1;
   initHtmlMedia(el as HTMLMediaElement);
-  activeMedia = el as HTMLMediaElement;
+  setActiveMedia(el as HTMLMediaElement);
   const proto = HTMLMediaElement.prototype as unknown as Record<string, unknown>;
   const methods = [
     "play",
@@ -1404,6 +1404,18 @@ export function installMseGlobals(): void {
 
 export function activeHtmlMedia(): HTMLMediaElement | null {
   return activeMedia;
+}
+
+let activeMediaListener: (() => void) | null = null;
+
+export function onActiveHtmlMedia(fn: (() => void) | null): void {
+  activeMediaListener = fn;
+}
+
+function setActiveMedia(el: HTMLMediaElement): void {
+  if (activeMedia === el) return;
+  activeMedia = el;
+  if (activeMediaListener) activeMediaListener();
 }
 
 /** SoundTouch pair: playbackRate (currentTime) + tempo (PCM stretch). */
