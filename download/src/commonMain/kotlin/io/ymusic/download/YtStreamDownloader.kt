@@ -39,9 +39,7 @@ internal fun captionsToDownload(
     preferredLanguage != null -> listOfNotNull(
         tracks.firstOrNull { it.languageCode.equals(preferredLanguage, ignoreCase = true) }
             ?: tracks.firstOrNull { sameLanguage(it.languageCode, preferredLanguage) }
-            ?: tracks.firstOrNull { it.isDefault }
-            ?: tracks.firstOrNull { !it.isAsr }
-            ?: tracks.firstOrNull(),
+            ?: tracks.firstOrNull { it.isDefault },
     )
     format == DownloadFormat.MP3 -> emptyList()
     else -> selectCaptions(tracks, pref)
@@ -50,7 +48,7 @@ internal fun captionsToDownload(
 /**
  * The caption tracks to download: those whose language matches a preference (exact or base-language,
  * e.g. `pt` matches `pt-BR`). If none match and [CaptionPreference.includeDefault] is set, fall back to
- * the video's default track (or the first non-ASR / first available). Empty when nothing applies.
+ * the video's default track — when it has one. Empty when nothing applies.
  */
 internal fun selectCaptions(tracks: List<CaptionTrack>, pref: CaptionPreference): List<CaptionTrack> {
     if (tracks.isEmpty()) return emptyList()
@@ -59,7 +57,7 @@ internal fun selectCaptions(tracks: List<CaptionTrack>, pref: CaptionPreference)
     }
     if (wanted.isNotEmpty()) return wanted
     return if (pref.includeDefault) {
-        listOfNotNull(tracks.firstOrNull { it.isDefault } ?: tracks.firstOrNull { !it.isAsr } ?: tracks.first())
+        listOfNotNull(tracks.firstOrNull { it.isDefault })
     } else {
         emptyList()
     }

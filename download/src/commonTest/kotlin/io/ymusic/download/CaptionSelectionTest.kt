@@ -48,10 +48,10 @@ class CaptionSelectionTest {
     }
 
     @Test
-    fun default_fallback_prefers_non_asr_when_no_flagged_default() {
+    fun no_flagged_default_selects_nothing() {
         val noDefault = listOf(track("fr", asr = true), track("es"))
         val picked = selectCaptions(noDefault, CaptionPreference(emptySet(), includeDefault = true))
-        assertEquals(listOf("es"), picked.map { it.languageCode }) // skips the ASR track
+        assertEquals(emptyList(), picked.map { it.languageCode }) // the video sets no default caption
     }
 
     @Test
