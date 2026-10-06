@@ -59,7 +59,8 @@ internal fun selectCaptions(tracks: List<CaptionTrack>, pref: CaptionPreference)
 /** One downloaded elementary media stream: its selected [format] and the scratch file it landed in. */
 class DownloadedStream(val format: AdaptiveFormat, val scratch: DownloadScratch)
 
-/** One downloaded caption track: the source metadata plus the scratch file (a `.vtt` document). */
+/** One downloaded caption track: the source metadata plus the scratch file (`.vtt`, or `.srt` for a
+ *  sidecar). */
 class DownloadedCaption(
     val languageCode: String,
     val isAsr: Boolean,
@@ -127,8 +128,9 @@ class YtStreamDownloader(
 
         // Captions are KB-scale; fetched after the media, whole (no range-resume), not folded into progress.
         // Best-effort: a caption that fails to download is logged and skipped — it must not fail the media.
+        val asSrt = task.format == DownloadFormat.MP3 || task.captions?.sidecar == true
         val captionFiles = captionPicks.mapNotNull { track ->
-            runCatching { downloadCaption(task.id, track) }
+            runCatching { downloadCaption(task.id, track, asSrt) }
                 .onFailure { log?.log(Logger.Level.WARN, "caption ${track.languageCode} failed: ${it.message}", it) }
                 .getOrNull()
         }
@@ -165,16 +167,21 @@ class YtStreamDownloader(
         return audio to video
     }
 
-    /** GET the caption's WebVTT into a scratch file. The baseUrl is already GET-ready (sig/n + pot). */
-    private suspend fun downloadCaption(taskId: String, track: CaptionTrack): DownloadedCaption {
-        val scratch = storage.scratch(taskId, "cc.${captionKey(track.languageCode, track.isAsr)}.vtt")
+    /** GET the caption's WebVTT into a scratch file — converted to SubRip when [asSrt] (a sidecar). The
+     *  baseUrl is already GET-ready (sig/n + pot). */
+    private suspend fun downloadCaption(taskId: String, track: CaptionTrack, asSrt: Boolean): DownloadedCaption {
+        val ext = if (asSrt) "srt" else "vtt"
+        val scratch = storage.scratch(taskId, "cc.${captionKey(track.languageCode, track.isAsr)}.$ext")
         scratch.delete() // tiny file — always refetch whole rather than resume a partial
         val url = track.baseUrl + (if ('?' in track.baseUrl) "&" else "?") + "fmt=vtt"
         val response = client.execute(RequestBuilder().url(url).header("user-agent", userAgent).get().build())
         try {
             if (!response.isSuccessful) throw IOException("caption ${track.languageCode} HTTP ${response.code}")
             val bytes = response.body.byteString()
-            scratch.appendSink().use { sink -> sink.write(bytes); sink.flush() }
+            scratch.appendSink().use { sink ->
+                if (asSrt) sink.writeUtf8(VttToSrt.convert(bytes.utf8())) else sink.write(bytes)
+                sink.flush()
+            }
         } finally {
             response.close()
         }

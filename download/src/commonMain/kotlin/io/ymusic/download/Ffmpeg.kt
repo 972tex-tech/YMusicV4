@@ -73,10 +73,6 @@ class Ffmpeg(
         onProgressUs: ((Long) -> Unit)? = null,
     ) = run(webmAudioArgs(input, output, copy, captions, metadata), onProgressUs)
 
-    /** WebVTT caption → SubRip. */
-    suspend fun vttToSrt(input: String, output: String) =
-        run(listOf("-i", input.ffSpec(), "-c:s", "subrip", "-f", "srt", output.ffSpec()))
-
     /** Mux VP9 video + Opus audio (+ any [captions], as WebVTT) into one WebM, stream-copying A/V. */
     suspend fun muxWebm(
         video: String,
@@ -161,7 +157,12 @@ internal fun webmAudioArgs(
     captions.forEach { add("-i"); add(it.path.ffSpec()) }
     add("-map"); add("0:a:0")
     captions.indices.forEach { add("-map"); add("${it + 1}:0") }
-    if (copy) { add("-c:a"); add("copy") } else { add("-c:a"); add("libopus"); add("-b:a"); add("160k") }
+    if (copy) {
+        add("-c:a"); add("copy")
+    } else {
+        // The shipped ffmpeg has no libopus; its native encoder is "experimental" and 48 kHz-only.
+        add("-c:a"); add("opus"); add("-strict"); add("-2"); add("-ar"); add("48000"); add("-b:a"); add("160k")
+    }
     if (captions.isNotEmpty()) { add("-c:s"); add("webvtt") }
     addAll(subtitleMetaArgs(captions))
     addAll(metaArgs(metadata))

@@ -73,7 +73,7 @@ class DownloadPipeline(
         if (task.format == DownloadFormat.M4A && ffmpeg == null) {
             val bytes = streams.audio.scratch.length()
             val uri = storage.publish(streams.audio.scratch, fileName, destinationFolder)
-            if (sidecarCaptions) publishSidecars(task.id, streams.captions, base, destinationFolder)
+            if (sidecarCaptions) publishSidecars(streams.captions, base, destinationFolder)
             storage.deleteScratch(task.id)
             return Result(uri, bytes, audioFmt, null)
         }
@@ -113,29 +113,17 @@ class DownloadPipeline(
         // 3. publish the final file (moved out of the scratch folder), then drop the task's whole scratch
         //    folder — elementary streams + captions in one delete.
         val uri = storage.publish(out, fileName, destinationFolder)
-        if (sidecarCaptions) publishSidecars(task.id, streams.captions, base, destinationFolder)
+        if (sidecarCaptions) publishSidecars(streams.captions, base, destinationFolder)
         storage.deleteScratch(task.id)
         return Result(uri, bytes, audioFmt, videoFmt)
     }
 
-    /** Each caption beside the media as `<stem>.<lang>.srt` (`.vtt` where there is no ffmpeg to convert).
+    /** Each caption beside the media as `<stem>.<lang>.srt` (already SubRip — see [YtStreamDownloader]).
      *  Best-effort like the caption download itself: a failed sidecar is logged, never fails the media. */
-    private suspend fun publishSidecars(
-        taskId: String,
-        captions: List<DownloadedCaption>,
-        base: String,
-        destinationFolder: String,
-    ) {
+    private suspend fun publishSidecars(captions: List<DownloadedCaption>, base: String, destinationFolder: String) {
         for (cc in captions) {
             try {
-                val ff = ffmpeg
-                if (ff != null) {
-                    val srt = storage.scratch(taskId, "cc.${captionKey(cc.languageCode, cc.isAsr)}.srt")
-                    ff.vttToSrt(cc.scratch.path, srt.path)
-                    storage.publish(srt, "$base.${cc.sidecarSuffix()}.srt", destinationFolder)
-                } else {
-                    storage.publish(cc.scratch, "$base.${cc.sidecarSuffix()}.vtt", destinationFolder)
-                }
+                storage.publish(cc.scratch, "$base.${cc.sidecarSuffix()}.srt", destinationFolder)
             } catch (c: CancellationException) {
                 throw c
             } catch (e: Exception) {
