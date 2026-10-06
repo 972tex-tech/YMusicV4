@@ -141,13 +141,15 @@ internal class DownloadOptionsState(
     private fun pickHeight(video: List<VideoOption>, preferred: Int): Int? =
         video.firstOrNull { it.height <= preferred }?.height ?: video.lastOrNull()?.height
 
-    /** The first settings-preferred language (a manual track before an auto-generated one); else the
-     *  video's default track when the settings ask for it. */
+    /** The first settings-preferred language among the video's own tracks (uploaded before
+     *  auto-generated); else the video's default caption when the settings ask for it; else Off. Never an
+     *  auto-translation — that is only ever a deliberate pick. */
     private fun defaultCaption(tracks: List<CaptionOption>): String? {
-        val wanted = tracks.filter { it.languageCode in preferredCaptionLanguages || it.languageCode.substringBefore('-') in preferredCaptionLanguages }
+        val own = tracks.filter { !it.isTranslated }
+        val wanted = own.filter { it.languageCode in preferredCaptionLanguages || it.languageCode.substringBefore('-') in preferredCaptionLanguages }
         (wanted.firstOrNull { !it.isAsr } ?: wanted.firstOrNull())?.let { return it.key }
         if (!includeDefaultCaption) return null
-        return (tracks.firstOrNull { it.isDefault } ?: tracks.firstOrNull { !it.isAsr } ?: tracks.firstOrNull())?.key
+        return own.firstOrNull { it.isDefault }?.key
     }
 }
 
