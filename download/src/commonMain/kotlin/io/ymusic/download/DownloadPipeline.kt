@@ -7,6 +7,8 @@ import io.ymusic.ytmedia.sabr.SabrStreamSpec
 import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
+import okio.buffer
+import okio.use
 
 /**
  * Resolves the SABR inputs for a video (player response + PO token). Implemented by the app shell
@@ -91,11 +93,14 @@ class DownloadPipeline(
 
         val audio = streams.audio.scratch
         val video = streams.video?.scratch
-        val out = storage.scratch(task.id, "out")
+        var out = storage.scratch(task.id, "out")
         val meta = task.tags()
         val subs = streams.captions.map { SubtitleInput(it.scratch.path, it.languageCode, it.name) }
         when (task.format) {
-            DownloadFormat.MP3 -> ff.toMp3(audio.path, out.path, meta, onFfProgress)
+            DownloadFormat.MP3 -> {
+                ff.toMp3(audio.path, out.path, meta, onFfProgress)
+                if (streams.captions.isNotEmpty()) out = withLyrics(task.id, out, streams.captions)
+            }
             DownloadFormat.M4A -> ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), captions = subs, metadata = meta, onProgressUs = onFfProgress)
             DownloadFormat.AUDIO_WEBM -> ff.toWebmAudio(audio.path, out.path, copy = audioFmt.mimeType.contains("webm"), captions = subs, metadata = meta, onProgressUs = onFfProgress)
             DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
@@ -108,6 +113,30 @@ class DownloadPipeline(
         val uri = storage.publish(out, fileName, destinationFolder)
         storage.deleteScratch(task.id)
         return Result(uri, bytes, audioFmt, videoFmt)
+    }
+
+    /** [mp3] with [captions] written into its tag as LRC lyrics — a new scratch, or [mp3] itself when there
+     *  is nothing to write or the tag can't take it. Best-effort like the captions themselves: a failure is
+     *  logged and the song still publishes, just without lyrics. */
+    private fun withLyrics(taskId: String, mp3: DownloadScratch, captions: List<DownloadedCaption>): DownloadScratch {
+        val tagged = storage.scratch(taskId, "out-lyrics")
+        try {
+            val lyrics = captions.mapNotNull { cc ->
+                val lrc = cc.scratch.source().buffer().use { VttToLrc.convert(it.readUtf8()) }
+                lrc.takeIf { it.isNotEmpty() }?.let { Lyrics(iso639_2(cc.languageCode), cc.name, it) }
+            }
+            if (lyrics.isEmpty()) return mp3
+            tagged.delete()
+            val written = mp3.source().buffer().use { source ->
+                tagged.appendSink().use { sink -> Id3Lyrics.insert(source, sink, lyrics) }
+            }
+            if (written) return tagged
+            logger?.log(Logger.Level.WARN, "mp3 tag can't take lyrics; publishing without them")
+        } catch (e: Exception) {
+            logger?.log(Logger.Level.WARN, "embedding lyrics failed; publishing without them", e)
+        }
+        tagged.delete()
+        return mp3
     }
 
     /** Container tags embedded into the finished file. The videoId goes in the standard `composer` field

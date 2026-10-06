@@ -8,6 +8,7 @@ import okio.FileSystem
 import okio.IOException
 import okio.Path
 import okio.Path.Companion.toPath
+import okio.Source
 import okio.buffer
 import okio.use
 
@@ -113,6 +114,8 @@ private class DefaultDownloadScratch(
         if (fileSystem.exists(file)) fileSystem.metadata(file).size ?: 0L else 0L
 
     override fun appendSink(): BufferedSink = fileSystem.appendingSink(file).buffer()
+
+    override fun source(): Source = fileSystem.source(file)
 
     override fun delete() = fileSystem.delete(file, mustExist = false)
 

@@ -39,7 +39,8 @@ class Ffmpeg(
     // The output container is named explicitly with `-f` so it doesn't depend on the output filename's
     // extension — scratch/publish names (and content:// targets) may have none.
 
-    /** opus/webm/m4a → mp3 via libmp3lame (VBR ~q2, drops any cover/video stream). */
+    /** opus/webm/m4a → mp3 via libmp3lame (VBR ~q2, drops any cover/video stream), tagged ID3v2.3 — the
+     *  version [Id3Lyrics] extends and the one most players read. */
     suspend fun toMp3(
         input: String,
         output: String,
@@ -47,7 +48,7 @@ class Ffmpeg(
         onProgressUs: ((Long) -> Unit)? = null,
     ) = run(
         listOf("-i", input.ffSpec(), "-vn", "-c:a", "libmp3lame", "-q:a", "2") + metaArgs(metadata) +
-            listOf("-f", "mp3", output.ffSpec()),
+            listOf("-id3v2_version", "3", "-f", "mp3", output.ffSpec()),
         onProgressUs,
     )
 

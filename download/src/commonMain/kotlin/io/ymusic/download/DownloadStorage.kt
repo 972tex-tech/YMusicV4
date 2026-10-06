@@ -1,6 +1,7 @@
 package io.ymusic.download
 
 import io.ymusic.ytmedia.sabr.DownloadFile
+import okio.Source
 
 /**
  * Abstracts **where** a download's bytes live so the pipeline never touches a concrete `FileSystem` and
@@ -37,6 +38,9 @@ interface DownloadStorage {
 interface DownloadScratch : DownloadFile {
     /** Absolute local path, used to build an ffmpeg `file:` spec. */
     val path: String
+
+    /** Read the file from the start. */
+    fun source(): Source
 
     /** Remove the file (no-op if absent). */
     fun delete()

@@ -25,16 +25,16 @@ class CaptionPreference(val languages: Set<String>, val includeDefault: Boolean)
     }
 }
 
-/** Caption tracks to fetch: none for MP3 — it can't carry a subtitle track — else the ones a per-task
- *  [choice] names, or without one the preference-driven [selectCaptions]. */
+/** Caption tracks to fetch: the ones a per-task [choice] names (MP3 takes them as lyrics), or without
+ *  one the preference-driven [selectCaptions] — none for MP3, whose captions are opt-in per download. */
 internal fun captionsToDownload(
     format: DownloadFormat,
     tracks: List<CaptionTrack>,
     choice: CaptionChoice?,
     pref: CaptionPreference,
 ): List<CaptionTrack> = when {
-    format == DownloadFormat.MP3 -> emptyList()
     choice != null -> choice.languages.mapNotNull { key -> tracks.firstOrNull { captionKey(it.languageCode, it.isAsr) == key } }
+    format == DownloadFormat.MP3 -> emptyList()
     else -> selectCaptions(tracks, pref)
 }
 
