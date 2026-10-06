@@ -6,6 +6,7 @@
 import { debug } from "../../debug";
 import { stringifyJson, utf8Decode, utf8Encode } from "../../transport";
 import { HttpRequestBuilderImpl } from "../../protocol/http/builder";
+import { ParsedJsonResponse } from "../../protocol/http/intercept";
 import {
   checkHeaderName,
   checkHeaderValue,
@@ -502,7 +503,9 @@ ResponseImpl.prototype["arrayBuffer"] = function (this: FetchResponseJs): Promis
 ResponseImpl.prototype["clone"] = function (this: FetchResponseJs): FetchResponseJs {
   if (this["bodyUsed"] || this["body"]._locked) throw new TypeError("body already used");
   const copy = Object.create(ResponseImpl.prototype) as FetchResponseJs;
-  if (this._http) {
+  // A parsed record re-reads freely (and must stay one object for JSON.parse); a streamed body
+  // is read-once, so both copies read the tee'd stream below instead.
+  if (this._http instanceof ParsedJsonResponse) {
     fillResponse(
       copy,
       this["status"],
@@ -517,6 +520,7 @@ ResponseImpl.prototype["clone"] = function (this: FetchResponseJs): FetchRespons
     copy._http = this._http;
     return copy;
   }
+  this._http = null;
   if (this._json != null) {
     fillResponse(
       copy,
