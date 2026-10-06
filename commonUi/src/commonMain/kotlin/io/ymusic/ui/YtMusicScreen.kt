@@ -205,6 +205,7 @@ fun MusicDetailScreen(
     onSearch: () -> Unit,
     onOpen: ((YtFeedItem) -> Unit)? = null,
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
+    onDownload: ((title: String, pager: Pager) -> Unit)? = null,
 ) {
     val state by session.feed.pager.state.collectAsState()
     val ready = state as? Pager.State.Ready
@@ -239,10 +240,12 @@ fun MusicDetailScreen(
                 }
             } else {
                 {
+                    val title = ready?.pageHeader?.title ?: session.item.title
                     PlaylistHeader(
-                        title = ready?.pageHeader?.title ?: session.item.title,
+                        title = title,
                         meta = ready?.pageHeader?.subtitleLine1 ?: session.item.subtitleLine1,
                         onShuffle = { coordinator.playAll(videos, shuffle = true) },
+                        onDownload = onDownload?.let { open -> { open(title, session.feed.pager) } },
                     )
                 }
             },

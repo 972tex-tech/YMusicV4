@@ -311,7 +311,7 @@ private fun MenuGroupLabel(text: String) {
 }
 
 @Composable
-private fun DropdownField(value: String, menu: @Composable ColumnScope.(close: () -> Unit) -> Unit) {
+internal fun DropdownField(value: String, menu: @Composable ColumnScope.(close: () -> Unit) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         Row(

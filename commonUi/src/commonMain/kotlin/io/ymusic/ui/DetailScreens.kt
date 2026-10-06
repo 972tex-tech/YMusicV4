@@ -92,6 +92,7 @@ fun PlaylistDetailScreen(
     session: PlaylistSession,
     onBack: () -> Unit,
     onSearch: () -> Unit,
+    onDownload: ((title: String, pager: Pager) -> Unit)? = null,
 ) {
     val s = session
     val item = s.item
@@ -108,10 +109,12 @@ fun PlaylistDetailScreen(
                 coordinator.playAll(videos, startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0))
             },
             topContent = {
+                val title = ready?.pageHeader?.title ?: item.title
                 PlaylistHeader(
-                    title = ready?.pageHeader?.title ?: item.title,
+                    title = title,
                     meta = ready?.pageHeader?.subtitleLine1 ?: item.subtitleLine1,
                     onShuffle = { coordinator.playAll(videos, shuffle = true) },
+                    onDownload = onDownload?.let { open -> { open(title, s.feed.pager) } },
                 )
             },
             listState = s.feed.listState,
@@ -123,7 +126,7 @@ fun PlaylistDetailScreen(
  *  shuffle FAB, closed by the 16dp-inset divider. Shared by the WEB playlist detail and the YT Music
  *  album/playlist detail so both read identically. */
 @Composable
-internal fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit) {
+internal fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit, onDownload: (() -> Unit)? = null) {
     Column(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
             Text(
@@ -145,7 +148,7 @@ internal fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit)
         ) {
             ActionIcon(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(Res.string.cd_add_to_playlist), enabled = false, onClick = {})
             ActionIcon(Icons.Outlined.Share, stringResource(Res.string.cd_share), enabled = false, onClick = {})
-            ActionIcon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), enabled = false, onClick = {})
+            ActionIcon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), enabled = onDownload != null, onClick = { onDownload?.invoke() })
             Box(Modifier.weight(1f))
             Box(
                 Modifier.size(46.dp).clip(CircleShape).background(DesignColors.InkStrong).clickable(onClick = onShuffle),

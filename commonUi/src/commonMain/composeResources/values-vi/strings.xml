@@ -303,4 +303,20 @@
     <string name="download_live_unsupported">Không thể tải video đang phát trực tiếp</string>
     <string name="download_save_quick">Lưu làm Tải nhanh</string>
     <string name="quick_download_menu">Tải nhanh · %1$s</string>
+    <string name="playlist_download_title">Tải danh sách phát</string>
+    <string name="playlist_load_more">Tải thêm</string>
+    <string name="playlist_check_all">Chọn tất cả</string>
+    <string name="playlist_check_not_downloaded">Chọn mục chưa tải</string>
+    <string name="playlist_uncheck_all">Bỏ chọn tất cả</string>
+    <string name="playlist_uncheck_downloaded">Bỏ chọn mục đã tải</string>
+    <string name="playlist_options">Tùy chọn tải xuống</string>
+    <plurals name="playlist_videos_loaded">
+        <item quantity="other">Đã tải %1$d video</item>
+    </plurals>
+    <plurals name="playlist_download_action">
+        <item quantity="other">Tải %1$d video</item>
+    </plurals>
+    <plurals name="playlist_added">
+        <item quantity="other">Đã thêm %1$d video vào danh sách tải</item>
+    </plurals>
 </resources>

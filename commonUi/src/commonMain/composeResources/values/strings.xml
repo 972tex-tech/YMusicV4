@@ -389,4 +389,23 @@
     <string name="download_live_unsupported">Can’t download a LIVE video</string>
     <string name="download_save_quick">Save as Quick download</string>
     <string name="quick_download_menu">Quick download · %1$s</string>
+    <string name="playlist_download_title">Download playlist</string>
+    <string name="playlist_load_more">Load more</string>
+    <string name="playlist_check_all">Check all</string>
+    <string name="playlist_check_not_downloaded">Check not downloaded</string>
+    <string name="playlist_uncheck_all">Uncheck all</string>
+    <string name="playlist_uncheck_downloaded">Uncheck downloaded</string>
+    <string name="playlist_options">Download options</string>
+    <plurals name="playlist_videos_loaded">
+        <item quantity="one">%1$d video loaded</item>
+        <item quantity="other">%1$d videos loaded</item>
+    </plurals>
+    <plurals name="playlist_download_action">
+        <item quantity="one">Download %1$d video</item>
+        <item quantity="other">Download %1$d videos</item>
+    </plurals>
+    <plurals name="playlist_added">
+        <item quantity="one">Added %1$d video to downloads</item>
+        <item quantity="other">Added %1$d videos to downloads</item>
+    </plurals>
 </resources>

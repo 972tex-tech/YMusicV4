@@ -19,7 +19,7 @@ import org.jetbrains.compose.resources.stringResource
  * [height], the dubbed track in [audioLanguage], the caption in [captionLanguage] — else the defaults).
  * [captionLanguage] null means captions off. Lives in memory for the app run only ([AppGraph.quickDownload]).
  */
-class QuickDownloadPreset(
+data class QuickDownloadPreset(
     val format: DownloadFormat,
     val height: Int?,
     val audioLanguage: String?,

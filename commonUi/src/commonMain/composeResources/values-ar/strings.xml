@@ -308,4 +308,23 @@
     <string name="download_live_unsupported">لا يمكن تنزيل فيديو مباشر</string>
     <string name="download_save_quick">حفظ كتنزيل سريع</string>
     <string name="quick_download_menu">تنزيل سريع · %1$s</string>
+    <string name="playlist_download_title">تنزيل قائمة التشغيل</string>
+    <string name="playlist_load_more">تحميل المزيد</string>
+    <string name="playlist_check_all">تحديد الكل</string>
+    <string name="playlist_check_not_downloaded">تحديد غير المنزَّل</string>
+    <string name="playlist_uncheck_all">إلغاء تحديد الكل</string>
+    <string name="playlist_uncheck_downloaded">إلغاء تحديد المنزَّل</string>
+    <string name="playlist_options">خيارات التنزيل</string>
+    <plurals name="playlist_videos_loaded">
+        <item quantity="one">تم تحميل فيديو واحد</item>
+        <item quantity="other">تم تحميل %1$d فيديو</item>
+    </plurals>
+    <plurals name="playlist_download_action">
+        <item quantity="one">تنزيل فيديو واحد</item>
+        <item quantity="other">تنزيل %1$d فيديو</item>
+    </plurals>
+    <plurals name="playlist_added">
+        <item quantity="one">تمت إضافة فيديو واحد إلى التنزيلات</item>
+        <item quantity="other">تمت إضافة %1$d فيديو إلى التنزيلات</item>
+    </plurals>
 </resources>

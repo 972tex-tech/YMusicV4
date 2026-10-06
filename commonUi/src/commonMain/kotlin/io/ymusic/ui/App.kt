@@ -256,6 +256,9 @@ private sealed interface AppLayer {
 
     class MusicBrowse(val session: MusicBrowseSession) : AppLayer
 
+    /** Download a playlist's videos — shares the playlist page's pager, so it owns nothing to close. */
+    class PlaylistDownload(val session: PlaylistDownloadSession) : AppLayer
+
     /** The YouTube sign-in browser. Holds its [LoginWebViewState] so the back gesture can walk the
      *  page's own history (canGoBack) before popping the layer. */
     /** [switchAccount]: the browser opens YouTube's channel switcher instead of sign-in — no cookie
@@ -271,7 +274,7 @@ private val AppLayer.log: kmpcommon.log.Logger?
         is AppLayer.Channel -> session.log
         is AppLayer.Feed -> session.log
         is AppLayer.MusicBrowse -> session.log
-        is AppLayer.LibrarySearch, is AppLayer.Login -> null
+        is AppLayer.LibrarySearch, is AppLayer.Login, is AppLayer.PlaylistDownload -> null
     }
 
 @Composable
@@ -449,6 +452,10 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 else -> layers.add(AppLayer.Search(SearchSession.music(graph, scope)))
             }
         }
+        // A playlist's download page, over its pager; null where there is no download service.
+        val openPlaylistDownload: ((title: String, pager: Pager) -> Unit)? = graph.downloads?.let {
+            { title, pager -> layers.add(AppLayer.PlaylistDownload(PlaylistDownloadSession(title, pager, graph.quickDownload.value))) }
+        }
         val popLayer = {
             val top = layers.removeAt(layers.lastIndex)
             when (top) {
@@ -457,7 +464,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 is AppLayer.Channel -> top.session.close()
                 is AppLayer.Feed -> top.session.close()
                 is AppLayer.MusicBrowse -> top.session.close()
-                is AppLayer.LibrarySearch, is AppLayer.Login -> Unit
+                is AppLayer.LibrarySearch, is AppLayer.Login, is AppLayer.PlaylistDownload -> Unit
             }
             // Closing the account-switcher browser IS its completion (no cookie gate flips while
             // switching): refresh session + account + feeds under whatever identity was picked.
@@ -728,7 +735,11 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 top.session,
                                                 onBack = popLayer,
                                                 onSearch = openSearch,
+                                                onDownload = openPlaylistDownload,
                                             )
+                                        }
+                                        is AppLayer.PlaylistDownload -> key(top) {
+                                            PlaylistDownloadScreen(graph, top.session, onBack = popLayer)
                                         }
                                         is AppLayer.Channel -> key(top) {
                                             ChannelDetailScreen(
@@ -759,6 +770,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                 onSearch = openMusicSearch,
                                                 onOpen = openItem,
                                                 onDeeplink = openDeeplink,
+                                                onDownload = openPlaylistDownload,
                                             )
                                         }
                                         is AppLayer.Login -> key(top) {
