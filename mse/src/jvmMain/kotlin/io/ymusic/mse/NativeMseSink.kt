@@ -20,10 +20,10 @@ class NativeMseSink(val host: Long, private val surface: MseVideoSurface?) : Mse
         MseHostNative.setSink(host, this)
     }
 
-    fun destroy() {
+    fun destroy(clearSurface: Boolean = true) {
         if (!released.compareAndSet(false, true)) return
         MseHostNative.destroy(host)
-        surface?.clear()
+        if (clearSurface) surface?.clear()
     }
 
     @Keep

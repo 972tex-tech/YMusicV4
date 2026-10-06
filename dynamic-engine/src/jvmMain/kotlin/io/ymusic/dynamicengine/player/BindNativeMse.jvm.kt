@@ -19,9 +19,13 @@ internal actual fun bindNativeMse(runtime: QuickJsRuntime, surface: MseVideoSurf
         }
 
         override fun close() {
-            surface.attach(null)
-            surface.host = 0L
-            sink.destroy()
+            // A successor session may already own the shared surface.
+            val owned = surface.host == host
+            if (owned) {
+                surface.attach(null)
+                surface.host = 0L
+            }
+            sink.destroy(clearSurface = owned)
         }
     }
 }

@@ -16,7 +16,8 @@ object MseJsEventBridge {
         handler?.invoke(eventName)
     }
 
-    fun clear() {
-        handler = null
+    /** Clears only if [handler] is still installed: a late close must not unhook its successor. */
+    fun clear(handler: (String) -> Unit) {
+        if (this.handler === handler) this.handler = null
     }
 }

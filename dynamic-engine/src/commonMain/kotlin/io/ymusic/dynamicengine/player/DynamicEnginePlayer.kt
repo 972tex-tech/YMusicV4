@@ -38,6 +38,7 @@ import kotlinx.serialization.json.longOrNull
 class DynamicEnginePlayer private constructor(
     val engine: DynamicEngine,
     private val nativeMse: NativeMseHost?,
+    private val jsEventBridge: (String) -> Unit,
 ) {
     suspend fun init(
         logger: Logger? = null,
@@ -286,7 +287,7 @@ class DynamicEnginePlayer private constructor(
         MseHostNative.copyFrame(handle, afterGen)
 
     suspend fun close() {
-        MseJsEventBridge.clear()
+        MseJsEventBridge.clear(jsEventBridge)
         /* Stop JS (__mse*) before freeing the C host. */
         engine.close()
         nativeMse?.close()
@@ -317,8 +318,9 @@ class DynamicEnginePlayer private constructor(
             }
             engine.healthCheck()
             logger?.bindMseNativeLogs()
-            MseJsEventBridge.setJsEventBridge { eventName -> engine.fire(eventName) }
-            return DynamicEnginePlayer(engine, nativeMse)
+            val jsEventBridge: (String) -> Unit = { eventName -> engine.fire(eventName) }
+            MseJsEventBridge.setJsEventBridge(jsEventBridge)
+            return DynamicEnginePlayer(engine, nativeMse, jsEventBridge)
         }
     }
 }
