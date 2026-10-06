@@ -53,6 +53,7 @@ import io.ymusic.telemetry.bindCrashReporting
 import io.ymusic.telemetry.installSentryDeviceId
 import io.ymusic.telemetry.installSentryEngineVersion
 import io.ymusic.telemetry.sendSentryFeedback
+import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.WebViewSabrSpecResolver
@@ -421,6 +422,7 @@ class YMusicApplication : Application() {
         }
         val mediaProxy = shared.webViewJs?.let {
             val client = KmpHttpClient.create {
+                defaultExecuteTimeout = APP_HTTP_TIMEOUT
                 logger = rootLogger.fork("kmphttp")
                 cookieJar = shared.cookies
                 defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
@@ -474,6 +476,7 @@ class YMusicApplication : Application() {
                 )
             }
             val sabrClient = KmpHttpClient.create {
+                defaultExecuteTimeout = APP_HTTP_TIMEOUT
                 logger = rootLogger.fork("kmphttp")
                 cookieJar = shared.cookies
                 defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)

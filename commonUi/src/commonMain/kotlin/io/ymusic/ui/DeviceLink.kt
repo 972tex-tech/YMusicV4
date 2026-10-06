@@ -504,7 +504,7 @@ private const val TOKEN_EXPIRY_SEC = 600
 internal const val DEVICE_LINK_POLL_MS = 2_000L
 internal const val DEVICE_LINK_TIMEOUT_MS = TOKEN_EXPIRY_SEC * 1000L
 
-fun newDeviceLinkHttpClient(): KmpHttpClient = KmpHttpClient.create {}
+fun newDeviceLinkHttpClient(): KmpHttpClient = KmpHttpClient.create { defaultExecuteTimeout = APP_HTTP_TIMEOUT }
 
 internal val ESSENTIAL_COOKIE_NAMES = setOf(
     "LOGIN_INFO",

@@ -7,6 +7,8 @@ import kmphttp.KmpHttpClient
 import kmphttp.create
 import okio.FileSystem
 import okio.Path
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /** 32 MB: InnerTube bodies are small and mostly revalidated, so this is a warm-start budget. */
 const val DefaultHttpCacheBytes: Long = 32L * 1024 * 1024
@@ -35,6 +37,7 @@ class AppHttpClients(
     }
 
     val engine: KmpHttpClient = KmpHttpClient.create {
+        defaultExecuteTimeout = APP_HTTP_TIMEOUT
         cache = diskCache
         this.logger = httpLogger // `logger` alone resolves to the constructor parameter
     }
@@ -60,3 +63,7 @@ class AppHttpClients(
         }
     }.build()
 }
+
+/** The app's network timeout: no response headers within this fails as a network error
+ *  (HttpTimeoutException). Every client the app creates sets it; the feed watchdog outlasts it. */
+val APP_HTTP_TIMEOUT: Duration = 10.seconds
