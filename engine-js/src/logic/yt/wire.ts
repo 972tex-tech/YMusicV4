@@ -143,6 +143,8 @@ export interface WireSection {
   collapsedRows?: number[];
   /** Per-section load-more token (a shelf "View all" / its own continuation). */
   continuation?: string;
+  /** "queue" = tapping a video queues this whole section from it; absent = watch-next radio. */
+  playMode?: string;
 }
 
 export interface WireFeedPage {

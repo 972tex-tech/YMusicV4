@@ -176,7 +176,13 @@ function chartSection(
   const header: WireSectionHeader = { "title": spec.title, "titleKey": spec.key };
   // A chart runs 30–100 entries; collapsed, the four of them read as an index of the region's
   // charts and each expands on demand instead of burying the next header a hundred rows down.
-  return { "header": header, "layout": "list", "items": items, "collapsible": true };
+  return {
+    "header": header,
+    "layout": "list",
+    "items": items,
+    "collapsible": true,
+    "playMode": "queue",
+  };
 }
 
 /** The first `musicAnalyticsSectionRenderer.content` in the response — the only node charts use. */
