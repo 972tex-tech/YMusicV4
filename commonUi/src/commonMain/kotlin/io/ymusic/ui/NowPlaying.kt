@@ -305,8 +305,9 @@ fun NowPlayingScreen(
     val overlayVisible = VideoOverlayNative.visible
     val showGen = VideoOverlayNative.showGen
     val scrubbing = VideoOverlayNative.scrubbing
-    LaunchedEffect(playWhenReady, armed, overlayVisible, showGen, scrubbing) {
-        if (armed && overlayVisible && playWhenReady && !scrubbing) {
+    val menusOpen = VideoOverlayNative.menusOpen
+    LaunchedEffect(playWhenReady, armed, overlayVisible, showGen, scrubbing, menusOpen) {
+        if (armed && overlayVisible && playWhenReady && !scrubbing && menusOpen == 0) {
             delay(OVERLAY_HIDE_DELAY_MS)
             VideoOverlayNative.visible = false
         }
@@ -928,6 +929,7 @@ internal fun QualityChip(
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
+    HoldVideoOverlay(open)
     Box {
         Text(
             label,
@@ -970,6 +972,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     var open by remember { mutableStateOf(false) }
     var playbackOpen by remember { mutableStateOf(false) }
     var eqOpen by remember { mutableStateOf(false) }
+    HoldVideoOverlay(open || playbackOpen || eqOpen)
 
     Box {
         ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
@@ -1382,6 +1385,7 @@ private fun QueueRow(
 @Composable
 internal fun SleepTimerButton(sleepMs: Long?, onSet: (Long?) -> Unit) {
     var open by remember { mutableStateOf(false) }
+    HoldVideoOverlay(open)
     Box {
         ActionIcon(
             Icons.Default.Bedtime,

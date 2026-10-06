@@ -1,5 +1,7 @@
 package io.ymusic.ui
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -19,6 +21,10 @@ object VideoOverlayNative {
 
     /** Seek-bar drag holds the overlay until release. */
     var scrubbing by mutableStateOf(false)
+
+    /** Open chrome menus: hiding the overlay would dismiss them, so it stays up while any is open. */
+    var menusOpen by mutableIntStateOf(0)
+        internal set
 
     /** Bumped on every show so the auto-hide timer restarts. */
     var showGen by mutableIntStateOf(0)
@@ -44,5 +50,15 @@ object VideoOverlayNative {
     fun show() {
         visible = true
         showGen++
+    }
+}
+
+/** Holds the video overlay up while [open], e.g. for a menu anchored in it. */
+@Composable
+internal fun HoldVideoOverlay(open: Boolean) {
+    if (!open) return
+    DisposableEffect(Unit) {
+        VideoOverlayNative.menusOpen++
+        onDispose { VideoOverlayNative.menusOpen-- }
     }
 }
