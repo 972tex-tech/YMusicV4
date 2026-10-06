@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,7 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtFeedItem
@@ -57,6 +58,7 @@ import kmpcommon.log.Logger
 import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.max
 
 /** The engine-composed music detail link prefix ("/ytmusic/browse?id=…", see musicParse.ts) — the
  *  app routes items/deeplinks carrying it to the music detail layer instead of the WEB pages. */
@@ -278,15 +280,11 @@ private fun PlayPill(icon: ImageVector, label: String, filled: Boolean, onClick:
         Icon(icon, null, Modifier.size(18.dp), tint = content)
         Text(
             label,
+            // The font's ascent outruns its descent, so a centered line box sits the caps low; lift a whole pixel.
+            Modifier.offset { IntOffset(0, -max(1, 0.4.dp.roundToPx())) },
             maxLines = 1,
             softWrap = false,
-            style = TextStyle(
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = content,
-                lineHeight = 13.sp,
-                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
-            ),
+            style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = content),
         )
     }
 }
