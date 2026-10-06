@@ -318,6 +318,14 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         var discoverDrag by remember { mutableFloatStateOf(0f) }
         val nowPlayingOpen by graph.pip.nowPlayingOpen.collectAsState()
         var nowPlayingPeeking by remember { mutableStateOf(false) }
+        LaunchedEffect(coordinator) {
+            coordinator.player.queue.collect {
+                if (it.items.isEmpty()) {
+                    graph.pip.nowPlayingOpen.value = false
+                    nowPlayingPeeking = false
+                }
+            }
+        }
         // Discover feeds cache per browseId — switching tab or navigating away and back must show
         // the already-loaded feed at its old scroll position, not reload it.
         val discoverSessions = remember { mutableMapOf<String, FeedSession>() }
