@@ -175,6 +175,7 @@ class MsePlayer internal constructor(
         applySurfaceAudio(previous, config)
         val width = viewportW
         val height = viewportH
+        if (captionChanged(previous, config)) send { applyCaptionConfig(it, config) }
         send { enginePlayer ->
             try {
                 enginePlayer.load(
@@ -277,12 +278,7 @@ class MsePlayer internal constructor(
             if (previous == null || config.speed != previous.speed || config.pitchFactor != previous.pitchFactor) {
                 enginePlayer.setSpeedPitch(config.speed.coerceIn(0.25f, 3f), config.pitchFactor.coerceIn(0.5f, 2f), log)
             }
-            if (previous == null ||
-                config.captionVisible != previous.captionVisible ||
-                config.preferCaptionLanguage != previous.preferCaptionLanguage
-            ) {
-                applyCaptionConfig(enginePlayer, config)
-            }
+            if (captionChanged(previous, config)) applyCaptionConfig(enginePlayer, config)
         }
     }
 
@@ -457,6 +453,11 @@ class MsePlayer internal constructor(
             )
         }
     }
+
+    private fun captionChanged(previous: PlaybackConfig?, config: PlaybackConfig): Boolean =
+        previous == null ||
+            config.captionVisible != previous.captionVisible ||
+            config.preferCaptionLanguage != previous.preferCaptionLanguage
 
     private suspend fun applyCaptionConfig(enginePlayer: DynamicEnginePlayer, config: PlaybackConfig) {
         val preferred = config.preferCaptionLanguage.first.takeIf { it != PlaybackConfig.UNDETERMINED_LANGUAGE }
