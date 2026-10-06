@@ -20,7 +20,7 @@ E20011 - invalid http request — bad head or URL/header kmpHttp rejects (dynami
 E20020 - engine bundle failed to load/eval (DynamicEngine.create)
 E20021 - engine init health check failed (DynamicEngine.create)
 E20030 - yt/* command returned a malformed result (dynamic-engine YtCommands)
-E20031 - feed page fetch outlived the 20s watchdog: the engine hung, not the network (commonUi Pager)
+E20031 - feed page fetch outlived the 15s watchdog: the engine hung, not the network (commonUi Pager)
 E20032 - feed page load failed with an uncoded error (commonUi Pager.refresh)
 E20033 - feed keep-content reload failed with an uncoded error (commonUi Pager.reload)
 E20040 - cookie request has a missing/blank/invalid url or no setCookie, or a malformed head (dynamic-engine CookieProtocol)

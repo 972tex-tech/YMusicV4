@@ -90,11 +90,11 @@ import org.jetbrains.compose.resources.stringResource
 /** Paged feed loading over any yt page source (browse / search / watch-next continuations).
  *  [fetchTimeoutMs] is the watchdog for a wedged engine (seen live: Android CookieManager deadlocking
  *  against WebView browser-process startup) — a Failed page with Retry instead of an eternal spinner.
- *  It must outlast the HTTP execute timeout (15s), so a plain network stall fails first as the
+ *  It must outlast the HTTP execute timeout (10s), so a plain network stall fails first as the
  *  network error, and [TIMEOUT_CODE] means the engine itself hung. */
 class Pager(
     private val scope: CoroutineScope,
-    private val fetchTimeoutMs: Long = 20_000,
+    private val fetchTimeoutMs: Long = 15_000,
     private val logger: Logger? = null,
     private val fetch: suspend (continuation: String?) -> io.ymusic.dynamicengine.yt.YtFeedPage,
 ) {
