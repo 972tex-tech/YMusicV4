@@ -575,7 +575,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
             FeedListItem(
                 item,
                 actions = itemActions(item, coordinator),
-                onClick = itemClick(item, coordinator, onOpen, onPlayItem),
+                onClick = itemClick(item, section, coordinator, onOpen, onPlayItem),
                 wide = wide,
             )
         }
@@ -600,7 +600,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                     FeedGridCard(
                         item,
                         actions = itemActions(item, coordinator),
-                        onClick = itemClick(item, coordinator, onOpen, onPlayItem),
+                        onClick = itemClick(item, section, coordinator, onOpen, onPlayItem),
                         modifier = Modifier.weight(1f),
                         inset = metrics.inset,
                     )
@@ -623,11 +623,21 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
 
 private fun itemClick(
     item: YtFeedItem,
+    section: YtSection,
     coordinator: PlaybackCoordinator,
     onOpen: ((YtFeedItem) -> Unit)?,
     onPlayItem: ((YtFeedItem) -> Unit)?,
 ): (() -> Unit)? = when (item.kind) {
-    YtFeedItem.KIND_VIDEO -> ({ onPlayItem?.invoke(item) ?: coordinator.playNow(item) })
+    YtFeedItem.KIND_VIDEO -> ({
+        when {
+            onPlayItem != null -> onPlayItem(item)
+            section.playMode == YtSection.PLAY_QUEUE -> {
+                val videos = section.items.filter { it.kind == YtFeedItem.KIND_VIDEO }
+                coordinator.playAll(videos, startIndex = videos.indexOfFirst { it.id == item.id }.coerceAtLeast(0))
+            }
+            else -> coordinator.playNow(item)
+        }
+    })
     YtFeedItem.KIND_PLAYLIST, YtFeedItem.KIND_CHANNEL, YtFeedItem.KIND_TAG -> onOpen?.let { { it(item) } }
     else -> null
 }
