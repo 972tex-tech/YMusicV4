@@ -176,6 +176,7 @@ private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {
     var ctaText: String? = null
     var ctaToken: String? = null
     var ctaDeeplink: String? = null
+    var ctaAction: String? = null
     r.beginObject()
     while (r.hasNextObjectKey()) {
         when (r.nextKey()) {
@@ -186,11 +187,12 @@ private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {
             "ctaText" -> ctaText = r.stringOrNull()
             "ctaToken" -> ctaToken = r.stringOrNull()
             "ctaDeeplink" -> ctaDeeplink = r.stringOrNull()
+            "ctaAction" -> ctaAction = r.stringOrNull()
             else -> r.skipValue()
         }
     }
     r.endObject()
-    return YtSectionHeader(title, titleKey, iconThumbs, count, ctaText, ctaToken, ctaDeeplink)
+    return YtSectionHeader(title, titleKey, iconThumbs, count, ctaText, ctaToken, ctaDeeplink, ctaAction)
 }
 
 private suspend fun readThumb(r: JsonReader): YtThumb {

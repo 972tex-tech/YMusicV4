@@ -138,7 +138,13 @@ data class YtSectionHeader(
     /** App-internal navigation for the CTA — "/playlist?list=<id>" or "/channel/<id>[?params=<tab>]".
      *  Engine-composed; the app parses only this one scheme (see commonUi parseDeeplink). */
     val ctaDeeplink: String? = null,
-)
+    /** [CTA_PLAY_ALL] = the CTA plays the section's videos in order instead of navigating. */
+    val ctaAction: String? = null,
+) {
+    companion object {
+        const val CTA_PLAY_ALL = "playAll"
+    }
+}
 
 /**
  * A run of items under one header. [layout] is the engine's INTENT (see [LAYOUT_LIST]/[LAYOUT_GRID],
