@@ -11,6 +11,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
@@ -32,14 +33,16 @@ fun interface DownloadLauncher {
 val LocalDownloadLauncher = staticCompositionLocalOf<DownloadLauncher?> { null }
 
 /**
- * Hosts the download options dialog for the currently-[pending] video — the bottom sheet in a narrow
- * (phone-width) window, the two-pane dialog in a wider one, whatever the platform — and enqueues the pick into
+ * Hosts the download options dialog for the currently-[pending] video — the bottom sheet in a phone-sized
+ * window, the two-pane dialog in a larger one, whatever the platform — and enqueues the pick into
  * `graph.downloads`. Rendered once inside the app's CompositionLocal scope so it can reach
  * [LocalSnackbar]; a no-op when nothing is pending. MP3 and video (mux) options are hidden where ffmpeg
  * is absent (iOS) — only the raw-stream M4A remains.
  */
-/** Below this window width the options are a bottom sheet; the two-pane dialog needs more room. */
-private val SHEET_MAX_WINDOW_WIDTH = 750.dp
+/** The window the two-pane dialog needs; anything smaller (a phone, in either orientation) gets the
+ *  scrolling bottom sheet. The height covers the dialog's header, 360dp panes, footer and margins. */
+private val DIALOG_MIN_WINDOW_WIDTH = 750.dp
+private val DIALOG_MIN_WINDOW_HEIGHT = 560.dp
 
 @Composable
 internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss: () -> Unit) {
@@ -84,8 +87,8 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
     }
     val onPickLocation: () -> Unit = { scope.launch { pickDownloadFolder(graph) } }
     val onRetry: () -> Unit = { scope.launch { state.load(log) } }
-    val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
-    if (windowWidth < SHEET_MAX_WINDOW_WIDTH) {
+    val window = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.toSize().toDpSize() }
+    if (window.width < DIALOG_MIN_WINDOW_WIDTH || window.height < DIALOG_MIN_WINDOW_HEIGHT) {
         DownloadSheet(state, locationName, onPickLocation, onRetry, onDownload, onDismiss)
     } else {
         DownloadDialogDesktop(state, locationName, onPickLocation, onRetry, onDownload, onDismiss)
