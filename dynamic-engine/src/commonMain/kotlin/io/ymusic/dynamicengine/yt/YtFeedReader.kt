@@ -150,6 +150,7 @@ private suspend fun readSection(r: JsonReader): YtSection {
     var collapsible = false
     var collapsedRows: List<Int> = emptyList()
     var continuation: String? = null
+    var playMode: String? = null
     r.beginObject()
     while (r.hasNextObjectKey()) {
         when (r.nextKey()) {
@@ -159,11 +160,12 @@ private suspend fun readSection(r: JsonReader): YtSection {
             "collapsible" -> collapsible = r.boolean()
             "collapsedRows" -> collapsedRows = r.readArrayOf { it.intOrNull() }.filterNotNull()
             "continuation" -> continuation = r.stringOrNull()
+            "playMode" -> playMode = r.stringOrNull()
             else -> r.skipValue()
         }
     }
     r.endObject()
-    return YtSection(header, layout, items, collapsible, collapsedRows, continuation)
+    return YtSection(header, layout, items, collapsible, collapsedRows, continuation, playMode)
 }
 
 private suspend fun readSectionHeader(r: JsonReader): YtSectionHeader {

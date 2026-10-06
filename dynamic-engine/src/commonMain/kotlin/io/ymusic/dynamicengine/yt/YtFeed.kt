@@ -156,8 +156,11 @@ data class YtSection(
      *  entry extends). Empty = the app's default policy. */
     val collapsedRows: List<Int> = emptyList(),
     val continuation: String? = null,
+    /** How a video tap plays: [PLAY_QUEUE] queues the section; null = watch-next radio. */
+    val playMode: String? = null,
 ) {
     companion object {
+        const val PLAY_QUEUE = "queue"
         const val LAYOUT_LIST = "list"
         const val LAYOUT_GRID = "grid"
 
