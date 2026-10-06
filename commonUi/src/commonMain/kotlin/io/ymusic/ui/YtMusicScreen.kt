@@ -278,6 +278,8 @@ private fun PlayPill(icon: ImageVector, label: String, filled: Boolean, onClick:
         Icon(icon, null, Modifier.size(18.dp), tint = content)
         Text(
             label,
+            maxLines = 1,
+            softWrap = false,
             style = TextStyle(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
