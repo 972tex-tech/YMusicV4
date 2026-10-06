@@ -33,6 +33,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CloseableCoroutineDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.IO
@@ -76,6 +77,9 @@ class MsePlayer internal constructor(
     private val buildPlayer: (engineThread: CoroutineDispatcher) -> DynamicEnginePlayer,
 ) : YtEngine {
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** Fire-and-forget teardown of abandoned sessions; deliberately outlives [release]. */
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _status = MutableStateFlow(
         PlaybackStatus(state = PlaybackState.Uninitialized(isInitializing = false)),
@@ -369,7 +373,7 @@ class MsePlayer internal constructor(
             } catch (error: Throwable) {
                 if (session === newSession) fail(error, "mse init failed", needReset = true)
             } finally {
-                withContext(NonCancellable) {
+                withContext(Dispatchers.Default + NonCancellable) {
                     if (enginePlayer != null) closePlayerBounded(enginePlayer)
                     closeEngineThread(engineThread)
                 }
@@ -379,11 +383,11 @@ class MsePlayer internal constructor(
 
     /**
      * A wedged engine thread never runs its close hop, so the wait is bounded and the successor
-     * boots anyway. Launched [Dispatchers.Main.immediate] so the close's engine-thread hop is
-     * already queued — ahead of [closeEngineThread] — by the time this suspends.
+     * boots anyway. [CoroutineStart.UNDISPATCHED] so the close's engine-thread hop is already
+     * queued — ahead of [closeEngineThread] — by the time this suspends.
      */
     private suspend fun closePlayerBounded(enginePlayer: DynamicEnginePlayer) {
-        val closeJob = mainScope.launch(NonCancellable) {
+        val closeJob = cleanupScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 enginePlayer.close()
             } catch (error: Throwable) {
@@ -398,7 +402,7 @@ class MsePlayer internal constructor(
     /** Queued work still drains, then the thread exits. Off main and not awaited: native `close`
      *  blocks until the worker terminates, which a wedged engine thread never does. */
     private fun closeEngineThread(engineThread: CloseableCoroutineDispatcher) {
-        mainScope.launch(Dispatchers.IO + NonCancellable) {
+        cleanupScope.launch(Dispatchers.IO) {
             try {
                 engineThread.close()
             } catch (error: Throwable) {
