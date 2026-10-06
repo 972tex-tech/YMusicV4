@@ -17,7 +17,14 @@ class AudioOption(val format: DownloadFormat, val bytes: Long)
 class AudioTrackOption(val id: String, val name: String, val isDefault: Boolean)
 
 /** One caption track a download can fetch. */
-class CaptionOption(val languageCode: String, val name: String, val isAsr: Boolean, val isDefault: Boolean) {
+class CaptionOption(
+    val languageCode: String,
+    val name: String,
+    val isAsr: Boolean,
+    val isDefault: Boolean,
+    /** One of YouTube's auto-translations of the video's own track. */
+    val isTranslated: Boolean = false,
+) {
     val key: String get() = captionKey(languageCode, isAsr)
 }
 
@@ -60,7 +67,7 @@ class DownloadOptions(
                 video = if (ffmpegAvailable) videoOptions(formats, raw, durationMs) else emptyList(),
                 audio = audioOptions(formats, durationMs, ffmpegAvailable),
                 audioTracks = audioTracks(raw),
-                captions = (data["captionTracks"] as? JsonArray).orEmpty().mapNotNull { it.jsonObject.toCaption() },
+                captions = captionEntries(data).map { CaptionOption(it.languageCode, it.name, it.isAsr, it.isDefault, it.isTranslated) },
             )
         }
 
@@ -107,16 +114,6 @@ class DownloadOptions(
                 AudioTrackOption(id, track.str("displayName") ?: id, track.str("audioIsDefault")?.toBoolean() ?: false)
             }.distinctBy { it.id }
             return if (tracks.size > 1) tracks.sortedByDescending { it.isDefault } else emptyList()
-        }
-
-        private fun JsonObject.toCaption(): CaptionOption? {
-            val lang = str("languageCode") ?: return null
-            return CaptionOption(
-                languageCode = lang,
-                name = str("name") ?: lang,
-                isAsr = str("isAsr")?.toBoolean() ?: false,
-                isDefault = str("isDefault")?.toBoolean() ?: false,
-            )
         }
 
         private fun bytesAt(bitsPerSecond: Long, durationMs: Long): Long = bitsPerSecond / 8 * durationMs / 1000

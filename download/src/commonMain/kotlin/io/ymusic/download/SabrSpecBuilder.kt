@@ -1,7 +1,6 @@
 package io.ymusic.download
 
 import io.ymusic.ytmedia.sabr.AdaptiveFormat
-import io.ymusic.ytmedia.sabr.CaptionTrack
 import io.ymusic.ytmedia.sabr.ClientInfo
 import io.ymusic.ytmedia.sabr.SabrStreamSpec
 import kotlinx.serialization.json.Json
@@ -31,7 +30,7 @@ object SabrSpecBuilder {
         val clientVersion = data["clientVersion"]?.jsonPrimitive?.content
         val clientName = data["clientNameId"]?.jsonPrimitive?.content?.toIntOrNull() ?: 1
         val formats = adaptiveFormats(streaming)
-        val captions = (data["captionTracks"] as? JsonArray).orEmpty().mapNotNull { it.jsonObject.toCaptionTrack() }
+        val captions = captionEntries(data).map { it.toTrack() }
         return SabrStreamSpec(
             videoId = videoId,
             sabrUrl = sabrUrl,
@@ -45,20 +44,6 @@ object SabrSpecBuilder {
 
     internal fun adaptiveFormats(streaming: JsonObject): List<AdaptiveFormat> =
         (streaming["adaptiveFormats"] as? JsonArray).orEmpty().map { it.jsonObject.toAdaptiveFormat() }
-
-    /** Map one already-cooked `captionTracks` entry (see webview-js `postPlayerRes`) — baseUrl carries
-     *  the decoded signature/n + a bound pot, so no URL work here. Skips entries missing a baseUrl. */
-    private fun JsonObject.toCaptionTrack(): CaptionTrack? {
-        val baseUrl = str("baseUrl")?.takeIf { it.isNotBlank() } ?: return null
-        val lang = str("languageCode") ?: return null
-        return CaptionTrack(
-            languageCode = lang,
-            name = str("name") ?: lang,
-            baseUrl = baseUrl,
-            isDefault = this["isDefault"]?.jsonPrimitive?.content?.toBoolean() ?: false,
-            isAsr = this["isAsr"]?.jsonPrimitive?.content?.toBoolean() ?: false,
-        )
-    }
 
     private fun JsonObject.toAdaptiveFormat(): AdaptiveFormat {
         val index = this["indexRange"]?.jsonObject
