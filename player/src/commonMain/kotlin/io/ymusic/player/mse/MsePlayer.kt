@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -338,8 +339,12 @@ class MsePlayer internal constructor(
         session = newSession
         val previousClose = closing
         newSession.scope.launch {
-            // NonCancellable so a reset-during-reset still chains behind the older close.
-            withContext(NonCancellable) { previousClose?.join() }
+            // NonCancellable so a reset-during-reset still chains behind the older close; bounded
+            // because a wedged engine thread never finishes its close — that engine is abandoned.
+            val closed = withContext(NonCancellable) {
+                withTimeoutOrNull(PREVIOUS_CLOSE_TIMEOUT_MS) { previousClose?.join() } != null
+            }
+            if (!closed) log?.log(Logger.Level.WARN, "mse previous session close timed out; starting anyway")
             ensureActive()
             val engineThread = newEngineThread()
             var enginePlayer: DynamicEnginePlayer? = null
@@ -588,6 +593,7 @@ class MsePlayer internal constructor(
 
     companion object {
         private const val LOAD_TIMEOUT_MS = 5_000L
+        private const val PREVIOUS_CLOSE_TIMEOUT_MS = 3_000L
 
         fun create(
             client: KmpHttpClient,
