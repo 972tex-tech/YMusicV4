@@ -1,0 +1,2 @@
+ALTER TABLE downloadTask ADD COLUMN audio_language TEXT;
+ALTER TABLE downloadTask ADD COLUMN caption_language TEXT;

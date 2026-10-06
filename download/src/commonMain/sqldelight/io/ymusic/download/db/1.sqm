@@ -1,5 +1,3 @@
 ALTER TABLE downloadTask ADD COLUMN file_name TEXT;
 ALTER TABLE downloadTask ADD COLUMN audio_track_id TEXT;
 ALTER TABLE downloadTask ADD COLUMN caption_langs TEXT;
-ALTER TABLE downloadTask ADD COLUMN audio_language TEXT;
-ALTER TABLE downloadTask ADD COLUMN caption_language TEXT;
