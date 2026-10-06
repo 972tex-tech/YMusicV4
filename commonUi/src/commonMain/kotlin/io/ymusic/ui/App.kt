@@ -638,6 +638,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                             LocalScanController provides scanController,
                             LocalOpenNavDrawer provides { scope.launch { drawer.open() } },
                             LocalDownloadLauncher provides downloadLauncher,
+                            LocalAvailableOffline provides rememberAvailableOffline(graph),
                             LocalNavigateToSection provides { onSection(it) },
                             LocalLibraryFolderReveal provides libraryReveal,
                         ) {

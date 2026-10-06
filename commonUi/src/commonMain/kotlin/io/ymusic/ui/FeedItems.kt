@@ -323,6 +323,7 @@ fun FeedGridCard(
                 }
                 WatchedBar(item, Modifier.align(Alignment.BottomCenter))
                 Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 11, iconSize = 14.dp)
+                if (isAvailableOffline(item)) AvailableOfflineMark(Modifier.align(Alignment.TopStart))
             }
         }
         Row(
@@ -506,6 +507,7 @@ private fun RectThumb(item: YtFeedItem, width: androidx.compose.ui.unit.Dp, heig
         }
         WatchedBar(item, Modifier.align(Alignment.BottomCenter))
         Badges(item, Modifier.align(Alignment.BottomEnd).padding(4.dp), textSize = 11, iconSize = 14.dp)
+        if (isAvailableOffline(item)) AvailableOfflineMark(Modifier.align(Alignment.TopStart))
     }
 }
 
