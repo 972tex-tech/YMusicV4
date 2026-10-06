@@ -2,11 +2,13 @@ package io.ymusic.download
 
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SegmentIndex
+import kmpcommon.error.TechnicalException
 import kmpcommon.error.codedError
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BufferOverflow
@@ -59,6 +61,8 @@ class DownloadService(
     private val downloadFolder: suspend () -> String,
     /** Optional hook to register a finished file into the local library (media-store); shell-provided. */
     private val onCompleted: (suspend (DownloadTask, DownloadPipeline.Result) -> Unit)? = null,
+    /** The player-response JSON for a video (no PO token) — what [probe] reads the options from. */
+    private val playerResponse: (suspend (videoId: String) -> String)? = null,
 ) {
     /** True where ffmpeg exists (Android/desktop). False on iOS — the UI hides MP3/video outputs there. */
     val ffmpegAvailable: Boolean = ffmpeg != null
@@ -106,6 +110,13 @@ class DownloadService(
     suspend fun snapshot(): List<DownloadTask> {
         initIfNotYet()
         return store.all()
+    }
+
+    /** What [videoId] can be downloaded as — the options dialog's input. */
+    suspend fun probe(videoId: String): DownloadOptions {
+        val fetch = playerResponse ?: throw TechnicalException("E70040", "download options: no player-response source")
+        val json = fetch(videoId)
+        return withContext(Dispatchers.Default) { DownloadOptions.parse(json, ffmpegAvailable) }
     }
 
     fun enqueue(request: DownloadRequest): String {

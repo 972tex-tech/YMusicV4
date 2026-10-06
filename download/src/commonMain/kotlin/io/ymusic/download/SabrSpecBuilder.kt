@@ -30,7 +30,7 @@ object SabrSpecBuilder {
             ?: error("no videoPlaybackUstreamerConfig for $videoId")
         val clientVersion = data["clientVersion"]?.jsonPrimitive?.content
         val clientName = data["clientNameId"]?.jsonPrimitive?.content?.toIntOrNull() ?: 1
-        val formats = (streaming["adaptiveFormats"] as? JsonArray).orEmpty().map { it.jsonObject.toAdaptiveFormat() }
+        val formats = adaptiveFormats(streaming)
         val captions = (data["captionTracks"] as? JsonArray).orEmpty().mapNotNull { it.jsonObject.toCaptionTrack() }
         return SabrStreamSpec(
             videoId = videoId,
@@ -42,6 +42,9 @@ object SabrSpecBuilder {
             captionTracks = captions,
         )
     }
+
+    internal fun adaptiveFormats(streaming: JsonObject): List<AdaptiveFormat> =
+        (streaming["adaptiveFormats"] as? JsonArray).orEmpty().map { it.jsonObject.toAdaptiveFormat() }
 
     /** Map one already-cooked `captionTracks` entry (see webview-js `postPlayerRes`) — baseUrl carries
      *  the decoded signature/n + a bound pot, so no URL work here. Skips entries missing a baseUrl. */

@@ -1,0 +1,128 @@
+package io.ymusic.download
+
+import io.ymusic.ytmedia.sabr.AdaptiveFormat
+import kmpcommon.error.TechnicalException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+
+/** One downloadable video height; sizes are estimates for each container (video + its audio track). */
+class VideoOption(val height: Int, val fps: Int, val mp4Bytes: Long, val webmBytes: Long)
+
+/** One audio-only output and its estimated size. */
+class AudioOption(val format: DownloadFormat, val bytes: Long)
+
+/** One audio language of a video that has dubs. */
+class AudioTrackOption(val id: String, val name: String, val isDefault: Boolean)
+
+/** One caption track a download can fetch. */
+class CaptionOption(val languageCode: String, val name: String, val isAsr: Boolean, val isDefault: Boolean) {
+    val key: String get() = captionKey(languageCode, isAsr)
+}
+
+/**
+ * What one video can be downloaded as, read from its player response — the input of the download options
+ * dialog. Sizes are estimates: stream-copied tracks use their `contentLength`, transcoded audio uses the
+ * encoder's target bitrate over the duration.
+ */
+class DownloadOptions(
+    val durationMs: Long,
+    /** Highest first. */
+    val video: List<VideoOption>,
+    val audio: List<AudioOption>,
+    /** Empty unless the video carries more than one audio language. */
+    val audioTracks: List<AudioTrackOption>,
+    val captions: List<CaptionOption>,
+) {
+    fun audioBytes(format: DownloadFormat): Long? = audio.firstOrNull { it.format == format }?.bytes
+
+    companion object {
+        private val json = Json { ignoreUnknownKeys = true }
+
+        private const val AAC_TRANSCODE_BPS = 192_000L
+        private const val OPUS_TRANSCODE_BPS = 160_000L
+        private const val MP3_VBR_BPS = 190_000L
+
+        fun parse(playerResponseJson: String, ffmpegAvailable: Boolean): DownloadOptions {
+            val data = json.parseToJsonElement(playerResponseJson).jsonObject
+            val streaming = data["streamingData"] as? JsonObject
+                ?: throw TechnicalException("E70041", "download options: no streamingData")
+            val formats = SabrSpecBuilder.adaptiveFormats(streaming)
+            val raw = (streaming["adaptiveFormats"] as? JsonArray).orEmpty().map { it.jsonObject }
+            val durationMs = formats.maxOfOrNull { it.approxDurationMs.toLong() }?.takeIf { it > 0 }
+                ?: ((data["videoDetails"] as? JsonObject)?.str("lengthSeconds")?.toLongOrNull() ?: 0L) * 1000
+            if (formats.none { it.mimeType.startsWith("audio") && it.clen > 0 }) {
+                throw TechnicalException("E70042", "download options: no audio format")
+            }
+            return DownloadOptions(
+                durationMs = durationMs,
+                video = if (ffmpegAvailable) videoOptions(formats, raw, durationMs) else emptyList(),
+                audio = audioOptions(formats, durationMs, ffmpegAvailable),
+                audioTracks = audioTracks(raw),
+                captions = (data["captionTracks"] as? JsonArray).orEmpty().mapNotNull { it.jsonObject.toCaption() },
+            )
+        }
+
+        private fun videoOptions(formats: List<AdaptiveFormat>, raw: List<JsonObject>, durationMs: Long): List<VideoOption> {
+            val fpsByItag = raw.associate { (it.str("itag")?.toIntOrNull() ?: -1) to (it.str("fps")?.toIntOrNull() ?: 0) }
+            val heights = formats.filter { it.isVideo && it.clen > 0 }.mapNotNull { it.height }.distinct().sortedDescending()
+            val opus = FormatSelection.bestAudio(formats, preferAac = false)
+            val webmAudioBytes = if (opus?.mimeType?.contains("webm") == true) opus.clen else bytesAt(OPUS_TRANSCODE_BPS, durationMs)
+            return heights.map { height ->
+                val atHeight = formats.filter { it.isVideo && it.height == height }
+                val mp4Video = FormatSelection.videoNearest(atHeight, height, DownloadFormat.VIDEO_MP4)
+                val webmVideo = FormatSelection.videoNearest(atHeight, height, DownloadFormat.VIDEO_WEBM)
+                VideoOption(
+                    height = height,
+                    fps = atHeight.maxOfOrNull { fpsByItag[it.itag] ?: 0 } ?: 0,
+                    mp4Bytes = (mp4Video?.clen ?: 0) + bytesAt(AAC_TRANSCODE_BPS, durationMs),
+                    webmBytes = (webmVideo?.clen ?: 0) + webmAudioBytes,
+                )
+            }
+        }
+
+        private fun audioOptions(formats: List<AdaptiveFormat>, durationMs: Long, ffmpegAvailable: Boolean): List<AudioOption> {
+            val aac = FormatSelection.bestAudio(formats, preferAac = true)
+            val opus = FormatSelection.bestAudio(formats, preferAac = false)
+            val m4a = AudioOption(
+                DownloadFormat.M4A,
+                if (aac?.mimeType?.contains("mp4") == true) aac.clen else bytesAt(AAC_TRANSCODE_BPS, durationMs),
+            )
+            if (!ffmpegAvailable) return listOf(m4a)
+            return listOf(
+                AudioOption(
+                    DownloadFormat.AUDIO_WEBM,
+                    if (opus?.mimeType?.contains("webm") == true) opus.clen else bytesAt(OPUS_TRANSCODE_BPS, durationMs),
+                ),
+                m4a,
+                AudioOption(DownloadFormat.MP3, bytesAt(MP3_VBR_BPS, durationMs)),
+            )
+        }
+
+        private fun audioTracks(raw: List<JsonObject>): List<AudioTrackOption> {
+            val tracks = raw.mapNotNull { fmt ->
+                val track = fmt["audioTrack"] as? JsonObject ?: return@mapNotNull null
+                val id = track.str("id") ?: return@mapNotNull null
+                AudioTrackOption(id, track.str("displayName") ?: id, track.str("audioIsDefault")?.toBoolean() ?: false)
+            }.distinctBy { it.id }
+            return if (tracks.size > 1) tracks.sortedByDescending { it.isDefault } else emptyList()
+        }
+
+        private fun JsonObject.toCaption(): CaptionOption? {
+            val lang = str("languageCode") ?: return null
+            return CaptionOption(
+                languageCode = lang,
+                name = str("name") ?: lang,
+                isAsr = str("isAsr")?.toBoolean() ?: false,
+                isDefault = str("isDefault")?.toBoolean() ?: false,
+            )
+        }
+
+        private fun bytesAt(bitsPerSecond: Long, durationMs: Long): Long = bitsPerSecond / 8 * durationMs / 1000
+
+        private fun JsonObject.str(key: String): String? = (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.content
+
+        private fun JsonArray?.orEmpty(): List<kotlinx.serialization.json.JsonElement> = this ?: emptyList()
+    }
+}
