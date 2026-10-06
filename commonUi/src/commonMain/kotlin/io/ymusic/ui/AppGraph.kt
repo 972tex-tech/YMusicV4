@@ -169,6 +169,9 @@ class AppGraph(
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {
     val sponsorBlock = SponsorBlockService(sponsorBlockApi, sponsorBlockStore, settings, logger)
+
+    /** The Quick download preset saved from the download dialog — in memory, for this app run only. */
+    val quickDownload = kotlinx.coroutines.flow.MutableStateFlow<QuickDownloadPreset?>(null)
     /**
      * Bumped after a locale pick landed in the engine (SettingsScreen). The content locale itself
      * LIVES in the engine — the app only hears "it changed" and throws locale-shaped caches away.

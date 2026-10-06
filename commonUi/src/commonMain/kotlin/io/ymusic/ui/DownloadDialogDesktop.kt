@@ -131,7 +131,12 @@ internal fun DownloadDialogDesktop(
                                 Modifier.padding(vertical = DesignSpacing.Space24),
                                 style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary),
                             )
-                            else -> TrackRows(state)
+                            else -> {
+                                TrackRows(state)
+                                if (!state.isLive) {
+                                    Box(Modifier.padding(top = DesignSpacing.Space8)) { SaveAsQuickCheckbox(state) }
+                                }
+                            }
                         }
                     }
                 }

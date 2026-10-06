@@ -301,4 +301,6 @@
     <string name="download_lyrics_note">MP3 lưu phụ đề dưới dạng lời bài hát, hiển thị trong trình phát hỗ trợ lời bài hát.</string>
     <string name="download_caption_translated">%1$s (dịch tự động)</string>
     <string name="download_live_unsupported">Không thể tải video đang phát trực tiếp</string>
+    <string name="download_save_quick">Lưu làm Tải nhanh</string>
+    <string name="quick_download_menu">Tải nhanh · %1$s</string>
 </resources>

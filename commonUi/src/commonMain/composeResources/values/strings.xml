@@ -387,4 +387,6 @@
     <string name="download_lyrics_note">MP3 keeps captions as lyrics, shown by players that read lyrics.</string>
     <string name="download_caption_translated">%1$s (auto-translated)</string>
     <string name="download_live_unsupported">Can’t download a LIVE video</string>
+    <string name="download_save_quick">Save as Quick download</string>
+    <string name="quick_download_menu">Quick download · %1$s</string>
 </resources>

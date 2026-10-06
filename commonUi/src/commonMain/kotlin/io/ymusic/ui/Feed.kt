@@ -66,6 +66,7 @@ import io.ymusic.ui.resources.menu_remove
 import io.ymusic.ui.resources.menu_start_radio
 import io.ymusic.ui.resources.queue_last
 import io.ymusic.ui.resources.queue_next
+import io.ymusic.ui.resources.quick_download_menu
 import io.ymusic.ui.resources.reload
 import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.show_less
@@ -653,6 +654,7 @@ internal val LocalRemoveFromTopTracks = compositionLocalOf<((YtFeedItem) -> Unit
 @Composable
 private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): ItemActions {
     val downloadLauncher = LocalDownloadLauncher.current
+    val quickPreset = downloadLauncher?.quickPreset?.collectAsState()?.value
     val removeFromTopTracks = LocalRemoveFromTopTracks.current
     return ItemActions(
         if (item.kind == YtFeedItem.KIND_VIDEO) {
@@ -663,6 +665,9 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
                 add(stringResource(Res.string.queue_last) to { coordinator.playLater(item) })
                 if (downloadLauncher != null && !item.live) {
                     add(stringResource(Res.string.cd_download) to { downloadLauncher.launch(item) })
+                    quickPreset?.let { preset ->
+                        add(stringResource(Res.string.quick_download_menu, preset.label()) to { downloadLauncher.quickLaunch(item) })
+                    }
                 }
                 if (removeFromTopTracks != null) {
                     add(stringResource(Res.string.menu_remove) to { removeFromTopTracks(item) })

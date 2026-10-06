@@ -41,7 +41,11 @@ internal class DownloadOptionsState(
     private val downloads: DownloadService,
     private val preferredCaptionLanguages: Set<String>,
     private val includeDefaultCaption: Boolean,
+    saveAsQuickInitially: Boolean = false,
 ) {
+    /** Also keep these picks as the Quick download preset. */
+    var saveAsQuick by mutableStateOf(saveAsQuickInitially)
+
     var options by mutableStateOf<DownloadOptions?>(null)
         private set
     var errorCode by mutableStateOf<String?>(null)
@@ -99,6 +103,17 @@ internal class DownloadOptionsState(
             log?.fork("download-options", mapOf("videoId" to video.id))?.log(Logger.Level.WARN, "probe failed", e)
             errorCode = e.codedError()?.code ?: "E70043"
         }
+    }
+
+    /** These picks as languages — what [QuickDownloadPreset] applies to other videos. */
+    fun quickPreset(): QuickDownloadPreset {
+        val opts = options
+        return QuickDownloadPreset(
+            format = format,
+            height = height,
+            audioLanguage = audioTrackId?.takeIf { opts?.audioTracks?.isNotEmpty() == true }?.substringBefore('.'),
+            captionLanguage = opts?.captions?.firstOrNull { captionsSupported && it.key == caption }?.languageCode,
+        )
     }
 
     fun request(): DownloadRequest {

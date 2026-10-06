@@ -616,8 +616,21 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         // Download-format picker: any video menu sets this to a video; DownloadDialogHost shows
                         // the format dialog and enqueues into graph.downloads. Null launcher when no service.
                         var pendingDownload by remember { mutableStateOf<io.ymusic.dynamicengine.yt.YtFeedItem?>(null) }
+                        var pendingQuickDownload by remember { mutableStateOf<io.ymusic.dynamicengine.yt.YtFeedItem?>(null) }
                         val downloadLauncher = remember(graph) {
-                            graph.downloads?.let { DownloadLauncher { video -> pendingDownload = video } }
+                            graph.downloads?.let {
+                                object : DownloadLauncher {
+                                    override fun launch(video: io.ymusic.dynamicengine.yt.YtFeedItem) {
+                                        pendingDownload = video
+                                    }
+
+                                    override val quickPreset = graph.quickDownload
+
+                                    override fun quickLaunch(video: io.ymusic.dynamicengine.yt.YtFeedItem) {
+                                        pendingQuickDownload = video
+                                    }
+                                }
+                            }
                         }
                         CompositionLocalProvider(
                             LocalScrollHost provides scrollHost,
@@ -629,6 +642,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                             LocalLibraryFolderReveal provides libraryReveal,
                         ) {
                             DownloadDialogHost(graph, pendingDownload) { pendingDownload = null }
+                            QuickDownloadHost(graph, pendingQuickDownload) { pendingQuickDownload = null }
                             DefaultDownloadLocationPrompt(graph)
                             Scaffold(
                                 modifier = Modifier.nestedScroll(collapseConnection),

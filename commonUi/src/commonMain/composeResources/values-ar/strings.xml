@@ -306,4 +306,6 @@
     <string name="download_lyrics_note">يحفظ MP3 الترجمة ككلمات أغنية، وتظهر في المشغلات التي تدعم الكلمات.</string>
     <string name="download_caption_translated">%1$s (ترجمة تلقائية)</string>
     <string name="download_live_unsupported">لا يمكن تنزيل فيديو مباشر</string>
+    <string name="download_save_quick">حفظ كتنزيل سريع</string>
+    <string name="quick_download_menu">تنزيل سريع · %1$s</string>
 </resources>

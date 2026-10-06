@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -32,6 +33,8 @@ import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -62,6 +65,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -100,6 +104,7 @@ import io.ymusic.ui.resources.download_name_empty
 import io.ymusic.ui.resources.download_quality
 import io.ymusic.ui.resources.download_rename
 import io.ymusic.ui.resources.download_save
+import io.ymusic.ui.resources.download_save_quick
 import io.ymusic.ui.resources.download_save_to
 import io.ymusic.ui.resources.download_video
 import io.ymusic.ui.resources.download_webm_detail
@@ -180,6 +185,7 @@ internal fun DownloadSheet(
                     }
                 }
             }
+            if (state.options != null && !state.isLive) SaveAsQuickCheckbox(state)
             DownloadButton(state, onDownload)
         }
     }
@@ -434,8 +440,14 @@ private fun OptionRow(icon: ImageVector, title: String, value: String, onClick: 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, Modifier.size(20.dp), tint = DesignColors.InkSoft)
-        Text(title, Modifier.weight(1f), style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink))
-        Text(value, style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary), maxLines = 1)
+        Text(title, style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink), maxLines = 1)
+        Text(
+            value,
+            Modifier.weight(1f),
+            style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary, textAlign = TextAlign.End),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(16.dp), tint = DesignColors.InkFaint)
     }
 }
@@ -495,6 +507,21 @@ internal fun ChoiceMenuItems(choices: List<Choice>, close: () -> Unit) {
                 close()
             },
         )
+    }
+}
+
+@Composable
+internal fun SaveAsQuickCheckbox(state: DownloadOptionsState) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .toggleable(value = state.saveAsQuick, role = Role.Checkbox) { state.saveAsQuick = it },
+        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = state.saveAsQuick, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = DesignColors.Accent))
+        Text(stringResource(Res.string.download_save_quick), style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink))
     }
 }
 
