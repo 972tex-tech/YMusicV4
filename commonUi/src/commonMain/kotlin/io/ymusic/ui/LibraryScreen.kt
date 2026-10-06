@@ -868,7 +868,7 @@ private fun PlaylistsTab(
     val gridState = rememberLazyGridState()
 
     LaunchedEffect(content, refreshTick) {
-        userLists = store.playlists().map { it to store.playlistItems(it.id).size }
+        userLists = store.playlists().map { it to store.playlistItemDetails(it.id).size }
     }
     // The opened playlist's songs. System lists are one-shot queries (re-run when the library changes);
     // a user playlist reads its live membership so add/remove/reorder reflect at once. We DON'T clear
@@ -877,7 +877,8 @@ private fun PlaylistsTab(
     LaunchedEffect(selected?.first, content, playHistory) {
         val id = selected?.first ?: return@LaunchedEffect
         if (id > 0) {
-            store.playlistChanges(id).collect { userItems = store.playlistItemDetails(id) }
+            // Item changes too: a member queued by video id resolves (appears) once its download lands.
+            merge(store.playlistChanges(id).map { }, store.itemsChanges()).collect { userItems = store.playlistItemDetails(id) }
             return@LaunchedEffect
         }
         val history = playHistory
