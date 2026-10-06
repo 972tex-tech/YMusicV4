@@ -377,7 +377,7 @@ function windowAt(nowMs: number): Line[] {
       lines.push({ id: prev.id, text: cueRows(fullText(prev)) });
     }
   }
-  lines.push({ id: c.id, text: cueRows(asr ? prefixOf(c, nowMs) : fullText(c)) });
+  lines.push({ id: c.id, text: cueRows(prefixOf(c, nowMs)) });
   return lines;
 }
 
