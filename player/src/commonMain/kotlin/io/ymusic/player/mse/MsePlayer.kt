@@ -35,6 +35,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -339,12 +340,8 @@ class MsePlayer internal constructor(
         session = newSession
         val previousClose = closing
         newSession.scope.launch {
-            // NonCancellable so a reset-during-reset still chains behind the older close; bounded
-            // because a wedged engine thread never finishes its close — that engine is abandoned.
-            val closed = withContext(NonCancellable) {
-                withTimeoutOrNull(PREVIOUS_CLOSE_TIMEOUT_MS) { previousClose?.join() } != null
-            }
-            if (!closed) log?.log(Logger.Level.WARN, "mse previous session close timed out; starting anyway")
+            // NonCancellable so a reset-during-reset still chains behind the older close.
+            withContext(NonCancellable) { previousClose?.join() }
             ensureActive()
             val engineThread = newEngineThread()
             var enginePlayer: DynamicEnginePlayer? = null
@@ -373,15 +370,39 @@ class MsePlayer internal constructor(
                 if (session === newSession) fail(error, "mse init failed", needReset = true)
             } finally {
                 withContext(NonCancellable) {
-                    if (enginePlayer != null) {
-                        try {
-                            enginePlayer.close()
-                        } catch (error: Throwable) {
-                            log?.log(Logger.Level.WARN, "mse close failed", error)
-                        }
-                    }
-                    engineThread.close()
+                    if (enginePlayer != null) closePlayerBounded(enginePlayer)
+                    closeEngineThread(engineThread)
                 }
+            }
+        }
+    }
+
+    /**
+     * A wedged engine thread never runs its close hop, so the wait is bounded and the successor
+     * boots anyway. Launched [Dispatchers.Main.immediate] so the close's engine-thread hop is
+     * already queued — ahead of [closeEngineThread] — by the time this suspends.
+     */
+    private suspend fun closePlayerBounded(enginePlayer: DynamicEnginePlayer) {
+        val closeJob = mainScope.launch(NonCancellable) {
+            try {
+                enginePlayer.close()
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "mse close failed", error)
+            }
+        }
+        if (withTimeoutOrNull(ENGINE_CLOSE_TIMEOUT_MS) { closeJob.join() } == null) {
+            log?.log(Logger.Level.WARN, "mse engine close timed out; abandoning it")
+        }
+    }
+
+    /** Queued work still drains, then the thread exits. Off main and not awaited: native `close`
+     *  blocks until the worker terminates, which a wedged engine thread never does. */
+    private fun closeEngineThread(engineThread: CloseableCoroutineDispatcher) {
+        mainScope.launch(Dispatchers.IO + NonCancellable) {
+            try {
+                engineThread.close()
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "mse engine thread close failed", error)
             }
         }
     }
@@ -593,7 +614,7 @@ class MsePlayer internal constructor(
 
     companion object {
         private const val LOAD_TIMEOUT_MS = 5_000L
-        private const val PREVIOUS_CLOSE_TIMEOUT_MS = 3_000L
+        private const val ENGINE_CLOSE_TIMEOUT_MS = 3_000L
 
         fun create(
             client: KmpHttpClient,
