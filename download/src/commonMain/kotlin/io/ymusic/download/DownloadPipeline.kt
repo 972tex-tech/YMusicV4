@@ -7,6 +7,7 @@ import io.ymusic.ytmedia.sabr.SabrStreamSpec
 import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Resolves the SABR inputs for a video (player response + PO token). Implemented by the app shell
@@ -61,6 +62,7 @@ class DownloadPipeline(
         val videoFmt = streams.video?.format
         val base = baseName(task)
         val fileName = "$base.${task.format.fileExtension}"
+        val sidecarCaptions = task.format == DownloadFormat.MP3 || task.captions?.sidecar == true
 
         // 1b. optional thumbnail download for cover art — TODO.
 
@@ -71,6 +73,7 @@ class DownloadPipeline(
         if (task.format == DownloadFormat.M4A && ffmpeg == null) {
             val bytes = streams.audio.scratch.length()
             val uri = storage.publish(streams.audio.scratch, fileName, destinationFolder)
+            if (sidecarCaptions) publishSidecars(task.id, streams.captions, base, destinationFolder)
             storage.deleteScratch(task.id)
             return Result(uri, bytes, audioFmt, null)
         }
@@ -93,10 +96,15 @@ class DownloadPipeline(
         val video = streams.video?.scratch
         val out = storage.scratch(task.id, "out")
         val meta = task.tags()
-        val subs = streams.captions.map { SubtitleInput(it.scratch.path, it.languageCode, it.name) }
+        val subs = if (sidecarCaptions) {
+            emptyList()
+        } else {
+            streams.captions.map { SubtitleInput(it.scratch.path, it.languageCode, it.name) }
+        }
         when (task.format) {
-            DownloadFormat.MP3 -> ff.toMp3(audio.path, out.path, meta, onFfProgress) // MP3 carries no captions
+            DownloadFormat.MP3 -> ff.toMp3(audio.path, out.path, meta, onFfProgress)
             DownloadFormat.M4A -> ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), captions = subs, metadata = meta, onProgressUs = onFfProgress)
+            DownloadFormat.AUDIO_WEBM -> ff.toWebmAudio(audio.path, out.path, copy = audioFmt.mimeType.contains("webm"), captions = subs, metadata = meta, onProgressUs = onFfProgress)
             DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
             DownloadFormat.VIDEO_MP4 -> ff.muxMp4(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
         }
@@ -105,8 +113,35 @@ class DownloadPipeline(
         // 3. publish the final file (moved out of the scratch folder), then drop the task's whole scratch
         //    folder — elementary streams + captions in one delete.
         val uri = storage.publish(out, fileName, destinationFolder)
+        if (sidecarCaptions) publishSidecars(task.id, streams.captions, base, destinationFolder)
         storage.deleteScratch(task.id)
         return Result(uri, bytes, audioFmt, videoFmt)
+    }
+
+    /** Each caption beside the media as `<stem>.<lang>.srt` (`.vtt` where there is no ffmpeg to convert).
+     *  Best-effort like the caption download itself: a failed sidecar is logged, never fails the media. */
+    private suspend fun publishSidecars(
+        taskId: String,
+        captions: List<DownloadedCaption>,
+        base: String,
+        destinationFolder: String,
+    ) {
+        for (cc in captions) {
+            try {
+                val ff = ffmpeg
+                if (ff != null) {
+                    val srt = storage.scratch(taskId, "cc.${captionKey(cc.languageCode, cc.isAsr)}.srt")
+                    ff.vttToSrt(cc.scratch.path, srt.path)
+                    storage.publish(srt, "$base.${cc.sidecarSuffix()}.srt", destinationFolder)
+                } else {
+                    storage.publish(cc.scratch, "$base.${cc.sidecarSuffix()}.vtt", destinationFolder)
+                }
+            } catch (c: CancellationException) {
+                throw c
+            } catch (e: Exception) {
+                logger?.log(Logger.Level.WARN, "caption sidecar ${cc.languageCode} failed", e)
+            }
+        }
     }
 
     /** Container tags embedded into the finished file. The videoId goes in the standard `composer` field
@@ -119,9 +154,12 @@ class DownloadPipeline(
         add("composer" to videoId)
     }
 
-    /** `Title-videoId`, sanitized — the shared stem for the media file and its caption sidecars. The
-     *  videoId keeps it unique across same-title videos. Callers append the extension. */
+    private fun DownloadedCaption.sidecarSuffix(): String = if (isAsr) "$languageCode.auto" else languageCode
+
+    /** The stem for the media file and its caption sidecars: the user's [DownloadTask.fileName] when set
+     *  (the destination de-duplicates a clash), else `Title-videoId`. Callers append the extension. */
     private fun baseName(task: DownloadTask): String {
+        task.fileName?.let { DownloadFileNames.finalize(it) }?.takeIf { it.isNotEmpty() }?.let { return it }
         val title = task.title.map { if (it.isLetterOrDigit() || it == ' ' || it == '-' || it == '_') it else '_' }
             .joinToString("")
             .trim()

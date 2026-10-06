@@ -47,11 +47,11 @@ open class DefaultDownloadStorage(
             return uri
         }
         val dir = folder.path.toString().toPath()
-        val dest = dir / fileName
         val src = scratch.path.toPath()
+        var dest = dir / fileName
         try {
             fileSystem.createDirectories(dir)
-            fileSystem.delete(dest, mustExist = false)
+            dest = freeName(dir, fileName)
             // A same-filesystem rename is atomic and cheap; a cross-mount one can't be, and THAT is the only
             // failure a copy legitimately recovers. okio surfaces every atomicMove failure as a bare
             // IOException with no portable errno, so we can't tell "cross-device" from "no space / no
@@ -84,6 +84,17 @@ open class DefaultDownloadStorage(
             "E70031",
             "destination scheme '${destinationFolder.scheme}' unsupported by ${this::class.simpleName}",
         )
+
+    /** [fileName] in [dir], or `stem (2).ext`, `stem (3).ext`… — a download never overwrites a file. */
+    private fun freeName(dir: Path, fileName: String): Path {
+        if (!fileSystem.exists(dir / fileName)) return dir / fileName
+        val dot = fileName.lastIndexOf('.').takeIf { it > 0 } ?: fileName.length
+        val stem = fileName.substring(0, dot)
+        val ext = fileName.substring(dot)
+        var n = 2
+        while (fileSystem.exists(dir / "$stem ($n)$ext")) n++
+        return dir / "$stem ($n)$ext"
+    }
 }
 
 /** okio-backed [DownloadScratch]: append-only writes (resume via on-disk size) + a real path for ffmpeg. */

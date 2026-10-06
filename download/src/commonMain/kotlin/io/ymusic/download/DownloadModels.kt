@@ -4,8 +4,8 @@ package io.ymusic.download
  * The container/codec a download is delivered as. The pipeline that produces each is in
  * [DownloadPipeline]; which are available depends on the platform (ffmpeg presence):
  *
- * - [MP3] / [M4A] — audio only. MP3 always transcodes (libmp3lame); M4A is copied as-is when the best
- *   audio is already AAC, otherwise transcoded. Both audio-only.
+ * - [MP3] / [M4A] / [AUDIO_WEBM] — audio only. MP3 always transcodes (libmp3lame); M4A is copied as-is
+ *   when the best audio is already AAC, otherwise transcoded; AUDIO_WEBM copies the Opus stream.
  * - [VIDEO_WEBM] — VP9 video + Opus audio, stream-copied into one WebM (cheap, no re-encode).
  * - [VIDEO_MP4] — video stream-copied + audio transcoded to AAC into one MP4 (broad device support).
  *
@@ -18,6 +18,7 @@ package io.ymusic.download
 enum class DownloadFormat(val kind: DownloadKind, val fileExtension: String) {
     MP3(DownloadKind.AUDIO, "mp3"),
     M4A(DownloadKind.AUDIO, "m4a"),
+    AUDIO_WEBM(DownloadKind.AUDIO, "webm"),
     VIDEO_WEBM(DownloadKind.VIDEO, "webm"),
     VIDEO_MP4(DownloadKind.VIDEO, "mp4"),
 }
@@ -71,7 +72,21 @@ class DownloadRequest(
     val format: DownloadFormat,
     /** For [DownloadKind.VIDEO]: the target height (e.g. 1080); the nearest available is chosen. Null = best. */
     val requestedHeight: Int? = null,
+    /** The output file's stem (no extension), already user-edited; null = derived from [title]. Sanitized
+     *  again at publish ([DownloadFileNames.finalize]). */
+    val fileName: String? = null,
+    /** The `audioTrack.id` to download (a dubbed language); null = the video's default track. */
+    val audioTrackId: String? = null,
+    /** The caption tracks to fetch; null = the settings-driven [CaptionPreference]. */
+    val captions: CaptionChoice? = null,
 )
+
+/**
+ * Captions picked for one download: the [languages] (caption keys — [captionKey]) and whether
+ * they are written as `.srt` files beside the media ([sidecar]) instead of embedded as subtitle tracks.
+ * MP3 can't carry a subtitle track, so it always gets sidecars.
+ */
+class CaptionChoice(val languages: List<String>, val sidecar: Boolean)
 
 /**
  * One row of the download queue — the persisted, observable unit the UI renders. Immutable snapshot;
@@ -96,6 +111,9 @@ class DownloadTask(
     val errorMessage: String?,
     val createdAt: Long,
     val updatedAt: Long,
+    val fileName: String? = null,
+    val audioTrackId: String? = null,
+    val captions: CaptionChoice? = null,
 ) {
     /** 0f..1f, or null when the total isn't known yet (before the first MEDIA_HEADER). */
     val progress: Float?
@@ -111,5 +129,10 @@ class DownloadTask(
     ) = DownloadTask(
         id, videoId, title, artist, thumbnailUrl, format, requestedHeight,
         state, downloadedBytes, totalBytes, fileUri, errorMessage, createdAt, updatedAt,
+        fileName, audioTrackId, captions,
     )
 }
+
+/** A caption track's identity within one video: its `languageCode`, `a.`-prefixed for the auto-generated
+ *  (ASR) track — a video can carry both a manual and an ASR track in the same language. */
+fun captionKey(languageCode: String, isAsr: Boolean): String = if (isAsr) "a.$languageCode" else languageCode

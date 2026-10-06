@@ -13,13 +13,15 @@ internal object FormatSelection {
     /**
      * Best audio track. [preferAac] biases toward mp4/AAC (so an M4A/MP4 target can stream-copy or make
      * a compatible AAC track); otherwise WebM/Opus is preferred (higher quality per byte for MP3/WebM).
-     * Default (non-dubbed) audio tracks win over alternates so we don't grab a foreign-language dub.
+     * The requested [audioTrackId] (a dubbed language) wins when the video has it; otherwise default
+     * (non-dubbed) tracks win over alternates so we don't grab a foreign-language dub.
      */
-    fun bestAudio(formats: List<AdaptiveFormat>, preferAac: Boolean): AdaptiveFormat? {
+    fun bestAudio(formats: List<AdaptiveFormat>, preferAac: Boolean, audioTrackId: String? = null): AdaptiveFormat? {
         val audio = formats.filter { it.mimeType.startsWith("audio") && it.clen > 0 && !it.isDrc }
         if (audio.isEmpty()) return null
         return audio.sortedWith(
-            compareByDescending<AdaptiveFormat> { it.audioTrackIsDefault != false }
+            compareByDescending<AdaptiveFormat> { audioTrackId != null && it.audioTrackId == audioTrackId }
+                .thenByDescending { it.audioTrackIsDefault != false }
                 .thenByDescending { if (preferAac) it.mimeType.contains("mp4") else it.mimeType.contains("webm") }
                 .thenByDescending { it.clen },
         ).first()

@@ -46,6 +46,10 @@ class DownloadStore(driver: SqlDriver, logger: Logger? = null) {
             error_message = task.errorMessage,
             created_at = task.createdAt,
             updated_at = task.updatedAt,
+            file_name = task.fileName,
+            audio_track_id = task.audioTrackId,
+            caption_langs = task.captions?.languages?.joinToString(","),
+            captions_sidecar = if (task.captions?.sidecar == true) 1L else 0L,
         )
     }
 
@@ -84,6 +88,10 @@ class DownloadStore(driver: SqlDriver, logger: Logger? = null) {
         error_message: String?,
         created_at: Long,
         updated_at: Long,
+        file_name: String?,
+        audio_track_id: String?,
+        caption_langs: String?,
+        captions_sidecar: Long,
     ) = DownloadTask(
         id = id,
         videoId = video_id,
@@ -103,5 +111,10 @@ class DownloadStore(driver: SqlDriver, logger: Logger? = null) {
         errorMessage = error_message,
         createdAt = created_at,
         updatedAt = updated_at,
+        fileName = file_name,
+        audioTrackId = audio_track_id,
+        captions = caption_langs?.let { langs ->
+            CaptionChoice(langs.split(',').filter { it.isNotEmpty() }, sidecar = captions_sidecar != 0L)
+        },
     )
 }

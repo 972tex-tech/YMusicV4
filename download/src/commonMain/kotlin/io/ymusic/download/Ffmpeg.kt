@@ -62,6 +62,21 @@ class Ffmpeg(
         onProgressUs: ((Long) -> Unit)? = null,
     ) = run(m4aArgs(input, output, copy, captions, metadata), onProgressUs)
 
+    /** best audio → audio-only WebM (+ any [captions], as WebVTT): Opus is copied ([copy]=true), anything
+     *  else is transcoded to Opus — WebM can't hold AAC. */
+    suspend fun toWebmAudio(
+        input: String,
+        output: String,
+        copy: Boolean,
+        captions: List<SubtitleInput> = emptyList(),
+        metadata: List<Pair<String, String>> = emptyList(),
+        onProgressUs: ((Long) -> Unit)? = null,
+    ) = run(webmAudioArgs(input, output, copy, captions, metadata), onProgressUs)
+
+    /** WebVTT caption → SubRip. */
+    suspend fun vttToSrt(input: String, output: String) =
+        run(listOf("-i", input.ffSpec(), "-c:s", "subrip", "-f", "srt", output.ffSpec()))
+
     /** Mux VP9 video + Opus audio (+ any [captions], as WebVTT) into one WebM, stream-copying A/V. */
     suspend fun muxWebm(
         video: String,
@@ -132,6 +147,25 @@ internal fun m4aArgs(
     addAll(subtitleMetaArgs(captions))
     addAll(metaArgs(metadata))
     add("-f"); add("ipod"); add(output.ffSpec()) // ipod = the m4a muxer
+}
+
+/** best audio (+ subtitles as WebVTT) → audio-only WebM. Audio is copied ([copy]) or → Opus. */
+internal fun webmAudioArgs(
+    audio: String,
+    output: String,
+    copy: Boolean,
+    captions: List<SubtitleInput>,
+    metadata: List<Pair<String, String>>,
+): List<String> = buildList {
+    add("-i"); add(audio.ffSpec())
+    captions.forEach { add("-i"); add(it.path.ffSpec()) }
+    add("-map"); add("0:a:0")
+    captions.indices.forEach { add("-map"); add("${it + 1}:0") }
+    if (copy) { add("-c:a"); add("copy") } else { add("-c:a"); add("libopus"); add("-b:a"); add("160k") }
+    if (captions.isNotEmpty()) { add("-c:s"); add("webvtt") }
+    addAll(subtitleMetaArgs(captions))
+    addAll(metaArgs(metadata))
+    add("-f"); add("webm"); add(output.ffSpec())
 }
 
 /** Mux video+audio (+subtitles as mov_text) into an MP4. Video is stream-copied, audio → AAC. */

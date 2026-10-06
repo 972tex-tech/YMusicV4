@@ -63,13 +63,13 @@ class CaptionSelectionTest {
     fun mp3_downloads_no_captions() {
         // MP3 can't carry a subtitle track → skip caption download regardless of preference.
         val pref = CaptionPreference(setOf("en"), includeDefault = true)
-        assertEquals(emptyList(), captionsToDownload(DownloadFormat.MP3, tracks, pref))
+        assertEquals(emptyList(), captionsToDownload(DownloadFormat.MP3, tracks, null, pref))
     }
 
     @Test
     fun non_mp3_formats_select_captions_normally() {
         val pref = CaptionPreference(setOf("en"), includeDefault = false)
-        assertEquals(listOf("en"), captionsToDownload(DownloadFormat.M4A, tracks, pref).map { it.languageCode })
-        assertEquals(listOf("en"), captionsToDownload(DownloadFormat.VIDEO_MP4, tracks, pref).map { it.languageCode })
+        assertEquals(listOf("en"), captionsToDownload(DownloadFormat.M4A, tracks, null, pref).map { it.languageCode })
+        assertEquals(listOf("en"), captionsToDownload(DownloadFormat.VIDEO_MP4, tracks, null, pref).map { it.languageCode })
     }
 }

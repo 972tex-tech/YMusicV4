@@ -25,13 +25,18 @@ class CaptionPreference(val languages: Set<String>, val includeDefault: Boolean)
     }
 }
 
-/** Caption tracks to fetch for [format]: none for MP3 — it has no way to carry a subtitle/text track, so
- *  downloading them would be wasted — otherwise the preference-driven [selectCaptions]. */
+/** Caption tracks to fetch: a per-task [choice] names them exactly (MP3 gets them as sidecar files);
+ *  without one, the preference-driven [selectCaptions] — skipped for MP3, which can't embed them. */
 internal fun captionsToDownload(
     format: DownloadFormat,
     tracks: List<CaptionTrack>,
+    choice: CaptionChoice?,
     pref: CaptionPreference,
-): List<CaptionTrack> = if (format == DownloadFormat.MP3) emptyList() else selectCaptions(tracks, pref)
+): List<CaptionTrack> = when {
+    choice != null -> choice.languages.mapNotNull { key -> tracks.firstOrNull { captionKey(it.languageCode, it.isAsr) == key } }
+    format == DownloadFormat.MP3 -> emptyList()
+    else -> selectCaptions(tracks, pref)
+}
 
 /**
  * The caption tracks to download: those whose language matches a preference (exact or base-language,
@@ -57,6 +62,7 @@ class DownloadedStream(val format: AdaptiveFormat, val scratch: DownloadScratch)
 /** One downloaded caption track: the source metadata plus the scratch file (a `.vtt` document). */
 class DownloadedCaption(
     val languageCode: String,
+    val isAsr: Boolean,
     val name: String,
     val isDefault: Boolean,
     val scratch: DownloadScratch,
@@ -108,7 +114,7 @@ class YtStreamDownloader(
         onPreparing()
         var spec = resolveSpec(task.videoId)
         val (audioFmt, videoFmt) = selectFormats(task, spec.formats)
-        val captionPicks = captionsToDownload(task.format, spec.captionTracks, captions)
+        val captionPicks = captionsToDownload(task.format, spec.captionTracks, task.captions, captions)
 
         val audioScratch = storage.scratch(task.id, "audio")
         val videoScratch = if (videoFmt != null) storage.scratch(task.id, "video") else null
@@ -148,7 +154,7 @@ class YtStreamDownloader(
     /** Choose the audio (and, for video outputs, video) [AdaptiveFormat]s for the task. */
     private fun selectFormats(task: DownloadTask, formats: List<AdaptiveFormat>): Pair<AdaptiveFormat, AdaptiveFormat?> {
         val preferAac = task.format == DownloadFormat.M4A || task.format == DownloadFormat.VIDEO_MP4
-        val audio = FormatSelection.bestAudio(formats, preferAac = preferAac)
+        val audio = FormatSelection.bestAudio(formats, preferAac = preferAac, audioTrackId = task.audioTrackId)
             ?: throw TechnicalException("E70011", "no audio format for ${task.videoId}")
         val video = if (task.format.kind == DownloadKind.VIDEO) {
             FormatSelection.videoNearest(formats, task.requestedHeight, task.format)
@@ -161,7 +167,7 @@ class YtStreamDownloader(
 
     /** GET the caption's WebVTT into a scratch file. The baseUrl is already GET-ready (sig/n + pot). */
     private suspend fun downloadCaption(taskId: String, track: CaptionTrack): DownloadedCaption {
-        val scratch = storage.scratch(taskId, "cc.${track.languageCode}.vtt")
+        val scratch = storage.scratch(taskId, "cc.${captionKey(track.languageCode, track.isAsr)}.vtt")
         scratch.delete() // tiny file — always refetch whole rather than resume a partial
         val url = track.baseUrl + (if ('?' in track.baseUrl) "&" else "?") + "fmt=vtt"
         val response = client.execute(RequestBuilder().url(url).header("user-agent", userAgent).get().build())
@@ -172,7 +178,7 @@ class YtStreamDownloader(
         } finally {
             response.close()
         }
-        return DownloadedCaption(track.languageCode, track.name, track.isDefault, scratch)
+        return DownloadedCaption(track.languageCode, track.isAsr, track.name, track.isDefault, scratch)
     }
 
     /**

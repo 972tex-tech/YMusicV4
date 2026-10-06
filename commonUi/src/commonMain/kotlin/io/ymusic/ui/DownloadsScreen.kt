@@ -358,14 +358,15 @@ private fun actionsFor(
 private fun DownloadFormat.badge(): String = when (this) {
     DownloadFormat.MP3 -> "MP3"
     DownloadFormat.M4A -> "M4A"
-    DownloadFormat.VIDEO_WEBM -> "WEBM"
+    DownloadFormat.AUDIO_WEBM, DownloadFormat.VIDEO_WEBM -> "WEBM"
     DownloadFormat.VIDEO_MP4 -> "MP4"
 }
 
-/** A distinct badge tint per format so the type reads at a glance (white text sits on all four). */
+/** A distinct badge tint per format so the type reads at a glance (white text sits on all of them). */
 private fun DownloadFormat.badgeColor(): Color = when (this) {
     DownloadFormat.MP3 -> Color(0xFF2E7D32) // green
     DownloadFormat.M4A -> Color(0xFF1565C0) // blue
+    DownloadFormat.AUDIO_WEBM -> Color(0xFF00695C) // teal
     DownloadFormat.VIDEO_MP4 -> Color(0xFF6A1B9A) // purple
     DownloadFormat.VIDEO_WEBM -> Color(0xFFB23C17) // rust
 }
