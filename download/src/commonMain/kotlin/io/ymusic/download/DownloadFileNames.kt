@@ -28,6 +28,18 @@ object DownloadFileNames {
     fun fromTitle(title: String): String =
         finalize(title.replace(FORBIDDEN_RUN, " - ").replace(REPEATED_SEPARATOR, " - "))
 
+    /** [fileName] if [taken] says it is free, else `stem_1.ext`, `stem_2.ext`… — a download never
+     *  overwrites a file, whatever the destination (local folder or Android SAF). */
+    fun freeName(fileName: String, taken: (String) -> Boolean): String {
+        if (!taken(fileName)) return fileName
+        val dot = fileName.lastIndexOf('.').takeIf { it > 0 } ?: fileName.length
+        val stem = fileName.substring(0, dot)
+        val ext = fileName.substring(dot)
+        var n = 1
+        while (taken("${stem}_$n$ext")) n++
+        return "${stem}_$n$ext"
+    }
+
     /** The stem actually written: forbidden characters dropped, spaces collapsed, no leading/trailing
      *  spaces, dashes or dots (Windows rejects a trailing dot or space), capped at [MAX_LENGTH]. May be
      *  empty — the caller falls back to something non-empty. */

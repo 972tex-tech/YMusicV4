@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import io.ymusic.download.DefaultDownloadStorage
+import io.ymusic.download.DownloadFileNames
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okio.FileSystem
@@ -32,12 +33,24 @@ class AndroidDownloadStorage(
             if (DocumentsContract.isDocumentUri(context, uri)) uri
             else DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
         }
-        val child = DocumentsContract.createDocument(resolver, parent, mimeFor(fileName), fileName)
+        // SAF would rename a clash itself ("name (1).ext"); pick the app-wide "name_1.ext" instead.
+        val existing = childNames(parent)
+        val name = DownloadFileNames.freeName(fileName) { it in existing }
+        val child = DocumentsContract.createDocument(resolver, parent, mimeFor(name), name)
             ?: error("SAF createDocument failed in $destinationFolder")
         resolver.openOutputStream(child)?.use { out ->
             File(scratchPath).inputStream().use { it.copyTo(out) }
         } ?: error("SAF openOutputStream failed for $child")
         child.toString()
+    }
+
+    private fun childNames(parent: Uri): Set<String> {
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
+        val names = mutableSetOf<String>()
+        context.contentResolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { cursor ->
+            while (cursor.moveToNext()) cursor.getString(0)?.let(names::add)
+        }
+        return names
     }
 
     private fun mimeFor(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {

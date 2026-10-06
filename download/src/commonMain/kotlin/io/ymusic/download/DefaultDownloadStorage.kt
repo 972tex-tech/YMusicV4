@@ -86,16 +86,9 @@ open class DefaultDownloadStorage(
             "destination scheme '${destinationFolder.scheme}' unsupported by ${this::class.simpleName}",
         )
 
-    /** [fileName] in [dir], or `stem (2).ext`, `stem (3).ext`… — a download never overwrites a file. */
-    private fun freeName(dir: Path, fileName: String): Path {
-        if (!fileSystem.exists(dir / fileName)) return dir / fileName
-        val dot = fileName.lastIndexOf('.').takeIf { it > 0 } ?: fileName.length
-        val stem = fileName.substring(0, dot)
-        val ext = fileName.substring(dot)
-        var n = 2
-        while (fileSystem.exists(dir / "$stem ($n)$ext")) n++
-        return dir / "$stem ($n)$ext"
-    }
+    /** [fileName] in [dir], or the next free `stem_N.ext` ([DownloadFileNames.freeName]). */
+    private fun freeName(dir: Path, fileName: String): Path =
+        dir / DownloadFileNames.freeName(fileName) { fileSystem.exists(dir / it) }
 }
 
 /** okio-backed [DownloadScratch]: append-only writes (resume via on-disk size) + a real path for ffmpeg. */
