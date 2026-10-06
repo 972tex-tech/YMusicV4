@@ -445,7 +445,13 @@ fun main() {
         var miniOpen by remember { mutableStateOf(false) }
         var miniAnchorX by remember { mutableStateOf<Int?>(null) }
         var queueNotEmpty by remember { mutableStateOf(false) }
-        LaunchedEffect(graph) { graph?.player?.queue?.collect { queueNotEmpty = it.items.isNotEmpty() } }
+        LaunchedEffect(graph) {
+            graph?.player?.queue?.collect {
+                queueNotEmpty = it.items.isNotEmpty()
+                // On the transition only: a tray click with an empty queue still opens it (the way back to a hidden window).
+                if (!queueNotEmpty) miniOpen = false
+            }
+        }
         if (queueNotEmpty || !windowVisible) {
             PlayerTray(painterResource(Res.drawable.ymusic_logo)) { screenX ->
                 miniAnchorX = screenX
