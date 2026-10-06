@@ -115,3 +115,7 @@ SELECT * FROM mediaItem WHERE id IN ? AND deleted = 0;
 
 findItemByVideoId:
 SELECT * FROM mediaItem WHERE youtubeVid = ? AND deleted = 0;
+
+-- Every YouTube video the Library holds a file of — what feeds mark "available offline".
+youtubeVideoIds:
+SELECT DISTINCT youtubeVid FROM mediaItem WHERE youtubeVid IS NOT NULL AND deleted = 0;

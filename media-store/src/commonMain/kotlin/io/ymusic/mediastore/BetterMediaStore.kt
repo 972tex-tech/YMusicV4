@@ -77,6 +77,9 @@ interface BetterMediaStore {
     suspend fun findItem(itemId: Long): MediaStoreItem?
     suspend fun findItemByUri(uri: Uri): MediaStoreItem?
     suspend fun findItemsByVideoId(videoId: String): List<MediaStoreItem>
+
+    /** The YouTube video ids of every (non-deleted) Library item that has one. */
+    suspend fun youtubeVideoIds(): Set<String>
     /** Items in [bucketId], or the orphan items (no bucket) when [bucketId] is null. */
     suspend fun itemsInBucket(bucketId: Long?): List<MediaStoreItem>
 

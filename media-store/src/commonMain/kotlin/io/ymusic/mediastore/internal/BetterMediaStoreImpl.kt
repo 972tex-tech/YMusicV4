@@ -228,6 +228,10 @@ internal class BetterMediaStoreImpl(
         rows.executeAsList().map { it.toModel() }
     }
 
+    override suspend fun youtubeVideoIds(): Set<String> = withContext(io) {
+        itemQ.youtubeVideoIds().executeAsList().filterNotNull().toSet()
+    }
+
     override suspend fun allItems(): List<MediaStoreItem> = withContext(io) {
         itemQ.allItems().executeAsList().map { it.toModel() }
     }
