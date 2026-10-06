@@ -165,6 +165,7 @@
     <string name="cd_forward10">تقديم 10 ثوانٍ</string>
     <string name="cd_repeat">تكرار</string>
     <string name="play_all">تشغيل الكل</string>
+    <string name="shuffle_all">تشغيل الكل عشوائيًا</string>
     <string name="cd_shuffle">خلط</string>
     <string name="cd_sleep_timer">مؤقت النوم</string>
     <string name="cd_captions">التسميات التوضيحية</string>

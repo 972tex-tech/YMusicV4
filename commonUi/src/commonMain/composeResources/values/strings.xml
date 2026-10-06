@@ -211,6 +211,7 @@
     <string name="cd_forward10">Forward 10 seconds</string>
     <string name="cd_repeat">Repeat</string>
     <string name="play_all">Play all</string>
+    <string name="shuffle_all">Shuffle all</string>
     <string name="cd_shuffle">Shuffle</string>
     <string name="cd_sleep_timer">Sleep timer</string>
     <string name="cd_captions">Captions</string>

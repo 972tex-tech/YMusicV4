@@ -1,6 +1,7 @@
 package io.ymusic.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -26,8 +28,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtFeedItem
@@ -40,6 +44,7 @@ import io.ymusic.dynamicengine.yt.extractMusicNewReleases
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.detail_playlist
 import io.ymusic.ui.resources.play_all
+import io.ymusic.ui.resources.shuffle_all
 import io.ymusic.ui.resources.ytmusic_explore_empty
 import io.ymusic.ui.resources.ytmusic_home_empty
 import io.ymusic.ui.resources.ytmusic_library_empty
@@ -220,7 +225,16 @@ fun MusicDetailScreen(
                 { tapped -> coordinator.playAll(videos, startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0)) }
             },
             topContent = if (isFeed) {
-                if (videos.isEmpty()) null else ({ PlayAllBar { coordinator.playAll(videos) } })
+                if (videos.isEmpty()) {
+                    null
+                } else {
+                    {
+                        PlayAllBar(
+                            onPlayAll = { coordinator.playAll(videos) },
+                            onShuffleAll = { coordinator.playAll(videos, startIndex = videos.indices.random(), shuffle = true) },
+                        )
+                    }
+                }
             } else {
                 {
                     PlaylistHeader(
@@ -238,22 +252,39 @@ fun MusicDetailScreen(
 }
 
 @Composable
-private fun PlayAllBar(onPlayAll: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space8)) {
-        Row(
-            Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .background(DesignColors.InkStrong)
-                .clickable(onClick = onPlayAll)
-                .padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space8),
-            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp), tint = DesignColors.OnInk)
-            Text(
-                stringResource(Res.string.play_all),
-                style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.OnInk),
-            )
-        }
+internal fun PlayAllBar(onPlayAll: () -> Unit, onShuffleAll: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space8),
+        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+    ) {
+        PlayPill(Icons.Default.PlayArrow, stringResource(Res.string.play_all), filled = true, onClick = onPlayAll)
+        PlayPill(Icons.Default.Shuffle, stringResource(Res.string.shuffle_all), filled = false, onClick = onShuffleAll)
+    }
+}
+
+@Composable
+private fun PlayPill(icon: ImageVector, label: String, filled: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(999.dp)
+    val content = if (filled) DesignColors.OnInk else DesignColors.Ink
+    Row(
+        Modifier
+            .clip(shape)
+            .then(if (filled) Modifier.background(DesignColors.InkStrong) else Modifier.border(1.dp, DesignColors.OutlineSoft, shape))
+            .clickable(onClick = onClick)
+            .padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space8),
+        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, Modifier.size(18.dp), tint = content)
+        Text(
+            label,
+            style = TextStyle(
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = content,
+                lineHeight = 13.sp,
+                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+            ),
+        )
     }
 }
