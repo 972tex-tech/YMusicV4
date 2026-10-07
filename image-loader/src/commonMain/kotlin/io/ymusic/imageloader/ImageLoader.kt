@@ -186,7 +186,7 @@ class ImageLoader(
     private fun diskKey(key: String): String = "$SCALED_CACHE_VERSION:$key".encodeUtf8().sha256().hex()
 }
 
-private const val SCALED_CACHE_VERSION = 2
+private const val SCALED_CACHE_VERSION = 3
 
 /** Round the target up to a 64px step: stable cache keys across ±layout-pixel jitter. */
 internal fun bucketPx(px: Int): Int = (((px.coerceIn(1, 1 shl 20) - 1) / 64) + 1) * 64

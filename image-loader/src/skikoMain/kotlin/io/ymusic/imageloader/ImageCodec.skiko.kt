@@ -63,10 +63,10 @@ internal actual fun decodeScaledFile(
     fit: Boolean,
 ): DecodedImage = decodeScaled(fileSystem.read(path) { readByteArray() }, maxWidth, maxHeight, fit)
 
-internal actual fun encodePngToSink(bitmap: ImageBitmap, sink: okio.Sink) {
+internal actual fun encodeWebpToSink(bitmap: ImageBitmap, sink: okio.Sink) {
     Image.makeFromBitmap(bitmap.asSkiaBitmap()).use { image ->
-        val data = image.encodeToData(EncodedImageFormat.PNG)
-            ?: throw IllegalStateException("PNG encode failed (${bitmap.width}x${bitmap.height})")
+        val data = image.encodeToData(EncodedImageFormat.WEBP, SCALED_WEBP_QUALITY)
+            ?: throw IllegalStateException("WebP encode failed (${bitmap.width}x${bitmap.height})")
         val buffer = okio.Buffer()
         data.use { buffer.write(it.bytes) }
         sink.write(buffer, buffer.size)

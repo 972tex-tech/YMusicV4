@@ -73,7 +73,10 @@ internal expect fun decodeScaledFile(
 ): DecodedImage
 
 /**
- * Encode an already-scaled bitmap as PNG into [sink] (the scaled-image cache's storage format).
- * Android compresses straight into the stream; skiko encodes in memory first (Skia limitation).
+ * Encode an already-scaled bitmap as lossy WebP into [sink] (the scaled-image cache's storage
+ * format: a fraction of PNG's size for photos, and it keeps alpha). Android compresses straight
+ * into the stream; skiko encodes in memory first (Skia limitation).
  */
-internal expect fun encodePngToSink(bitmap: ImageBitmap, sink: okio.Sink)
+internal expect fun encodeWebpToSink(bitmap: ImageBitmap, sink: okio.Sink)
+
+internal const val SCALED_WEBP_QUALITY = 85

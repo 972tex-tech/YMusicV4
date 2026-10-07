@@ -30,7 +30,7 @@ interface ScaledImageCache {
 /**
  * [ScaledImageCache] on kmpHttp's journaled [DiskLruCache]: true LRU (a get refreshes the entry),
  * incremental size accounting (no directory scans), crash-safe journaled writes, bounded to
- * [maxBytes]. Entries are stored as PNG; en/decoding streams through okio [Buffer]s (Android
+ * [maxBytes]. Entries are stored as lossy WebP; en/decoding streams through okio [Buffer]s (Android
  * decodes straight off the stream — no intermediate ByteArray; Skia's codec API is bytes-only).
  */
 class DiskScaledImageCache(
@@ -69,7 +69,7 @@ class DiskScaledImageCache(
         val editor = cache.edit(key) ?: return@withContext
         try {
             editor.newSink(0).use { sink ->
-                encodePngToSink(bitmap, sink)
+                encodeWebpToSink(bitmap, sink)
                 sink.flush()
             }
             editor.commit()

@@ -2,6 +2,7 @@ package io.ymusic.imageloader
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Build
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -62,8 +63,14 @@ private fun sampleSize(width: Int, height: Int, maxWidth: Int, maxHeight: Int, f
     }
 }
 
-internal actual fun encodePngToSink(bitmap: ImageBitmap, sink: Sink) {
+internal actual fun encodeWebpToSink(bitmap: ImageBitmap, sink: Sink) {
     val buffered = sink.buffer()
-    bitmap.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, buffered.outputStream())
+    val format = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        Bitmap.CompressFormat.WEBP_LOSSY
+    } else {
+        @Suppress("DEPRECATION") // lossy at quality < 100 — the pre-R spelling of WEBP_LOSSY
+        Bitmap.CompressFormat.WEBP
+    }
+    bitmap.asAndroidBitmap().compress(format, SCALED_WEBP_QUALITY, buffered.outputStream())
     buffered.emit()
 }
