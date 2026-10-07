@@ -236,8 +236,6 @@
     <string name="sound_pitch">Cao độ %1$s</string>
     <string name="sound_eq">Equalizer</string>
     <string name="sound_eq_band">%1$s Hz  %2$d dB</string>
-    <string name="sound_bass">Tăng bass %1$d dB</string>
-    <string name="sound_virtualizer">Virtualizer %1$s</string>
     <string name="sound_reset">Đặt lại</string>
     <string name="sound_ok">OK</string>
     <string name="sound_preset_flat">Phẳng</string>
@@ -343,4 +341,7 @@
     <string name="settings_section_privacy">Quyền riêng tư</string>
     <string name="settings_section_about">Giới thiệu</string>
     <string name="settings_quick_download">Tải nhanh</string>
+    <string name="sound_bass_boost">Tăng bass</string>
+    <string name="sound_virtualizer_title">Virtualizer</string>
+    <string name="sound_eq_hint">Kéo một điểm để chỉnh âm thanh</string>
 </resources>
