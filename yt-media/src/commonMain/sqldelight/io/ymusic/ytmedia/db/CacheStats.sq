@@ -1,0 +1,14 @@
+-- Lifetime player-cache counters, one row (id = 0). hit_bytes = bytes served from the cache.
+CREATE TABLE cache_stats (
+    id        INTEGER NOT NULL PRIMARY KEY,
+    hit_bytes INTEGER NOT NULL
+);
+
+ensureRow:
+INSERT OR IGNORE INTO cache_stats(id, hit_bytes) VALUES (0, 0);
+
+addHitBytes:
+UPDATE cache_stats SET hit_bytes = hit_bytes + ? WHERE id = 0;
+
+hitBytes:
+SELECT hit_bytes FROM cache_stats WHERE id = 0;

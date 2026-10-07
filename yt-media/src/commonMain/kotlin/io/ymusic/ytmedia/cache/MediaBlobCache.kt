@@ -69,6 +69,15 @@ interface MediaBlobCache {
 
     /** Total bytes of all committed spans (the LRU budget is measured against this). */
     fun totalSize(): Long
+
+    /** The LRU budget in bytes; 0 means caching is off. */
+    val maxSize: Long
+
+    /**
+     * Set the budget to [bytes], capped so the cache never takes the volume's last 100 MB, and evict
+     * down to it now.
+     */
+    fun setMaxSize(bytes: Long)
 }
 
 /** A stitched read over pinned, immutable spans. Closing it unpins them (idempotent). */

@@ -39,14 +39,14 @@ import okio.buffer
  *    holding no lock across plan→serve. Each span's file is validated once, when its key loads into the
  *    span cache (a phantom row whose file is gone is dropped then) — not on every read.
  * 6. **LRU eviction** — on commit, delete least-recently-used **unpinned** spans (rows + files) until
- *    `SUM(len) ≤ [budgetBytes]`.
+ *    `SUM(len) ≤` the budget ([budgetBytes] until [setMaxSize]).
  */
 @WorkerThread
 class DiskMediaBlobCache(
     private val root: Path,
     private val fileSystem: FileSystem,
     private val index: BlobIndex,
-    private val budgetBytes: Long = DEFAULT_BUDGET_BYTES,
+    budgetBytes: Long = DEFAULT_BUDGET_BYTES,
     private val maxSpanBytes: Long = DEFAULT_MAX_SPAN_BYTES,
 ) : MediaBlobCache {
 
@@ -54,6 +54,7 @@ class DiskMediaBlobCache(
     private class Chunk(val key: String, val start: Long, val len: Long, val skip: Long, val take: Long)
 
     private val lock = SynchronizedObject()
+    private var budget = budgetBytes
     private val pins = mutableMapOf<String, Int>() // spanId → read-pin count (in-memory, per-process)
     private val inFlight = mutableSetOf<String>() // region tokens "key pos len" — known-length write dedupe
     private val activeWriters = mutableSetOf<Long>() // live writer ids; temp files carry the id in their name
@@ -134,6 +135,18 @@ class DiskMediaBlobCache(
     override fun keys(): Set<String> = synchronized(lock) { index.distinctKeys() }
 
     override fun totalSize(): Long = synchronized(lock) { index.totalSize() }
+
+    override val maxSize: Long get() = synchronized(lock) { budget }
+
+    override fun setMaxSize(bytes: Long) {
+        val free = usableSpaceBytes(root)
+        val capped = if (free == null) bytes else minOf(bytes, free + totalSize() - FREE_SPACE_RESERVE_BYTES)
+        val victims = synchronized(lock) {
+            budget = capped.coerceAtLeast(0)
+            planEviction(0)
+        }
+        victims.forEach { fileSystem.delete(it, mustExist = false) }
+    }
 
     private fun pin(id: String) { pins[id] = (pins[id] ?: 0) + 1 }
 
@@ -217,10 +230,10 @@ class DiskMediaBlobCache(
      *  files to delete outside the lock. */
     private fun planEviction(incoming: Long): List<Path> {
         var total = index.totalSize()
-        if (total + incoming <= budgetBytes) return emptyList()
+        if (total + incoming <= budget) return emptyList()
         val victims = ArrayList<Path>()
         for (row in index.lruOrder()) {
-            if (total + incoming <= budgetBytes) break
+            if (total + incoming <= budget) break
             if ((pins[spanId(row.key, row.start, row.len)] ?: 0) > 0) continue // pinned → never evict
             index.delete(row.key, row.start, row.len)
             removeSpanFromCache(row.key, row.start, row.len)
@@ -383,6 +396,7 @@ class DiskMediaBlobCache(
 
     private companion object {
         const val DEFAULT_BUDGET_BYTES = 512L * 1024 * 1024
+        const val FREE_SPACE_RESERVE_BYTES = 100L * 1024 * 1024
         const val DEFAULT_MAX_SPAN_BYTES = 5L * 1024 * 1024 // 5 MB span blocks
         const val SPAN_CACHE_MAX_KEYS = 10 // hot span-lists kept in memory (≈ current + queued videos)
         const val SPAN_EXT = "span"

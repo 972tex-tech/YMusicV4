@@ -1,0 +1,5 @@
+-- v2 -> v3: add cache_stats (lifetime hit bytes). Matches the CREATE in CacheStats.sq.
+CREATE TABLE cache_stats (
+    id        INTEGER NOT NULL PRIMARY KEY,
+    hit_bytes INTEGER NOT NULL
+);

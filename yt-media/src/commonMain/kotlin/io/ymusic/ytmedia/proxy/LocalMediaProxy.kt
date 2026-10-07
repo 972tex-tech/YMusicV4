@@ -1,6 +1,7 @@
 package io.ymusic.ytmedia.proxy
 
 import io.ymusic.ytmedia.cache.BlobWriter
+import io.ymusic.ytmedia.cache.CacheStats
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SabrServe
 import io.ymusic.ytmedia.cache.serveProgressive
@@ -22,6 +23,7 @@ import kmphttp.RequestBuilder
 import kmphttp.asyncSource
 import okio.Buffer
 import okio.BufferedSource
+import okio.ForwardingSource
 import okio.Source
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -135,6 +137,7 @@ class LocalMediaProxy(
         body: Buffer?,
         extraHeaders: List<Pair<String, String>> = emptyList(),
     ): ProxyResponse {
+        if (cache.blobs.maxSize <= 0) return forward(url, method, body, extraHeaders, fill = false)
         val sabrReq = body?.let { parseSabrRequest(url, method, it.peek(), it.size) }
             ?.withAdaptiveFormatsHeader(extraHeaders)
         // A cache-serve fault must never fail the request — fall through to the network — but it's a real
@@ -160,6 +163,7 @@ class LocalMediaProxy(
             when (val serve = cache.serveSabr(sabrReq)) {
                 is SabrServe.Hit -> {
                     logVerbose { "HIT sabr: served=[${serve.servedRanges}] (${serve.segmentCount} segments, ${serve.cachedBytes} bytes, built in ${started.elapsedNow()})" }
+                    cache.stats?.addHitBytes(serve.cachedBytes)
                     return umpResponse(serve.ump, url)
                 }
                 is SabrServe.Backoff -> {
@@ -186,7 +190,9 @@ class LocalMediaProxy(
         return ProxyResponse(
             status = 200, reason = "OK",
             headers = listOf("Content-Type" to "application/octet-stream", "Content-Length" to "$len"),
-            body = src.asAsyncSource(), contentLength = len, url = url,
+            body = (cache.stats?.let { HitCountingSource(src, it) } ?: src).asAsyncSource(),
+            contentLength = len,
+            url = url,
         )
     }
 
@@ -208,6 +214,7 @@ class LocalMediaProxy(
         method: String,
         body: Buffer?,
         extraHeaders: List<Pair<String, String>> = emptyList(),
+        fill: Boolean = true,
     ): ProxyResponse {
         val builder = RequestBuilder().url(url)
         for ((name, value) in extraHeaders) {
@@ -230,7 +237,7 @@ class LocalMediaProxy(
         var networkBody = response.body.asyncSource()
         val effectiveUrl = response.request.url.toString()
         logVerbose { "cache-miss → network ${response.code}: $effectiveUrl" }
-        if (!response.isSuccessful) {
+        if (!response.isSuccessful || !fill) {
             return ProxyResponse(response.code, "OK", headers, networkBody, length, url = effectiveUrl)
         }
         if (isSabrCache(url)) {
@@ -387,5 +394,28 @@ internal class CachingSource(
         } else {
             writer.abort()
         }
+    }
+}
+
+/** Adds the bytes read through it to [stats] once, at EOF or close, whichever comes first. */
+private class HitCountingSource(delegate: Source, private val stats: CacheStats) : ForwardingSource(delegate) {
+    private var read = 0L
+    private var recorded = false
+
+    override fun read(sink: Buffer, byteCount: Long): Long {
+        val n = super.read(sink, byteCount)
+        if (n == -1L) record() else read += n
+        return n
+    }
+
+    override fun close() {
+        record()
+        super.close()
+    }
+
+    private fun record() {
+        if (recorded) return
+        recorded = true
+        stats.addHitBytes(read)
     }
 }

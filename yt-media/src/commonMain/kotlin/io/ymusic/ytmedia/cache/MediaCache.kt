@@ -19,6 +19,8 @@ import okio.buffer
 class MediaCache(
     val blobs: MediaBlobCache,
     val index: SegmentIndex,
+    /** Lifetime counters; null keeps none. */
+    val stats: CacheStats? = null,
 ) {
     /**
      * Begin mirroring one segment into the cache. The metadata row is saved **now** (on the MEDIA_HEADER,

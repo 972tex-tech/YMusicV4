@@ -5,7 +5,7 @@ import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.db.SegmentDatabase
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /** A v1 cache DB (no `format_init`) must migrate to v2 in place — not error with "no such table". */
 class SegmentDbMigrationTest {
@@ -29,7 +29,7 @@ class SegmentDbMigrationTest {
             0,
         )
 
-        assertEquals(2L, SegmentDatabase.Schema.version, "adding format_init must bump the schema version")
+        assertTrue(SegmentDatabase.Schema.version >= 2L, "adding format_init must bump the schema version")
         SegmentDatabase.Schema.migrate(driver, oldVersion = 1, newVersion = SegmentDatabase.Schema.version)
 
         // format_init now exists and round-trips through the index.
