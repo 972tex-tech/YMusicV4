@@ -132,6 +132,7 @@ import io.ymusic.ui.sponsorblock.sponsorBlockJdbcDriver
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
+import io.ymusic.ytmedia.cache.SqlDelightCacheStats
 import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.jvmSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
@@ -599,6 +600,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         MediaCache(
             DiskMediaBlobCache(cacheRoot.absolutePath.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
             SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
+            SqlDelightCacheStats(driver),
         )
     }
     val mediaProxy = withContext(Dispatchers.IO) {
@@ -739,6 +741,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         engines,
         player,
         logger = rootLogger,
+        playerCache = playerCache,
         mediaStore = mediaStore,
         playHistory = PlayHistoryStore(playHistoryJdbcDriver(File(dataDir, "play-history.db").absolutePath)),
         sponsorBlockStore = SqliteSponsorBlockStore(

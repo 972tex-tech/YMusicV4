@@ -41,6 +41,7 @@ import io.ymusic.ui.sponsorblock.sponsorBlockNativeDriver
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
+import io.ymusic.ytmedia.cache.SqlDelightCacheStats
 import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.nativeSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
@@ -163,14 +164,16 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         .resolve("ymusic-player-cache")
     FileSystem.SYSTEM.createDirectories(playerCacheRoot)
     val cacheDriver = nativeSegmentDatabaseDriver()
-    val mediaProxy = LocalMediaProxy(
-        cache = MediaCache(
-            DiskMediaBlobCache(playerCacheRoot, FileSystem.SYSTEM, SqlDelightBlobIndex(cacheDriver, now = { (NSDate().timeIntervalSince1970 * 1000).toLong() })),
-            SqlDelightSegmentIndex(
-                cacheDriver,
-                now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
-            ),
+    val playerCache = MediaCache(
+        DiskMediaBlobCache(playerCacheRoot, FileSystem.SYSTEM, SqlDelightBlobIndex(cacheDriver, now = { (NSDate().timeIntervalSince1970 * 1000).toLong() })),
+        SqlDelightSegmentIndex(
+            cacheDriver,
+            now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
         ),
+        SqlDelightCacheStats(cacheDriver),
+    )
+    val mediaProxy = LocalMediaProxy(
+        cache = playerCache,
         client = KmpHttpClient.create {
             cookieJar = cookies
             defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
@@ -202,6 +205,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         engines = engines,
         player = player,
         logger = rootLogger,
+        playerCache = playerCache,
         mediaStore = null,
         playHistory = PlayHistoryStore(playHistoryNativeDriver()),
         sponsorBlockStore = SqliteSponsorBlockStore(sponsorBlockNativeDriver()),

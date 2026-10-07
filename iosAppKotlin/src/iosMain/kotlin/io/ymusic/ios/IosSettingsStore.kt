@@ -31,6 +31,7 @@ internal class IosSettingsStore(
             "download.location",
             "download.captionLanguages",
             "download.captionDefault",
+            "playerCache.maxMb",
             PlaybackQualitySettingKey,
             PlaybackVolumeKey,
             PlaybackSpeedKey,

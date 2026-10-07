@@ -69,6 +69,7 @@ import io.ymusic.ui.sponsorblock.sponsorBlockAndroidDriver
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
+import io.ymusic.ytmedia.cache.SqlDelightCacheStats
 import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.androidSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
@@ -418,6 +419,7 @@ class YMusicApplication : Application() {
             MediaCache(
                 DiskMediaBlobCache(cacheRoot.toOkioPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
                 SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
+                SqlDelightCacheStats(driver),
             )
         }
         val mediaProxy = shared.webViewJs?.let {
@@ -526,6 +528,7 @@ class YMusicApplication : Application() {
             shared.engines,
             player,
             logger = rootLogger,
+            playerCache = playerCache,
             stats = shared.stats,
             mediaStore = shared.mediaStore,
             playHistory = PlayHistoryStore(playHistoryAndroidDriver(this)),
