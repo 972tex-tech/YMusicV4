@@ -1,5 +1,7 @@
 package io.ymusic.imageloader
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -12,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
@@ -33,6 +36,7 @@ fun AsyncImage(
     contentScale: ContentScale = ContentScale.Crop,
     placeholder: (@Composable BoxScope.() -> Unit)? = null,
     error: (@Composable BoxScope.() -> Unit)? = null,
+    crossfadeMs: Int = 0,
 ) {
     AsyncImage(
         loader = loader,
@@ -43,6 +47,7 @@ fun AsyncImage(
         contentScale = contentScale,
         placeholder = placeholder,
         error = error,
+        crossfadeMs = crossfadeMs,
     )
 }
 
@@ -58,7 +63,8 @@ fun AsyncImage(
  * a sharper decode (shrinking just downscales), and the reload waits [RESIZE_SETTLE_MS] for the
  * resize to settle — every further size change restarts the wait, so a live window drag triggers
  * one reload at the end, not a stream of them. [contentScale] Fit/Inside decodes to fit the box;
- * everything else decodes to cover it.
+ * everything else decodes to cover it. [crossfadeMs] > 0 fades an image in over the placeholder
+ * when it arrives after the first frame; a memory hit still draws at once.
  */
 @Composable
 fun AsyncImage(
@@ -70,7 +76,9 @@ fun AsyncImage(
     contentScale: ContentScale = ContentScale.Crop,
     placeholder: (@Composable BoxScope.() -> Unit)? = null,
     error: (@Composable BoxScope.() -> Unit)? = null,
+    crossfadeMs: Int = 0,
 ) {
+    val alpha = remember(key) { Animatable(1f) }
     val scale = if (contentScale == ContentScale.Fit || contentScale == ContentScale.Inside) ImageScale.Fit else ImageScale.Cover
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
     var loaded by remember(key) { mutableStateOf<ImageBitmap?>(null) }
@@ -88,12 +96,15 @@ fun AsyncImage(
         // the hit through the effect would flash the placeholder for a frame (list scroll jitter).
         val bitmap = loaded ?: request?.let(loader::peek)
         when {
-            bitmap != null -> Image(
-                bitmap,
-                contentDescription,
-                modifier = Modifier.matchParentSize(),
-                contentScale = contentScale,
-            )
+            bitmap != null -> {
+                if (alpha.value < 1f) placeholder?.invoke(this)
+                Image(
+                    bitmap,
+                    contentDescription,
+                    modifier = Modifier.matchParentSize().graphicsLayer { this.alpha = alpha.value },
+                    contentScale = contentScale,
+                )
+            }
             failed -> (error ?: placeholder)?.invoke(this)
             else -> placeholder?.invoke(this)
         }
@@ -108,9 +119,13 @@ fun AsyncImage(
                 delay(RESIZE_SETTLE_MS)
             }
             loadedFor = sizePx
+            val arrivesLate = crossfadeMs > 0 && loaded == null && loader.peek(request) == null
             try {
-                loaded = loader.load(request)
+                val bitmap = loader.load(request)
+                if (arrivesLate) alpha.snapTo(0f)
+                loaded = bitmap
                 failed = false
+                if (arrivesLate) alpha.animateTo(1f, tween(crossfadeMs))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
