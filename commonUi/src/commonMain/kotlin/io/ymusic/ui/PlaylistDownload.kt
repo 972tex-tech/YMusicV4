@@ -54,7 +54,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.ymusic.download.DownloadFormat
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtLocaleOption
 import io.ymusic.mediastore.BetterMediaStore
@@ -93,8 +92,8 @@ import org.jetbrains.compose.resources.stringResource
  * checked video is downloaded with — languages, not tracks, resolved per video like Quick download.
  */
 @Stable
-class PlaylistDownloadSession(val title: String, val pager: Pager, initialPreset: QuickDownloadPreset?) {
-    var preset by mutableStateOf(initialPreset ?: QuickDownloadPreset(DownloadFormat.M4A, 1080, null, null))
+class PlaylistDownloadSession(val title: String, val pager: Pager, initialPreset: QuickDownloadPreset) {
+    var preset by mutableStateOf(initialPreset)
     var checked by mutableStateOf<Set<String>>(emptySet())
 
     /** The Library playlist the downloads join (each song shows up there as it lands); null = none. */

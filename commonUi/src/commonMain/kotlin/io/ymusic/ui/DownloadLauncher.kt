@@ -19,7 +19,6 @@ import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.download_added
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -29,17 +28,15 @@ import org.jetbrains.compose.resources.stringResource
  * shell has no download service), so any video menu — feed rows, Now Playing — can offer "Download"
  * without threading the service through every call site.
  */
-fun interface DownloadLauncher {
+interface DownloadLauncher {
     fun launch(video: YtFeedItem)
 
-    /** The saved Quick download preset; null until one is saved this run. */
-    val quickPreset: StateFlow<QuickDownloadPreset?> get() = NO_QUICK_PRESET
+    /** The Quick download preset. */
+    val quickPreset: StateFlow<QuickDownloadPreset>
 
     /** Download [video] now with [quickPreset] — no options dialog. */
-    fun quickLaunch(video: YtFeedItem) {}
+    fun quickLaunch(video: YtFeedItem)
 }
-
-private val NO_QUICK_PRESET: StateFlow<QuickDownloadPreset?> = MutableStateFlow(null)
 
 /** Null when downloads are unavailable (iOS, headless graphs) — the menus then omit the Download action. */
 val LocalDownloadLauncher = staticCompositionLocalOf<DownloadLauncher?> { null }
@@ -87,7 +84,8 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
             downloads = downloads,
             preferredCaptionLanguages = graph.settings.flow(AppSettings.preferredCaptionLanguages).value,
             includeDefaultCaption = graph.settings.flow(AppSettings.downloadDefaultCaption).value,
-            saveAsQuickInitially = graph.quickDownload.value != null,
+            // Checked once the user has saved their own preset, so later picks keep it current.
+            saveAsQuickInitially = graph.settings.flow(AppSettings.quickDownloadPreset).value.isNotBlank(),
         )
     }
     LaunchedEffect(state) { state.load(log) }

@@ -675,8 +675,8 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
                 add(stringResource(Res.string.queue_last) to { coordinator.playLater(item) })
                 if (downloadLauncher != null && !item.live) {
                     add(stringResource(Res.string.cd_download) to { downloadLauncher.launch(item) })
-                    quickPreset?.let { preset ->
-                        add(stringResource(Res.string.quick_download_menu, preset.label()) to { downloadLauncher.quickLaunch(item) })
+                    if (quickPreset != null) {
+                        add(stringResource(Res.string.quick_download_menu, quickPreset.label()) to { downloadLauncher.quickLaunch(item) })
                     }
                 }
                 if (removeFromTopTracks != null) {

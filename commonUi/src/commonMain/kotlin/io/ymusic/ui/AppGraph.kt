@@ -177,12 +177,11 @@ class AppGraph(
 ) {
     val sponsorBlock = SponsorBlockService(sponsorBlockApi, sponsorBlockStore, settings, logger)
 
-    /** The saved Quick download preset; null when none. Change it with [saveQuickDownload]. */
-    val quickDownload: StateFlow<QuickDownloadPreset?> =
+    /** The Quick download preset, [QuickDownloadPreset.default] until one is saved. Change it with [saveQuickDownload]. */
+    val quickDownload: StateFlow<QuickDownloadPreset> =
         settings.flow(AppSettings.quickDownloadPreset).mapState(QuickDownloadPreset::decode)
 
-    suspend fun saveQuickDownload(preset: QuickDownloadPreset?) =
-        settings.put(AppSettings.quickDownloadPreset, preset?.encode().orEmpty())
+    suspend fun saveQuickDownload(preset: QuickDownloadPreset) = settings.put(AppSettings.quickDownloadPreset, preset.encode())
     /**
      * Bumped after a locale pick landed in the engine (SettingsScreen). The content locale itself
      * LIVES in the engine — the app only hears "it changed" and throws locale-shaped caches away.

@@ -28,7 +28,8 @@ import projectcommon.json.stringOrNull
  * The Quick download preset — picks saved from the options dialog, applied to any video without asking.
  * Languages, not tracks: each download resolves them against its own player response (the nearest
  * [height], the dubbed track in [audioLanguage], the caption in [captionLanguage] — else the defaults).
- * [captionLanguage] null means captions off. Persisted in [AppSettings.quickDownloadPreset] ([AppGraph.quickDownload]).
+ * [captionLanguage] null means captions off. Persisted in [AppSettings.quickDownloadPreset] ([AppGraph.quickDownload]);
+ * there is always one ([default] until the user saves their own).
  */
 data class QuickDownloadPreset(
     val format: DownloadFormat,
@@ -62,11 +63,15 @@ data class QuickDownloadPreset(
         private const val KEY_AUDIO = "audioLanguage"
         private const val KEY_CAPTION = "captionLanguage"
 
-        /** Null when nothing is saved, or the saved format is unknown to this build (an older app version). */
-        fun decode(raw: String): QuickDownloadPreset? {
-            if (raw.isBlank()) return null
+        /** M4A, the default audio track, captions in the device language — until the user saves a preset. */
+        fun default(): QuickDownloadPreset =
+            QuickDownloadPreset(DownloadFormat.M4A, height = null, audioLanguage = null, captionLanguage = systemLanguageTag())
+
+        /** [default] when never saved, or when the saved format is unknown to this build (an older app version). */
+        fun decode(raw: String): QuickDownloadPreset {
+            if (raw.isBlank()) return default()
             val json = Json.parseToJsonElement(raw).jsonObject
-            val format = DownloadFormat.entries.firstOrNull { it.name == json.string(KEY_FORMAT) } ?: return null
+            val format = DownloadFormat.entries.firstOrNull { it.name == json.string(KEY_FORMAT) } ?: return default()
             return QuickDownloadPreset(
                 format = format,
                 height = json.intOrNull(KEY_HEIGHT),
@@ -108,7 +113,7 @@ internal fun QuickDownloadHost(graph: AppGraph, pending: YtFeedItem?, onDone: ()
     }
     LaunchedEffect(video) {
         val gated = graph.mediaStore != null && graph.libraryFolderPicker != null
-        if (preset != null && (!gated || hasUsableDownloadLocation(graph) || pickDownloadFolder(graph))) {
+        if (!gated || hasUsableDownloadLocation(graph) || pickDownloadFolder(graph)) {
             downloads.enqueue(preset.request(video))
             snackbar(added)
         }

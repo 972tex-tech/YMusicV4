@@ -343,6 +343,4 @@
     <string name="settings_section_privacy">Quyền riêng tư</string>
     <string name="settings_section_about">Giới thiệu</string>
     <string name="settings_quick_download">Tải nhanh</string>
-    <string name="settings_quick_download_off">Tắt</string>
-    <string name="settings_quick_download_turn_off">Tắt</string>
 </resources>

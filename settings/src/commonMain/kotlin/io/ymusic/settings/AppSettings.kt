@@ -75,7 +75,7 @@ object AppSettings {
      * albumArtOnLockScreen ALBUM_ART/ALBUM_ART2 trick.
      */
 
-    /** The Quick download preset, JSON-encoded by the UI; empty = none saved. */
+    /** The Quick download preset, JSON-encoded by the UI; empty = the UI's default preset. */
     val quickDownloadPreset = StringSetting("download.quickPreset", "")
 
     /** Player cache size limit in MB; 0 = no cache. The cache also leaves the disk's last 100 MB free. */
