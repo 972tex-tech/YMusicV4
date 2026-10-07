@@ -63,6 +63,8 @@ data class PlaybackConfig(
     val bassBoostDb: Float = 0f,
     /** 1 = natural stereo; 0 = mono; >1 = wider. */
     val virtualizer: Float = 1f,
+    /** Level trim into the equalizer, −12..+12 dB, on top of its automatic loudness matching. */
+    val preampDb: Float = 0f,
     val loop: Boolean = false,
     val preferCaptionLanguage: Pair<String, Long> = UNDETERMINED_LANGUAGE to 0L,
     val scaleMode: ScaleMode = ScaleMode.CONTAIN,

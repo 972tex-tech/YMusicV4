@@ -126,6 +126,8 @@ interface Player {
 
     fun setVirtualizer(width: Float)
 
+    fun setPreamp(db: Float)
+
     /** Sets [PlaybackConfig.audioOnly]. Quality is unchanged and restored when this is false. */
     fun setAudioOnly(audioOnly: Boolean)
 

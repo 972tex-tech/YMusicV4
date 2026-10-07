@@ -449,12 +449,14 @@ class MsePlayer internal constructor(
         if (previous == null ||
             config.eqBands != previous.eqBands ||
             config.bassBoostDb != previous.bassBoostDb ||
-            config.virtualizer != previous.virtualizer
+            config.virtualizer != previous.virtualizer ||
+            config.preampDb != previous.preampDb
         ) {
             videoSurface.setAudioEffect(
                 FloatArray(10) { index -> config.eqBands.getOrElse(index) { 0f } },
                 config.bassBoostDb.coerceIn(-12f, 12f),
                 config.virtualizer.coerceIn(0f, 2f),
+                config.preampDb.coerceIn(-12f, 12f),
             )
         }
     }

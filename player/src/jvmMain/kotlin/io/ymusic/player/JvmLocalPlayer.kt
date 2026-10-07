@@ -226,6 +226,7 @@ internal class JvmLocalPlayer(
             FileAvNative.setEq(handle, FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } })
             FileAvNative.setBass(handle, config.bassBoostDb)
             FileAvNative.setVirtualizer(handle, config.virtualizer)
+            FileAvNative.setPreamp(handle, config.preampDb)
             if (FileAvNative.open(handle, path) != 0) {
                 val err = FileAvNative.lastError(handle).ifBlank { "open failed" }
                 fail(err)
@@ -352,7 +353,7 @@ internal class JvmLocalPlayer(
             dispatch { if (handle != 0L) FileAvNative.setPitch(handle, config.pitchFactor.toDouble()) }
         }
         if (config.eqBands != prev.eqBands || config.bassBoostDb != prev.bassBoostDb ||
-            config.virtualizer != prev.virtualizer
+            config.virtualizer != prev.virtualizer || config.preampDb != prev.preampDb
         ) {
             val bands = FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } }
             dispatch {
@@ -360,6 +361,7 @@ internal class JvmLocalPlayer(
                     FileAvNative.setEq(handle, bands)
                     FileAvNative.setBass(handle, config.bassBoostDb)
                     FileAvNative.setVirtualizer(handle, config.virtualizer)
+                    FileAvNative.setPreamp(handle, config.preampDb)
                 }
             }
         }

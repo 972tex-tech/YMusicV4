@@ -304,6 +304,8 @@ internal class PlayerImpl(
     override fun setVirtualizer(width: Float) =
         pushConfig(currentConfig.copy(virtualizer = width.coerceIn(0f, 2f)))
 
+    override fun setPreamp(db: Float) = pushConfig(currentConfig.copy(preampDb = db.coerceIn(-12f, 12f)))
+
     override fun setAudioOnly(audioOnly: Boolean) {
         pushConfig(currentConfig.copy(audioOnly = audioOnly))
     }
