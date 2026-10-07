@@ -3,6 +3,7 @@
 #include "audio_fx.h"
 
 #include <limits.h>
+#include <stdio.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -101,6 +102,21 @@ struct MseHost {
     int tr_cb_silent;
     int tr_clock_src;
     double tr_dac;
+    /* Rolling capture of every buffer handed to the device (debug): bytes, write cursor, and per-callback
+     * marks; dumped to /tmp after each resume. */
+    uint8_t *tr_cap;
+    int tr_cap_bytes;
+    long long tr_cap_total;
+    int tr_dump_pending;
+    int tr_dump_seq;
+    struct {
+        long long at;
+        double ms;
+        int n;
+        int live;
+        int fading;
+    } tr_mark[256];
+    int tr_mark_n;
 #endif
 #ifdef __APPLE__
     AudioQueueRef aq;
@@ -411,6 +427,24 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
         n = cap;
     }
     buf->mAudioDataByteSize = (UInt32)n;
+    pthread_mutex_lock(&h->mu);
+    if (!h->tr_cap) {
+        h->tr_cap_bytes = 48000 * 2 * 2 * 3;
+        h->tr_cap = (uint8_t *)calloc(1, (size_t)h->tr_cap_bytes);
+    }
+    if (h->tr_cap) {
+        int i, k = h->tr_mark_n % 256;
+        h->tr_mark[k].at = h->tr_cap_total;
+        h->tr_mark[k].ms = h->tr_play_ns > 0 ? (now_ns() - h->tr_play_ns) / 1e6 : 0;
+        h->tr_mark[k].n = n;
+        h->tr_mark[k].live = live;
+        h->tr_mark[k].fading = h->aq_fading;
+        h->tr_mark_n++;
+        for (i = 0; i < n; i++)
+            h->tr_cap[(h->tr_cap_total + i) % h->tr_cap_bytes] = ((uint8_t *)buf->mAudioData)[i];
+        h->tr_cap_total += n;
+    }
+    pthread_mutex_unlock(&h->mu);
     AudioQueueEnqueueBuffer(q, buf, 0, NULL);
 }
 
@@ -913,6 +947,11 @@ static void *dec_loop(void *arg)
 #ifdef MSE_DAC
         {
             double tnow = now_ns();
+#ifdef __APPLE__
+            uint8_t *dump = NULL;
+            char *marks = NULL;
+            int dump_len = 0, dump_seq = 0;
+#endif
             pthread_mutex_lock(&h->mu);
             if (h->tr_until_ns > 0 && tnow < h->tr_until_ns && tnow - h->tr_last_ns >= 15e6) {
                 h->tr_last_ns = tnow;
@@ -924,7 +963,59 @@ static void *dec_loop(void *arg)
                           h->tr_dac, ring_ms(h), h->tr_cb, h->tr_cb_silent,
                           (long long)h->samples_played, h->playing);
             }
+#ifdef __APPLE__
+            if (h->tr_dump_pending && h->tr_cap && tnow - h->tr_play_ns > 1.0e9) {
+                long long start = h->tr_cap_total > h->tr_cap_bytes ? h->tr_cap_total - h->tr_cap_bytes : 0;
+                long long b;
+                int i, m0, len = 0;
+                h->tr_dump_pending = 0;
+                dump_len = (int)(h->tr_cap_total - start);
+                dump = (uint8_t *)malloc((size_t)dump_len);
+                marks = (char *)malloc(256 * 96 + 64);
+                if (dump && marks) {
+                    for (b = start; b < h->tr_cap_total; b++)
+                        dump[b - start] = h->tr_cap[b % h->tr_cap_bytes];
+                    len += snprintf(marks + len, 64, "rate=%d ch=%d\n", h->rate, h->ch);
+                    m0 = h->tr_mark_n > 256 ? h->tr_mark_n - 256 : 0;
+                    for (i = m0; i < h->tr_mark_n; i++) {
+                        int k = i % 256;
+                        if (h->tr_mark[k].at < start)
+                            continue;
+                        len += snprintf(marks + len, 96, "byte=%lld ms=%.1f n=%d live=%d fading=%d\n",
+                                        h->tr_mark[k].at - start, h->tr_mark[k].ms, h->tr_mark[k].n,
+                                        h->tr_mark[k].live, h->tr_mark[k].fading);
+                    }
+                    dump_seq = ++h->tr_dump_seq;
+                } else {
+                    free(dump);
+                    free(marks);
+                    dump = NULL;
+                    marks = NULL;
+                }
+            }
+#endif
             pthread_mutex_unlock(&h->mu);
+#ifdef __APPLE__
+            if (dump) {
+                char path[64];
+                FILE *f;
+                snprintf(path, sizeof(path), "/tmp/mse_pr_%02d.raw", dump_seq);
+                f = fopen(path, "wb");
+                if (f) {
+                    fwrite(dump, 1, (size_t)dump_len, f);
+                    fclose(f);
+                }
+                snprintf(path, sizeof(path), "/tmp/mse_pr_%02d.txt", dump_seq);
+                f = fopen(path, "w");
+                if (f) {
+                    fputs(marks, f);
+                    fclose(f);
+                }
+                mse_critf(MSE_LOG_INFO, "mse-pr dumped /tmp/mse_pr_%02d.raw (%d bytes)", dump_seq, dump_len);
+                free(dump);
+                free(marks);
+            }
+#endif
         }
 #endif
 
@@ -1364,6 +1455,7 @@ void mse_host_play(MseHost *h)
         h->tr_until_ns = h->tr_play_ns + 1.5e9;
         h->tr_last_ns = 0;
         h->tr_cb = h->tr_cb_silent = 0;
+        h->tr_dump_pending = h->tr_pause_ns > 0;
         mse_critf(MSE_LOG_INFO, "mse-pr play hold=%.3f clock=%.3f ring=%dms played=%lld aq_started=%d paused_for=%.0fms",
                   h->hold, clock, ring_ms(h), (long long)h->samples_played, h->aq_started,
                   h->tr_pause_ns > 0 ? (h->tr_play_ns - h->tr_pause_ns) / 1e6 : -1.0);
