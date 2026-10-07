@@ -16,6 +16,8 @@ import kmpffmpeg.metadata.FfmpegMetadataGetter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okio.Buffer
 import okio.IOException
@@ -63,18 +65,31 @@ private suspend fun youtubeArt(network: ImageFetcher, videoId: String, size: Int
         }
         add(youtubeThumbUrl(videoId) to false)
     }
-    var failure: IOException? = null
-    for ((candidate, letterboxed) in candidates) {
-        try {
-            val decoded = network.fetch(Uri.parse(candidate), size) ?: continue
-            return if (letterboxed) decoded.trimLetterbox() else decoded
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: IOException) {
-            failure = e
+    // All at once, taken in preference order: a missing HD variant costs no extra round trip.
+    return coroutineScope {
+        val fetches = candidates.map { (candidate, letterboxed) ->
+            async {
+                try {
+                    network.fetch(Uri.parse(candidate), size)?.let { if (letterboxed) it.trimLetterbox() else it }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: IOException) {
+                    e
+                }
+            }
         }
+        var failure: IOException? = null
+        for (fetch in fetches) {
+            when (val result = fetch.await()) {
+                is DecodedImage -> {
+                    fetches.forEach { it.cancel() }
+                    return@coroutineScope result
+                }
+                is IOException -> failure = result
+            }
+        }
+        throw IOException("no YouTube thumbnail for $videoId: $url", failure)
     }
-    throw IOException("no YouTube thumbnail for $videoId: $url", failure)
 }
 
 /** The 16:9 band of a 4:3 frame: the picture inside YouTube's letterboxed hqdefault. */
