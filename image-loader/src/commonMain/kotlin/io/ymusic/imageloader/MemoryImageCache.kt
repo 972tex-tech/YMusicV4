@@ -20,19 +20,6 @@ internal class MemoryImageCache(initialMaxBytes: Long) {
         map.remove(key)?.also { map[key] = it } // re-insert = most recently used
     }
 
-    /** The largest cached size of [cacheKey] (entries keyed `<cacheKey>@<w>x<h>`), LRU order untouched. */
-    fun peekLargest(cacheKey: String): ImageBitmap? = synchronized(lock) {
-        var best: ImageBitmap? = null
-        for ((key, bitmap) in map) {
-            if (key.length <= cacheKey.length + 1 || !key.startsWith(cacheKey) || key[cacheKey.length] != '@') continue
-            if (!sizeSuffix.matches(key.substring(cacheKey.length + 1))) continue
-            if (best == null || bitmap.byteSize() > best.byteSize()) best = bitmap
-        }
-        best
-    }
-
-    private val sizeSuffix = Regex("\\d+x\\d+")
-
     fun put(key: String, bitmap: ImageBitmap): Unit = synchronized(lock) {
         map.remove(key)?.let { totalBytes -= it.byteSize() }
         map[key] = bitmap

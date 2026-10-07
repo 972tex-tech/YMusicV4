@@ -71,9 +71,6 @@ class ImageLoader(
             null
         }
 
-    /** Any size of [cacheKey] already in memory (the largest) — an interim frame while [load] runs. */
-    fun peekAnySize(cacheKey: String): ImageBitmap? = memory.peekLargest(cacheKey)
-
     /**
      * The image at [url], scaled down to cover [maxWidth]×[maxHeight] pixels (aspect kept, never
      * upscaled). Suspends until loaded; throws [IOException] on a failed fetch and rethrows decode
