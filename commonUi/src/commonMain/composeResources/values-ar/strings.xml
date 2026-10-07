@@ -350,7 +350,7 @@
     <string name="settings_section_privacy">الخصوصية</string>
     <string name="settings_section_about">حول</string>
     <string name="settings_quick_download">تنزيل سريع</string>
-    <string name="sound_bass">الباس</string>
-    <string name="sound_virtualizer_title">المحاكي</string>
+    <string name="sound_bass">Bass</string>
+    <string name="sound_virtualizer_title">Virtualizer</string>
     <string name="sound_eq_hint">اسحب منزلقًا لضبط الصوت</string>
 </resources>
