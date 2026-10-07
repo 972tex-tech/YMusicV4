@@ -344,4 +344,11 @@
     <string name="settings_player_cache">ذاكرة التخزين المؤقت للمشغّل</string>
     <string name="settings_player_cache_summary">الحد الأقصى %1$s · المستخدم %2$s · الموفَّر %3$s</string>
     <string name="settings_player_cache_off">بدون تخزين مؤقت</string>
+    <string name="settings_section_appearance">المظهر</string>
+    <string name="settings_section_content">المحتوى</string>
+    <string name="settings_section_playback">التشغيل</string>
+    <string name="settings_section_downloads">التنزيلات</string>
+    <string name="settings_section_devices">الأجهزة</string>
+    <string name="settings_section_privacy">الخصوصية</string>
+    <string name="settings_section_about">حول</string>
 </resources>

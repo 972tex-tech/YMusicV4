@@ -58,6 +58,13 @@ import io.ymusic.ui.resources.settings_eq_hint
 import io.ymusic.ui.resources.settings_language
 import io.ymusic.ui.resources.settings_licenses
 import io.ymusic.ui.resources.settings_licenses_intro
+import io.ymusic.ui.resources.settings_section_about
+import io.ymusic.ui.resources.settings_section_appearance
+import io.ymusic.ui.resources.settings_section_content
+import io.ymusic.ui.resources.settings_section_devices
+import io.ymusic.ui.resources.settings_section_downloads
+import io.ymusic.ui.resources.settings_section_playback
+import io.ymusic.ui.resources.settings_section_privacy
 import io.ymusic.ui.resources.settings_show_fps
 import io.ymusic.ui.resources.settings_show_fps_hint
 import io.ymusic.ui.resources.settings_speed_hint
@@ -110,61 +117,72 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
     // scrolling screen does this via TrackScroll; without it the bar never elevates).
     val scrollState = rememberScrollState()
     TrackScroll { scrollState.canScrollBackward }
-    Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(vertical = 8.dp)) {
-        LanguageRow(
-            current = uiLanguage.ifBlank { defaultUiLanguageTag() },
-            onSelect = { tag ->
-                scope.launch {
-                    // Persist FIRST: apply is only the notify — the engine re-pulls this setting.
-                    graph.settings.put(AppSettings.uiLanguage, tag)
-                    pickLocale(gl = options.gl)
-                }
-            },
-        )
-        ThemeRow(
-            current = theme,
-            onSelect = { value -> scope.launch { graph.settings.put(AppSettings.theme, value) } },
-        )
-        ContentLocaleRow(
-            title = stringResource(Res.string.settings_content_region),
-            subtitle = stringResource(Res.string.settings_content_locale_hint),
-            current = options.gl,
-            options = options.regions,
-            loading = loadingOptions,
-            onSelect = { code -> pickLocale(gl = code) },
-        )
-        DownloadSettingsSection(graph)
-        PlayerCacheRow(graph)
+    Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(bottom = DesignSpacing.SettingsSectionGap)) {
+        SettingsSection(Res.string.settings_section_appearance) {
+            ThemeRow(
+                current = theme,
+                onSelect = { value -> scope.launch { graph.settings.put(AppSettings.theme, value) } },
+            )
+            LanguageRow(
+                current = uiLanguage.ifBlank { defaultUiLanguageTag() },
+                onSelect = { tag ->
+                    scope.launch {
+                        // Persist FIRST: apply is only the notify — the engine re-pulls this setting.
+                        graph.settings.put(AppSettings.uiLanguage, tag)
+                        pickLocale(gl = options.gl)
+                    }
+                },
+            )
+        }
+        SettingsSection(Res.string.settings_section_content) {
+            ContentLocaleRow(
+                title = stringResource(Res.string.settings_content_region),
+                subtitle = stringResource(Res.string.settings_content_locale_hint),
+                current = options.gl,
+                options = options.regions,
+                loading = loadingOptions,
+                onSelect = { code -> pickLocale(gl = code) },
+            )
+        }
+        SettingsSection(Res.string.settings_section_playback) {
+            SoundRow(graph, speed = true)
+            SoundRow(graph, speed = false)
+            ToggleRow(graph, AppSettings.enablePip, Res.string.settings_enable_pip, Res.string.settings_enable_pip_hint)
+            ToggleRow(
+                graph,
+                AppSettings.sponsorBlockEnabled,
+                Res.string.settings_sponsor_block,
+                Res.string.settings_sponsor_block_hint,
+            )
+            PlayerCacheRow(graph)
+        }
+        if (graph.downloads != null) {
+            SettingsSection(Res.string.settings_section_downloads) { DownloadSettingsRows(graph) }
+        }
         if (graph.exportSessionCookies != null && graph.scanQrCode != null &&
             graph.confirmDeviceOwner != null
         ) {
-            LinkDevicesRow(graph, signedIn = signedIn, onLogin = onLogin)
-        }
-        SoundRow(graph, speed = true)
-        SoundRow(graph, speed = false)
-        ToggleRow(graph, AppSettings.enablePip, Res.string.settings_enable_pip, Res.string.settings_enable_pip_hint)
-        ToggleRow(
-            graph,
-            AppSettings.sponsorBlockEnabled,
-            Res.string.settings_sponsor_block,
-            Res.string.settings_sponsor_block_hint,
-        )
-        // Auto-update: off by default, fetching tens of MB unasked is the user's call. Turning it
-        // on also makes future releases apply on the next start.
-        if (graph.updates != null) {
-            ToggleRow(graph, AppSettings.autoDownloadUpdates, Res.string.settings_auto_update, Res.string.settings_auto_update_hint)
+            SettingsSection(Res.string.settings_section_devices) {
+                LinkDevicesRow(graph, signedIn = signedIn, onLogin = onLogin)
+            }
         }
         // Both telemetry consents are LIVE: the shells mirror them into the send-gates, so nothing
         // leaves the app while a switch is off, and no restart is needed either way.
-        ToggleRow(graph, AppSettings.crashReports, Res.string.settings_crash_reports, Res.string.settings_crash_reports_hint)
-        ToggleRow(graph, AppSettings.stats, Res.string.settings_stats, Res.string.settings_stats_hint)
-        Text(
-            stringResource(Res.string.settings_debug),
-            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkMuted),
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        ToggleRow(graph, AppSettings.showFps, Res.string.settings_show_fps, Res.string.settings_show_fps_hint)
-        LicensesRow()
+        SettingsSection(Res.string.settings_section_privacy) {
+            ToggleRow(graph, AppSettings.crashReports, Res.string.settings_crash_reports, Res.string.settings_crash_reports_hint)
+            ToggleRow(graph, AppSettings.stats, Res.string.settings_stats, Res.string.settings_stats_hint)
+        }
+        SettingsSection(Res.string.settings_section_about) {
+            // Auto-update: off by default, fetching tens of MB unasked is the user's call. Turning it
+            // on also makes future releases apply on the next start.
+            if (graph.updates != null) {
+                ToggleRow(graph, AppSettings.autoDownloadUpdates, Res.string.settings_auto_update, Res.string.settings_auto_update_hint)
+            }
+            LicensesRow()
+        }
+        SettingsSection(Res.string.settings_debug) {
+            ToggleRow(graph, AppSettings.showFps, Res.string.settings_show_fps, Res.string.settings_show_fps_hint)
+        }
     }
 }
 
@@ -175,7 +193,7 @@ private fun SoundRow(graph: AppGraph, speed: Boolean) {
         Modifier
             .fillMaxWidth()
             .clickable { open = true }
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -206,7 +224,7 @@ private fun ToggleRow(graph: AppGraph, setting: BoolSetting, title: StringResour
         Modifier
             .fillMaxWidth()
             .clickable { scope.launch { graph.settings.put(setting, !enabled) } }
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -236,7 +254,7 @@ private fun LicensesRow() {
         modifier = Modifier
             .fillMaxWidth()
             .clickable { open = true }
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
     )
     if (open) {
         val listState = rememberLazyListState()
@@ -308,7 +326,7 @@ private fun ContentLocaleRow(
         Modifier
             .fillMaxWidth()
             .clickable { open = true }
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -420,7 +438,7 @@ private fun ThemeRow(current: String, onSelect: (String) -> Unit) {
         Modifier
             .fillMaxWidth()
             .clickable { open = true }
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -453,7 +471,7 @@ private fun LanguageRow(current: String, onSelect: (String) -> Unit) {
         Modifier
             .fillMaxWidth()
             .clickable { open = true }
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

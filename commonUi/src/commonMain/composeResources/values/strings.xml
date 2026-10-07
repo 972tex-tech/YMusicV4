@@ -425,4 +425,11 @@
     <string name="settings_player_cache">Player cache</string>
     <string name="settings_player_cache_summary">Max %1$s · Used %2$s · Saved %3$s</string>
     <string name="settings_player_cache_off">No cache</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_section_content">Content</string>
+    <string name="settings_section_playback">Playback</string>
+    <string name="settings_section_downloads">Downloads</string>
+    <string name="settings_section_devices">Devices</string>
+    <string name="settings_section_privacy">Privacy</string>
+    <string name="settings_section_about">About</string>
 </resources>

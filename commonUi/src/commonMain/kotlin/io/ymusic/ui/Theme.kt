@@ -49,6 +49,8 @@ class DesignPalette(
     val Surface: Color,
     val SurfaceDim: Color,
     val SurfaceElevated: Color,
+    /** Settings section card fill — one visible step off [Surface] in both themes. */
+    val SettingsCard: Color,
     /** The search input's gray pill fill. */
     val FieldPill: Color,
     val BrandGreen: Color,
@@ -84,6 +86,7 @@ val LightDesignColors = DesignPalette(
     Surface = Color.White,
     SurfaceDim = Color(0xFFFAFAFA),
     SurfaceElevated = Color(0xFFF5F5F5),
+    SettingsCard = Color(0xFFF2F2F2),
     FieldPill = Color(0xFFF1F1F1),
     BrandGreen = Color(0xFF1DB954),
 )
@@ -117,6 +120,7 @@ val DarkDesignColors = DesignPalette(
     Surface = Color(0xFF272727),
     SurfaceDim = Color(0xFF313131),
     SurfaceElevated = Color(0xFF292929),
+    SettingsCard = Color(0xFF333333),
     FieldPill = Color(0xFF3F3F3F),
     BrandGreen = Color(0xFF1DB954),
 )
@@ -161,10 +165,15 @@ object DesignSpacing {
     /** Vertical gap between grid rows, every width class (the compact gutter stays horizontal). */
     val GridRowGap = Space16
 
-    /** Settings list-detail row insets. Off the step scale — the settings rows were tuned to this
-     *  rhythm before the scale existed; kept as named tokens for visual continuity across the screen. */
-    val SettingsRowHorizontal = 20.dp
+    /** Settings row insets inside a section card. Vertical is off the step scale — the rows were tuned
+     *  to this rhythm before the scale existed. */
+    val SettingsRowHorizontal = Space16
     val SettingsRowVertical = 14.dp
+
+    /** Settings section card: its margin from the screen edge, corner, and the gap above each header. */
+    val SettingsCardInset = Space16
+    val SettingsCardCorner = 12.dp
+    val SettingsSectionGap = Space24
 
     /** Row insets inside the elevated-bar picker dialog ([ElevatedBarDialog]) — the choice rows align
      *  with the title (24) and take a 12 midpoint vertical, matching the content-region picker. */

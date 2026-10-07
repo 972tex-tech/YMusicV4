@@ -71,7 +71,7 @@ internal fun LinkDevicesRow(graph: AppGraph, signedIn: Boolean, onLogin: () -> U
         Modifier
             .fillMaxWidth()
             .clickable { open = true }
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

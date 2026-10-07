@@ -45,9 +45,7 @@ import kotlinx.coroutines.launch
  * since the download folder is one of the Library buckets.
  */
 @Composable
-internal fun DownloadSettingsSection(graph: AppGraph) {
-    if (graph.downloads == null) return
-    SettingsSectionHeader("Downloads")
+internal fun DownloadSettingsRows(graph: AppGraph) {
     if (graph.mediaStore != null) DownloadLocationRow(graph)
     PreferredCaptionsRow(graph)
 }
@@ -307,18 +305,4 @@ internal fun SettingRow(title: String, value: String, onClick: () -> Unit) {
         )
         Text(value, style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary))
     }
-}
-
-@Composable
-private fun SettingsSectionHeader(text: String) {
-    Text(
-        text,
-        style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary),
-        modifier = Modifier.padding(
-            start = DesignSpacing.SettingsRowHorizontal,
-            end = DesignSpacing.SettingsRowHorizontal,
-            top = DesignSpacing.Space16,
-            bottom = DesignSpacing.Space4,
-        ),
-    )
 }
