@@ -204,6 +204,7 @@ fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<App
                 graph.player.setBassBoost(n[0])
                 graph.player.setVirtualizer(n[1])
                 graph.player.setEqBands(n.drop(2).take(10))
+                n.getOrNull(12)?.let { graph.player.setPreamp(it) }
             }
         }
         launch {
@@ -211,15 +212,16 @@ fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<App
                 .collect { graph.settings.putString(PlaybackQualitySettingKey, it) }
         }
         launch {
-            graph.player.config.map { "${it.volume}|${it.speed}|${it.pitchFactor}|${it.bassBoostDb}|${it.virtualizer}|${it.eqBands.joinToString(",")}" }
+            graph.player.config.map { "${it.volume}|${it.speed}|${it.pitchFactor}|${it.bassBoostDb}|${it.virtualizer}|${it.eqBands.joinToString(",")}|${it.preampDb}" }
                 .distinctUntilChanged()
                 .collect { blob ->
                     val p = blob.split('|')
-                    if (p.size >= 6) {
+                    if (p.size >= 7) {
                         graph.settings.putString(PlaybackVolumeKey, p[0])
                         graph.settings.putString(PlaybackSpeedKey, p[1])
                         graph.settings.putString(PlaybackPitchKey, p[2])
-                        graph.settings.putString(PlaybackEqKey, "${p[3]},${p[4]},${p[5]}")
+                        // bass, virtualizer, 10 bands, preamp — preamp last so 12-value saves still load.
+                        graph.settings.putString(PlaybackEqKey, "${p[3]},${p[4]},${p[5]},${p[6]}")
                     }
                 }
         }

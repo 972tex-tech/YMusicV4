@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -42,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -88,6 +90,11 @@ private val FaderHeight = 180.dp
 private val FaderTrackWidth = 4.dp
 private val FaderCapWidth = 22.dp
 private val FaderCapHeight = 14.dp
+private val MasterColumnWidth = 40.dp
+private val MasterTrackWidth = 6.dp
+private val MasterCapWidth = 28.dp
+private val MasterCapHeight = 16.dp
+private const val PRE_INDEX = -1
 private val KnobSize = 104.dp
 private const val KNOB_SWEEP_DEGREES = 270f
 private const val KNOB_HUB_FRACTION = 0.15f
@@ -126,6 +133,7 @@ internal fun EqualizerFxSheet(player: Player, onDismiss: () -> Unit) {
                 player.setEqBands(List(EQ_HZ.size) { 0f })
                 player.setBassBoost(0f)
                 player.setVirtualizer(1f)
+                player.setPreamp(0f)
             }
             TextButton(onClick = onDismiss) {
                 Text(stringResource(Res.string.sound_ok), color = DesignColors.Accent)
@@ -137,7 +145,12 @@ internal fun EqualizerFxSheet(player: Player, onDismiss: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
         ) {
             Column(Modifier.padding(horizontal = DesignSpacing.Space16)) {
-                FaderBank(bands, onBandChange = { index, db -> player.setEqBands(bands.toMutableList().also { it[index] = db }) })
+                FaderBank(
+                    preamp = config.preampDb,
+                    bands = bands,
+                    onPreampChange = { player.setPreamp(it) },
+                    onBandChange = { index, db -> player.setEqBands(bands.toMutableList().also { it[index] = db }) },
+                )
                 Text(
                     stringResource(Res.string.sound_eq_hint),
                     style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
@@ -233,19 +246,30 @@ private fun MiniCurve(bands: List<Float>, color: Color) {
 }
 
 /**
- * Ten mixing-desk faders over a ±12 dB scale, each filled from the 0 dB line to its value. Press anywhere in a
- * fader's column and drag vertically to set it (whole-dB steps); the held fader's cap glows and its value and
- * frequency light up.
+ * A mixing-desk bank over a ±12 dB scale: the PRE master fader (the level going into the equalizer) on the
+ * left, then the ten band faders, each filled from the 0 dB line to its value. Press anywhere in a fader's
+ * column and drag vertically to set it (whole-dB steps); the held fader's cap glows and its labels light up.
  */
 @Composable
-private fun FaderBank(bands: List<Float>, onBandChange: (index: Int, db: Float) -> Unit) {
+private fun FaderBank(
+    preamp: Float,
+    bands: List<Float>,
+    onPreampChange: (db: Float) -> Unit,
+    onBandChange: (index: Int, db: Float) -> Unit,
+) {
     val accent = DesignColors.Accent
+    val master = DesignColors.Ink
     val track = if (DesignColors.isDark) Color(0xFF1A1A1A) else Color(0xFFD4D4D4)
     val rule = DesignColors.OutlineSoft
     val idleMark = DesignColors.InkFaint
-    val change by rememberUpdatedState(onBandChange)
+    val masterCapBorder = DesignColors.InkFaint
+    val changeBand by rememberUpdatedState(onBandChange)
+    val changePreamp by rememberUpdatedState(onPreampChange)
+    // The held fader: PRE_INDEX for the master, else a band index.
     var active by remember { mutableStateOf<Int?>(null) }
-    val inset = with(LocalDensity.current) { FaderCapHeight.toPx() / 2 + 2.dp.toPx() }
+    val density = LocalDensity.current
+    val inset = with(density) { MasterCapHeight.toPx() / 2 + 2.dp.toPx() }
+    val masterWidth = with(density) { MasterColumnWidth.toPx() }
     Column(
         Modifier
             .fillMaxWidth()
@@ -254,20 +278,12 @@ private fun FaderBank(bands: List<Float>, onBandChange: (index: Int, db: Float) 
             .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(FaderBankCorner))
             .padding(horizontal = DesignSpacing.Space4, vertical = DesignSpacing.Space16),
     ) {
-        Row(Modifier.fillMaxWidth()) {
-            bands.forEachIndexed { i, db ->
-                Text(
-                    dbLabel(db),
-                    style = TextStyle(
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (db == 0f && i != active) DesignColors.InkSecondary else accent,
-                    ),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
+        FaderLabels(
+            master = dbLabel(preamp),
+            masterColor = if (preamp == 0f && active != PRE_INDEX) DesignColors.InkSecondary else master,
+            bands = bands.mapIndexed { i, db -> dbLabel(db) to (if (db == 0f && i != active) DesignColors.InkSecondary else accent) },
+            bold = true,
+        )
         BoxWithConstraints(Modifier.fillMaxWidth().height(FaderHeight).padding(top = DesignSpacing.Space8)) {
             val height = constraints.maxHeight.toFloat()
             fun yOf(db: Float) = inset + (EQ_MAX_DB - db) / (2 * EQ_MAX_DB) * (height - 2 * inset)
@@ -277,73 +293,135 @@ private fun FaderBank(bands: List<Float>, onBandChange: (index: Int, db: Float) 
                 Modifier.fillMaxSize().pointerInput(bands.size, height) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
-                        val index = (down.position.x / size.width * bands.size).toInt().coerceIn(0, bands.lastIndex)
+                        val bandWidth = (size.width - masterWidth) / bands.size
+                        val index = if (down.position.x < masterWidth) {
+                            PRE_INDEX
+                        } else {
+                            ((down.position.x - masterWidth) / bandWidth).toInt().coerceIn(0, bands.lastIndex)
+                        }
+                        fun set(y: Float) = if (index == PRE_INDEX) changePreamp(dbAt(y)) else changeBand(index, dbAt(y))
                         active = index
                         down.consume()
-                        change(index, dbAt(down.position.y))
+                        set(down.position.y)
                         drag(down.id) { move ->
-                            change(index, dbAt(move.position.y))
+                            set(move.position.y)
                             move.consume()
                         }
                         active = null
                     }
                 },
             ) {
-                val column = size.width / bands.size
+                val bandWidth = (size.width - masterWidth) / bands.size
                 val zero = yOf(0f)
-                drawLine(rule, Offset(0f, zero), Offset(size.width, zero), strokeWidth = 1.5.dp.toPx())
+                drawLine(rule, Offset(masterWidth, zero), Offset(size.width, zero), strokeWidth = 1.5.dp.toPx())
                 listOf(EQ_MAX_DB, -EQ_MAX_DB).forEach { db ->
-                    drawLine(rule.copy(alpha = 0.5f), Offset(0f, yOf(db)), Offset(size.width, yOf(db)), strokeWidth = 1.dp.toPx())
+                    drawLine(rule.copy(alpha = 0.5f), Offset(masterWidth, yOf(db)), Offset(size.width, yOf(db)), strokeWidth = 1.dp.toPx())
                 }
-                val trackWidth = FaderTrackWidth.toPx()
-                val capWidth = FaderCapWidth.toPx()
-                val capHeight = FaderCapHeight.toPx()
+                drawLine(rule, Offset(masterWidth, 0f), Offset(masterWidth, size.height), strokeWidth = 1.dp.toPx())
+                drawFader(
+                    x = masterWidth / 2,
+                    db = preamp,
+                    yOf = ::yOf,
+                    track = track,
+                    fill = master.copy(alpha = 0.55f),
+                    trackWidth = MasterTrackWidth.toPx(),
+                    capSize = Size(MasterCapWidth.toPx(), MasterCapHeight.toPx()),
+                    capBrush = { top, bottom -> Brush.verticalGradient(listOf(Color(0xFF3A3A3A), Color(0xFF1F1F1F)), startY = top, endY = bottom) },
+                    capBorder = masterCapBorder,
+                    mark = master,
+                    glow = if (active == PRE_INDEX) master.copy(alpha = 0.2f) else null,
+                )
                 bands.forEachIndexed { i, db ->
-                    val x = column * (i + 0.5f)
-                    val radius = CornerRadius(trackWidth / 2)
-                    drawRoundRect(track, Offset(x - trackWidth / 2, inset), Size(trackWidth, size.height - 2 * inset), radius)
-                    val y = yOf(db)
-                    if (db != 0f) {
-                        drawRoundRect(accent, Offset(x - trackWidth / 2, minOf(y, zero)), Size(trackWidth, abs(y - zero)), radius)
-                    }
-                    val capTopLeft = Offset(x - capWidth / 2, y - capHeight / 2)
-                    if (i == active) drawCircle(accent.copy(alpha = 0.25f), capWidth * 0.9f, Offset(x, y))
-                    drawRoundRect(
-                        Color.Black.copy(alpha = 0.45f),
-                        capTopLeft + Offset(0f, 2.dp.toPx()),
-                        Size(capWidth, capHeight),
-                        CornerRadius(4.dp.toPx()),
-                    )
-                    drawRoundRect(
-                        Brush.verticalGradient(listOf(Color(0xFFEDEDED), Color(0xFFA9A9A9)), startY = capTopLeft.y, endY = capTopLeft.y + capHeight),
-                        capTopLeft,
-                        Size(capWidth, capHeight),
-                        CornerRadius(4.dp.toPx()),
-                    )
-                    drawLine(
-                        if (db == 0f && i != active) idleMark else accent,
-                        Offset(x - capWidth / 2 + 4.dp.toPx(), y),
-                        Offset(x + capWidth / 2 - 4.dp.toPx(), y),
-                        strokeWidth = 2.dp.toPx(),
+                    drawFader(
+                        x = masterWidth + bandWidth * (i + 0.5f),
+                        db = db,
+                        yOf = ::yOf,
+                        track = track,
+                        fill = accent,
+                        trackWidth = FaderTrackWidth.toPx(),
+                        capSize = Size(FaderCapWidth.toPx(), FaderCapHeight.toPx()),
+                        capBrush = { top, bottom -> Brush.verticalGradient(listOf(Color(0xFFEDEDED), Color(0xFFA9A9A9)), startY = top, endY = bottom) },
+                        capBorder = null,
+                        mark = if (db == 0f && i != active) idleMark else accent,
+                        glow = if (i == active) accent.copy(alpha = 0.25f) else null,
                     )
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(top = DesignSpacing.Space8)) {
-            EQ_HZ.forEachIndexed { i, hz ->
-                Text(
-                    hz,
-                    style = TextStyle(
-                        fontSize = 10.sp,
-                        fontWeight = if (i == active) FontWeight.Bold else FontWeight.Normal,
-                        color = if (i == active) accent else DesignColors.InkSecondary,
-                    ),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+        FaderLabels(
+            master = "PRE",
+            masterColor = if (active == PRE_INDEX) master else DesignColors.InkMuted,
+            bands = EQ_HZ.mapIndexed { i, hz -> hz to (if (i == active) accent else DesignColors.InkSecondary) },
+            bold = false,
+            boldIndex = active,
+            modifier = Modifier.padding(top = DesignSpacing.Space8),
+        )
+    }
+}
+
+/** One label row aligned with the fader columns: [master] over the PRE column, then one per band. */
+@Composable
+private fun FaderLabels(
+    master: String,
+    masterColor: Color,
+    bands: List<Pair<String, Color>>,
+    bold: Boolean,
+    boldIndex: Int? = null,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier.fillMaxWidth()) {
+        Text(
+            master,
+            style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = masterColor),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.width(MasterColumnWidth),
+        )
+        bands.forEachIndexed { i, (text, color) ->
+            Text(
+                text,
+                style = TextStyle(
+                    fontSize = 10.sp,
+                    fontWeight = if (bold || i == boldIndex) FontWeight.Bold else FontWeight.Normal,
+                    color = color,
+                ),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
+}
+
+private fun DrawScope.drawFader(
+    x: Float,
+    db: Float,
+    yOf: (Float) -> Float,
+    track: Color,
+    fill: Color,
+    trackWidth: Float,
+    capSize: Size,
+    capBrush: (top: Float, bottom: Float) -> Brush,
+    capBorder: Color?,
+    mark: Color,
+    glow: Color?,
+) {
+    val radius = CornerRadius(trackWidth / 2)
+    val top = yOf(EQ_MAX_DB)
+    drawRoundRect(track, Offset(x - trackWidth / 2, top), Size(trackWidth, yOf(-EQ_MAX_DB) - top), radius)
+    val y = yOf(db)
+    val zero = yOf(0f)
+    if (db != 0f) drawRoundRect(fill, Offset(x - trackWidth / 2, minOf(y, zero)), Size(trackWidth, abs(y - zero)), radius)
+    val capTopLeft = Offset(x - capSize.width / 2, y - capSize.height / 2)
+    val corner = CornerRadius(4.dp.toPx())
+    if (glow != null) drawCircle(glow, capSize.width * 0.9f, Offset(x, y))
+    drawRoundRect(Color.Black.copy(alpha = 0.45f), capTopLeft + Offset(0f, 2.dp.toPx()), capSize, corner)
+    drawRoundRect(capBrush(capTopLeft.y, capTopLeft.y + capSize.height), capTopLeft, capSize, corner)
+    if (capBorder != null) drawRoundRect(capBorder, capTopLeft, capSize, corner, style = Stroke(1.dp.toPx()))
+    drawLine(
+        mark,
+        Offset(x - capSize.width / 2 + 4.dp.toPx(), y),
+        Offset(x + capSize.width / 2 - 4.dp.toPx(), y),
+        strokeWidth = 2.dp.toPx(),
+    )
 }
 
 private fun dbLabel(db: Float): String {
