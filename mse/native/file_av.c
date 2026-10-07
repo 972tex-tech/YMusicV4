@@ -1208,6 +1208,9 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
         cap = (int)buf->mAudioDataBytesCapacity;
     if (!p->stop && !p->flushing && p->playing && p->ring)
         n = ring_read(p, (uint8_t *)buf->mAudioData, cap);
+    /* Colored at the device pull so EQ is instant and the spectrum matches what is heard. */
+    if (n > 0 && p->fx)
+        audio_fx_color(p->fx, (int16_t *)buf->mAudioData, n / ring_fb(p), ring_fb(p) / 2);
     if (n > 0 && p->out_rate > 0) {
         p->samples_played += n / ring_fb(p);
         p->dac_tick_ns = now_ns();
@@ -1374,8 +1377,6 @@ static int decode_pcm(FileAv *p, uint8_t **out, int *nbytes)
                 tmp = (uint8_t *)stretched;
                 got = nout;
             }
-            if (got > 0)
-                audio_fx_color(p->fx, (int16_t *)tmp, got, OUT_CH);
         } else if (p->swr_speed) {
             int mout = (int)swr_get_out_samples(p->swr_speed, got) + 256;
             uint8_t *ins[1] = {tmp};
