@@ -55,24 +55,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.download.DownloadFormat
-import io.ymusic.download.DownloadKind
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtLocaleOption
-import io.ymusic.dynamicengine.yt.ytLocaleOptions
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.model.Playlist
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_back
 import io.ymusic.ui.resources.cd_more
-import io.ymusic.ui.resources.download_audio_language
-import io.ymusic.ui.resources.download_audio_only
-import io.ymusic.ui.resources.download_captions
-import io.ymusic.ui.resources.download_captions_off
-import io.ymusic.ui.resources.download_default_track
-import io.ymusic.ui.resources.download_format
 import io.ymusic.ui.resources.download_location_not_set
 import io.ymusic.ui.resources.download_save_to
-import io.ymusic.ui.resources.download_video
 import io.ymusic.ui.resources.playlist_add_to
 import io.ymusic.ui.resources.playlist_added
 import io.ymusic.ui.resources.playlist_check_all
@@ -89,15 +80,12 @@ import io.ymusic.ui.resources.playlist_target_none
 import io.ymusic.ui.resources.playlist_uncheck_all
 import io.ymusic.ui.resources.playlist_uncheck_downloaded
 import io.ymusic.ui.resources.playlist_videos_loaded
-import kmpcommon.log.Logger
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getPluralString
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /** Video heights a playlist download can ask for; each video takes its nearest available. */
-private val PLAYLIST_HEIGHTS = listOf(2160, 1440, 1080, 720, 480, 360)
 
 /**
  * A playlist download page's retained state. It shares the playlist page's [pager], so the videos
@@ -267,7 +255,6 @@ private fun OptionsCard(
     onPickLocation: () -> Unit,
     libraryStore: BetterMediaStore?,
 ) {
-    val preset = session.preset
     Column(
         Modifier
             .widthIn(max = CONTENT_MAX_WIDTH)
@@ -282,44 +269,7 @@ private fun OptionsCard(
             stringResource(Res.string.playlist_options).uppercase(),
             style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp, color = DesignColors.InkSecondary),
         )
-        val audioFormats = if (ffmpegAvailable) listOf(DownloadFormat.AUDIO_WEBM, DownloadFormat.M4A, DownloadFormat.MP3) else listOf(DownloadFormat.M4A)
-        val videoFormats = if (ffmpegAvailable) listOf(DownloadFormat.VIDEO_MP4, DownloadFormat.VIDEO_WEBM) else emptyList()
-        OptionLine(stringResource(Res.string.download_format), presetLabel(preset)) { close ->
-            MenuGroupLabel(stringResource(Res.string.download_audio_only))
-            ChoiceMenuItems(
-                audioFormats.map { f -> Choice(f.displayName(), f == preset.format) { session.preset = preset.copy(format = f) } },
-                close,
-            )
-            videoFormats.forEach { container ->
-                MenuGroupLabel("${stringResource(Res.string.download_video)} · ${container.displayName()}")
-                ChoiceMenuItems(
-                    PLAYLIST_HEIGHTS.map { h ->
-                        Choice(heightLabel(h), container == preset.format && h == preset.height) {
-                            session.preset = preset.copy(format = container, height = h)
-                        }
-                    },
-                    close,
-                )
-            }
-        }
-        val default = stringResource(Res.string.download_default_track)
-        OptionLine(stringResource(Res.string.download_audio_language), languageName(preset.audioLanguage, languages) ?: default) { close ->
-            ChoiceMenuItems(
-                listOf(Choice(default, preset.audioLanguage == null) { session.preset = preset.copy(audioLanguage = null) }) +
-                    languages.map { lang -> Choice(lang.label, lang.code == preset.audioLanguage) { session.preset = preset.copy(audioLanguage = lang.code) } },
-                close,
-            )
-        }
-        if (ffmpegAvailable) {
-            val off = stringResource(Res.string.download_captions_off)
-            OptionLine(stringResource(Res.string.download_captions), languageName(preset.captionLanguage, languages) ?: off) { close ->
-                ChoiceMenuItems(
-                    listOf(Choice(off, preset.captionLanguage == null) { session.preset = preset.copy(captionLanguage = null) }) +
-                        languages.map { lang -> Choice(lang.label, lang.code == preset.captionLanguage) { session.preset = preset.copy(captionLanguage = lang.code) } },
-                    close,
-                )
-            }
-        }
+        QuickPresetFields(session.preset, languages, ffmpegAvailable) { session.preset = it }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
             Text(
                 stringResource(Res.string.download_save_to),
@@ -379,14 +329,6 @@ private fun OptionsCard(
 }
 
 @Composable
-private fun OptionLine(title: String, value: String, menu: @Composable (close: () -> Unit) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
-        Text(title, Modifier.width(112.dp), style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink))
-        Box(Modifier.weight(1f)) { DropdownField(value) { close -> menu(close) } }
-    }
-}
-
-@Composable
 private fun VideoCheckRow(video: YtFeedItem, checked: Boolean, downloaded: Boolean, onToggle: (Boolean) -> Unit) {
     Row(
         Modifier
@@ -420,38 +362,4 @@ private fun VideoCheckRow(video: YtFeedItem, checked: Boolean, downloaded: Boole
             }
         }
     }
-}
-
-/** YouTube's own language menu (labelled in the app language); empty until loaded or if it fails. */
-@Composable
-private fun rememberYtLanguages(graph: AppGraph): List<YtLocaleOption> {
-    val languages by produceState(emptyList<YtLocaleOption>(), graph) {
-        value = try {
-            graph.engines.ytLocaleOptions(graph.logger).languages
-        } catch (c: CancellationException) {
-            throw c
-        } catch (e: Exception) {
-            graph.logger?.fork("PlaylistDownload")?.log(Logger.Level.WARN, "language list failed; offering Default / Off only", e)
-            emptyList()
-        }
-    }
-    return languages
-}
-
-private fun languageName(code: String?, languages: List<YtLocaleOption>): String? =
-    code?.let { c -> languages.firstOrNull { it.code == c }?.label ?: c }
-
-/** "M4A · Audio only", "MP4 · 1080p". */
-@Composable
-private fun presetLabel(preset: QuickDownloadPreset): String =
-    if (preset.format.kind == DownloadKind.AUDIO) {
-        "${preset.format.displayName()} · ${stringResource(Res.string.download_audio_only)}"
-    } else {
-        "${preset.format.displayName()} · ${heightLabel(preset.height ?: 1080)}"
-    }
-
-private fun heightLabel(height: Int): String = when {
-    height >= 4320 -> "8K"
-    height >= 2160 -> "4K"
-    else -> "${height}p"
 }
