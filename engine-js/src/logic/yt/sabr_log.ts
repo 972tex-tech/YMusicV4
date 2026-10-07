@@ -369,7 +369,7 @@ function durMs(): string {
   }
 }
 
-function b64url(u: Uint8Array): string {
+export function b64url(u: Uint8Array): string {
   let s = "";
   for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]!);
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

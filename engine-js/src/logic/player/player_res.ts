@@ -291,6 +291,42 @@ export function videoIdForSabrUrl(url: string): string {
   return (sid && streamToVid[sid]) || "";
 }
 
+const CATALOG_KEYS = [
+  "itag",
+  "lastModified",
+  "mimeType",
+  "width",
+  "height",
+  "contentLength",
+  "approxDurationMs",
+  "isDrc",
+  "xtags",
+  "indexRange",
+  "audioTrack",
+];
+
+/** Original /player adaptiveFormats metadata (no url / cipher) for the SABR stream of [url]. */
+export function sabrAdaptiveFormats(url: string): Record<string, unknown>[] {
+  const vid = videoIdForSabrUrl(url) || lastPlayerVid;
+  const e = vid ? cache[vid] : undefined;
+  const sd = e && e.rec ? asRec(e.rec["streamingData"]) : null;
+  const fmts = sd ? sd["adaptiveFormats"] : null;
+  if (!Array.isArray(fmts)) return [];
+  const out: Record<string, unknown>[] = [];
+  for (let i = 0; i < fmts.length; i++) {
+    const f = asRec(fmts[i]);
+    if (!f) continue;
+    const r = restoreFormat(f);
+    const row: Record<string, unknown> = {};
+    for (let k = 0; k < CATALOG_KEYS.length; k++) {
+      const key = CATALOG_KEYS[k]!;
+      if (r[key] != null) row[key] = r[key];
+    }
+    out.push(row);
+  }
+  return out;
+}
+
 export function noteSabrPlaybackUrl(url: string): void {
   if (url.indexOf("/videoplayback") < 0) return;
   if (url.indexOf("sabr=") < 0) return;
