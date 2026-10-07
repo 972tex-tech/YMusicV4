@@ -8,8 +8,12 @@ import io.ymusic.imageloader.ImageLoader
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.player.Player
 import io.ymusic.remoteconfig.StatUsage
+import io.ymusic.settings.AppSettings
 import io.ymusic.settings.InMemorySettingsStore
 import io.ymusic.settings.SettingsStore
+import io.ymusic.settings.flow
+import io.ymusic.settings.mapState
+import io.ymusic.settings.put
 import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.sponsorblock.InMemorySponsorBlockStore
 import io.ymusic.ui.sponsorblock.MockSponsorBlockApi
@@ -18,6 +22,7 @@ import io.ymusic.ui.sponsorblock.SponsorBlockService
 import io.ymusic.ui.sponsorblock.SponsorBlockStore
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /** The player-quality settings key — public because shell settings stores (iOS NSUserDefaults
  *  seeding) enumerate the keys they persist. */
@@ -172,8 +177,12 @@ class AppGraph(
 ) {
     val sponsorBlock = SponsorBlockService(sponsorBlockApi, sponsorBlockStore, settings, logger)
 
-    /** The Quick download preset saved from the download dialog — in memory, for this app run only. */
-    val quickDownload = kotlinx.coroutines.flow.MutableStateFlow<QuickDownloadPreset?>(null)
+    /** The saved Quick download preset; null when none. Change it with [saveQuickDownload]. */
+    val quickDownload: StateFlow<QuickDownloadPreset?> =
+        settings.flow(AppSettings.quickDownloadPreset).mapState(QuickDownloadPreset::decode)
+
+    suspend fun saveQuickDownload(preset: QuickDownloadPreset?) =
+        settings.put(AppSettings.quickDownloadPreset, preset?.encode().orEmpty())
     /**
      * Bumped after a locale pick landed in the engine (SettingsScreen). The content locale itself
      * LIVES in the engine — the app only hears "it changed" and throws locale-shaped caches away.

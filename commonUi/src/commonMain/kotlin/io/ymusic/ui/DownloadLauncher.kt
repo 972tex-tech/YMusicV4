@@ -94,7 +94,10 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
     val locationName = rememberDownloadLocationName(graph)
     val added = stringResource(Res.string.download_added)
     val start = {
-        if (state.saveAsQuick) graph.quickDownload.value = state.quickPreset()
+        if (state.saveAsQuick) {
+            val preset = state.quickPreset()
+            scope.launch { graph.saveQuickDownload(preset) }
+        }
         downloads.enqueue(state.request())
         snackbar(added)
         onDismiss()

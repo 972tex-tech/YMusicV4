@@ -351,4 +351,7 @@
     <string name="settings_section_devices">الأجهزة</string>
     <string name="settings_section_privacy">الخصوصية</string>
     <string name="settings_section_about">حول</string>
+    <string name="settings_quick_download">تنزيل سريع</string>
+    <string name="settings_quick_download_off">متوقف</string>
+    <string name="settings_quick_download_turn_off">إيقاف</string>
 </resources>

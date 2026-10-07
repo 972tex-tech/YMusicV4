@@ -15,13 +15,20 @@ import io.ymusic.download.DownloadRequest
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.download_added
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.json.intOrNull
+import projectcommon.json.string
+import projectcommon.json.stringOrNull
 
 /**
  * The Quick download preset — picks saved from the options dialog, applied to any video without asking.
  * Languages, not tracks: each download resolves them against its own player response (the nearest
  * [height], the dubbed track in [audioLanguage], the caption in [captionLanguage] — else the defaults).
- * [captionLanguage] null means captions off. Lives in memory for the app run only ([AppGraph.quickDownload]).
+ * [captionLanguage] null means captions off. Persisted in [AppSettings.quickDownloadPreset] ([AppGraph.quickDownload]).
  */
 data class QuickDownloadPreset(
     val format: DownloadFormat,
@@ -41,6 +48,33 @@ data class QuickDownloadPreset(
         audioLanguage = audioLanguage,
         captionLanguage = captionLanguage,
     )
+
+    fun encode(): String = buildJsonObject {
+        put(KEY_FORMAT, format.name)
+        height?.let { put(KEY_HEIGHT, it) }
+        audioLanguage?.let { put(KEY_AUDIO, it) }
+        captionLanguage?.let { put(KEY_CAPTION, it) }
+    }.toString()
+
+    companion object {
+        private const val KEY_FORMAT = "format"
+        private const val KEY_HEIGHT = "height"
+        private const val KEY_AUDIO = "audioLanguage"
+        private const val KEY_CAPTION = "captionLanguage"
+
+        /** Null when nothing is saved, or the saved format is unknown to this build (an older app version). */
+        fun decode(raw: String): QuickDownloadPreset? {
+            if (raw.isBlank()) return null
+            val json = Json.parseToJsonElement(raw).jsonObject
+            val format = DownloadFormat.entries.firstOrNull { it.name == json.string(KEY_FORMAT) } ?: return null
+            return QuickDownloadPreset(
+                format = format,
+                height = json.intOrNull(KEY_HEIGHT),
+                audioLanguage = json.stringOrNull(KEY_AUDIO),
+                captionLanguage = json.stringOrNull(KEY_CAPTION),
+            )
+        }
+    }
 
     /** "MP3", "MP4 · 1080p". */
     fun label(): String {

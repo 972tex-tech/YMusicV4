@@ -47,6 +47,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun DownloadSettingsRows(graph: AppGraph) {
     if (graph.mediaStore != null) DownloadLocationRow(graph)
+    QuickDownloadRow(graph)
     PreferredCaptionsRow(graph)
 }
 
