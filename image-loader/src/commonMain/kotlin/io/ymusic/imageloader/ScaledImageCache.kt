@@ -57,7 +57,7 @@ class DiskScaledImageCache(
     override suspend fun get(key: String): ImageBitmap? = withContext(Dispatchers.IO) {
         cache.get(key)?.use { snapshot ->
             // Entries are pre-scaled: MAX/MAX clamps to nothing, single effective pass.
-            decodeScaledFile(fileSystem, snapshot.getPath(0), Int.MAX_VALUE, Int.MAX_VALUE).bitmap
+            decodeScaledFile(fileSystem, snapshot.getPath(0), Int.MAX_VALUE, Int.MAX_VALUE, fit = true).bitmap
         }
     }
 

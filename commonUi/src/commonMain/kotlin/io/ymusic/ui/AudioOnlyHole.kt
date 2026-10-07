@@ -56,7 +56,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
-import io.ymusic.imageloader.imageCacheKey
 import io.ymusic.player.Player
 import io.ymusic.player.VideoQualityState
 import io.ymusic.settings.AppSettings
@@ -231,9 +230,7 @@ private fun rememberArtTransition(url: String?, decodeSize: IntSize): ArtTransit
                 if (url == null || loader == null) {
                     null
                 } else {
-                    val key = imageCacheKey(url)
-                    loader.peek(url, size.width, size.height, cacheKey = key)
-                        ?: loader.loadOrNull(url, size.width, size.height, cacheKey = key)
+                    loader.peek(url, size.width, size.height) ?: loader.loadOrNull(url, size.width, size.height)
                 }
             }
             val shadeFrom = TimeSource.Monotonic.markNow()
@@ -271,9 +268,8 @@ private fun rememberArtTransition(url: String?, decodeSize: IntSize): ArtTransit
         val shownUrl = state.url ?: return@LaunchedEffect
         if (state.current == null || shownUrl != url || loader == null) return@LaunchedEffect
         delay(ART_RESIZE_SETTLE_MS)
-        val key = imageCacheKey(shownUrl)
-        val sharper = loader.peek(shownUrl, decodeSize.width, decodeSize.height, cacheKey = key)
-            ?: loader.loadOrNull(shownUrl, decodeSize.width, decodeSize.height, cacheKey = key)
+        val sharper = loader.peek(shownUrl, decodeSize.width, decodeSize.height)
+            ?: loader.loadOrNull(shownUrl, decodeSize.width, decodeSize.height)
         if (sharper != null && state.url == shownUrl && state.current != null) state.current = sharper
     }
     return state

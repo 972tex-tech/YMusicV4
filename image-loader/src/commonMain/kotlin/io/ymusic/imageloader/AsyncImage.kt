@@ -20,20 +20,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 /**
- * Loads [url] scaled to this box's own measured size and draws it. [placeholder] shows while
- * loading; [error] (falling back to [placeholder]) shows when the load failed — failures degrade
- * to the slot, logged as a breadcrumb, never thrown into composition. Leaving composition cancels
- * an in-flight load, and because the loader is LIFO, freshly composed items (the ones scrolled
- * into view) load first.
- *
- * A resize does NOT naively reload: once a bitmap is showing, only growth of at least
- * [RELOAD_GROWTH_PX] in a dimension warrants a sharper decode (shrinking just downscales), and the
- * reload waits [RESIZE_SETTLE_MS] for the resize to settle — every further size change restarts
- * the wait, so a live window drag triggers one reload at the end, not a stream of them.
- *
- * [cacheKey] keys the caches instead of the URL (see [ImageLoader.load]) — pass a stable identity
- * when the URL carries volatile parts, so a changed URL for the same image neither refetches nor
- * resets to the placeholder.
+ * An image from [url], loaded through [loader] at this composable's own measured pixel size (so
+ * the decode matches the display — no full-size bitmaps for thumbnails). Its identity is
+ * [imageCacheKey] of the url.
  */
 @Composable
 fun AsyncImage(
@@ -42,26 +31,62 @@ fun AsyncImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
-    cacheKey: String? = null,
     placeholder: (@Composable BoxScope.() -> Unit)? = null,
     error: (@Composable BoxScope.() -> Unit)? = null,
 ) {
-    val key = cacheKey ?: url
+    AsyncImage(
+        loader = loader,
+        key = url?.let(::imageCacheKey),
+        sources = url?.let { listOf(ImageSource(it)) }.orEmpty(),
+        contentDescription = contentDescription,
+        modifier = modifier,
+        contentScale = contentScale,
+        placeholder = placeholder,
+        error = error,
+    )
+}
+
+/**
+ * An image with identity [key] and several [sources] (sizes of one picture), loaded through
+ * [loader] at this composable's own measured pixel size: the loader picks the smallest source that
+ * covers it (see [ImageRequest]). A null [key] or empty [sources] shows [placeholder].
+ *
+ * Shows [placeholder] while loading and [error] (falling back to [placeholder]) when the load
+ * fails; the failure is logged, never thrown into composition. A memory-cached image draws on the
+ * FIRST frame (synchronous peek), so scrolling back never flashes the placeholder. On resize the
+ * already-shown bitmap stays; only a growth of at least [RELOAD_GROWTH_PX] in a dimension warrants
+ * a sharper decode (shrinking just downscales), and the reload waits [RESIZE_SETTLE_MS] for the
+ * resize to settle — every further size change restarts the wait, so a live window drag triggers
+ * one reload at the end, not a stream of them. [contentScale] Fit/Inside decodes to fit the box;
+ * everything else decodes to cover it.
+ */
+@Composable
+fun AsyncImage(
+    loader: ImageLoader,
+    key: String?,
+    sources: List<ImageSource>,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    placeholder: (@Composable BoxScope.() -> Unit)? = null,
+    error: (@Composable BoxScope.() -> Unit)? = null,
+) {
+    val scale = if (contentScale == ContentScale.Fit || contentScale == ContentScale.Inside) ImageScale.Fit else ImageScale.Cover
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
     var loaded by remember(key) { mutableStateOf<ImageBitmap?>(null) }
     var failed by remember(key) { mutableStateOf(false) }
     // The size the showing bitmap was decoded for — the growth-threshold baseline.
     var loadedFor by remember(key) { mutableStateOf(IntSize.Zero) }
+    val request = if (key != null && sources.isNotEmpty() && sizePx != IntSize.Zero) {
+        ImageRequest(key, sources, sizePx, scale)
+    } else {
+        null
+    }
 
     Box(modifier.onSizeChanged { sizePx = it }, contentAlignment = Alignment.Center) {
         // Synchronous memory-cache peek: an already-cached image draws on its FIRST frame — routing
         // the hit through the effect would flash the placeholder for a frame (list scroll jitter).
-        val bitmap = loaded
-            ?: if (url != null && sizePx != IntSize.Zero) {
-                loader.peek(url, sizePx.width, sizePx.height, cacheKey = key ?: url)
-            } else {
-                null
-            }
+        val bitmap = loaded ?: request?.let(loader::peek)
         when {
             bitmap != null -> Image(
                 bitmap,
@@ -74,8 +99,8 @@ fun AsyncImage(
         }
     }
 
-    if (url != null && sizePx != IntSize.Zero) {
-        LaunchedEffect(url, sizePx) {
+    if (request != null) {
+        LaunchedEffect(key, sizePx) {
             if (loaded != null) {
                 val growsW = sizePx.width - loadedFor.width >= RELOAD_GROWTH_PX
                 val growsH = sizePx.height - loadedFor.height >= RELOAD_GROWTH_PX
@@ -84,12 +109,12 @@ fun AsyncImage(
             }
             loadedFor = sizePx
             try {
-                loaded = loader.load(url, sizePx.width, sizePx.height, cacheKey = key ?: url)
+                loaded = loader.load(request)
                 failed = false
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                loader.logger?.log(Logger.Level.WARN, "load failed: $url", e)
+                loader.logger?.log(Logger.Level.WARN, "load failed: $key", e)
                 // A failed sharper re-decode keeps the bitmap already showing.
                 failed = loaded == null
             }

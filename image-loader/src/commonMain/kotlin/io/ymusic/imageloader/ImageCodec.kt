@@ -1,21 +1,28 @@
 package io.ymusic.imageloader
 
+import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 
-/** [downscaled] is false when the source was no larger than the request — nothing was shrunk. */
-class DecodedImage(val bitmap: ImageBitmap, val downscaled: Boolean)
+/** A decoded image and the pixel size of the source it came from (after any crop). */
+class DecodedImage(val bitmap: ImageBitmap, val sourceWidth: Int, val sourceHeight: Int) {
+    /** The decode is smaller than its source: a scaled copy saves this work next time. */
+    val downscaled: Boolean get() = bitmap.width < sourceWidth || bitmap.height < sourceHeight
+}
 
 /**
- * Decode [bytes] into a bitmap covering [size] (aspect kept, never upscaled) — the building block
- * for [ImageFetcher] implementations whose data is in memory. Platform decoders scale during/right
- * after decode so the full-size image never stays resident. Throws on undecodable bytes.
+ * Decode [bytes] into a bitmap covering (or, with [ImageScale.Fit], fitting) [size], aspect kept,
+ * never upscaled — the building block for [ImageFetcher] implementations whose data is in memory.
+ * Platform decoders scale during/right after decode so the full-size image never stays resident.
+ * Throws on undecodable bytes.
  */
-suspend fun decodeScaled(bytes: ByteArray, size: IntSize): DecodedImage =
-    withContext(Dispatchers.Default) { decodeScaled(bytes, size.width, size.height) }
+suspend fun decodeScaled(bytes: ByteArray, size: IntSize, scale: ImageScale = ImageScale.Cover): DecodedImage =
+    withContext(Dispatchers.Default) { decodeScaled(bytes, size.width, size.height, scale == ImageScale.Fit) }
 
 /**
  * [decodeScaled] straight from a file — for fetchers whose data lives on disk: same clamp
@@ -24,16 +31,45 @@ suspend fun decodeScaled(bytes: ByteArray, size: IntSize): DecodedImage =
  * falls back to read-bytes + decode). Skia's codec API is bytes-only, so skiko reads the file into
  * memory first.
  */
-suspend fun decodeScaledFile(fileSystem: okio.FileSystem, path: okio.Path, size: IntSize): DecodedImage =
-    withContext(Dispatchers.IO) { decodeScaledFile(fileSystem, path, size.width, size.height) }
+suspend fun decodeScaledFile(
+    fileSystem: okio.FileSystem,
+    path: okio.Path,
+    size: IntSize,
+    scale: ImageScale = ImageScale.Cover,
+): DecodedImage = withContext(Dispatchers.IO) {
+    decodeScaledFile(fileSystem, path, size.width, size.height, scale == ImageScale.Fit)
+}
 
-internal expect fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int): DecodedImage
+/** This image with [crop] applied; [DecodedImage.sourceWidth]/[DecodedImage.sourceHeight] follow the crop. */
+fun DecodedImage.cropped(crop: SourceCrop): DecodedImage = when (crop) {
+    SourceCrop.None -> this
+    SourceCrop.Letterbox16x9 -> {
+        val width = bitmap.width
+        val height = width * 9 / 16
+        if (height <= 0 || height >= bitmap.height) {
+            this
+        } else {
+            val band = ImageBitmap(width, height)
+            Canvas(band).drawImageRect(
+                bitmap,
+                srcOffset = IntOffset(0, (bitmap.height - height) / 2),
+                srcSize = IntSize(width, height),
+                dstSize = IntSize(width, height),
+                paint = Paint(),
+            )
+            DecodedImage(band, sourceWidth, sourceWidth * 9 / 16)
+        }
+    }
+}
+
+internal expect fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int, fit: Boolean): DecodedImage
 
 internal expect fun decodeScaledFile(
     fileSystem: okio.FileSystem,
     path: okio.Path,
     maxWidth: Int,
     maxHeight: Int,
+    fit: Boolean,
 ): DecodedImage
 
 /**

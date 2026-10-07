@@ -2,6 +2,7 @@ package io.ymusic.desktop
 
 import androidx.compose.ui.unit.IntSize
 import io.ymusic.imageloader.ImageFetcher
+import io.ymusic.imageloader.ImageScale
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.MediaItemDraft
@@ -53,13 +54,13 @@ class LocalArtFetcherTest {
                         thumbnailStreamIndex = 1,
                     ),
                 )
-                val network = ImageFetcher { _, _ -> error("embedded covers must not hit the network") }
+                val network = ImageFetcher { _, _, _ -> error("embedded covers must not hit the network") }
                 val fetcher = mediaStoreArtFetcher(FfmpegMetadataGetter(ffmpeg), store, network)
                 assertNull(
-                    fetcher.fetch(Uri.parse("https://example.com/x.png"), IntSize(64, 64)),
+                    fetcher.fetch(Uri.parse("https://example.com/x.png"), IntSize(64, 64), ImageScale.Cover),
                     "fetcher must decline non-art urls",
                 )
-                fetcher.fetch(Uri.parse("art://pic/${item.id}"), size = IntSize(64, 64))
+                fetcher.fetch(Uri.parse("art://pic/${item.id}"), size = IntSize(64, 64), scale = ImageScale.Cover)
             }
             assertNotNull(decoded, "fetcher returned null for its own scheme")
             assertEquals(64, decoded.bitmap.width)

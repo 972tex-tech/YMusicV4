@@ -150,7 +150,7 @@ class ImageLoaderTest {
         val art = pngBytes(400, 200)
         val loader = ImageLoader(
             listOf(
-                ImageFetcher { uri, size -> if (uri.scheme?.toString() == "art") decodeScaled(art, size) else null },
+                ImageFetcher { uri, size, scale -> if (uri.scheme?.toString() == "art") decodeScaled(art, size, scale) else null },
                 networkFetcher(server),
             ),
         )
@@ -164,11 +164,14 @@ class ImageLoaderTest {
         val fs = FakeFileSystem()
         val server = FakeImageServer("not an image".encodeToByteArray())
         val loader = ImageLoader(listOf(networkFetcher(server, fs, "/src".toPath())))
-        assertFailsWith<IllegalArgumentException> { loader.load("https://img.test/junk.png", 64, 64) }
+        assertEquals(
+            ImageLoadException.Reason.Undecodable,
+            assertFailsWith<ImageLoadException> { loader.load("https://img.test/junk.png", 64, 64) }.reason,
+        )
         assertEquals(1, server.fetchCount)
 
         // The garbage entry is committed; further loads must fail locally, not re-download it.
-        assertFailsWith<IllegalArgumentException> { loader.load("https://img.test/junk.png", 64, 64) }
+        assertFailsWith<ImageLoadException> { loader.load("https://img.test/junk.png", 64, 64) }
         assertEquals(1, server.fetchCount, "a decodable-as-garbage entry must not refetch per load")
     }
 
@@ -203,15 +206,16 @@ class ImageLoaderTest {
     }
 
     @Test
-    fun cacheKeySharesEntriesAcrossChangedUrls() = runTest {
+    fun rotatingSignatureSharesEntries() = runTest {
         val server = FakeImageServer(pngBytes(100, 100))
         val loader = ImageLoader(listOf(networkFetcher(server)))
-        val stable = "https://img.test/vi/abc/hq720.jpg"
-        val a = loader.load("$stable?sig=1", 64, 64, cacheKey = stable)
-        val b = loader.load("$stable?sig=2", 64, 64, cacheKey = stable)
-        assertEquals(1, server.fetchCount, "a rotated URL with the same cacheKey must hit the cache")
+        val stable = "https://img.test/vi/abc/hq720.jpg?sqp=size1"
+        val a = loader.load("$stable&rs=1", 64, 64)
+        val b = loader.load("$stable&rs=2", 64, 64)
+        assertEquals(1, server.fetchCount, "a rotated rs signature must hit the cache")
         assertTrue(a === b)
-        assertTrue(loader.peek("$stable?sig=3", 64, 64, cacheKey = stable) === a)
+        assertTrue(loader.peek("$stable&rs=3", 64, 64) === a)
+        assertEquals(null, loader.peek("https://img.test/vi/abc/hq720.jpg?sqp=size2&rs=1", 64, 64), "sqp selects the image")
     }
 
     @Test
@@ -246,14 +250,20 @@ class ImageLoaderTest {
     fun httpFailureThrows() = runTest {
         val server = FakeImageServer(pngBytes(10, 10), status = 404)
         val loader = ImageLoader(listOf(networkFetcher(server)))
-        assertFailsWith<IOException> { loader.load("https://img.test/missing.png", 64, 64) }
+        assertEquals(
+            ImageLoadException.Reason.NotFound,
+            assertFailsWith<ImageLoadException> { loader.load("https://img.test/missing.png", 64, 64) }.reason,
+        )
     }
 
     @Test
     fun undecodableBodyThrows() = runTest {
         val server = FakeImageServer("not an image".encodeToByteArray())
         val loader = ImageLoader(listOf(networkFetcher(server)))
-        assertFailsWith<IllegalArgumentException> { loader.load("https://img.test/junk.png", 64, 64) }
+        assertEquals(
+            ImageLoadException.Reason.Undecodable,
+            assertFailsWith<ImageLoadException> { loader.load("https://img.test/junk.png", 64, 64) }.reason,
+        )
     }
 
     @Test

@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
 import io.ymusic.imageloader.DecodedImage
 import io.ymusic.imageloader.ImageFetcher
+import io.ymusic.imageloader.ImageScale
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.MediaItemDraft
@@ -80,17 +81,17 @@ class MediaStoreArtTest {
             ),
         )
         var requested: Uri? = null
-        val network = ImageFetcher { uri, _ ->
+        val network = ImageFetcher { uri, _, _ ->
             requested = uri
-            DecodedImage(ImageBitmap(4, 4), downscaled = false)
+            DecodedImage(ImageBitmap(4, 4), 4, 4)
         }
         val fetcher = mediaStoreArtFetcher(FfmpegMetadataGetter("ffmpeg-never-run"), store, network)
 
         assertNull(
-            fetcher.fetch(Uri.parse("https://example.com/x.png"), IntSize(64, 64)),
+            fetcher.fetch(Uri.parse("https://example.com/x.png"), IntSize(64, 64), ImageScale.Cover),
             "fetcher must decline non-art urls",
         )
-        val decoded = fetcher.fetch(Uri.parse("art://pic/${stored.id}"), IntSize(64, 64))
+        val decoded = fetcher.fetch(Uri.parse("art://pic/${stored.id}"), IntSize(64, 64), ImageScale.Cover)
         assertNotNull(decoded, "fetcher returned null for its own scheme")
         assertEquals("https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg", requested.toString())
     }

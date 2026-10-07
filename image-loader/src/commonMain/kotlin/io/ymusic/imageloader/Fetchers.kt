@@ -32,13 +32,13 @@ fun networkFetcher(
     maxImageBytes: Long = 32L * 1024 * 1024,
 ): ImageFetcher {
     val cache = ImageSourceCache(fileSystem, cacheDir, cacheMaxBytes)
-    return ImageFetcher { uri, size ->
+    return ImageFetcher { uri, size, scale ->
         if (!uri.isHttp()) return@ImageFetcher null
         val url = uri.toString()
         val key = diskCacheKey(imageCacheKey(url))
         cache.filePath(key)?.let { file ->
             try {
-                return@ImageFetcher decodeScaledFile(fileSystem, file, size)
+                return@ImageFetcher decodeChecked(url) { decodeScaledFile(fileSystem, file, size, scale) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -49,7 +49,7 @@ fun networkFetcher(
         val file = executeChecked(client, url, maxImageBytes) { response ->
             cache.write(key, response.body.asyncSource(), maxImageBytes, url)
         }
-        decodeScaledFile(fileSystem, file, size)
+        decodeChecked(url) { decodeScaledFile(fileSystem, file, size, scale) }
     }
 }
 
@@ -60,23 +60,33 @@ fun networkFetcher(
 fun networkFetcher(
     client: KmpHttpClient,
     maxImageBytes: Long = 32L * 1024 * 1024,
-): ImageFetcher = ImageFetcher { uri, size ->
+): ImageFetcher = ImageFetcher { uri, size, scale ->
     if (!uri.isHttp()) return@ImageFetcher null
     val url = uri.toString()
     val bytes = executeChecked(client, url, maxImageBytes) { response ->
         readCapped(response.body.asyncSource(), maxImageBytes, url)
     }
-    decodeScaled(bytes, size)
+    decodeChecked(url) { decodeScaled(bytes, size, scale) }
 }
 
 /**
  * `file://` urls straight from disk — no network, no copy; decoding happens from the file. The path is
  * percent-decoded from the uri, so an encoded name (`My%20Song.mp3`) resolves to the real file.
  */
-fun fileFetcher(fileSystem: FileSystem = systemFileSystem): ImageFetcher = ImageFetcher { uri, size ->
+fun fileFetcher(fileSystem: FileSystem = systemFileSystem): ImageFetcher = ImageFetcher { uri, size, scale ->
     if (uri.scheme?.toString() != "file") return@ImageFetcher null
-    decodeScaledFile(fileSystem, uri.filePath().toPath(), size)
+    val path = uri.filePath().toPath()
+    if (!fileSystem.exists(path)) throw ImageLoadException(ImageLoadException.Reason.NotFound, "no such file: $uri")
+    decodeChecked(uri.toString()) { decodeScaledFile(fileSystem, path, size, scale) }
 }
+
+/** Runs a platform decode, classifying an undecodable image (the decoders throw IllegalArgumentException). */
+suspend fun decodeChecked(url: String, decode: suspend () -> DecodedImage): DecodedImage =
+    try {
+        decode()
+    } catch (e: IllegalArgumentException) {
+        throw ImageLoadException(ImageLoadException.Reason.Undecodable, "undecodable image: $url", e)
+    }
 
 private fun Uri.isHttp(): Boolean = scheme?.toString().let { it == "http" || it == "https" }
 
@@ -103,14 +113,38 @@ private suspend fun <T> executeChecked(
     maxImageBytes: Long,
     body: suspend (Response) -> T,
 ): T {
-    val response = client.execute(RequestBuilder().url(url).build())
+    val response = try {
+        client.execute(RequestBuilder().url(url).build())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: IOException) {
+        throw ImageLoadException(ImageLoadException.Reason.Network, "image request failed: $url", e)
+    }
     try {
-        if (!response.isSuccessful) throw IOException("image HTTP ${response.code}: $url")
+        if (!response.isSuccessful) {
+            val reason = if (response.code == 404 || response.code == 410) {
+                ImageLoadException.Reason.NotFound
+            } else {
+                ImageLoadException.Reason.Network
+            }
+            throw ImageLoadException(reason, "image HTTP ${response.code}: $url")
+        }
         val declared = response.body.contentLength()
         if (declared > maxImageBytes) {
-            throw IOException("image body $declared bytes exceeds the $maxImageBytes-byte cap: $url")
+            throw ImageLoadException(
+                ImageLoadException.Reason.Undecodable,
+                "image body $declared bytes exceeds the $maxImageBytes-byte cap: $url",
+            )
         }
-        return body(response)
+        return try {
+            body(response)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ImageLoadException) {
+            throw e
+        } catch (e: IOException) {
+            throw ImageLoadException(ImageLoadException.Reason.Network, "image download failed: $url", e)
+        }
     } finally {
         response.close()
     }
@@ -122,7 +156,7 @@ private suspend fun readCapped(source: AsyncSource, maxImageBytes: Long, url: St
     while (true) {
         val n = source.read(buffer, SEGMENT)
         if (buffer.size > maxImageBytes) {
-            throw IOException("image exceeds the $maxImageBytes-byte cap: $url")
+            throw ImageLoadException(ImageLoadException.Reason.Undecodable, "image exceeds the $maxImageBytes-byte cap: $url")
         }
         if (n == -1L) break
     }

@@ -56,7 +56,10 @@ internal class ImageSourceCache(
                     if (n == -1L) break
                     total += n
                     if (total > maxImageBytes) {
-                        throw IOException("image exceeds the $maxImageBytes-byte cap: $url")
+                        throw ImageLoadException(
+                            ImageLoadException.Reason.Undecodable,
+                            "image exceeds the $maxImageBytes-byte cap: $url",
+                        )
                     }
                     sink.write(buffer, buffer.size)
                 }

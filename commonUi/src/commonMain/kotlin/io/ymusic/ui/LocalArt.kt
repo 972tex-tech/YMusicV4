@@ -1,24 +1,23 @@
 package io.ymusic.ui
 
-import androidx.compose.ui.graphics.Canvas
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import io.ymusic.imageloader.DecodedImage
 import io.ymusic.imageloader.ImageFetcher
+import io.ymusic.imageloader.ImageLoadException
+import io.ymusic.imageloader.ImageScale
+import io.ymusic.imageloader.SourceCrop
+import io.ymusic.imageloader.cropped
+import io.ymusic.imageloader.decodeChecked
 import io.ymusic.imageloader.decodeScaled
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.model.MediaStoreItem
 import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
 import kmpffmpeg.metadata.FfmpegMetadataGetter
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import okio.Buffer
-import okio.IOException
 import okio.Source
 import okio.use
 
@@ -54,7 +53,13 @@ private const val MQDEFAULT_WIDTH = 320
  * (640×480), falling back to hqdefault (480×360) since sddefault isn't generated for every upload.
  * Both are 4:3 frames with the 16:9 picture letterboxed inside, so their bars are trimmed.
  */
-private suspend fun youtubeArt(network: ImageFetcher, videoId: String, size: IntSize, url: String): DecodedImage {
+private suspend fun youtubeArt(
+    network: ImageFetcher,
+    videoId: String,
+    size: IntSize,
+    scale: ImageScale,
+    url: String,
+): DecodedImage {
     val candidates = if (size.width > MQDEFAULT_WIDTH || size.height > MQDEFAULT_WIDTH * 9 / 16) {
         listOf(
             "https://i.ytimg.com/vi/$videoId/sddefault.jpg" to true,
@@ -63,34 +68,16 @@ private suspend fun youtubeArt(network: ImageFetcher, videoId: String, size: Int
     } else {
         listOf(youtubeThumbUrl(videoId) to false)
     }
-    var failure: IOException? = null
+    var failure: ImageLoadException? = null
     for ((candidate, letterboxed) in candidates) {
         try {
-            val decoded = network.fetch(Uri.parse(candidate), size) ?: continue
-            return if (letterboxed) decoded.trimLetterbox() else decoded
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: IOException) {
+            val decoded = network.fetch(Uri.parse(candidate), size, scale) ?: continue
+            return if (letterboxed) decoded.cropped(SourceCrop.Letterbox16x9) else decoded
+        } catch (e: ImageLoadException) {
             failure = e
         }
     }
-    throw IOException("no YouTube thumbnail for $videoId: $url", failure)
-}
-
-/** The 16:9 band of a 4:3 frame: the picture inside YouTube's letterboxed sddefault/hqdefault. */
-private fun DecodedImage.trimLetterbox(): DecodedImage {
-    val width = bitmap.width
-    val height = width * 9 / 16
-    if (height <= 0 || height >= bitmap.height) return this
-    val band = ImageBitmap(width, height)
-    Canvas(band).drawImageRect(
-        bitmap,
-        srcOffset = IntOffset(0, (bitmap.height - height) / 2),
-        srcSize = IntSize(width, height),
-        dstSize = IntSize(width, height),
-        paint = Paint(),
-    )
-    return DecodedImage(band, downscaled)
+    throw ImageLoadException(failure?.reason ?: ImageLoadException.Reason.NotFound, "no YouTube thumbnail for $videoId: $url", failure)
 }
 
 /**
@@ -107,30 +94,30 @@ fun mediaStoreArtFetcher(
     store: BetterMediaStore,
     network: ImageFetcher,
     maxImageBytes: Long = 32L * 1024 * 1024,
-): ImageFetcher = ImageFetcher { uri, size ->
+): ImageFetcher = ImageFetcher { uri, size, scale ->
     if (uri.scheme?.toString() != "art") return@ImageFetcher null
     val url = uri.toString()
     if (uri.authority?.toString() == "yt") {
         val videoId = uri.path.toString().substringAfterLast('/').takeIf { it.isNotEmpty() }
-            ?: throw IOException("malformed art uri: $url")
-        return@ImageFetcher youtubeArt(network, videoId, size, url)
+            ?: throw ImageLoadException(ImageLoadException.Reason.Unsupported, "malformed art uri: $url")
+        return@ImageFetcher youtubeArt(network, videoId, size, scale, url)
     }
     if (uri.authority?.toString() != "pic") return@ImageFetcher null
     val id = uri.path.toString().substringAfterLast('/').toLongOrNull()
-        ?: throw IOException("malformed art uri: $url")
+        ?: throw ImageLoadException(ImageLoadException.Reason.Unsupported, "malformed art uri: $url")
     val item = store.findItem(id)
-        ?: throw IOException("no media item for art uri: $url")
+        ?: throw ImageLoadException(ImageLoadException.Reason.NotFound, "no media item for art uri: $url")
     val youtubeVid = item.youtubeVid
     val source = when {
         item.thumbnailStreamIndex != null -> getter.getAttachedPic(item.uri)
-        youtubeVid != null -> return@ImageFetcher youtubeArt(network, youtubeVid, size, url)
+        youtubeVid != null -> return@ImageFetcher youtubeArt(network, youtubeVid, size, scale, url)
         item.videoCodec != null -> getter.extractThumbnail(item.uri)
-        else -> throw IOException("media item $id has no artwork source: $url")
+        else -> throw ImageLoadException(ImageLoadException.Reason.NotFound, "media item $id has no artwork source: $url")
     }
     // ByteArray: the in-memory platform decoders behind decodeScaled are bytes-only (Skia codec),
     // and embedded art is small — the cap guards a mislabeled stream.
     val bytes = readCapped(source, maxImageBytes, url)
-    decodeScaled(bytes, size)
+    decodeChecked(url) { decodeScaled(bytes, size, scale) }
 }
 
 private suspend fun readCapped(source: Source, maxBytes: Long, url: String): ByteArray =
@@ -138,7 +125,9 @@ private suspend fun readCapped(source: Source, maxBytes: Long, url: String): Byt
         source.use { src ->
             val buffer = Buffer()
             while (true) {
-                if (buffer.size > maxBytes) throw IOException("embedded art exceeds the $maxBytes-byte cap: $url")
+                if (buffer.size > maxBytes) {
+                    throw ImageLoadException(ImageLoadException.Reason.Undecodable, "embedded art exceeds the $maxBytes-byte cap: $url")
+                }
                 if (src.read(buffer, 64L * 1024) == -1L) break
             }
             buffer.readByteArray()

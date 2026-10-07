@@ -128,7 +128,7 @@ fun connectIosMediaSession(
 @OptIn(ExperimentalForeignApi::class)
 private suspend fun loadArtwork(loader: ImageLoader, url: String, logger: Logger?): MPMediaItemArtwork? {
     return runCatching {
-        val path = loader.loadFile(url, ARTWORK_MAX_PX, ARTWORK_MAX_PX, cacheKey = url.substringBefore('?'))
+        val path = loader.loadFile(url, ARTWORK_MAX_PX, ARTWORK_MAX_PX)
             ?: return null
         val image = UIImage.imageWithContentsOfFile(path.toString()) ?: return null
         val size = image.size
