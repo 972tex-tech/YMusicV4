@@ -23,7 +23,7 @@ fun interface SabrSpecResolver {
  * pipeline works whether the final file is a `file://` path or an Android `content://` SAF document):
  *
  *  1a. download the elementary stream(s) + captions to scratch files ([YtStreamDownloader]).
- *  1b. (optional) download the thumbnail for cover art — TODO.
+ *  1b. audio-only MP3/M4A: fetch the largest JPEG thumbnail as cover art ([CoverArt]), best-effort.
  *  2.  mux/convert + embed metadata with [ffmpeg] into a final scratch file.
  *  3.  clean up the elementary scratch files.
  *  4.  publish the final scratch to the destination (returns its uri) — the shell then adds it to the
@@ -44,6 +44,7 @@ class DownloadPipeline(
 ) {
 
     private val downloader = YtStreamDownloader(resolver, client, userAgent, storage, mediaCache, segmentIndex, logger)
+    private val coverArt = CoverArt(client, userAgent, storage, logger)
 
     /** A completed run: the published file's uri + byte size, and the formats (for library ingest). */
     class Result(val uri: String, val bytes: Long, val audio: AdaptiveFormat, val video: AdaptiveFormat?)
@@ -62,8 +63,6 @@ class DownloadPipeline(
         val videoFmt = streams.video?.format
         val base = baseName(task)
         val fileName = "$base.${task.format.fileExtension}"
-
-        // 1b. optional thumbnail download for cover art — TODO.
 
         onProcessing()
 
@@ -97,10 +96,12 @@ class DownloadPipeline(
         val subs = streams.captions.map { SubtitleInput(it.scratch.path, it.languageCode, it.name) }
         when (task.format) {
             DownloadFormat.MP3 -> {
-                ff.toMp3(audio.path, out.path, meta, onFfProgress)
+                withCover(task) { cover -> ff.toMp3(audio.path, out.path, cover, meta, onFfProgress) }
                 if (streams.captions.isNotEmpty()) out = withLyrics(task.id, out, streams.captions)
             }
-            DownloadFormat.M4A -> ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), captions = subs, metadata = meta, onProgressUs = onFfProgress)
+            DownloadFormat.M4A -> withCover(task) { cover ->
+                ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), captions = subs, cover = cover, metadata = meta, onProgressUs = onFfProgress)
+            }
             DownloadFormat.AUDIO_WEBM -> ff.toWebmAudio(audio.path, out.path, copy = audioFmt.mimeType.contains("webm"), captions = subs, metadata = meta, onProgressUs = onFfProgress)
             DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
             DownloadFormat.VIDEO_MP4 -> ff.muxMp4(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
@@ -112,6 +113,18 @@ class DownloadPipeline(
         val uri = storage.publish(out, fileName, destinationFolder)
         storage.deleteScratch(task.id)
         return Result(uri, bytes, audioFmt, videoFmt)
+    }
+
+    /** Run [convert] with the cover art's path; a cover ffmpeg rejects is dropped and the conversion rerun
+     *  without it, so the song still publishes — cover art is best-effort like lyrics. */
+    private suspend fun withCover(task: DownloadTask, convert: suspend (cover: String?) -> Unit) {
+        val cover = coverArt.fetch(task) ?: return convert(null)
+        try {
+            convert(cover.path)
+        } catch (e: TechnicalException) {
+            logger?.log(Logger.Level.WARN, "ffmpeg failed with cover art; retrying without it", e)
+            convert(null)
+        }
     }
 
     /** [mp3] with [captions] written into its tag as LRC lyrics — a new scratch, or [mp3] itself when there

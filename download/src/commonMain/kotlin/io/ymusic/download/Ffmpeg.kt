@@ -39,29 +39,28 @@ class Ffmpeg(
     // The output container is named explicitly with `-f` so it doesn't depend on the output filename's
     // extension — scratch/publish names (and content:// targets) may have none.
 
-    /** opus/webm/m4a → mp3 via libmp3lame (VBR ~q2, drops any cover/video stream), tagged ID3v2.3 — the
-     *  version [Id3Lyrics] extends and the one most players read. */
+    /** opus/webm/m4a → mp3 via libmp3lame (VBR ~q2), tagged ID3v2.3 — the version [Id3Lyrics] extends
+     *  and the one most players read. A JPEG [cover] becomes the APIC picture. */
     suspend fun toMp3(
         input: String,
         output: String,
+        cover: String? = null,
         metadata: List<Pair<String, String>> = emptyList(),
         onProgressUs: ((Long) -> Unit)? = null,
-    ) = run(
-        listOf("-i", input.ffSpec(), "-vn", "-c:a", "libmp3lame", "-q:a", "2") + metaArgs(metadata) +
-            listOf("-id3v2_version", "3", "-f", "mp3", output.ffSpec()),
-        onProgressUs,
-    )
+    ) = run(mp3Args(input, output, cover, metadata), onProgressUs)
 
     /** best audio → m4a (+ any [captions], as mov_text): stream-copy when already AAC ([copy]=true),
-     *  else transcode to AAC. M4A is an ISO-BMFF container, so it carries subtitle tracks like MP4. */
+     *  else transcode to AAC. M4A is an ISO-BMFF container, so it carries subtitle tracks like MP4. A JPEG
+     *  [cover] becomes the `covr` artwork. */
     suspend fun toM4a(
         input: String,
         output: String,
         copy: Boolean,
         captions: List<SubtitleInput> = emptyList(),
+        cover: String? = null,
         metadata: List<Pair<String, String>> = emptyList(),
         onProgressUs: ((Long) -> Unit)? = null,
-    ) = run(m4aArgs(input, output, copy, captions, metadata), onProgressUs)
+    ) = run(m4aArgs(input, output, copy, captions, metadata, cover), onProgressUs)
 
     /** best audio → audio-only WebM (+ any [captions], as WebVTT): Opus is copied ([copy]=true), anything
      *  else is transcoded to Opus — WebM can't hold AAC. */
@@ -127,6 +126,23 @@ class Ffmpeg(
 
 // --- pure argv builders (unit-tested; ffmpeg not invoked) ------------------------------------------
 
+/** best audio → mp3 (libmp3lame VBR ~q2, ID3v2.3), with an optional JPEG [cover] as the APIC picture. */
+internal fun mp3Args(
+    audio: String,
+    output: String,
+    cover: String?,
+    metadata: List<Pair<String, String>>,
+): List<String> = buildList {
+    add("-i"); add(audio.ffSpec())
+    if (cover != null) addAll(coverInputArgs(cover))
+    add("-map"); add("0:a:0")
+    if (cover != null) addAll(coverOutputArgs(inputIndex = 1))
+    add("-c:a"); add("libmp3lame"); add("-q:a"); add("2")
+    addAll(metaArgs(metadata))
+    add("-id3v2_version"); add("3")
+    add("-f"); add("mp3"); add(output.ffSpec())
+}
+
 /** best audio (+ subtitles as mov_text) → m4a via the `ipod` muxer. Audio is copied ([copy]) or → AAC. */
 internal fun m4aArgs(
     audio: String,
@@ -134,11 +150,14 @@ internal fun m4aArgs(
     copy: Boolean,
     captions: List<SubtitleInput>,
     metadata: List<Pair<String, String>>,
+    cover: String? = null,
 ): List<String> = buildList {
     add("-i"); add(audio.ffSpec())
     captions.forEach { add("-i"); add(it.path.ffSpec()) }
+    if (cover != null) addAll(coverInputArgs(cover))
     add("-map"); add("0:a:0")
     captions.indices.forEach { add("-map"); add("${it + 1}:0") } // subtitle inputs start at index 1
+    if (cover != null) addAll(coverOutputArgs(inputIndex = captions.size + 1))
     if (copy) { add("-c:a"); add("copy") } else { add("-c:a"); add("aac"); add("-b:a"); add("192k") }
     if (captions.isNotEmpty()) { add("-c:s"); add("mov_text") }
     addAll(subtitleMetaArgs(captions))
@@ -214,6 +233,16 @@ internal fun webmMuxArgs(
     addAll(metaArgs(metadata))
     add("-f"); add("webm"); add(output.ffSpec())
 }
+
+/** The cover file is an extension-less scratch, so name its demuxer and codec instead of probing. */
+private fun coverInputArgs(cover: String): List<String> =
+    listOf("-f", "image2", "-c:v", "mjpeg", "-i", cover.ffSpec())
+
+/** Map input [inputIndex]'s picture as the output's only video stream, stream-copied as attached art. */
+private fun coverOutputArgs(inputIndex: Int): List<String> = listOf(
+    "-map", "$inputIndex:v:0", "-c:v", "copy", "-disposition:v:0", "attached_pic",
+    "-metadata:s:v:0", "title=Album cover", "-metadata:s:v:0", "comment=Cover (Front)",
+)
 
 /** Per-subtitle-stream `language`/`title` tags (`-metadata:s:s:<n> …`), language mapped to ISO-639-2. */
 private fun subtitleMetaArgs(captions: List<SubtitleInput>): List<String> = buildList {
