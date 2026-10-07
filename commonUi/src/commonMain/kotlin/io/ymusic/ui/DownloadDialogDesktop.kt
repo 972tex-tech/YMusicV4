@@ -142,7 +142,7 @@ private fun LeftPane(state: DownloadOptionsState, locationName: String?, onPickL
         verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-            ThumbImage(state.video.thumbs, 200.dp, RoundedCornerShape(10.dp)) {
+            ThumbImage(state.video.thumbs, RoundedCornerShape(10.dp)) {
                 ThumbPlaceholder(Icons.Outlined.Image, 26.dp)
             }
             Badges(state.video, Modifier.align(Alignment.BottomEnd).padding(DesignSpacing.Space8), textSize = 11, iconSize = 14.dp)

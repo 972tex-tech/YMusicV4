@@ -14,18 +14,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import io.ymusic.dynamicengine.yt.YtThumb
 import io.ymusic.imageloader.AsyncImage
 import io.ymusic.imageloader.ImageLoader
+import io.ymusic.imageloader.ImageSource
 
 /** Provided at the App root from [AppGraph.imageLoader]; null keeps every thumb a placeholder box. */
 val LocalImageLoader = staticCompositionLocalOf<ImageLoader?> { null }
-
-/** Smallest variant that still covers [targetPx] wide, else the largest offered (source order ascends). */
-internal fun List<YtThumb>.thumbUrlFor(targetPx: Int): String? =
-    firstOrNull { (it.w ?: 0) >= targetPx }?.url ?: lastOrNull()?.url
 
 /** The largest variant: by declared area when sizes are known, else the last (source order ascends). */
 internal fun List<YtThumb>.largestThumbUrl(): String? =
@@ -47,29 +43,39 @@ internal fun BoxScope.ThumbPlaceholder(
 
 /**
  * The image layer of a thumbnail box: fills the parent, clipped to [shape].
- * [placeholder] draws only until the bitmap lands (or on failure).
- * [targetDp] picks the variant to download; the decode sizes itself to the measured pixels.
+ * [placeholder] draws only until the bitmap lands (or on failure). The loader picks the variant
+ * that covers the measured box (see [thumbRequestSources]) — a video's thumbs share its identity.
  */
 @Composable
 internal fun BoxScope.ThumbImage(
     thumbs: List<YtThumb>,
-    targetDp: Dp,
     shape: Shape,
     placeholder: (@Composable BoxScope.() -> Unit)? = null,
 ) {
-    val targetPx = with(LocalDensity.current) { targetDp.roundToPx() }
-    ArtImage(thumbs.thumbUrlFor(targetPx), shape, placeholder)
+    val request = thumbRequestSources(thumbs)
+    ImageLayer(request?.first, request?.second.orEmpty(), shape, placeholder)
 }
 
-/** One url straight into the thumbnail box — the single-variant sibling of [ThumbImage]. */
+/** One url into the thumbnail box; a YouTube thumbnail url joins its video's identity ([artRequestSources]). */
 @Composable
 internal fun BoxScope.ArtImage(
     url: String?,
     shape: Shape,
     placeholder: (@Composable BoxScope.() -> Unit)? = null,
 ) {
+    val request = url?.let(::artRequestSources)
+    ImageLayer(request?.first, request?.second.orEmpty(), shape, placeholder)
+}
+
+@Composable
+private fun BoxScope.ImageLayer(
+    key: String?,
+    sources: List<ImageSource>,
+    shape: Shape,
+    placeholder: (@Composable BoxScope.() -> Unit)?,
+) {
     val loader = LocalImageLoader.current
-    if (url == null || loader == null) {
+    if (key == null || sources.isEmpty() || loader == null) {
         if (placeholder != null) {
             Box(Modifier.matchParentSize().clip(shape), contentAlignment = Alignment.Center) {
                 placeholder()
@@ -79,7 +85,8 @@ internal fun BoxScope.ArtImage(
     }
     AsyncImage(
         loader,
-        url,
+        key,
+        sources,
         contentDescription = null,
         modifier = Modifier.matchParentSize().clip(shape),
         contentScale = ContentScale.Crop,

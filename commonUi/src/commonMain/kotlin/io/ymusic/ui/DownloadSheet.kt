@@ -196,7 +196,7 @@ internal fun DownloadSheet(
 private fun SheetHeader(state: DownloadOptionsState, onRename: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16), verticalAlignment = Alignment.Top) {
         Box(Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-            ThumbImage(state.video.thumbs, 64.dp, RoundedCornerShape(8.dp)) {
+            ThumbImage(state.video.thumbs, RoundedCornerShape(8.dp)) {
                 ThumbPlaceholder(Icons.Outlined.MusicNote, 24.dp)
             }
             Badges(state.video, Modifier.align(Alignment.BottomEnd).padding(DesignSpacing.Space4), textSize = 10, iconSize = 12.dp)

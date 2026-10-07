@@ -319,7 +319,7 @@ private fun ChannelHeader(header: YtPageHeader?, fallback: YtFeedItem) {
                     .clip(RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                ThumbImage(banner, 480.dp, RoundedCornerShape(12.dp)) {
+                ThumbImage(banner, RoundedCornerShape(12.dp)) {
                     ThumbPlaceholder(Icons.Outlined.Image, 26.dp)
                 }
             }
@@ -333,7 +333,7 @@ private fun ChannelHeader(header: YtPageHeader?, fallback: YtFeedItem) {
                 Modifier.size(64.dp).clip(CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                ThumbImage(header?.thumbs ?: fallback.thumbs, 64.dp, CircleShape) {
+                ThumbImage(header?.thumbs ?: fallback.thumbs, CircleShape) {
                     ThumbPlaceholder(Icons.Outlined.Person, 26.dp, DesignColors.PlaceholderDim)
                 }
             }

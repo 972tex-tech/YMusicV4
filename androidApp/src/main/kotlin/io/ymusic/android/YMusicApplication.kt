@@ -23,6 +23,7 @@ import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.androidEngineCacheStore
 import io.ymusic.dynamicengine.player.bindMseNativeLogs
 import io.ymusic.imageloader.DiskScaledImageCache
+import io.ymusic.imageloader.DiskVariantIndex
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.imageloader.defaultMemoryCacheBudget
 import io.ymusic.imageloader.fileFetcher
@@ -59,6 +60,7 @@ import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.WebViewSabrSpecResolver
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
+import io.ymusic.ui.loaderYoutubeArt
 import io.ymusic.ui.mediaStoreArtFetcher
 import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.playhistory.playHistoryAndroidDriver
@@ -314,6 +316,7 @@ class YMusicApplication : Application() {
             FileSystem.SYSTEM,
             cacheDir.resolve("image-source-cache").toOkioPath(),
         )
+        var loaderRef: ImageLoader? = null
         val imageLoader = ImageLoader(
             fetchers = listOfNotNull(
                 imageNetworkFetcher,
@@ -322,14 +325,18 @@ class YMusicApplication : Application() {
                     mediaStoreArtFetcher(
                         FfmpegMetadataGetter(it, AndroidFfInputResolver(contentResolver)),
                         mediaStore,
-                        imageNetworkFetcher,
+                        loaderYoutubeArt { checkNotNull(loaderRef) },
                     )
                 },
             ),
             scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheDir.resolve("image-scaled-cache").toOkioPath()),
             logger = rootLogger,
             memoryCacheBytes = defaultMemoryCacheBudget(this),
-        ).also { builtImageLoader = it }
+            variantIndex = DiskVariantIndex(FileSystem.SYSTEM, cacheDir.resolve("image-variants").toOkioPath()),
+        ).also {
+            loaderRef = it
+            builtImageLoader = it
+        }
 
         return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, webViewJs, imageLoader, stats)
     }

@@ -146,7 +146,7 @@ private fun AccountCard(account: YtAccountInfo, onSignOut: () -> Unit, onSwitchA
             val thumbs = account.thumbs
             val initial = account.name?.firstOrNull()?.uppercaseChar()
             when {
-                thumbs.isNotEmpty() -> ThumbImage(thumbs, 46.dp, CircleShape)
+                thumbs.isNotEmpty() -> ThumbImage(thumbs, CircleShape)
                 initial != null -> Text(
                     initial.toString(),
                     style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = DesignColors.OnInk),

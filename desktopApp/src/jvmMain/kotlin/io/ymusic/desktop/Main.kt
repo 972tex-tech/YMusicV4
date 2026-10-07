@@ -77,6 +77,7 @@ import io.ymusic.dynamicengine.desktopEngineCacheStore
 import io.ymusic.dynamicengine.player.bindMseNativeLogs
 import io.ymusic.dynamicengine.yt.ytLoginStatus
 import io.ymusic.imageloader.DiskScaledImageCache
+import io.ymusic.imageloader.DiskVariantIndex
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.imageloader.defaultMemoryCacheBudget
 import io.ymusic.imageloader.fileFetcher
@@ -120,6 +121,7 @@ import io.ymusic.ui.WebViewSabrSpecResolver
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.importSessionCookies
+import io.ymusic.ui.loaderYoutubeArt
 import io.ymusic.ui.mediaStoreArtFetcher
 import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.playhistory.playHistoryJdbcDriver
@@ -575,16 +577,20 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
         FileSystem.SYSTEM,
         File(dataDir, "image-source-cache").absolutePath.toPath(),
     )
+    var loaderRef: ImageLoader? = null
     val imageLoader = ImageLoader(
         fetchers = listOfNotNull(
             imageNetworkFetcher,
             fileFetcher(),
-            resolveFfmpeg()?.let { mediaStoreArtFetcher(FfmpegMetadataGetter(it), mediaStore, imageNetworkFetcher) },
+            resolveFfmpeg()?.let {
+                mediaStoreArtFetcher(FfmpegMetadataGetter(it), mediaStore, loaderYoutubeArt { checkNotNull(loaderRef) })
+            },
         ),
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),
         logger = rootLogger,
         memoryCacheBytes = defaultMemoryCacheBudget(),
-    )
+        variantIndex = DiskVariantIndex(FileSystem.SYSTEM, File(dataDir, "image-variants").absolutePath.toPath()),
+    ).also { loaderRef = it }
 
     val localSurface = LocalVideoSurface()
     val mseSurface = io.ymusic.mse.MseVideoSurface()

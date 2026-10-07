@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
+import io.ymusic.imageloader.ImageRequest
 import io.ymusic.player.Player
 import io.ymusic.player.VideoQualityState
 import io.ymusic.settings.AppSettings
@@ -230,7 +231,8 @@ private fun rememberArtTransition(url: String?, decodeSize: IntSize): ArtTransit
                 if (url == null || loader == null) {
                     null
                 } else {
-                    loader.peek(url, size.width, size.height) ?: loader.loadOrNull(url, size.width, size.height)
+                    val request = artRequest(url, size)
+                    loader.peek(request) ?: loader.loadOrNull(request)
                 }
             }
             val shadeFrom = TimeSource.Monotonic.markNow()
@@ -268,11 +270,16 @@ private fun rememberArtTransition(url: String?, decodeSize: IntSize): ArtTransit
         val shownUrl = state.url ?: return@LaunchedEffect
         if (state.current == null || shownUrl != url || loader == null) return@LaunchedEffect
         delay(ART_RESIZE_SETTLE_MS)
-        val sharper = loader.peek(shownUrl, decodeSize.width, decodeSize.height)
-            ?: loader.loadOrNull(shownUrl, decodeSize.width, decodeSize.height)
+        val request = artRequest(shownUrl, decodeSize)
+        val sharper = loader.peek(request) ?: loader.loadOrNull(request)
         if (sharper != null && state.url == shownUrl && state.current != null) state.current = sharper
     }
     return state
+}
+
+private fun artRequest(url: String, size: IntSize): ImageRequest {
+    val (key, sources) = artRequestSources(url)
+    return ImageRequest(key, sources, size)
 }
 
 @Composable

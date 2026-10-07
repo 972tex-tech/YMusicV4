@@ -4,14 +4,13 @@ import androidx.compose.ui.unit.IntSize
 import io.ymusic.imageloader.DecodedImage
 import io.ymusic.imageloader.ImageFetcher
 import io.ymusic.imageloader.ImageLoadException
+import io.ymusic.imageloader.ImageLoader
+import io.ymusic.imageloader.ImageRequest
 import io.ymusic.imageloader.ImageScale
-import io.ymusic.imageloader.SourceCrop
-import io.ymusic.imageloader.cropped
 import io.ymusic.imageloader.decodeChecked
 import io.ymusic.imageloader.decodeScaled
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.model.MediaStoreItem
-import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
 import kmpffmpeg.metadata.FfmpegMetadataGetter
 import kotlinx.coroutines.Dispatchers
@@ -46,53 +45,33 @@ fun youtubeThumbUrl(videoId: String): String = "https://i.ytimg.com/vi/$videoId/
 fun youtubeArtUrl(videoId: String): String =
     UriBuilder().scheme("art").authority("yt").appendPathSegment(videoId).buildString()
 
-private const val MQDEFAULT_WIDTH = 320
+/** A video's thumbnail at a size — the art fetcher's fallback for files tagged with a video id. */
+fun interface YoutubeArt {
+    suspend fun load(videoId: String, size: IntSize, scale: ImageScale): DecodedImage
+}
 
 /**
- * The thumbnail for [videoId] at [size]: [youtubeThumbUrl] when it covers the view, else sddefault
- * (640×480), falling back to hqdefault (480×360) since sddefault isn't generated for every upload.
- * Both are 4:3 frames with the 16:9 picture letterboxed inside, so their bars are trimmed.
+ * [YoutubeArt] through [loader]'s identity request for the video ([youtubeImageKey] with
+ * [youtubeThumbnailSources]): shares its caches and variant index with every other view of the
+ * video. [loader] is a provider because the art fetcher is built into the loader it calls; the
+ * outer `art:` load holds a local slot and this one a network slot, so the nesting cannot starve.
  */
-private suspend fun youtubeArt(
-    network: ImageFetcher,
-    videoId: String,
-    size: IntSize,
-    scale: ImageScale,
-    url: String,
-): DecodedImage {
-    val candidates = if (size.width > MQDEFAULT_WIDTH || size.height > MQDEFAULT_WIDTH * 9 / 16) {
-        listOf(
-            "https://i.ytimg.com/vi/$videoId/sddefault.jpg" to true,
-            "https://i.ytimg.com/vi/$videoId/hqdefault.jpg" to true,
-        )
-    } else {
-        listOf(youtubeThumbUrl(videoId) to false)
-    }
-    var failure: ImageLoadException? = null
-    for ((candidate, letterboxed) in candidates) {
-        try {
-            val decoded = network.fetch(Uri.parse(candidate), size, scale) ?: continue
-            return if (letterboxed) decoded.cropped(SourceCrop.Letterbox16x9) else decoded
-        } catch (e: ImageLoadException) {
-            failure = e
-        }
-    }
-    throw ImageLoadException(failure?.reason ?: ImageLoadException.Reason.NotFound, "no YouTube thumbnail for $videoId: $url", failure)
+fun loaderYoutubeArt(loader: () -> ImageLoader): YoutubeArt = YoutubeArt { videoId, size, scale ->
+    val bitmap = loader().load(ImageRequest(youtubeImageKey(videoId), youtubeThumbnailSources(videoId), size, scale))
+    DecodedImage(bitmap, bitmap.width, bitmap.height)
 }
 
 /**
  * The `art:` resolver: media id → [store] item → artwork, decoded to the view size. Embedded
  * covers and video frames are ffmpeg-extracted via [getter] (every such fetch spawns one ffmpeg);
- * a file with no embedded cover but a YouTube video id delegates to [network] — the shells pass
- * the loader's own disk-cached network fetcher, so the thumb rides the normal
- * check-cache-then-http flow. That branch sits before the video-frame one: tagged videos show the
- * real poster rather than an arbitrary frame. `youtubeVid` is scan-validated to the 11-char id
- * alphabet, safe to interpolate.
+ * a file with no embedded cover but a YouTube video id — and `art://yt/<id>` — goes to
+ * [youtubeArt]. That branch sits before the video-frame one: tagged videos show the real poster
+ * rather than an arbitrary frame. `youtubeVid` is scan-validated to the 11-char id alphabet.
  */
 fun mediaStoreArtFetcher(
     getter: FfmpegMetadataGetter,
     store: BetterMediaStore,
-    network: ImageFetcher,
+    youtubeArt: YoutubeArt,
     maxImageBytes: Long = 32L * 1024 * 1024,
 ): ImageFetcher = ImageFetcher { uri, size, scale ->
     if (uri.scheme?.toString() != "art") return@ImageFetcher null
@@ -100,7 +79,7 @@ fun mediaStoreArtFetcher(
     if (uri.authority?.toString() == "yt") {
         val videoId = uri.path.toString().substringAfterLast('/').takeIf { it.isNotEmpty() }
             ?: throw ImageLoadException(ImageLoadException.Reason.Unsupported, "malformed art uri: $url")
-        return@ImageFetcher youtubeArt(network, videoId, size, scale, url)
+        return@ImageFetcher youtubeArt.load(videoId, size, scale)
     }
     if (uri.authority?.toString() != "pic") return@ImageFetcher null
     val id = uri.path.toString().substringAfterLast('/').toLongOrNull()
@@ -110,7 +89,7 @@ fun mediaStoreArtFetcher(
     val youtubeVid = item.youtubeVid
     val source = when {
         item.thumbnailStreamIndex != null -> getter.getAttachedPic(item.uri)
-        youtubeVid != null -> return@ImageFetcher youtubeArt(network, youtubeVid, size, scale, url)
+        youtubeVid != null -> return@ImageFetcher youtubeArt.load(youtubeVid, size, scale)
         item.videoCodec != null -> getter.extractThumbnail(item.uri)
         else -> throw ImageLoadException(ImageLoadException.Reason.NotFound, "media item $id has no artwork source: $url")
     }

@@ -163,7 +163,7 @@ fun SectionHeader(
                 Modifier.size(26.dp).clip(CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                ThumbImage(header.iconThumbs, 26.dp, CircleShape) {
+                ThumbImage(header.iconThumbs, CircleShape) {
                     ThumbPlaceholder(Icons.Outlined.MusicNote, 14.dp, DesignColors.PlaceholderDim)
                 }
             }
@@ -318,7 +318,7 @@ fun FeedGridCard(
                     .clip(RoundedCornerShape(5.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                ThumbImage(item.thumbs, GRID_THUMB_TARGET, RoundedCornerShape(5.dp)) {
+                ThumbImage(item.thumbs, RoundedCornerShape(5.dp)) {
                     ThumbPlaceholder(Icons.Outlined.Image, 22.dp)
                 }
                 WatchedBar(item, Modifier.align(Alignment.BottomCenter))
@@ -483,7 +483,7 @@ private fun CircleThumb(item: YtFeedItem, size: androidx.compose.ui.unit.Dp) {
         Modifier.size(size).clip(CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        ThumbImage(item.thumbs, size, CircleShape) {
+        ThumbImage(item.thumbs, CircleShape) {
             ThumbPlaceholder(Icons.Outlined.Person, 28.dp)
         }
     }
@@ -502,7 +502,7 @@ private fun RectThumb(item: YtFeedItem, width: androidx.compose.ui.unit.Dp, heig
             .clip(RoundedCornerShape(6.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        ThumbImage(item.thumbs, width, RoundedCornerShape(6.dp)) {
+        ThumbImage(item.thumbs, RoundedCornerShape(6.dp)) {
             ThumbPlaceholder(Icons.Outlined.Image, if (height < 80.dp) 21.dp else 30.dp)
         }
         WatchedBar(item, Modifier.align(Alignment.BottomCenter))
@@ -510,9 +510,6 @@ private fun RectThumb(item: YtFeedItem, width: androidx.compose.ui.unit.Dp, heig
         if (isAvailableOffline(item)) AvailableOfflineMark(Modifier.align(Alignment.TopStart))
     }
 }
-
-/** Grid cells vary with screen width; this is a sane middle target for picking the variant. */
-private val GRID_THUMB_TARGET = 220.dp
 
 /** The card width grids aim for — the column count is however many of these fit. */
 // The widest a grid card may render; [gridColumnsFor] adds a column only when this would be

@@ -345,7 +345,7 @@ private fun VideoCheckRow(video: YtFeedItem, checked: Boolean, downloaded: Boole
             colors = CheckboxDefaults.colors(checkedColor = DesignColors.Accent),
         )
         Box(Modifier.size(width = 96.dp, height = 54.dp).clip(RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
-            ThumbImage(video.thumbs, 96.dp, RoundedCornerShape(6.dp)) { ThumbPlaceholder(Icons.Outlined.Image, 20.dp) }
+            ThumbImage(video.thumbs, RoundedCornerShape(6.dp)) { ThumbPlaceholder(Icons.Outlined.Image, 20.dp) }
             Badges(video, Modifier.align(Alignment.BottomEnd).padding(DesignSpacing.Space2), textSize = 10, iconSize = 12.dp)
             if (downloaded) AvailableOfflineMark(Modifier.align(Alignment.TopStart))
         }

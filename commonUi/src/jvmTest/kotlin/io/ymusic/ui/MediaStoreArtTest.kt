@@ -3,7 +3,6 @@ package io.ymusic.ui
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
 import io.ymusic.imageloader.DecodedImage
-import io.ymusic.imageloader.ImageFetcher
 import io.ymusic.imageloader.ImageScale
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
@@ -67,7 +66,7 @@ class MediaStoreArtTest {
     }
 
     @Test
-    fun no_cover_but_a_video_id_delegates_to_the_network_fetcher() = runBlocking {
+    fun no_cover_but_a_video_id_delegates_to_youtube_art() = runBlocking {
         val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
         val stored = store.upsertItem(
             bucketId = null,
@@ -80,12 +79,12 @@ class MediaStoreArtTest {
                 youtubeVid = "dQw4w9WgXcQ",
             ),
         )
-        var requested: Uri? = null
-        val network = ImageFetcher { uri, _, _ ->
-            requested = uri
+        var requested: String? = null
+        val youtubeArt = YoutubeArt { videoId, _, _ ->
+            requested = videoId
             DecodedImage(ImageBitmap(4, 4), 4, 4)
         }
-        val fetcher = mediaStoreArtFetcher(FfmpegMetadataGetter("ffmpeg-never-run"), store, network)
+        val fetcher = mediaStoreArtFetcher(FfmpegMetadataGetter("ffmpeg-never-run"), store, youtubeArt)
 
         assertNull(
             fetcher.fetch(Uri.parse("https://example.com/x.png"), IntSize(64, 64), ImageScale.Cover),
@@ -93,6 +92,6 @@ class MediaStoreArtTest {
         )
         val decoded = fetcher.fetch(Uri.parse("art://pic/${stored.id}"), IntSize(64, 64), ImageScale.Cover)
         assertNotNull(decoded, "fetcher returned null for its own scheme")
-        assertEquals("https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg", requested.toString())
+        assertEquals("dQw4w9WgXcQ", requested)
     }
 }

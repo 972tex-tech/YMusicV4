@@ -1,11 +1,11 @@
 package io.ymusic.desktop
 
 import androidx.compose.ui.unit.IntSize
-import io.ymusic.imageloader.ImageFetcher
 import io.ymusic.imageloader.ImageScale
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.MediaItemDraft
+import io.ymusic.ui.YoutubeArt
 import io.ymusic.ui.mediaStoreArtFetcher
 import kmpcommon.uri.Uri
 import kmpffmpeg.metadata.FfmpegMetadataGetter
@@ -54,8 +54,8 @@ class LocalArtFetcherTest {
                         thumbnailStreamIndex = 1,
                     ),
                 )
-                val network = ImageFetcher { _, _, _ -> error("embedded covers must not hit the network") }
-                val fetcher = mediaStoreArtFetcher(FfmpegMetadataGetter(ffmpeg), store, network)
+                val youtubeArt = YoutubeArt { _, _, _ -> error("embedded covers must not hit the network") }
+                val fetcher = mediaStoreArtFetcher(FfmpegMetadataGetter(ffmpeg), store, youtubeArt)
                 assertNull(
                     fetcher.fetch(Uri.parse("https://example.com/x.png"), IntSize(64, 64), ImageScale.Cover),
                     "fetcher must decline non-art urls",
