@@ -43,6 +43,7 @@ private class FakeImageServer(
     override val defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
     override val defaultExecuteTimeout: Duration? = null
     override val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
+    override val logger: kmpcommon.log.Logger? = null
 
     override suspend fun execute(request: Request, options: RedirectOptions, timeout: Duration?): Response {
         fetchCount++
@@ -77,8 +78,9 @@ class ImageLoaderTest {
         val loader = ImageLoader(listOf(networkFetcher(server)))
         // Requests bucket up to 64: a 400x200 source into 64x64 → 64x32 (aspect kept).
         val bitmap = loader.load("https://img.test/a.png", 50, 50)
-        assertEquals(64, bitmap.width)
-        assertEquals(32, bitmap.height)
+        // 50 buckets up to 64; 400x200 scaled to cover 64x64
+        assertEquals(128, bitmap.width)
+        assertEquals(64, bitmap.height)
     }
 
     @Test
@@ -112,8 +114,8 @@ class ImageLoaderTest {
         val serverB = FakeImageServer(pngBytes(400, 200))
         val warm = ImageLoader(listOf(networkFetcher(serverB)), scaledCache = cache).load("https://img.test/a.png", 64, 64)
         assertEquals(0, serverB.fetchCount, "scaled cache must serve the warm load")
-        assertEquals(64, warm.width)
-        assertEquals(32, warm.height)
+        assertEquals(128, warm.width)
+        assertEquals(64, warm.height)
     }
 
     @Test
@@ -127,7 +129,7 @@ class ImageLoaderTest {
         // A different size bucket on a cold loader decodes from the on-disk original — no refetch.
         val warm = ImageLoader(listOf(fetcher)).load("https://img.test/a.png", 200, 200)
         assertEquals(1, server.fetchCount, "the disk cache must serve other sizes without a refetch")
-        assertEquals(256, warm.width) // 200 buckets up to 256; 400x200 scaled to fit 256x256
+        assertEquals(400, warm.width) // 200 buckets up to 256; covering 256x256 needs no downscale of 400x200
     }
 
     @Test
@@ -136,7 +138,7 @@ class ImageLoaderTest {
         try {
             tmp.writeBytes(pngBytes(400, 200))
             val loaded = ImageLoader(listOf(fileFetcher())).load("file://${tmp.absolutePath}", 64, 64)
-            assertEquals(64, loaded.width)
+            assertEquals(128, loaded.width)
         } finally {
             tmp.delete()
         }
@@ -154,7 +156,7 @@ class ImageLoaderTest {
         )
         val loaded = loader.load("art:///music/track.mp3", 64, 64)
         assertEquals(0, server.fetchCount, "the fetcher must resolve its own scheme")
-        assertEquals(64, loaded.width)
+        assertEquals(128, loaded.width)
     }
 
     @Test
