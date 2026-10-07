@@ -44,7 +44,10 @@ abstract class StringBackedSettingsStore : SettingsStore {
 
 class InMemorySettingsStore : StringBackedSettingsStore()
 
+/** A read-only view of this flow through [transform]; emits only when the transformed value changes. */
 @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
+fun <S, T> StateFlow<S>.mapState(transform: (S) -> T): StateFlow<T> = MappedStateFlow(this, transform)
+
 internal class MappedStateFlow<S, T>(
     private val source: StateFlow<S>,
     private val transform: (S) -> T,
