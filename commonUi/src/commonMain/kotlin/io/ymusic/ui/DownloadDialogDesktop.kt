@@ -19,13 +19,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Image
@@ -33,18 +31,16 @@ import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material.icons.outlined.VolumeUp
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,8 +56,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.ymusic.download.DownloadFileNames
 import io.ymusic.download.DownloadFormat
 import io.ymusic.download.DownloadKind
@@ -95,53 +89,47 @@ internal fun DownloadDialogDesktop(
     onDownload: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            Modifier.widthIn(max = 880.dp).fillMaxWidth().padding(DesignSpacing.Space24),
-            shape = RoundedCornerShape(16.dp),
-            color = DesignColors.Surface,
-        ) {
-            Column {
-                Row(
-                    Modifier.fillMaxWidth().padding(start = DesignSpacing.Space24, end = DesignSpacing.Space8, top = DesignSpacing.Space8),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        stringResource(Res.string.download_title),
-                        Modifier.weight(1f),
-                        style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+    val scroll = rememberScrollState()
+    ElevatedBarDialog(
+        title = stringResource(Res.string.download_title),
+        onDismiss = onDismiss,
+        canScrollBackward = scroll.canScrollBackward,
+        canScrollForward = scroll.canScrollForward,
+        maxWidth = 880.dp,
+        buttons = {
+            Text(
+                summary(state),
+                Modifier.weight(1f).padding(start = DesignSpacing.Space8),
+                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSoft),
+                maxLines = 2,
+            )
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel), color = DesignColors.InkSoft) }
+            val ready = state.options != null && !state.isLive && DownloadFileNames.finalize(state.fileName).isNotEmpty()
+            TextButton(onClick = onDownload, enabled = ready) {
+                Text(stringResource(Res.string.download_action), color = if (ready) DesignColors.Accent else DesignColors.InkFaint)
+            }
+        },
+    ) {
+        Row(Modifier.height(IntrinsicSize.Min).heightIn(min = 360.dp)) {
+            LeftPane(state, locationName, onPickLocation)
+            Box(Modifier.width(1.dp).fillMaxHeight().background(DesignColors.Divider))
+            Column(
+                Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = DesignSpacing.Space24, vertical = DesignSpacing.Space8),
+            ) {
+                val options = state.options
+                when {
+                    state.isLive -> LiveNotDownloadable()
+                    options == null && state.errorCode != null -> ProbeFailed(state.errorCode!!, onRetry)
+                    options == null -> Text(
+                        stringResource(Res.string.download_loading),
+                        Modifier.padding(vertical = DesignSpacing.Space24),
+                        style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary),
                     )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, stringResource(Res.string.dialog_cancel), tint = DesignColors.InkSoft)
+                    else -> {
+                        TrackRows(state)
+                        Box(Modifier.padding(top = DesignSpacing.Space8)) { SaveAsQuickCheckbox(state) }
                     }
                 }
-                HorizontalDivider(color = DesignColors.Divider)
-                Row(Modifier.height(IntrinsicSize.Min).heightIn(min = 360.dp)) {
-                    LeftPane(state, locationName, onPickLocation)
-                    Box(Modifier.width(1.dp).fillMaxHeight().background(DesignColors.Divider))
-                    Column(
-                        Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = DesignSpacing.Space24, vertical = DesignSpacing.Space8),
-                    ) {
-                        val options = state.options
-                        when {
-                            state.isLive -> LiveNotDownloadable()
-                            options == null && state.errorCode != null -> ProbeFailed(state.errorCode!!, onRetry)
-                            options == null -> Text(
-                                stringResource(Res.string.download_loading),
-                                Modifier.padding(vertical = DesignSpacing.Space24),
-                                style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary),
-                            )
-                            else -> {
-                                TrackRows(state)
-                                if (!state.isLive) {
-                                    Box(Modifier.padding(top = DesignSpacing.Space8)) { SaveAsQuickCheckbox(state) }
-                                }
-                            }
-                        }
-                    }
-                }
-                HorizontalDivider(color = DesignColors.Divider)
-                Footer(state, onDownload, onDismiss)
             }
         }
     }
@@ -356,26 +344,6 @@ private fun ContainerToggle(state: DownloadOptionsState) {
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun Footer(state: DownloadOptionsState, onDownload: () -> Unit, onDismiss: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().background(DesignColors.SurfaceDim).padding(horizontal = DesignSpacing.Space24, vertical = DesignSpacing.Space16),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
-    ) {
-        Text(summary(state), Modifier.weight(1f), style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSoft), maxLines = 2)
-        OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, DesignColors.Outline)) {
-            Text(stringResource(Res.string.dialog_cancel), color = DesignColors.Ink)
-        }
-        Button(
-            onClick = onDownload,
-            enabled = state.options != null && !state.isLive && DownloadFileNames.finalize(state.fileName).isNotEmpty(),
-            shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = downloadPrimary, contentColor = Color.White),
-        ) { Text(stringResource(Res.string.download_action), fontWeight = FontWeight.Bold) }
     }
 }
 

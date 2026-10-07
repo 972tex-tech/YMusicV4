@@ -13,19 +13,21 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.BasicAlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 
 /**
@@ -35,9 +37,9 @@ import androidx.compose.ui.zIndex
  * scroll under them — the ElevatedBarColumn idiom. The body is bounded to a scrollable region; pass the
  * scroll edges of whatever scrollable it hosts ([androidx.compose.foundation.lazy.LazyListState] or a
  * [androidx.compose.foundation.ScrollState]) as [canScrollBackward]/[canScrollForward] so the shadows
- * follow it. [buttons] fills the bottom bar (right-aligned).
+ * follow it. [buttons] fills the bottom bar (right-aligned). [maxWidth] widens it past the 560dp
+ * picker width for a dialog with more to lay out (the download options).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ElevatedBarDialog(
     title: String,
@@ -45,6 +47,7 @@ fun ElevatedBarDialog(
     canScrollBackward: Boolean,
     canScrollForward: Boolean,
     buttons: @Composable RowScope.() -> Unit,
+    maxWidth: Dp = 560.dp,
     body: @Composable () -> Unit,
 ) {
     // The title/button bars sit a step above the body. On dark, the full SurfaceElevated lift (0x12 →
@@ -57,11 +60,15 @@ fun ElevatedBarDialog(
         } else {
             420.dp
         }
-        BasicAlertDialog(onDismissRequest = onDismiss) {
+        val wide = maxWidth > 560.dp
+        // Dialog, not BasicAlertDialog: that one clamps its content to 560dp whatever the properties.
+        Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = !wide)) {
             Surface(
                 shape = RoundedCornerShape(4.dp),
                 color = DesignColors.Surface,
-                modifier = Modifier.widthIn(min = 280.dp, max = 560.dp),
+                modifier = Modifier
+                    .then(if (wide) Modifier.padding(horizontal = 24.dp) else Modifier)
+                    .widthIn(min = 280.dp, max = maxWidth),
             ) {
                 Column {
                     val topShadow by animateDpAsState(if (canScrollBackward) 6.dp else 0.dp)
@@ -80,6 +87,7 @@ fun ElevatedBarDialog(
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically,
                             content = buttons,
                         )
                     }
