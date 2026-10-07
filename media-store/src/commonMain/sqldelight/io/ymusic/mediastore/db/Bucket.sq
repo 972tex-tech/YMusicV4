@@ -24,10 +24,13 @@ lastInsertRowId:
 SELECT last_insert_rowid();
 
 -- Full update (also un-deletes: used by upsert when a previously-removed folder reappears).
--- parentId uses COALESCE so a null never RE-ROOTS an existing child bucket (mirrors updateItem's
--- bucketId guard): a single-folder rescan that supplies only the uri keeps the bucket's parent.
+-- A null parentId keeps the existing parent only while that parent is live: a single-folder rescan
+-- under a live root keeps its place, but a folder re-added after its ancestor was removed becomes a
+-- root instead of reviving under a deleted parent, where no root-down query would ever reach it.
 updateBucket:
-UPDATE bucket SET parentId = COALESCE(?, parentId), name = ?, aliasName = ?, deleted = 0, updatedAt = ?
+UPDATE bucket SET
+    parentId = COALESCE(?, (SELECT p.id FROM bucket AS p WHERE p.id = bucket.parentId AND p.deleted = 0)),
+    name = ?, aliasName = ?, deleted = 0, updatedAt = ?
 WHERE id = ?;
 
 setBucketAlias:
