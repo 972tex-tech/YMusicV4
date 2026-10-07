@@ -125,7 +125,7 @@ internal class DownloadOptionsState(
             videoId = video.id,
             title = video.title,
             artist = null,
-            thumbnailUrl = video.thumbs.firstOrNull()?.url,
+            thumbnailUrl = video.thumbs.largestThumbUrl(),
             format = format,
             requestedHeight = if (format.kind == io.ymusic.download.DownloadKind.VIDEO) height else null,
             fileName = DownloadFileNames.finalize(fileName).ifEmpty { null },

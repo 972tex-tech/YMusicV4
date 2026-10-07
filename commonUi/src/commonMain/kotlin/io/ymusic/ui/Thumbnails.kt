@@ -27,6 +27,10 @@ val LocalImageLoader = staticCompositionLocalOf<ImageLoader?> { null }
 internal fun List<YtThumb>.thumbUrlFor(targetPx: Int): String? =
     firstOrNull { (it.w ?: 0) >= targetPx }?.url ?: lastOrNull()?.url
 
+/** The largest variant: by declared area when sizes are known, else the last (source order ascends). */
+internal fun List<YtThumb>.largestThumbUrl(): String? =
+    maxByOrNull { (it.w ?: 0).toLong() * (it.h ?: 0) }?.takeIf { (it.w ?: 0) > 0 }?.url ?: lastOrNull()?.url
+
 /**
  * Gray fill + icon shown only while a thumb is loading or failed. Must be passed as
  * [ArtImage]/[ThumbImage] `placeholder` so a loaded bitmap is not drawn over it (GPU overdraw).

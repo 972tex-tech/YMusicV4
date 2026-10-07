@@ -41,7 +41,7 @@ data class QuickDownloadPreset(
         videoId = video.id,
         title = video.title,
         artist = null,
-        thumbnailUrl = video.thumbs.firstOrNull()?.url,
+        thumbnailUrl = video.thumbs.largestThumbUrl(),
         format = format,
         requestedHeight = if (format.kind == DownloadKind.VIDEO) height else null,
         fileName = DownloadFileNames.fromTitle(video.title).ifEmpty { null },
