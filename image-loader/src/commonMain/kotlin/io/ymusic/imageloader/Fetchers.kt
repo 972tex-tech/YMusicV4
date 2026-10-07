@@ -2,7 +2,6 @@ package io.ymusic.imageloader
 
 import kmpcommon.io.AsyncSource
 import kmpcommon.uri.Uri
-import kmpcommon.uri.UriBuilder
 import kmpcommon.uri.filePath
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
@@ -36,7 +35,7 @@ fun networkFetcher(
     return ImageFetcher { uri, size ->
         if (!uri.isHttp()) return@ImageFetcher null
         val url = uri.toString()
-        val key = diskCacheKey(uri.cacheIdentity())
+        val key = diskCacheKey(imageCacheKey(url))
         cache.filePath(key)?.let { file ->
             try {
                 return@ImageFetcher decodeScaledFile(fileSystem, file, size)
@@ -81,8 +80,21 @@ fun fileFetcher(fileSystem: FileSystem = systemFileSystem): ImageFetcher = Image
 
 private fun Uri.isHttp(): Boolean = scheme?.toString().let { it == "http" || it == "https" }
 
-/** Stable disk-cache identity for a uri: drops volatile query params (ytimg's rotating ?sqp/&rs). */
-private fun Uri.cacheIdentity(): String = UriBuilder(this).encodedQuery(null).buildString()
+/**
+ * A stable cache identity for an image [url]: the url minus its rotating signature params. Only
+ * those go — other params select the image (ytimg's `sqp` encodes the size and crop), so two sizes
+ * of one image never share an entry.
+ */
+fun imageCacheKey(url: String): String {
+    val query = url.substringAfter('?', missingDelimiterValue = "")
+    if (query.isEmpty()) return url
+    val kept = query.split('&').filter { it.substringBefore('=') !in ROTATING_QUERY_PARAMS }
+    val base = url.substringBefore('?')
+    return if (kept.isEmpty()) base else base + "?" + kept.joinToString("&")
+}
+
+/** ytimg's `rs` is a per-response signature over the other params; it changes, the image doesn't. */
+private val ROTATING_QUERY_PARAMS = setOf("rs")
 
 /** Executes [url], enforces success + the declared-length cap, and closes the response. */
 private suspend fun <T> executeChecked(
