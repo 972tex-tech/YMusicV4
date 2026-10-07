@@ -157,6 +157,7 @@ internal fun AudioOnlyArtWave(
             IntSize(maxOf(maxWidth, side).roundToPx(), maxOf(maxHeight, side).roundToPx())
         }
         val art = rememberArtTransition(url, decodeSize)
+        PrefetchNextArt(player, decodeSize)
         Box(Modifier.matchParentSize().blur(28.dp)) {
             ArtBackdrop(art)
         }
@@ -275,6 +276,17 @@ private fun rememberArtTransition(url: String?, decodeSize: IntSize): ArtTransit
         if (sharper != null && state.url == shownUrl && state.current != null) state.current = sharper
     }
     return state
+}
+
+/** Warms the next queue item's art at this view's size, so the song change finds it in memory. */
+@Composable
+private fun PrefetchNextArt(player: Player, decodeSize: IntSize) {
+    val loader = LocalImageLoader.current ?: return
+    val queue by player.queue.collectAsState()
+    val nextUrl = queue.items.getOrNull(queue.currentIndex + 1)?.displayThumbnailUrl
+    LaunchedEffect(nextUrl, decodeSize, loader) {
+        if (nextUrl != null && decodeSize.width > 0 && decodeSize.height > 0) loader.prefetch(artRequest(nextUrl, decodeSize))
+    }
 }
 
 private fun artRequest(url: String, size: IntSize): ImageRequest {
