@@ -4,9 +4,20 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
 import kmpcommon.log.Logger
 import kmpcommon.uri.Uri
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import okio.ByteString.Companion.encodeUtf8
 import kotlin.concurrent.Volatile
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * A deliberately simple image loader for Compose: resolve an [ImageRequest] via [fetchers] → decode
@@ -22,20 +33,34 @@ import kotlin.concurrent.Volatile
  *   sources tries the smallest that covers the size first and falls back across the rest.
  * - **[scaledCache]** (optional) persists the *scaled* image when it is smaller than its source, so
  *   a warm start skips both the fetch and the full-size decode.
- * - **Priority is LIFO** with [parallelism] concurrent loads: the newest request wins, and a
- *   caller's cancellation (e.g. a list item scrolled away, its composition gone) frees its slot
- *   immediately — see [LifoGate].
+ * - **Priority is LIFO** over two pools — [networkParallelism] slots for http(s) sources and
+ *   [localParallelism] for everything else, so a slow download never holds up a local cover. The
+ *   newest request wins, and a load whose every caller cancelled (a list item scrolled away, its
+ *   composition gone) frees its slot immediately — see [LifoGate].
+ * - **One load per image**: concurrent requests for the same key and size share one fetch.
+ * - **Misses are remembered**: a source that answered NotFound is not asked again for
+ *   [NOT_FOUND_TTL], within this process.
  */
 class ImageLoader(
     private val fetchers: List<ImageFetcher>,
     private val scaledCache: ScaledImageCache? = null,
     logger: Logger? = null,
     memoryCacheBytes: Long = 32L * 1024 * 1024,
-    parallelism: Int = 4,
+    networkParallelism: Int = 4,
+    localParallelism: Int = 2,
 ) {
     internal val logger = logger?.fork("image-loader")
     private val memory = MemoryImageCache(memoryCacheBytes)
-    private val gate = LifoGate(parallelism)
+    private val networkGate = LifoGate(networkParallelism)
+    private val localGate = LifoGate(localParallelism)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val lock = SynchronizedObject()
+    private val inFlight = HashMap<String, Flight>()
+    private val notFound = HashMap<String, TimeMark>()
+
+    private class Flight(val job: Deferred<ImageBitmap>) {
+        var waiters = 0
+    }
 
     @Volatile private var memoryBudget = memoryCacheBytes
 
@@ -90,13 +115,37 @@ class ImageLoader(
     suspend fun load(request: ImageRequest, cacheInMemory: Boolean = true): ImageBitmap {
         val key = memoryKey(request)
         memory.peek(key)?.let { return it }
-        return gate.withPermit {
-            memory.peek(key)?.let { return@withPermit it } // raced with an identical load
+        val flight = synchronized(lock) {
+            inFlight.getOrPut(key) {
+                Flight(scope.async(start = CoroutineStart.LAZY) { loadUncached(request, key, cacheInMemory) })
+            }.also { it.waiters++ }
+        }
+        flight.job.start()
+        try {
+            return flight.job.await()
+        } finally {
+            synchronized(lock) {
+                flight.waiters--
+                // The last caller gone (cancelled, or the load settled) retires the shared load; an
+                // unfinished one is cancelled so it frees its slot.
+                if (flight.waiters == 0) {
+                    if (inFlight[key] === flight) inFlight.remove(key)
+                    if (!flight.job.isCompleted) flight.job.cancel()
+                }
+            }
+        }
+    }
+
+    private suspend fun loadUncached(request: ImageRequest, key: String, cacheInMemory: Boolean): ImageBitmap =
+        gateFor(request).withPermit {
+            memory.peek(key)?.let { return@withPermit it } // a load that finished while this one waited
             val bitmap = fromScaledCache(key) ?: fetchAndDecode(request, key)
             if (cacheInMemory) memory.put(key, bitmap)
             bitmap
         }
-    }
+
+    private fun gateFor(request: ImageRequest): LifoGate =
+        if (request.sources.any { it.url.startsWith("http://") || it.url.startsWith("https://") }) networkGate else localGate
 
     suspend fun load(url: String, maxWidth: Int, maxHeight: Int, cacheInMemory: Boolean = true): ImageBitmap =
         load(ImageRequest.of(url, maxWidth, maxHeight), cacheInMemory)
@@ -115,7 +164,7 @@ class ImageLoader(
         val key = memoryKey(request)
         val disk = diskKey(key)
         cache.filePath(disk)?.let { return it }
-        return gate.withPermit {
+        return gateFor(request).withPermit {
             cache.filePath(disk)?.let { return@withPermit it } // raced with an identical load
             // A bitmap the UI already decoded at this bucket is persisted as-is; otherwise fetch,
             // bypassing fetchAndDecode so its downscaled-only persist policy doesn't double-write.
@@ -176,9 +225,24 @@ class ImageLoader(
     }
 
     private suspend fun fetchSource(source: ImageSource, size: IntSize, scale: ImageScale): DecodedImage {
+        val sourceKey = imageCacheKey(source.url)
+        val missingSince = synchronized(lock) { notFound[sourceKey] }
+        if (missingSince != null) {
+            if (missingSince.elapsedNow() < NOT_FOUND_TTL) {
+                throw ImageLoadException(ImageLoadException.Reason.NotFound, "known missing: ${source.url}")
+            }
+            synchronized(lock) { notFound.remove(sourceKey) }
+        }
         val target = Uri.parse(source.url)
-        val decoded = fetchers.firstNotNullOfOrNull { it.fetch(target, size, scale) }
-            ?: throw ImageLoadException(ImageLoadException.Reason.Unsupported, "no fetcher handles: ${source.url}")
+        val decoded = try {
+            fetchers.firstNotNullOfOrNull { it.fetch(target, size, scale) }
+                ?: throw ImageLoadException(ImageLoadException.Reason.Unsupported, "no fetcher handles: ${source.url}")
+        } catch (e: ImageLoadException) {
+            if (e.reason == ImageLoadException.Reason.NotFound) {
+                synchronized(lock) { notFound[sourceKey] = TimeSource.Monotonic.markNow() }
+            }
+            throw e
+        }
         return decoded.cropped(source.crop)
     }
 
@@ -187,6 +251,8 @@ class ImageLoader(
 }
 
 private const val SCALED_CACHE_VERSION = 3
+
+private val NOT_FOUND_TTL = 10.minutes
 
 /** Round the target up to a 64px step: stable cache keys across ±layout-pixel jitter. */
 internal fun bucketPx(px: Int): Int = (((px.coerceIn(1, 1 shl 20) - 1) / 64) + 1) * 64
