@@ -8,6 +8,10 @@
 #define AFX_OVL_MAX 1024
 #define AFX_FIR 32
 #define AFX_FFT 2048
+#define AFX_BASS_HZ 150.f
+#define AFX_LIMIT 32112.f /* -0.18 dBFS on the s16 scale */
+#define AFX_LIMIT_RELEASE_S 0.08f
+#define AFX_GRID 48
 #define PI 3.14159265358979323846f
 
 typedef struct {
@@ -26,6 +30,9 @@ struct AudioFx {
     float pitch;
     Biquad peak[AFX_BANDS];
     Biquad bass;
+    float pre;
+    float lim_gain;
+    float lim_release;
     int color_on;
     float *inbuf;
     int in_n;
@@ -80,10 +87,10 @@ static void bq_clear(Biquad *b)
     b->z1[0] = b->z1[1] = b->z2[0] = b->z2[1] = 0;
 }
 
+/* Designers keep z1/z2: a retune mid-stream must not zero the filter state (that clicks). */
 static void bq_peak(Biquad *b, float fs, float f0, float db, float q)
 {
     float a, w0, c, s, alpha, b0, b1, b2, a0, a1, a2;
-    bq_clear(b);
     if (fs < 1.f || f0 >= fs * 0.48f || fabsf(db) < 0.05f) {
         b->b0 = 1;
         b->b1 = b->b2 = b->a1 = b->a2 = 0;
@@ -110,7 +117,6 @@ static void bq_peak(Biquad *b, float fs, float f0, float db, float q)
 static void bq_lowshelf(Biquad *b, float fs, float f0, float db)
 {
     float a, w0, c, s, alpha, sq, b0, b1, b2, a0, a1, a2;
-    bq_clear(b);
     if (fs < 1.f || fabsf(db) < 0.05f) {
         b->b0 = 1;
         b->b1 = b->b2 = b->a1 = b->a2 = 0;
@@ -135,6 +141,16 @@ static void bq_lowshelf(Biquad *b, float fs, float f0, float db)
     b->a2 = a2 / a0;
 }
 
+static float bq_gain_db(const Biquad *b, float w)
+{
+    float c1 = cosf(w), s1 = sinf(w), c2 = cosf(2.f * w), s2 = sinf(2.f * w);
+    float nr = b->b0 + b->b1 * c1 + b->b2 * c2;
+    float ni = -(b->b1 * s1 + b->b2 * s2);
+    float dr = 1.f + b->a1 * c1 + b->a2 * c2;
+    float di = -(b->a1 * s1 + b->a2 * s2);
+    return 10.f * log10f((nr * nr + ni * ni) / (dr * dr + di * di) + 1e-20f);
+}
+
 static float bq_tick(Biquad *b, int ch, float x)
 {
     float y = b->b0 * x + b->z1[ch];
@@ -143,6 +159,25 @@ static float bq_tick(Biquad *b, int ch, float x)
     return y;
 }
 
+/* Largest boost of the whole chain over 20 Hz .. min(20 kHz, 0.45 fs), in dB (0 when it only cuts). */
+static float max_boost_db(const AudioFx *fx, float fs)
+{
+    int i, k;
+    float top = fminf(20000.f, 0.45f * fs);
+    float worst = 0.f;
+    for (k = 0; k < AFX_GRID; k++) {
+        float f = 20.f * powf(top / 20.f, (float)k / (float)(AFX_GRID - 1));
+        float w = 2.f * PI * f / fs;
+        float sum = bq_gain_db(&fx->bass, w);
+        for (i = 0; i < AFX_BANDS; i++)
+            sum += bq_gain_db(&fx->peak[i], w);
+        if (sum > worst)
+            worst = sum;
+    }
+    return worst;
+}
+
+/* Call with fx->mu held (or before the instance is shared). */
 static void rebuild(AudioFx *fx)
 {
     int i;
@@ -153,9 +188,13 @@ static void rebuild(AudioFx *fx)
         if (fabsf(fx->bands[i]) >= 0.05f)
             fx->color_on = 1;
     }
-    bq_lowshelf(&fx->bass, fs, 90.f, fx->bass_db);
+    bq_lowshelf(&fx->bass, fs, AFX_BASS_HZ, fx->bass_db);
     if (fabsf(fx->bass_db) >= 0.05f)
         fx->color_on = 1;
+    /* Half the peak boost as headroom: full compensation makes a boost sound like a cut of everything
+     * else; the limiter catches what the other half pushes over. */
+    fx->pre = powf(10.f, -0.5f * max_boost_db(fx, fs) / 20.f);
+    fx->lim_release = 1.f - expf(-1.f / (AFX_LIMIT_RELEASE_S * fs));
     if (fabsf(fx->width - 1.f) >= 0.02f)
         fx->color_on = 1;
     if (fabsf(fx->volume - 1.f) >= 0.001f)
@@ -172,6 +211,7 @@ AudioFx *audio_fx_create(void)
     fx->width = 1.f;
     fx->speed = 1.f;
     fx->pitch = 1.f;
+    fx->lim_gain = 1.f;
     if (pthread_mutex_init(&fx->mu, NULL) != 0) {
         free(fx);
         return NULL;
@@ -223,6 +263,7 @@ void audio_fx_reset(AudioFx *fx)
     for (i = 0; i < AFX_BANDS; i++)
         bq_clear(&fx->peak[i]);
     bq_clear(&fx->bass);
+    fx->lim_gain = 1.f;
     memset(fx->vis, 0, sizeof(fx->vis));
     memset(fx->vis_hold, 0, sizeof(fx->vis_hold));
     fx->vis_w = 0;
@@ -232,6 +273,7 @@ void audio_fx_reset(AudioFx *fx)
 
 void audio_fx_set_rate(AudioFx *fx, int rate)
 {
+    int i;
     if (!fx || rate <= 0)
         return;
     pthread_mutex_lock(&fx->mu);
@@ -241,6 +283,9 @@ void audio_fx_set_rate(AudioFx *fx, int rate)
     }
     fx->rate = rate;
     rebuild(fx);
+    for (i = 0; i < AFX_BANDS; i++)
+        bq_clear(&fx->peak[i]);
+    bq_clear(&fx->bass);
     stretch_reset_unlocked(fx);
     pthread_mutex_unlock(&fx->mu);
 }
@@ -249,8 +294,10 @@ void audio_fx_set_volume(AudioFx *fx, float vol)
 {
     if (!fx)
         return;
+    pthread_mutex_lock(&fx->mu);
     fx->volume = clampf(vol, 0.f, 1.f);
     rebuild(fx);
+    pthread_mutex_unlock(&fx->mu);
 }
 
 void audio_fx_set_eq(AudioFx *fx, const float bands_db[AFX_BANDS])
@@ -258,25 +305,31 @@ void audio_fx_set_eq(AudioFx *fx, const float bands_db[AFX_BANDS])
     int i;
     if (!fx || !bands_db)
         return;
+    pthread_mutex_lock(&fx->mu);
     for (i = 0; i < AFX_BANDS; i++)
         fx->bands[i] = clampf(bands_db[i], -12.f, 12.f);
     rebuild(fx);
+    pthread_mutex_unlock(&fx->mu);
 }
 
 void audio_fx_set_bass(AudioFx *fx, float db)
 {
     if (!fx)
         return;
+    pthread_mutex_lock(&fx->mu);
     fx->bass_db = clampf(db, -12.f, 12.f);
     rebuild(fx);
+    pthread_mutex_unlock(&fx->mu);
 }
 
 void audio_fx_set_virtualizer(AudioFx *fx, float width)
 {
     if (!fx)
         return;
+    pthread_mutex_lock(&fx->mu);
     fx->width = clampf(width, 0.f, 2.f);
     rebuild(fx);
+    pthread_mutex_unlock(&fx->mu);
 }
 
 void audio_fx_set_speed(AudioFx *fx, float speed)
@@ -419,11 +472,12 @@ void audio_fx_color(AudioFx *fx, int16_t *s16, int frames, int ch)
     if (!fx || !s16 || frames <= 0)
         return;
     nch = ch < 1 ? 1 : (ch > 2 ? 2 : ch);
+    pthread_mutex_lock(&fx->mu);
     if (fx->color_on) {
         for (i = 0; i < frames; i++) {
-            float l, r, mid, side, y;
-            l = (float)s16[i * nch];
-            r = nch > 1 ? (float)s16[i * nch + 1] : l;
+            float l, r, mid, side, y, peak, target;
+            l = (float)s16[i * nch] * fx->pre;
+            r = nch > 1 ? (float)s16[i * nch + 1] * fx->pre : l;
             for (c = 0; c < AFX_BANDS; c++) {
                 l = bq_tick(&fx->peak[c], 0, l);
                 if (nch > 1)
@@ -438,12 +492,20 @@ void audio_fx_color(AudioFx *fx, int16_t *s16, int frames, int ch)
                 l = mid + side;
                 r = mid - side;
             }
-            y = fx->volume;
+            /* Peak limiter: instant attack (never over AFX_LIMIT), smooth release. */
+            peak = fmaxf(fabsf(l), nch > 1 ? fabsf(r) : 0.f);
+            target = peak > AFX_LIMIT ? AFX_LIMIT / peak : 1.f;
+            if (target < fx->lim_gain)
+                fx->lim_gain = target;
+            else
+                fx->lim_gain += (target - fx->lim_gain) * fx->lim_release;
+            y = fx->lim_gain * fx->volume;
             s16[i * nch] = sat16(l * y);
             if (nch > 1)
                 s16[i * nch + 1] = sat16(r * y);
         }
     }
+    pthread_mutex_unlock(&fx->mu);
     feed_levels(fx, s16, frames, nch);
 }
 
