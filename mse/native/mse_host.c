@@ -11,6 +11,7 @@
 
 #ifdef __APPLE__
 #include <AudioToolbox/AudioToolbox.h>
+#include <dispatch/dispatch.h>
 #include <mach/mach_time.h>
 #include <os/log.h>
 #include <sys/sysctl.h>
@@ -103,6 +104,9 @@ struct MseHost {
 #endif
 #ifdef __APPLE__
     AudioQueueRef aq;
+    /* Pending fade-out pause (see aq_fade_fire) and whether the callback should keep feeding audio for it. */
+    struct AqFadeJob *aq_fade;
+    int aq_fading;
 #endif
 #ifdef __ANDROID__
     SLObjectItf sl_engine;
@@ -388,10 +392,10 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
         AudioQueueEnqueueBuffer(q, buf, 0, NULL);
         return;
     }
-    live = h->playing && h->ring;
+    live = (h->playing || h->aq_fading) && h->ring;
     if (live)
         n = ring_read(h, (uint8_t *)buf->mAudioData, cap);
-    if (h->flushing || !h->playing)
+    if (h->flushing || !live)
         n = 0;
     if (n > 0 && h->rate > 0 && h->ch > 0) {
         h->samples_played += n / frame_bytes(h);
@@ -408,6 +412,84 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
     }
     buf->mAudioDataByteSize = (UInt32)n;
     AudioQueueEnqueueBuffer(q, buf, 0, NULL);
+}
+
+/*
+ * AudioQueuePause / Start cut the waveform mid-cycle, which clicks. Pause ramps the queue volume to 0 and
+ * pauses it AQ_FADE_PAUSE_NS later from a dispatch job; play and every (re)start ramp back up. The job is
+ * ref-counted (MseHost + dispatch) and cancelled before the queue is resumed, flushed or disposed, so it
+ * never pauses a queue it no longer owns. Lock order: job->mu, then h->mu.
+ */
+#define AQ_FADE_S 0.015
+#define AQ_FADE_PAUSE_NS (25 * 1000 * 1000)
+
+typedef struct AqFadeJob {
+    pthread_mutex_t mu;
+    int refs;
+    int cancelled;
+    MseHost *h;
+    AudioQueueRef aq;
+} AqFadeJob;
+
+static void aq_fade_release_locked(AqFadeJob *j)
+{
+    int last = --j->refs == 0;
+    pthread_mutex_unlock(&j->mu);
+    if (last) {
+        pthread_mutex_destroy(&j->mu);
+        free(j);
+    }
+}
+
+/* Under h->mu: detach the pending job; pass it to aq_fade_cancel after unlocking. */
+static AqFadeJob *aq_fade_take(MseHost *h)
+{
+    AqFadeJob *j = h->aq_fade;
+    h->aq_fade = NULL;
+    h->aq_fading = 0;
+    return j;
+}
+
+static void aq_fade_cancel(AqFadeJob *j)
+{
+    if (!j)
+        return;
+    pthread_mutex_lock(&j->mu);
+    j->cancelled = 1;
+    aq_fade_release_locked(j);
+}
+
+static void aq_fade_fire(void *ctx)
+{
+    AqFadeJob *j = (AqFadeJob *)ctx;
+    pthread_mutex_lock(&j->mu);
+    if (!j->cancelled) {
+        MseHost *h = j->h;
+        int owned;
+        pthread_mutex_lock(&h->mu);
+        owned = h->aq_fade == j;
+        if (owned) {
+            h->aq_fade = NULL;
+            h->aq_fading = 0;
+        }
+        pthread_mutex_unlock(&h->mu);
+        AudioQueuePause(j->aq);
+        if (owned)
+            j->refs--;
+    }
+    aq_fade_release_locked(j);
+}
+
+/* Start (or keep running) at volume 0 and ramp up, so a resume never starts mid-waveform. */
+static void aq_start_faded(AudioQueueRef aq, int running)
+{
+    if (!running) {
+        AudioQueueSetParameter(aq, kAudioQueueParam_VolumeRampTime, 0);
+        AudioQueueSetParameter(aq, kAudioQueueParam_Volume, 0);
+        AudioQueueStart(aq, NULL);
+    }
+    AudioQueueSetParameter(aq, kAudioQueueParam_VolumeRampTime, AQ_FADE_S);
+    AudioQueueSetParameter(aq, kAudioQueueParam_Volume, 1);
 }
 
 static int start_aq(MseHost *h, int rate, int ch)
@@ -874,11 +956,13 @@ static void *dec_loop(void *arg)
 #ifdef __APPLE__
                 if (h->aq && (h->rate != rate || h->ch != ch)) {
                     AudioQueueRef old = h->aq;
+                    AqFadeJob *fade = aq_fade_take(h);
                     h->aq = NULL;
                     h->aq_started = 0;
                     free(h->ring);
                     h->ring = NULL;
                     pthread_mutex_unlock(&h->mu);
+                    aq_fade_cancel(fade);
                     AudioQueueStop(old, true);
                     AudioQueueDispose(old, true);
                     pthread_mutex_lock(&h->mu);
@@ -925,7 +1009,7 @@ static void *dec_loop(void *arg)
         }
 #ifdef __APPLE__
         if (start_q)
-            AudioQueueStart(start_q, NULL);
+            aq_start_faded(start_q, 0);
 #endif
 #ifdef __ANDROID__
         if (start_sl_play)
@@ -995,9 +1079,11 @@ static void aq_kill(MseHost *h)
 {
     AudioQueueRef aq;
     uint8_t *ring;
+    AqFadeJob *fade;
     pthread_mutex_lock(&h->mu);
     h->flushing = 1;
     h->aq_started = 0;
+    fade = aq_fade_take(h);
     aq = h->aq;
     h->aq = NULL;
     ring = h->ring;
@@ -1006,6 +1092,7 @@ static void aq_kill(MseHost *h)
     h->ring_gen++;
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
+    aq_fade_cancel(fade);
     if (aq) {
         AudioQueueStop(aq, false);
         AudioQueueDispose(aq, true);
@@ -1022,6 +1109,7 @@ static void aq_pause_flush(MseHost *h)
 {
 #ifdef __APPLE__
     AudioQueueRef aq;
+    AqFadeJob *fade;
 #endif
 #ifdef __ANDROID__
     SLPlayItf play;
@@ -1037,6 +1125,7 @@ static void aq_pause_flush(MseHost *h)
     pthread_cond_broadcast(&h->cv);
 #ifdef __APPLE__
     aq = h->aq;
+    fade = aq_fade_take(h);
 #endif
 #ifdef __ANDROID__
     play = h->sl_play;
@@ -1047,6 +1136,7 @@ static void aq_pause_flush(MseHost *h)
 #endif
     pthread_mutex_unlock(&h->mu);
 #ifdef __APPLE__
+    aq_fade_cancel(fade);
     if (aq) {
         AudioQueuePause(aq);
         AudioQueueFlush(aq);
@@ -1096,6 +1186,12 @@ void mse_host_destroy(MseHost *h)
 #ifdef __APPLE__
     if (g_ios_host == h)
         g_ios_host = NULL;
+    pthread_mutex_lock(&h->mu);
+    {
+        AqFadeJob *fade = aq_fade_take(h);
+        pthread_mutex_unlock(&h->mu);
+        aq_fade_cancel(fade);
+    }
     if (h->aq) {
         AudioQueueStop(h->aq, true);
         AudioQueueDispose(h->aq, true);
@@ -1230,6 +1326,7 @@ void mse_host_play(MseHost *h)
     double dur, clock;
 #ifdef __APPLE__
     AudioQueueRef aq = NULL;
+    AqFadeJob *fade;
     int started;
 #endif
 #ifdef __ANDROID__
@@ -1277,14 +1374,17 @@ void mse_host_play(MseHost *h)
 #ifdef __APPLE__
     aq = h->aq;
     started = h->aq_started;
+    fade = aq_fade_take(h);
 #endif
 #ifdef __ANDROID__
     started = h->aq_started;
 #endif
     pthread_mutex_unlock(&h->mu);
 #ifdef __APPLE__
+    /* A pause still fading out never stopped the queue: just ramp back up from where it is. */
+    aq_fade_cancel(fade);
     if (aq && started)
-        AudioQueueStart(aq, NULL);
+        aq_start_faded(aq, fade != NULL);
 #endif
 #ifdef __ANDROID__
     if (started)
@@ -1304,11 +1404,33 @@ void mse_host_pause(MseHost *h)
     /* Stop the device before clearing playing: a callback that sees playing == 0 while the device still
      * runs enqueues silence, which then plays ahead of the music on resume (an audible gap). */
 #ifdef __APPLE__
-    pthread_mutex_lock(&h->mu);
-    aq = h->aq;
-    pthread_mutex_unlock(&h->mu);
-    if (aq)
-        AudioQueuePause(aq);
+    {
+        AqFadeJob *prev, *job = NULL;
+        pthread_mutex_lock(&h->mu);
+        aq = h->aq;
+        prev = aq_fade_take(h);
+        if (aq && h->playing && h->aq_started) {
+            job = (AqFadeJob *)calloc(1, sizeof(AqFadeJob));
+            if (job) {
+                pthread_mutex_init(&job->mu, NULL);
+                job->refs = 2;
+                job->h = h;
+                job->aq = aq;
+                h->aq_fade = job;
+                h->aq_fading = 1;
+            }
+        }
+        pthread_mutex_unlock(&h->mu);
+        aq_fade_cancel(prev);
+        if (job) {
+            AudioQueueSetParameter(aq, kAudioQueueParam_VolumeRampTime, AQ_FADE_S);
+            AudioQueueSetParameter(aq, kAudioQueueParam_Volume, 0);
+            dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, AQ_FADE_PAUSE_NS),
+                             dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), job, aq_fade_fire);
+        } else if (aq) {
+            AudioQueuePause(aq);
+        }
+    }
 #endif
 #ifdef __ANDROID__
     sl_set_playing(h, 0);
