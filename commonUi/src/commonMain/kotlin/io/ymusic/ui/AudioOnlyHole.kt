@@ -33,6 +33,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.player.Player
+import io.ymusic.player.VideoQualityState
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.SettingsStore
 import io.ymusic.settings.flow
@@ -43,6 +44,14 @@ import kotlinx.coroutines.isActive
 import org.jetbrains.compose.resources.stringResource
 
 private const val WAVE_BARS = 40
+
+/** Audio-only by the user's pick, or because the source has no video to show. */
+@Composable
+internal fun showsAudioOnly(player: Player): Boolean {
+    val config by player.config.collectAsState()
+    val quality by player.videoQuality.collectAsState()
+    return config.audioOnly || quality.actualQuality == VideoQualityState.AUDIO_ONLY
+}
 
 /** Cropped thumbnail filling the hole — mini player audio-only. */
 @Composable
@@ -133,7 +142,7 @@ internal fun AudioOnlyArtWave(
     }
 }
 
-/** Video hole plus the audio-only overlay when [Player.config] is audio-only. */
+/** Video hole plus the audio-only overlay when [showsAudioOnly]. */
 @Composable
 internal fun PlayerSurfaceHole(
     player: Player,
@@ -144,10 +153,10 @@ internal fun PlayerSurfaceHole(
     wave: Boolean = true,
     settings: SettingsStore? = null,
 ) {
-    val config by player.config.collectAsState()
+    val audioOnly = showsAudioOnly(player)
     Box(modifier) {
         VideoHole(player, surface, Modifier.fillMaxSize(), fill = fill)
-        if (config.audioOnly) {
+        if (audioOnly) {
             if (wave) AudioOnlyArtWave(player, artUrl, Modifier.fillMaxSize())
             else AudioOnlyCover(artUrl, Modifier.fillMaxSize())
         } else if (settings != null) {

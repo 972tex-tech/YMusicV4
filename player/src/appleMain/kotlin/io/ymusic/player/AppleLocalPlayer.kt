@@ -234,8 +234,14 @@ internal class AppleLocalPlayer(
         audioOnly = ao
         applyAudioOnly()
         _status.update { it.copy(videoSize = if (ao) null else it.videoSize) }
-        _videoQuality.update {
-            it.copy(preferredQuality = quality, actualQuality = if (ao) VideoQualityState.AUDIO_ONLY else it.actualQuality)
+        _videoQuality.update { state ->
+            val video = state.options.firstOrNull { VideoQualityState.heightForQuality(it.quality) != null }
+            val actual = when {
+                ao -> VideoQualityState.AUDIO_ONLY
+                video != null -> video.quality
+                else -> state.actualQuality
+            }
+            state.copy(preferredQuality = quality, actualQuality = actual)
         }
     }
 
@@ -306,7 +312,7 @@ internal class AppleLocalPlayer(
             .map { it.naturalSize.useContents { minOf(width, height).toInt() } }
             .filter { it > 0 }.distinct().sortedDescending()
         _videoQuality.value = if (heights.isEmpty()) {
-            VideoQualityState.DEFAULT.copy(preferredQuality = preferVideoQuality)
+            VideoQualityState(emptyList(), VideoQualityState.AUDIO_ONLY, preferVideoQuality)
         } else {
             val options = heights.map { VideoQualityState.optionForHeight(it) } + VideoQualityState.LOCAL_BASE_OPTIONS
             val actual = if (audioOnly) VideoQualityState.AUDIO_ONLY else VideoQualityState.optionForHeight(heights.first()).quality

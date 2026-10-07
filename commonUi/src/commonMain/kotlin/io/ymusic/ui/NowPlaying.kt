@@ -219,11 +219,11 @@ fun MiniPlayer(
                     .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
                 contentAlignment = Alignment.Center,
             ) {
-                val config by coordinator.player.config.collectAsState()
+                val audioOnly = showsAudioOnly(coordinator.player)
                 if (surface != null) {
                     VideoHole(coordinator.player, surface, Modifier.fillMaxSize())
                 }
-                if (config.audioOnly || surface == null) {
+                if (audioOnly || surface == null) {
                     AudioOnlyCover(item.displayThumbnailUrl, Modifier.fillMaxSize())
                 }
                 BufferingIndicator(status, size = 22.dp, strokeWidth = 2.dp)
@@ -738,16 +738,16 @@ private fun BoxScope.PlayerCaptionOverlay(
     val lines by player.captionLines.collectAsState()
     if (lines.isEmpty()) return
     val status by player.status.collectAsState()
-    val config by player.config.collectAsState()
+    val audioOnly = showsAudioOnly(player)
     val controlsInset by animateDpAsState(if (overlayVisible) VideoControlsStrip else 12.dp)
     val twoRows = captionTwoRowHeight()
     BoxWithConstraints(Modifier.matchParentSize()) {
         val ratio = status.videoSize?.aspectRatio?.takeIf { it > 0f } ?: (16f / 9f)
         val pictureWidth: Dp
         val pictureHeight: Dp
-        if (fill || config.audioOnly || maxWidth / maxHeight <= ratio) {
+        if (fill || audioOnly || maxWidth / maxHeight <= ratio) {
             pictureWidth = maxWidth
-            pictureHeight = if (fill || config.audioOnly) maxHeight else maxWidth / ratio
+            pictureHeight = if (fill || audioOnly) maxHeight else maxWidth / ratio
         } else {
             pictureWidth = maxHeight * ratio
             pictureHeight = maxHeight

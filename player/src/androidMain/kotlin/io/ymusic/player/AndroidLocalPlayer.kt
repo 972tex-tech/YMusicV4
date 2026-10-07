@@ -387,8 +387,10 @@ internal class AndroidLocalPlayer(
                 }
             }
         }
-        _videoQuality.value = if (sizes.isEmpty()) {
+        _videoQuality.value = if (tracks.isEmpty) {
             VideoQualityState.DEFAULT.copy(preferredQuality = preferVideoQuality)
+        } else if (sizes.isEmpty()) {
+            VideoQualityState(emptyList(), VideoQualityState.AUDIO_ONLY, preferVideoQuality)
         } else {
             sizes.sortDescending()
             val options = sizes.map { VideoQualityState.optionForHeight(it) } + VideoQualityState.LOCAL_BASE_OPTIONS

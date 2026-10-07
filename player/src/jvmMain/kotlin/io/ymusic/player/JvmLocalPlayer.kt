@@ -214,6 +214,7 @@ internal class JvmLocalPlayer(
             )
         }
         _progress.value = Progress(positionMs = startPositionMs.coerceAtLeast(0L))
+        _videoQuality.value = VideoQualityState.DEFAULT.copy(preferredQuality = preferVideoQuality)
         showSurface(true)
         dispatch {
             if (handle == 0L || gen != loadGen.get()) return@dispatch
@@ -593,11 +594,7 @@ internal class JvmLocalPlayer(
         val video = streams.firstOrNull { it.kind == KIND_VIDEO }
         val h = video?.let { minOf(it.width, it.height) } ?: 0
         _videoQuality.value = if (h <= 0) {
-            VideoQualityState(
-                options = VideoQualityState.LOCAL_BASE_OPTIONS,
-                actualQuality = if (audioOnly) VideoQualityState.AUDIO_ONLY else VideoQualityState.AUTO,
-                preferredQuality = preferVideoQuality,
-            )
+            VideoQualityState(emptyList(), VideoQualityState.AUDIO_ONLY, preferVideoQuality)
         } else {
             val opt = VideoQualityState.optionForHeight(h)
             VideoQualityState(
