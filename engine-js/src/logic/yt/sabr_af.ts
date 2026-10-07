@@ -1,5 +1,6 @@
-// SABR /videoplayback carries the /player adaptiveFormats catalog as X-Ym-Af (base64url JSON array).
-// The host's LocalMediaProxy reads it to serve cached formats and strips it before googlevideo.
+// A cacheable SABR /videoplayback carries the /player adaptiveFormats catalog as X-Ym-Af (base64url
+// JSON array). The host routes only requests with it through the media cache, and strips it before
+// googlevideo. Cacheable matches webview-js skip_ads canCache: SABR, not a probe, not live.
 
 import { utf8Encode } from "../../transport";
 import { addInterceptor } from "../../protocol/http/intercept";
@@ -9,13 +10,17 @@ import { b64url } from "./sabr_log";
 
 const HEADER = "X-Ym-Af";
 
-function isSabrPost(url: string): boolean {
-  return url.indexOf("/videoplayback") >= 0 && url.indexOf("sabr=1") >= 0;
+function canCacheSabr(url: string): boolean {
+  if (url.indexOf("/videoplayback") < 0 || url.indexOf("sabr=1") < 0) return false;
+  if (url.indexOf("probe=1") >= 0) return false;
+  return (
+    url.indexOf("live=1") < 0 && url.indexOf("yt_live_broadcast") < 0 && url.indexOf("noclen=1") < 0
+  );
 }
 
 function adaptiveFormatsIntercept(chain: HttpChain): Promise<HttpResponse> {
   const req = chain.request;
-  if (!isSabrPost(req.url)) return chain.proceed();
+  if (!canCacheSabr(req.url)) return chain.proceed();
   const catalog = sabrAdaptiveFormats(req.url);
   if (!catalog.length) return chain.proceed();
   const headers = req.headers.slice();
