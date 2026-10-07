@@ -32,7 +32,7 @@ class DownloadErrorCodeTest {
     )
 
     private fun downloader(spec: SabrStreamSpec) = YtStreamDownloader(
-        resolver = SabrSpecResolver { spec },
+        resolver = SabrSpecResolver { ResolvedVideo(spec) },
         client = KmpHttpClient.create {},
         userAgent = "test",
         storage = ThrowingStorage,

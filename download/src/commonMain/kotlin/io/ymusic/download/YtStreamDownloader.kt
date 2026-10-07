@@ -51,6 +51,8 @@ class DownloadedStreams(
     val audio: DownloadedStream,
     val video: DownloadedStream?,
     val captions: List<DownloadedCaption>,
+    /** The artist read from the player response, for when the request carried none. */
+    val artist: String? = null,
 )
 
 /**
@@ -89,7 +91,8 @@ class YtStreamDownloader(
         onProgress: (done: Long, total: Long) -> Unit,
     ): DownloadedStreams {
         onPreparing()
-        var spec = resolveSpec(task.videoId)
+        val resolved = resolveSpec(task.videoId)
+        var spec = resolved.spec
         val (audioFmt, videoFmt) = selectFormats(task, spec.formats)
         val captionPicks = captionsToDownload(spec.captionTracks, task.captions, task.captionLanguage)
 
@@ -99,7 +102,7 @@ class YtStreamDownloader(
         onDownloading()
         downloadTracks(
             spec, audioFmt, videoFmt, audioScratch, videoScratch, onProgress,
-            reAttest = { spec = resolveSpec(task.videoId); spec },
+            reAttest = { spec = resolveSpec(task.videoId).spec; spec },
         )
 
         // Captions are KB-scale; fetched after the media, whole (no range-resume), not folded into progress.
@@ -114,10 +117,11 @@ class YtStreamDownloader(
             audio = DownloadedStream(audioFmt, audioScratch),
             video = videoFmt?.let { DownloadedStream(it, videoScratch!!) },
             captions = captionFiles,
+            artist = resolved.artist,
         )
     }
 
-    private suspend fun resolveSpec(videoId: String): SabrStreamSpec =
+    private suspend fun resolveSpec(videoId: String): ResolvedVideo =
         try {
             resolver.resolve(videoId)
         } catch (e: IllegalStateException) {

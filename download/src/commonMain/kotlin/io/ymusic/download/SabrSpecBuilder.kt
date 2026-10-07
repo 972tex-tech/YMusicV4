@@ -45,6 +45,13 @@ object SabrSpecBuilder {
         )
     }
 
+    /** [build], plus the artist tag from the same response. */
+    fun resolve(videoId: String, playerResponseJson: String, poTokenBase64: String?): ResolvedVideo =
+        ResolvedVideo(
+            spec = build(videoId, playerResponseJson, poTokenBase64),
+            artist = PlayerArtist.parse(json.parseToJsonElement(playerResponseJson).jsonObject),
+        )
+
     internal fun adaptiveFormats(streaming: JsonObject): List<AdaptiveFormat> =
         streaming.objects("adaptiveFormats").map { it.toAdaptiveFormat() }
 

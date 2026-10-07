@@ -1,9 +1,9 @@
 package io.ymusic.ui
 
+import io.ymusic.download.ResolvedVideo
 import io.ymusic.download.SabrSpecBuilder
 import io.ymusic.download.SabrSpecResolver
 import io.ymusic.player.YtEngine
-import io.ymusic.ytmedia.sabr.SabrStreamSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -20,11 +20,11 @@ class WebViewSabrSpecResolver(
 
     private val mutex = Mutex()
 
-    override suspend fun resolve(videoId: String): SabrStreamSpec = mutex.withLock {
+    override suspend fun resolve(videoId: String): ResolvedVideo = mutex.withLock {
         withContext(Dispatchers.Main) { player.init() }
         val playerResponse = player.requestPlayerResponse(videoId)
         val poToken = player.requestPoToken(videoId)
-        SabrSpecBuilder.build(videoId, playerResponse, poToken)
+        SabrSpecBuilder.resolve(videoId, playerResponse, poToken)
     }
 
     /** The player response alone — what the download options dialog reads; no PO token minted. */

@@ -15,8 +15,11 @@ import okio.use
  * over its `YtEngine`; the download module stays headless.
  */
 fun interface SabrSpecResolver {
-    suspend fun resolve(videoId: String): SabrStreamSpec
+    suspend fun resolve(videoId: String): ResolvedVideo
 }
+
+/** A resolved video: the SABR [spec], plus the file tags read from the same player response. */
+class ResolvedVideo(val spec: SabrStreamSpec, val artist: String? = null)
 
 /**
  * Executes one [DownloadTask] end to end, over a [DownloadStorage] (no direct FileSystem — so the same
@@ -92,7 +95,7 @@ class DownloadPipeline(
         val audio = streams.audio.scratch
         val video = streams.video?.scratch
         var out = storage.scratch(task.id, "out")
-        val meta = task.tags()
+        val meta = task.tags(streams.artist)
         val subs = streams.captions.map { SubtitleInput(it.scratch.path, it.languageCode, it.name) }
         when (task.format) {
             DownloadFormat.MP3 -> {
@@ -155,11 +158,11 @@ class DownloadPipeline(
 
     /** Container tags embedded into the finished file. The videoId goes in the standard `composer` field
      *  — it survives in both ID3 (TCOM) and MP4 (©wrt), and the app's ffmpeg metadata parser reads it
-     *  (`MetadataMap.composer`), unlike a custom atom MP4 hides. Title always; artist when we have one
-     *  (album is not modelled yet — add it here once the request carries one). */
-    private fun DownloadTask.tags(): List<Pair<String, String>> = buildList {
+     *  (`MetadataMap.composer`), unlike a custom atom MP4 hides. Title always; artist from the request,
+     *  else [resolvedArtist] from the player response (album is not modelled yet). */
+    private fun DownloadTask.tags(resolvedArtist: String?): List<Pair<String, String>> = buildList {
         add("title" to title)
-        artist?.let { add("artist" to it) }
+        (artist ?: resolvedArtist)?.let { add("artist" to it) }
         add("composer" to videoId)
     }
 
