@@ -41,9 +41,9 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToLong
 
-private val PlayerCacheSizesMb = listOf(10_240, 5_120, 2_048, 1_024, 512, 256, 128, 0)
+private val PlayerCacheSizesMb = listOf(0, 128, 256, 512, 1_024, 2_048, 5_120, 10_240)
 
-/** Settings → Player cache: the size limit (legacy's choices), with how much is used and how much cache hits saved. */
+/** Settings → Player cache: the size limit, with how much is used and how much cache hits saved. */
 @Composable
 internal fun PlayerCacheRow(graph: AppGraph) {
     val cache = graph.playerCache ?: return
