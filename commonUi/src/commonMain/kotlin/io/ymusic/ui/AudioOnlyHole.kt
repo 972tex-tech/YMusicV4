@@ -137,12 +137,15 @@ internal fun AudioOnlyArtWave(
         }
     }
     BoxWithConstraints(modifier.clipToBounds()) {
-        Box(Modifier.matchParentSize().blur(28.dp)) {
-            ArtImage(url, RectangleShape)
-        }
         val side = minOf(maxHeight * 0.86f, maxWidth * 0.32f)
-        val sidePx = with(LocalDensity.current) { side.roundToPx() }
-        val art = rememberArtTransition(url, IntSize(sidePx, sidePx))
+        // One decode covering both the hole (backdrop) and the square, so both layers share it.
+        val decodeSize = with(LocalDensity.current) {
+            IntSize(maxOf(maxWidth, side).roundToPx(), maxOf(maxHeight, side).roundToPx())
+        }
+        val art = rememberArtTransition(url, decodeSize)
+        Box(Modifier.matchParentSize().blur(28.dp)) {
+            ArtLayer(art)
+        }
         Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.36f)))
         Row(
             Modifier.fillMaxSize().padding(start = 12.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
@@ -185,7 +188,7 @@ private const val ART_SHIMMER_MS = 1300
 private const val ART_RESIZE_SETTLE_MS = 400L
 
 /**
- * Now Playing's square art. Every url change runs the same
+ * One art picture driving both Now Playing layers in lockstep. Every url change runs the same
  * sequence — the current picture fades out over the shade, the shade holds at least
  * [ART_MIN_SHADE_MS] (longer while the load runs), the new picture fades in — whatever the cache
  * holds. A view that grows only swaps in a sharper decode of the same picture, no transition.
