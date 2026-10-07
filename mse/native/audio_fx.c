@@ -8,6 +8,7 @@
 #define AFX_OVL_MAX 1024
 #define AFX_FIR 32
 #define AFX_FFT 2048
+#define AFX_VIS_CAP 65536 /* power of two; > the deepest sink delay (~1.3s at 48k) */
 #define AFX_BASS_HZ 150.f
 #define AFX_LIMIT 32112.f /* -0.18 dBFS on the s16 scale */
 #define AFX_LIMIT_RELEASE_S 0.08f
@@ -57,7 +58,7 @@ struct AudioFx {
     float fir_h[AFX_FIR];
     float fir_z[2][AFX_FIR];
     float fir_cut;
-    float vis[AFX_FFT];
+    float vis[AFX_VIS_CAP];
     int vis_w;
     int vis_n;
     float vis_hold[AFX_LEVELS];
@@ -390,10 +391,8 @@ static void feed_levels(AudioFx *fx, const int16_t *s16, int frames, int nch)
         float l = (float)s16[i * nch];
         float r = nch > 1 ? (float)s16[i * nch + 1] : l;
         fx->vis[fx->vis_w] = 0.5f * (l + r) / 32768.f;
-        fx->vis_w++;
-        if (fx->vis_w >= AFX_FFT)
-            fx->vis_w = 0;
-        if (fx->vis_n < AFX_FFT)
+        fx->vis_w = (fx->vis_w + 1) & (AFX_VIS_CAP - 1);
+        if (fx->vis_n < AFX_VIS_CAP)
             fx->vis_n++;
     }
     pthread_mutex_unlock(&fx->mu);
@@ -442,26 +441,26 @@ static void fft_radix2(float *re, float *im, int n)
     }
 }
 
-int audio_fx_levels(AudioFx *fx, float *out, int n)
+int audio_fx_levels(AudioFx *fx, float *out, int n, int delay_frames)
 {
     float re[AFX_FFT];
     float im[AFX_FFT];
-    int i, k, got, w, filled, nyq, prev;
+    int i, k, got, end, avail, take, nyq, prev;
     if (!fx || !out || n <= 0)
         return 0;
     got = n < AFX_LEVELS ? n : AFX_LEVELS;
+    if (delay_frames < 0)
+        delay_frames = 0;
+    if (delay_frames > AFX_VIS_CAP - AFX_FFT)
+        delay_frames = AFX_VIS_CAP - AFX_FFT;
     memset(re, 0, sizeof(re));
     memset(im, 0, sizeof(im));
     pthread_mutex_lock(&fx->mu);
-    w = fx->vis_w;
-    filled = fx->vis_n;
-    if (filled >= AFX_FFT) {
-        for (i = 0; i < AFX_FFT; i++)
-            re[i] = fx->vis[(w + i) % AFX_FFT];
-    } else {
-        for (i = 0; i < filled; i++)
-            re[i] = fx->vis[i];
-    }
+    end = fx->vis_w - delay_frames;
+    avail = fx->vis_n - delay_frames;
+    take = avail < AFX_FFT ? avail : AFX_FFT;
+    for (i = 0; i < take; i++)
+        re[AFX_FFT - take + i] = fx->vis[(end - take + i) & (AFX_VIS_CAP - 1)];
     pthread_mutex_unlock(&fx->mu);
     for (i = 0; i < AFX_FFT; i++)
         re[i] *= 0.5f * (1.f - cosf(2.f * PI * (float)i / (float)(AFX_FFT - 1)));

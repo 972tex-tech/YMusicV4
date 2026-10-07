@@ -1957,11 +1957,36 @@ void mse_host_set_virtualizer(MseHost *h, float width)
         audio_fx_set_virtualizer(h->fx, width);
 }
 
+/* Frames colored at the DAC pull but still queued ahead of the playhead (same model as the clock). */
+static int vis_delay_frames(MseHost *h)
+{
+    int delay = 0;
+#ifdef MSE_DAC
+    pthread_mutex_lock(&h->mu);
+    if (h->aq_started && h->rate > 0 && h->aq_buf_bytes > 0) {
+        int one = h->aq_buf_bytes / frame_bytes(h);
+        int nbufs = 4;
+        int extra = 0;
+#ifdef __ANDROID__
+        if (h->sl_nbufs > 0)
+            nbufs = h->sl_nbufs;
+#endif
+        if (h->dac_tick_ns > 0)
+            extra = (int)((now_ns() - h->dac_tick_ns) / 1e9 * h->rate);
+        if (extra > one)
+            extra = one;
+        delay = one * nbufs - (extra > 0 ? extra : 0);
+    }
+    pthread_mutex_unlock(&h->mu);
+#endif
+    return delay;
+}
+
 int mse_host_pcm_levels(MseHost *h, float *out, int n)
 {
     if (!h || !h->fx)
         return 0;
-    return audio_fx_levels(h->fx, out, n);
+    return audio_fx_levels(h->fx, out, n, vis_delay_frames(h));
 }
 
 void mse_ios_log(const char *msg)

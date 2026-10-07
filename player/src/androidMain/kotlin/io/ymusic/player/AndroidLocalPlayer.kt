@@ -27,6 +27,7 @@ import androidx.media3.ui.SubtitleView
 import io.ymusic.mse.AudioFxNative
 import io.ymusic.player.media3.AudioFxProcessor
 import io.ymusic.player.media3.AudioFxProcessorChain
+import io.ymusic.player.media3.AudioFxTimingSink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -70,6 +71,7 @@ internal class AndroidLocalPlayer(
 
     private val fxHandle = AudioFxNative.create()
     private val fxProcessor = AudioFxProcessor(fxHandle)
+    private var fxTiming: AudioFxTimingSink? = null
 
     private val player = ExoPlayer.Builder(context.applicationContext)
         .setLooper(Looper.getMainLooper())
@@ -79,12 +81,13 @@ internal class AndroidLocalPlayer(
                     context: Context,
                     enableFloatOutput: Boolean,
                     enableAudioOutputPlaybackParams: Boolean,
-                ): AudioSink =
+                ): AudioSink = AudioFxTimingSink(
                     DefaultAudioSink.Builder(context)
                         .setEnableFloatOutput(enableFloatOutput)
                         .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
                         .setAudioProcessorChain(AudioFxProcessorChain(fxProcessor))
-                        .build()
+                        .build(),
+                ).also { fxTiming = it }
             },
         )
         .build()
@@ -432,7 +435,7 @@ internal class AndroidLocalPlayer(
 
     override fun pcmLevels(out: FloatArray): Int {
         if (released || fxHandle == 0L || out.isEmpty()) return 0
-        return AudioFxNative.levels(fxHandle, out)
+        return AudioFxNative.levels(fxHandle, out, fxTiming?.pendingFrames() ?: 0)
     }
 
     override fun release() {

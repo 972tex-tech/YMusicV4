@@ -30,8 +30,9 @@ void audio_fx_set_pitch(AudioFx *fx, float pitch);
  * Also feeds the live spectrum used by [audio_fx_levels], even when color is off. */
 void audio_fx_color(AudioFx *fx, int16_t *s16, int frames, int ch);
 
-/* Fixed-position log-frequency bars in 0..1 (bass left, treble right). */
-int audio_fx_levels(AudioFx *fx, float *out, int n);
+/* Fixed-position log-frequency bars in 0..1 (bass left, treble right), for the window ending
+ * [delay_frames] before the newest colored frame — the frames the sink still holds unplayed. */
+int audio_fx_levels(AudioFx *fx, float *out, int n, int delay_frames);
 
 /*
  * SoundTouch pair: rate = pitch, tempo = speed/pitch.

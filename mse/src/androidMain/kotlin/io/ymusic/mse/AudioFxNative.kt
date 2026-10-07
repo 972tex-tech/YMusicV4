@@ -41,5 +41,5 @@ object AudioFxNative {
 
     @JvmStatic external fun color(handle: Long, buf: ByteBuffer, pos: Int, frames: Int, ch: Int)
 
-    @JvmStatic external fun levels(handle: Long, out: FloatArray): Int
+    @JvmStatic external fun levels(handle: Long, out: FloatArray, delayFrames: Int): Int
 }

@@ -32,6 +32,7 @@
 #include "mse_ffmpeg.h"
 
 #define OUT_RATE 48000
+#define AQ_NBUFS 4
 #define OUT_CH 2
 #define V_EARLY 0.001
 #define V_STALE 0.020
@@ -1273,7 +1274,7 @@ static int start_aq(FileAv *p)
     p->dac_buf_bytes = buf_bytes;
     AudioQueueSetParameter(aq, kAudioQueueParam_Volume, p->volume);
     pthread_mutex_unlock(&p->mu);
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < AQ_NBUFS; i++) {
         AudioQueueBufferRef buf;
         if (AudioQueueAllocateBuffer(aq, (UInt32)buf_bytes, &buf) != 0)
             break;
@@ -2260,11 +2261,31 @@ void file_av_set_bass(FileAv *p, float db)
         audio_fx_set_bass(p->fx, db);
 }
 
+/* Frames colored at the pull but still queued ahead of the AudioQueue playhead. */
+static int vis_delay_frames(FileAv *p)
+{
+    int delay = 0;
+#ifdef __APPLE__
+    pthread_mutex_lock(&p->mu);
+    if (p->dac && p->out_rate > 0 && p->dac_buf_bytes > 0) {
+        int one = p->dac_buf_bytes / ring_fb(p);
+        int extra = 0;
+        if (p->dac_tick_ns > 0)
+            extra = (int)((now_ns() - p->dac_tick_ns) / 1e9 * p->out_rate);
+        if (extra > one)
+            extra = one;
+        delay = one * AQ_NBUFS - (extra > 0 ? extra : 0);
+    }
+    pthread_mutex_unlock(&p->mu);
+#endif
+    return delay;
+}
+
 int file_av_pcm_levels(FileAv *p, float *out, int n)
 {
     if (!p || !p->fx)
         return 0;
-    return audio_fx_levels(p->fx, out, n);
+    return audio_fx_levels(p->fx, out, n, vis_delay_frames(p));
 }
 
 void file_av_set_virtualizer(FileAv *p, float width)

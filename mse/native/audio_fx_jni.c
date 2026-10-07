@@ -144,7 +144,8 @@ Java_io_ymusic_mse_AudioFxNative_color(
 }
 
 JNIEXPORT jint JNICALL
-Java_io_ymusic_mse_AudioFxNative_levels(JNIEnv *env, jclass cls, jlong handle, jfloatArray out)
+Java_io_ymusic_mse_AudioFxNative_levels(JNIEnv *env, jclass cls, jlong handle, jfloatArray out,
+                                       jint delay_frames)
 {
     float tmp[AFX_LEVELS];
     jsize n;
@@ -155,7 +156,7 @@ Java_io_ymusic_mse_AudioFxNative_levels(JNIEnv *env, jclass cls, jlong handle, j
     n = (*env)->GetArrayLength(env, out);
     if (n > AFX_LEVELS)
         n = AFX_LEVELS;
-    got = audio_fx_levels((AudioFx *)(intptr_t)handle, tmp, (int)n);
+    got = audio_fx_levels((AudioFx *)(intptr_t)handle, tmp, (int)n, (int)delay_frames);
     if (got > 0)
         (*env)->SetFloatArrayRegion(env, out, 0, got, tmp);
     return got;
