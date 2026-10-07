@@ -45,11 +45,12 @@ object SabrSpecBuilder {
         )
     }
 
-    /** [build], plus the artist tag from the same response. */
+    /** [build], plus the artist tag: `videoDetails.author`, which the engine already resolved to the track artist. */
     fun resolve(videoId: String, playerResponseJson: String, poTokenBase64: String?): ResolvedVideo =
         ResolvedVideo(
             spec = build(videoId, playerResponseJson, poTokenBase64),
-            artist = PlayerArtist.parse(json.parseToJsonElement(playerResponseJson).jsonObject),
+            artist = json.parseToJsonElement(playerResponseJson).jsonObject
+                .objectOrNull("videoDetails")?.stringOrNull("author")?.takeIf { it.isNotBlank() },
         )
 
     internal fun adaptiveFormats(streaming: JsonObject): List<AdaptiveFormat> =
