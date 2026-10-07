@@ -5,8 +5,7 @@ import io.ymusic.mse.MseVideoSurface
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.longOrNull
+import projectcommon.json.longOrNull
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
@@ -34,7 +33,7 @@ class HeadlessPlaybackTest {
             var dur = 0L
             while (System.currentTimeMillis() < deadline) {
                 val st = session.player.status(session.log)
-                dur = (st["durationMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                dur = st.longOrNull("durationMs") ?: 0L
                 if (frames.get() >= 2 && dur > 0) break
                 delay(250)
             }
@@ -45,17 +44,17 @@ class HeadlessPlaybackTest {
 
             session.player.play(session.log)
             delay(400)
-            val moving = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val moving = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             delay(1_200)
-            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val later = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             println("clock $moving -> $later")
             assertTrue(later > moving, "play did not advance clock $moving -> $later")
 
             session.player.pause(session.log)
             delay(400)
-            val pausedAt = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val pausedAt = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             delay(800)
-            val still = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val still = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             println("pause $pausedAt -> $still")
             assertTrue(abs(still - pausedAt) < 1_500, "clock kept moving while paused $pausedAt -> $still")
 
@@ -69,7 +68,7 @@ class HeadlessPlaybackTest {
             val seekDeadline = System.currentTimeMillis() + 20_000
             var landed = 0L
             while (System.currentTimeMillis() < seekDeadline) {
-                landed = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                landed = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 if (landed in 145_000..165_000) break
                 delay(250)
             }
@@ -78,7 +77,7 @@ class HeadlessPlaybackTest {
             val playDeadline = System.currentTimeMillis() + 15_000
             var afterSeek = landed
             while (System.currentTimeMillis() < playDeadline) {
-                afterSeek = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                afterSeek = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 if (afterSeek > landed + 800) break
                 delay(250)
             }
@@ -542,7 +541,7 @@ private const val JUMP_MS = 400L
 private const val NEARBY_SNAP_MS = 8_000L
 
 private suspend fun HeadlessSession.clockMs(): Long =
-    (player.status(log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+    player.status(log).longOrNull("positionMs") ?: 0L
 
 private suspend fun HeadlessSession.switchQuality(
     surface: MseVideoSurface,

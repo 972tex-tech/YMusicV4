@@ -66,12 +66,13 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.longOrNull
+import projectcommon.json.boolOrNull
+import projectcommon.json.intOrNull
+import projectcommon.json.longOrNull
+import projectcommon.json.objectOrNull
+import projectcommon.json.objects
+import projectcommon.json.stringOrNull
 import kotlin.time.TimeSource
 
 @Composable
@@ -216,16 +217,16 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
         }
         try {
             for (st in incoming) {
-                val clock = st.obj("progress")
-                val state = st.obj("state")
-                val picture = st.obj("picture")
+                val clock = st.objectOrNull("progress")
+                val state = st.objectOrNull("state")
+                val picture = st.objectOrNull("picture")
                 if (clock != null) {
-                    val pos = clock.longField("positionMs")
-                    val skStart = clock.longField("seekableStartMs")
-                    val skEnd = clock.longField("seekableEndMs")
+                    val pos = clock.longOrNull("positionMs") ?: 0L
+                    val skStart = clock.longOrNull("seekableStartMs") ?: 0L
+                    val skEnd = clock.longOrNull("seekableEndMs") ?: 0L
                     position = pos
-                    duration = clock.longField("durationMs")
-                    seekable = (clock["seekable"] as? JsonPrimitive)?.content != "false"
+                    duration = clock.longOrNull("durationMs") ?: 0L
+                    seekable = clock.boolOrNull("seekable") != false
                     seekableStart = skStart
                     seekableEnd = skEnd
                     val scrub = scrubFrac
@@ -236,14 +237,14 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     }
                 }
                 if (state != null) {
-                    live = (state["live"] as? JsonPrimitive)?.content == "true"
-                    val newState = (state["newState"] as? JsonPrimitive)?.content
-                    val pwr = (state["playWhenReady"] as? JsonPrimitive)?.content == "true"
+                    live = state.boolOrNull("live") == true
+                    val newState = state.stringOrNull("newState")
+                    val pwr = state.boolOrNull("playWhenReady") == true
                     paused = newState == "ended" || newState == "idle" || !pwr
                 }
                 if (picture != null) {
-                    val pw = picture.intField("videoWidth")
-                    val ph = picture.intField("videoHeight")
+                    val pw = picture.intOrNull("videoWidth") ?: 0
+                    val ph = picture.intOrNull("videoHeight") ?: 0
                     if (pw != pictureW) pictureW = pw
                     if (ph != pictureH) pictureH = ph
                 }
@@ -272,8 +273,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
             for (st in incoming) {
                 val qs = st.qualityChoices()
                 if (qs.size > 2) qualityChoices = qs
-                reportedQuality = (st["preferQuality"] as? JsonPrimitive)?.content
-                    ?: (st["quality"] as? JsonPrimitive)?.content
+                reportedQuality = st.stringOrNull("preferQuality")
+                    ?: st.stringOrNull("quality")
                     ?: reportedQuality
             }
         } finally {
@@ -921,12 +922,9 @@ private val FALLBACK_QUALITY_CHOICES = listOf(
 )
 
 private fun JsonObject.qualityChoices(): List<Pair<String, String>> {
-    val arr = this["qualities"] as? JsonArray ?: return emptyList()
-    return arr.mapNotNull { el ->
-        val o = el as? JsonObject ?: return@mapNotNull null
-        val q = (o["quality"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() }
-            ?: return@mapNotNull null
-        q to ((o["label"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() } ?: q)
+    return objects("qualities").mapNotNull { o ->
+        val q = o.stringOrNull("quality")?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        q to (o.stringOrNull("label")?.takeIf { it.isNotEmpty() } ?: q)
     }.filter { it.first != "zero" }
 }
 
@@ -945,14 +943,6 @@ private suspend fun pullQualityChoices(s: MseSession): List<Pair<String, String>
     println("mse quality chips=fallback")
     return FALLBACK_QUALITY_CHOICES
 }
-
-private fun JsonObject.longField(key: String): Long =
-    (this[key] as? JsonPrimitive)?.longOrNull ?: 0L
-
-private fun JsonObject.intField(key: String): Int =
-    (this[key] as? JsonPrimitive)?.intOrNull ?: 0
-
-private fun JsonObject.obj(key: String): JsonObject? = this[key] as? JsonObject
 
 private fun formatClock(ms: Long): String {
     val total = kotlin.math.abs(ms) / 1000

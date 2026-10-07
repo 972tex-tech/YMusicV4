@@ -4,8 +4,7 @@ import io.ymusic.mse.MseVideoSurface
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.longOrNull
+import projectcommon.json.longOrNull
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -33,9 +32,9 @@ class LiveMseTraceTest {
                 if (Regex("""v:[0-9]""").containsMatchIn(proof) && frames.get() >= 2) break
                 delay(500)
             }
-            val moving = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val moving = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             delay(1_200)
-            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val later = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             println("live clock $moving -> $later frames=${frames.get()}")
             val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
             val traces = proof.lineSequence().filter {
@@ -82,13 +81,13 @@ class LiveMseTraceTest {
             val deadline = System.currentTimeMillis() + 90_000
             var pos = 0L
             while (System.currentTimeMillis() < deadline) {
-                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                pos = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 /* Live join lands at DVR head (thousands of seconds), not t=0. */
                 if (pos > 10_000) break
                 delay(400)
             }
             delay(30_000)
-            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val later = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
             val itags = Regex("""qe=[^ ]+ itag=([0-9]+)""").findAll(proof).map { it.value }.toList()
             println("live audio-only clock $pos -> $later frames=${frames.get()}")
@@ -132,7 +131,7 @@ class LiveMseTraceTest {
             val deadline = System.currentTimeMillis() + 60_000
             var pos = 0L
             while (System.currentTimeMillis() < deadline) {
-                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                pos = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 if (pos > 10_000) break
                 delay(400)
             }
@@ -141,13 +140,13 @@ class LiveMseTraceTest {
             val framesAtSwitch = frames.get()
             session.player.setQuality("auto", true, session.log)
             delay(500)
-            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val later = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             val samplesAtSwitch = surface.samplesPlayed()
             /* Leftover audio at switch is a few seconds. 30s of clock after
                zero is past that (log12/log23 je=0 then freeze, SABR audio
                never reached appendBuffer). Clock moving is not playback. */
             delay(30_000)
-            val after = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val after = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             val samplesAfter = surface.samplesPlayed()
             val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
             println(
@@ -193,7 +192,7 @@ class LiveMseTraceTest {
             val d1 = System.currentTimeMillis() + 60_000
             var pos = 0L
             while (System.currentTimeMillis() < d1) {
-                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                pos = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 if (pos > 10_000) break
                 delay(400)
             }
@@ -204,7 +203,7 @@ class LiveMseTraceTest {
             pos = 0L
             var hasAudio = false
             while (System.currentTimeMillis() < d2) {
-                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                pos = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 val proofNow = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
                 /* First live leftover starts ~5.9e6 ms. Second (BEtsctac5KQ) ~1.6e7.
                    Dummy cover moves the clock with buf=[] — require C leftover. */
@@ -219,7 +218,7 @@ class LiveMseTraceTest {
             assertTrue(hasAudio, "second live C audio empty (log14) pos=$pos")
             assertTrue(pos > 10_000, "second live never joined DVR head pos=$pos")
             delay(30_000)
-            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val later = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             println("live second-video $pos -> $later audio=$hasAudio frames=${frames.get()}")
             assertTrue(later > pos + 25_000, "no sound after second live $pos -> $later")
             assertTrue(frames.get() <= 2, "second live decoded video frames=${frames.get()}")

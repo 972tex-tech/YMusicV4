@@ -3,8 +3,7 @@ package io.ymusic.playground
 import io.ymusic.mse.MseVideoSurface
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.longOrNull
+import projectcommon.json.longOrNull
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -26,7 +25,7 @@ class Hd2160SwitchTest {
             val ready = System.currentTimeMillis() + 45_000
             var pos = 0L
             while (System.currentTimeMillis() < ready) {
-                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                pos = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 if (pos > 3_000 && surface.presentedFrames() >= 30) break
                 delay(250)
             }
@@ -40,7 +39,7 @@ class Hd2160SwitchTest {
             val ticks = ArrayList<Tick>()
             val t0 = System.currentTimeMillis()
             while (System.currentTimeMillis() - t0 < 52_000) {
-                val p = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                val p = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 ticks.add(Tick(System.currentTimeMillis() - t0, surface.presentedFrames(), surface.samplesPlayed(), p))
                 delay(250)
             }

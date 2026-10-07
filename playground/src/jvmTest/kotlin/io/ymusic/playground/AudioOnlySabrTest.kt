@@ -4,8 +4,7 @@ import io.ymusic.mse.MseVideoSurface
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.longOrNull
+import projectcommon.json.longOrNull
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -31,7 +30,7 @@ class AudioOnlySabrTest {
             var lastMoveAt = System.currentTimeMillis()
             while (System.currentTimeMillis() < deadline) {
                 val st = session.player.status(session.log)
-                val next = (st["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                val next = st.longOrNull("positionMs") ?: 0L
                 if (next > pos + 200) lastMoveAt = System.currentTimeMillis()
                 pos = next
                 val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
@@ -42,7 +41,7 @@ class AudioOnlySabrTest {
                 delay(400)
             }
             delay(1_500)
-            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val later = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
             val abr = proof.lineSequence().filter { it.contains("sabr sabr=") }.toList()
             println("audio-only pos $pos -> $later frames=${frames.get()}")
@@ -82,7 +81,7 @@ class AudioOnlySabrTest {
             val seekDeadline = System.currentTimeMillis() + 30_000
             var seekPos = 0L
             while (System.currentTimeMillis() < seekDeadline) {
-                seekPos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                seekPos = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 if (seekPos in 145_000..180_000) break
                 delay(400)
             }
@@ -91,7 +90,7 @@ class AudioOnlySabrTest {
             val playDeadline = System.currentTimeMillis() + 15_000
             var seekLater = seekPos
             while (System.currentTimeMillis() < playDeadline) {
-                seekLater = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                seekLater = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 if (seekLater > seekPos + 800) break
                 delay(400)
             }
@@ -125,7 +124,7 @@ class AudioOnlySabrTest {
             var proof = ""
             while (System.currentTimeMillis() < deadline) {
                 val st = session.player.status(session.log)
-                val next = (st["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                val next = st.longOrNull("positionMs") ?: 0L
                 if (next > pos + 200) lastMoveAt = System.currentTimeMillis()
                 pos = next
                 proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
@@ -143,7 +142,7 @@ class AudioOnlySabrTest {
             }
             proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()
             dumpFakeInitProof(proof, pos)
-            val later = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+            val later = session.player.status(session.log).longOrNull("positionMs") ?: 0L
             assertTrue(later >= 3_000 || pos >= 3_000, "audio playhead stuck $pos -> $later")
             assertTrue(
                 proof.contains("mse append fake-cover a=0 kind=0"),
@@ -202,7 +201,7 @@ class AudioOnlySabrTest {
             val ready = System.currentTimeMillis() + 45_000
             var pos = 0L
             while (System.currentTimeMillis() < ready) {
-                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                pos = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 if (pos > 2_000 && surface.samplesPlayed() > 8_000) break
                 delay(250)
             }
@@ -235,7 +234,7 @@ class AudioOnlySabrTest {
             var lastSamples = samplesAt
             while (System.currentTimeMillis() < deadline) {
                 val samples = surface.samplesPlayed()
-                pos = (session.player.status(session.log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                pos = session.player.status(session.log).longOrNull("positionMs") ?: 0L
                 if (samples > lastSamples + 2_000) lastMoveAt = System.currentTimeMillis()
                 lastSamples = samples
                 val proof = session.proofFile.takeIf { it.isFile }?.readText().orEmpty()

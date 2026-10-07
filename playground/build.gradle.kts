@@ -71,6 +71,7 @@ kotlin {
                 implementation(project(":dynamic-engine"))
                 implementation(project(":mse"))
                 implementation(project(":settings"))
+                implementation(project(":projectCommon"))
                 implementation(project(":kmpHttp:core"))
                 implementation(project(":quickjs"))
                 implementation(compose.runtime)
@@ -112,6 +113,7 @@ kotlin {
                 implementation(project(":dynamic-engine"))
                 implementation(project(":mse"))
                 implementation(project(":settings"))
+                implementation(project(":projectCommon"))
                 implementation(project(":kmpHttp:core"))
                 implementation(project(":quickjs"))
             }
