@@ -1095,9 +1095,11 @@ private fun SeekSlider(
 ) {
     val durationMs = progress.durationMs
     val skipSegments by player.skipSegments.collectAsState()
+    val queue by player.queue.collectAsState()
+    val streamed = queue.currentItem !is PlayableItem.LocalMedia
     SlimSeekBar(
         fraction = if (durationMs > 0) progress.positionMs.toFloat() / durationMs else 0f,
-        bufferedFraction = if (durationMs > 0) progress.bufferedPositionMs.toFloat() / durationMs else 0f,
+        bufferedFraction = if (streamed && durationMs > 0) progress.bufferedPositionMs.toFloat() / durationMs else 0f,
         bufferedColor = bufferedColor,
         enabled = progress.seekable && durationMs > 0,
         onSeek = { f -> player.seekTo((f * durationMs).toLong()) },
