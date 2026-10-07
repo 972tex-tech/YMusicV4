@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,13 +82,24 @@ private fun windowVisible(): Boolean {
     return state.isAtLeast(Lifecycle.State.STARTED)
 }
 
-/** Audio-only by the user's pick, or because the source has no video to show. */
+/**
+ * Audio-only by the user's pick, or because the source has no video to show. Between items the
+ * engine knows neither yet, so it stays audio-only until a picture actually arrives — otherwise
+ * the art view (and its song-change transition) would be torn down and rebuilt on every track.
+ */
 @Composable
 internal fun showsAudioOnly(player: Player): Boolean {
     val config by player.config.collectAsState()
     val quality by player.videoQuality.collectAsState()
-    return config.audioOnly || quality.actualQuality == VideoQualityState.AUDIO_ONLY
+    val status by player.status.collectAsState()
+    val known = config.audioOnly || quality.actualQuality == VideoQualityState.AUDIO_ONLY
+    val last = remember { AudioOnlyMemo(known) }
+    val shown = known || (last.value && status.videoSize == null)
+    SideEffect { last.value = shown }
+    return shown
 }
+
+private class AudioOnlyMemo(var value: Boolean)
 
 /** Cropped thumbnail filling the hole — mini player audio-only. */
 @Composable
