@@ -99,12 +99,12 @@ fun ElevatedBarDialog(
     }
 }
 
-/** A dialog's secondary action (Cancel, Not now, Later, Reset): plain ink, so only the primary action carries the accent. */
+/** A dialog's secondary action (Cancel, Not now, Later, Reset): secondary ink, so only the primary action carries the accent. */
 @Composable
 fun DialogSecondaryButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     TextButton(
         onClick = onClick,
         enabled = enabled,
-        colors = ButtonDefaults.textButtonColors(contentColor = DesignColors.Ink),
+        colors = ButtonDefaults.textButtonColors(contentColor = DesignColors.InkSecondary),
     ) { Text(text) }
 }
