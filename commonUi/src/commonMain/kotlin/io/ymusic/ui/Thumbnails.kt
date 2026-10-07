@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import io.ymusic.dynamicengine.yt.YtThumb
 import io.ymusic.imageloader.AsyncImage
 import io.ymusic.imageloader.ImageLoader
+import io.ymusic.imageloader.imageCacheKey
 
 /** Provided at the App root from [AppGraph.imageLoader]; null keeps every thumb a placeholder box. */
 val LocalImageLoader = staticCompositionLocalOf<ImageLoader?> { null }
@@ -83,9 +84,7 @@ internal fun BoxScope.ArtImage(
         contentDescription = null,
         modifier = Modifier.matchParentSize().clip(shape),
         contentScale = ContentScale.Crop,
-        // ytimg URLs rotate their signature query params (?sqp=…&rs=…) across sessions; the path
-        // alone identifies the image, so keying on it keeps the caches warm across rotations.
-        cacheKey = url.substringBefore('?'),
+        cacheKey = imageCacheKey(url),
         placeholder = placeholder,
     )
 }

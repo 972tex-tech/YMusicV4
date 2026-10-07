@@ -50,6 +50,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import io.ymusic.imageloader.AsyncImage
+import io.ymusic.imageloader.imageCacheKey
 import io.ymusic.player.isPlaying
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.SlimSeekBar
@@ -145,7 +146,7 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
                         art,
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
-                        cacheKey = art.substringBefore('?'),
+                        cacheKey = imageCacheKey(art),
                     )
                 }
             }
