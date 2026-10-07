@@ -637,7 +637,7 @@ class MsePlayer internal constructor(
             main: DynamicEngineManager,
             mediaProxy: LocalMediaProxy? = null,
         ): MsePlayer {
-            val engineClient = if (mediaProxy != null) SabrProxyHttpClient(client, mediaProxy) else client
+            val engineClient = SabrProxyHttpClient(client, mediaProxy)
             return MsePlayer({ QuickJsRuntime.newDispatcher() }, videoSurface, logger) { engineThread ->
                 DynamicEnginePlayer.create(
                     engineClient, appVersion, engineThread, logger,
