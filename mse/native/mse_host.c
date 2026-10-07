@@ -3,7 +3,6 @@
 #include "audio_fx.h"
 
 #include <limits.h>
-#include <stdio.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -92,30 +91,6 @@ struct MseHost {
     int aq_buf_bytes;
     int flushing;
     double dac_tick_ns;
-    /* Pause/resume trace ("mse-pr"): window end, rate limit, transition times, device-callback counters
-     * (bumped on the audio thread, logged from the decode thread), and the last clock decision. */
-    double tr_until_ns;
-    double tr_last_ns;
-    double tr_play_ns;
-    double tr_pause_ns;
-    int tr_cb;
-    int tr_cb_silent;
-    int tr_clock_src;
-    double tr_dac;
-    /* Rolling capture of every buffer handed to the device (debug): bytes, write cursor, and per-callback
-     * marks; dumped to /tmp after each resume. */
-    uint8_t *tr_cap;
-    int tr_cap_bytes;
-    long long tr_cap_total;
-    int tr_dump_pending;
-    int tr_dump_seq;
-    struct {
-        long long at;
-        double ms;
-        int n;
-        int live;
-    } tr_mark[256];
-    int tr_mark_n;
 #endif
 #ifdef __APPLE__
     AudioQueueRef aq;
@@ -221,9 +196,6 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
        buffered edge, then stalled (iOS) until leftover grew. */
     if (have)
         out = (hold > last + 0.25) || (hold + 0.25 < first);
-#ifdef MSE_DAC
-    h->tr_clock_src = 0;
-#endif
     if (out || !have) {
         /* Empty leftover, or hold outside leftover: do not run the gold
            clock. Chrome currentTime stays at the seek until buffered
@@ -234,9 +206,6 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
     } else {
         if (h->playing && h->origin_ns > 0)
             t += (now_ns() - h->origin_ns) / 1e9 * play_speed(h);
-#ifdef MSE_DAC
-        h->tr_clock_src = 1;
-#endif
 #ifdef MSE_DAC
         /* Audio is the master clock while the DAC is running (Chrome
            AudioRendererImpl). Wall time was winning after sink-delay
@@ -262,8 +231,6 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
                     dac += extra * sp;
             }
             t = dac;
-            h->tr_clock_src = 2;
-            h->tr_dac = dac;
         }
 #endif
         /* Linear play: stay inside leftover. Sit 1s behind leftover end
@@ -292,9 +259,6 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
             if (t < first)
                 t = first;
             else if (t > cap) {
-#ifdef MSE_DAC
-                h->tr_clock_src = 3;
-#endif
                 t = cap;
                 h->hold = cap;
                 h->origin_ns = now_ns();
@@ -416,9 +380,6 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
         h->samples_played += n / frame_bytes(h);
         h->dac_tick_ns = now_ns();
     }
-    h->tr_cb++;
-    if (n <= 0)
-        h->tr_cb_silent++;
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
     if (n <= 0) {
@@ -426,23 +387,6 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
         n = cap;
     }
     buf->mAudioDataByteSize = (UInt32)n;
-    pthread_mutex_lock(&h->mu);
-    if (!h->tr_cap) {
-        h->tr_cap_bytes = 48000 * 2 * 2 * 3;
-        h->tr_cap = (uint8_t *)calloc(1, (size_t)h->tr_cap_bytes);
-    }
-    if (h->tr_cap) {
-        int i, k = h->tr_mark_n % 256;
-        h->tr_mark[k].at = h->tr_cap_total;
-        h->tr_mark[k].ms = h->tr_play_ns > 0 ? (now_ns() - h->tr_play_ns) / 1e6 : 0;
-        h->tr_mark[k].n = n;
-        h->tr_mark[k].live = live;
-        h->tr_mark_n++;
-        for (i = 0; i < n; i++)
-            h->tr_cap[(h->tr_cap_total + i) % h->tr_cap_bytes] = ((uint8_t *)buf->mAudioData)[i];
-        h->tr_cap_total += n;
-    }
-    pthread_mutex_unlock(&h->mu);
     AudioQueueEnqueueBuffer(q, buf, 0, NULL);
 }
 
@@ -499,9 +443,8 @@ static void aq_fade_fire(void *ctx)
         int owned;
         pthread_mutex_lock(&h->mu);
         owned = h->aq_fade == j;
-        if (owned) {
+        if (owned)
             h->aq_fade = NULL;
-        }
         pthread_mutex_unlock(&h->mu);
         AudioQueuePause(j->aq);
         if (owned)
@@ -640,9 +583,7 @@ static void sl_callback(SLAndroidSimpleBufferQueueItf bq, void *user)
         h->samples_played += n / frame_bytes(h);
         h->dac_tick_ns = now_ns();
     }
-    h->tr_cb++;
     if (n <= 0) {
-        h->tr_cb_silent++;
         memset(dst, 0, (size_t)cap);
         n = cap;
     }
@@ -939,80 +880,6 @@ static void *dec_loop(void *arg)
         h->busy = 1;
         pthread_mutex_unlock(&h->mu);
         clock = host_clock(h);
-#ifdef MSE_DAC
-        {
-            double tnow = now_ns();
-#ifdef __APPLE__
-            uint8_t *dump = NULL;
-            char *marks = NULL;
-            int dump_len = 0, dump_seq = 0;
-#endif
-            pthread_mutex_lock(&h->mu);
-            if (h->tr_until_ns > 0 && tnow < h->tr_until_ns && tnow - h->tr_last_ns >= 15e6) {
-                h->tr_last_ns = tnow;
-                mse_critf(MSE_LOG_INFO,
-                          "mse-pr +%.0fms clock=%.3f src=%s dac=%.3f ring=%dms cb=%d silent=%d played=%lld playing=%d",
-                          (tnow - h->tr_play_ns) / 1e6, clock,
-                          h->tr_clock_src == 2 ? "dac" : h->tr_clock_src == 1 ? "wall" :
-                          h->tr_clock_src == 3 ? "cap" : "hold",
-                          h->tr_dac, ring_ms(h), h->tr_cb, h->tr_cb_silent,
-                          (long long)h->samples_played, h->playing);
-            }
-#ifdef __APPLE__
-            if (h->tr_dump_pending && h->tr_cap && tnow - h->tr_play_ns > 1.0e9) {
-                long long start = h->tr_cap_total > h->tr_cap_bytes ? h->tr_cap_total - h->tr_cap_bytes : 0;
-                long long b;
-                int i, m0, len = 0;
-                h->tr_dump_pending = 0;
-                dump_len = (int)(h->tr_cap_total - start);
-                dump = (uint8_t *)malloc((size_t)dump_len);
-                marks = (char *)malloc(256 * 96 + 64);
-                if (dump && marks) {
-                    for (b = start; b < h->tr_cap_total; b++)
-                        dump[b - start] = h->tr_cap[b % h->tr_cap_bytes];
-                    len += snprintf(marks + len, 64, "rate=%d ch=%d\n", h->rate, h->ch);
-                    m0 = h->tr_mark_n > 256 ? h->tr_mark_n - 256 : 0;
-                    for (i = m0; i < h->tr_mark_n; i++) {
-                        int k = i % 256;
-                        if (h->tr_mark[k].at < start)
-                            continue;
-                        len += snprintf(marks + len, 96, "byte=%lld ms=%.1f n=%d live=%d\n",
-                                        h->tr_mark[k].at - start, h->tr_mark[k].ms, h->tr_mark[k].n,
-                                        h->tr_mark[k].live);
-                    }
-                    dump_seq = ++h->tr_dump_seq;
-                } else {
-                    free(dump);
-                    free(marks);
-                    dump = NULL;
-                    marks = NULL;
-                }
-            }
-#endif
-            pthread_mutex_unlock(&h->mu);
-#ifdef __APPLE__
-            if (dump) {
-                char path[64];
-                FILE *f;
-                snprintf(path, sizeof(path), "/tmp/mse_pr_%02d.raw", dump_seq);
-                f = fopen(path, "wb");
-                if (f) {
-                    fwrite(dump, 1, (size_t)dump_len, f);
-                    fclose(f);
-                }
-                snprintf(path, sizeof(path), "/tmp/mse_pr_%02d.txt", dump_seq);
-                f = fopen(path, "w");
-                if (f) {
-                    fputs(marks, f);
-                    fclose(f);
-                }
-                mse_critf(MSE_LOG_INFO, "mse-pr dumped /tmp/mse_pr_%02d.raw (%d bytes)", dump_seq, dump_len);
-                free(dump);
-                free(marks);
-            }
-#endif
-        }
-#endif
 
 #ifdef MSE_DAC
         /* Own thread: a late 4K GOP must not starve AudioQueue. */
@@ -1069,12 +936,6 @@ static void *dec_loop(void *arg)
                 dac = h->sl_player != NULL;
 #endif
                 h->samples_pulled += frames;
-                if (h->tr_until_ns > 0 && now_ns() < h->tr_until_ns) {
-                    mse_critf(MSE_LOG_INFO, "mse-pr +%.0fms chunk pts=%.3f frames=%d clock=%.3f ring=%dms %s",
-                              (now_ns() - h->tr_play_ns) / 1e6, pts, frames, clock, ring_ms(h),
-                              !dac ? "no-dac" : h->flushing ? "DROP-flushing" :
-                              gen != h->ring_gen ? "DROP-gen" : h->ring_n >= h->ring_cap ? "DROP-full" : "write");
-                }
                 if (dac && !h->flushing && gen == h->ring_gen)
                     ring_write(h, (const uint8_t *)pcm, nbytes);
                 if (dac && !h->aq_started && ring_ms(h) >= 160) {
@@ -1445,16 +1306,6 @@ void mse_host_play(MseHost *h)
     if (!h->playing) {
         h->origin_ns = now_ns();
         h->playing = 1;
-#ifdef MSE_DAC
-        h->tr_play_ns = now_ns();
-        h->tr_until_ns = h->tr_play_ns + 1.5e9;
-        h->tr_last_ns = 0;
-        h->tr_cb = h->tr_cb_silent = 0;
-        h->tr_dump_pending = h->tr_pause_ns > 0;
-        mse_critf(MSE_LOG_INFO, "mse-pr play hold=%.3f clock=%.3f ring=%dms played=%lld aq_started=%d paused_for=%.0fms",
-                  h->hold, clock, ring_ms(h), (long long)h->samples_played, h->aq_started,
-                  h->tr_pause_ns > 0 ? (h->tr_play_ns - h->tr_pause_ns) / 1e6 : -1.0);
-#endif
     }
     ensure_thread(h);
     pthread_cond_broadcast(&h->cv);
@@ -1523,15 +1374,6 @@ void mse_host_pause(MseHost *h)
 #endif
     pthread_mutex_lock(&h->mu);
     if (h->playing) {
-#ifdef MSE_DAC
-        h->tr_pause_ns = now_ns();
-        mse_critf(MSE_LOG_INFO, "mse-pr pause t=%.3f src=%d dac=%.3f ring=%dms played=%lld cb_since_play=%d silent=%d",
-                  t, h->tr_clock_src, h->tr_dac, ring_ms(h), (long long)h->samples_played, h->tr_cb,
-                  h->tr_cb_silent);
-        h->tr_cb = h->tr_cb_silent = 0;
-        h->tr_play_ns = h->tr_pause_ns;
-        h->tr_until_ns = h->tr_pause_ns + 0.3e9;
-#endif
         h->hold = t;
         h->playing = 0;
     }
