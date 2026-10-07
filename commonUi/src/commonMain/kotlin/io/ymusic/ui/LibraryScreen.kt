@@ -499,7 +499,9 @@ private fun FoldersTab(
             }
         }
         TrackScroll { folderListState.canScrollBackward || folderGridState.canScrollBackward }
-        if (children.isEmpty() && items.isEmpty()) {
+        if (path.isEmpty() && children.isEmpty() && items.isEmpty()) {
+            EmptyLibrary(scan, scanController)
+        } else if (children.isEmpty() && items.isEmpty()) {
             header()
             Text(
                 stringResource(Res.string.library_empty_folder),
