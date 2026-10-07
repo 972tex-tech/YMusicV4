@@ -44,6 +44,7 @@ fun Project.registerFfmpegSync(name: String, wanted: Set<String>, dir: File, wha
         repo.set(FfmpegRelease.REPO)
         assets.set(wanted)
         FfmpegRelease.localDir(project)?.let { localDir.set(it) }
+        localPacks.from(FfmpegRelease.localBuildPacks(project, wanted))
         offline.set(gradle.startParameter.isOffline)
         // --rerun-tasks counts too: it already re-runs this task, and a build asking for everything
         // to be redone from scratch should not be the one build that keeps a stale ffmpeg.

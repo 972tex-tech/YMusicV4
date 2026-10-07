@@ -1,11 +1,15 @@
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.io.File
 import java.net.HttpURLConnection
@@ -76,6 +80,10 @@ object FfmpegRelease {
      * Sibling `ffmpeg-build/out/<slug>/pack` if a local build already produced one. Preferred over
      * GitHub so a developer can iterate on ffmpeg-build without publishing a release.
      */
+    /** The sibling `ffmpeg-build` packs present for release [assets] (`ffmpeg-<slug>.tar.gz`). */
+    fun localBuildPacks(project: Project, assets: Set<String>): List<File> =
+        assets.mapNotNull { localBuildPack(project, it.removePrefix("ffmpeg-").removeSuffix(".tar.gz")) }
+
     fun localBuildPack(project: Project, slug: String): File? {
         val pack = project.rootProject.projectDir.parentFile.resolve("ffmpeg-build/out/$slug/pack")
         if (!pack.isDirectory) return null
@@ -113,6 +121,11 @@ abstract class SyncFfmpeg : DefaultTask() {
 
     @get:Input @get:Optional
     abstract val localDir: Property<String>
+
+    /** Sibling `ffmpeg-build` packs: a rebuild there re-stages instead of leaving the old binaries. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val localPacks: ConfigurableFileCollection
 
     @get:Input abstract val offline: Property<Boolean>
 
