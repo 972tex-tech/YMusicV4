@@ -55,13 +55,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.longOrNull
+import projectcommon.json.boolOrNull
+import projectcommon.json.intOrNull
+import projectcommon.json.longOrNull
+import projectcommon.json.objectOrNull
+import projectcommon.json.objects
+import projectcommon.json.stringOrNull
 
 /**
  * YouTube [YtEngine] over engine-js + C MSE, mirroring legacy `WebViewYtPlayer`. Each [init]/[reset]
@@ -515,13 +515,13 @@ class MsePlayer internal constructor(
     }
 
     private fun applyListen(json: JsonObject) {
-        (json["progress"] as? JsonObject)?.let { applyProgress(it) }
-        (json["state"] as? JsonObject)?.let { applyState(it) }
-        (json["picture"] as? JsonObject)?.let { applyPicture(it) }
+        json.objectOrNull("progress")?.let { applyProgress(it) }
+        json.objectOrNull("state")?.let { applyState(it) }
+        json.objectOrNull("picture")?.let { applyPicture(it) }
     }
 
     private fun applyProgress(json: JsonObject) {
-        val videoId = json.str("videoId")
+        val videoId = json.stringOrNull("videoId")
         val loading = loadingVideoId
         if (loading != null) {
             if (videoId != loading) return
@@ -532,26 +532,26 @@ class MsePlayer internal constructor(
         } else if (videoId != loadedVideoId) {
             return
         }
-        val durationMs = if (json["duration"] != null) json.long("duration") else json.long("durationMs")
-        val seekableStartMs = json.long("seekableStartMs")
-        val seekableEndMs = json.long("seekableEndMs")
+        val durationMs = json.longOrNull("duration") ?: json.longOrNull("durationMs") ?: 0L
+        val seekableStartMs = json.longOrNull("seekableStartMs") ?: 0L
+        val seekableEndMs = json.longOrNull("seekableEndMs") ?: 0L
         /* Engine already maps the DVR window onto progress/duration (0..positionMs). */
-        val positionMs = if (json["progress"] != null) json.long("progress") else json.long("positionMs")
+        val positionMs = json.longOrNull("progress") ?: json.longOrNull("positionMs") ?: 0L
         _progress.value = Progress(
             positionMs = positionMs,
             durationMs = if (durationMs > 0L) durationMs else Progress.DURATION_UNKNOWN,
-            bufferedPositionMs = json.long("bufferedMs"),
-            seekable = json.bool("seekable", default = durationMs > 0L),
-            isLive = json.bool("live", default = _status.value.live),
+            bufferedPositionMs = json.longOrNull("bufferedMs") ?: 0L,
+            seekable = json.boolOrNull("seekable") ?: (durationMs > 0L),
+            isLive = json.boolOrNull("live") ?: _status.value.live,
             seekableStartMs = seekableStartMs,
             seekableEndMs = if (seekableEndMs > seekableStartMs) seekableEndMs else if (durationMs > 0L) durationMs else 0L,
         )
     }
 
     private fun applyState(json: JsonObject) {
-        val newState = json.str("newState") ?: return
-        val playWhenReady = json.bool("playWhenReady", default = false)
-        val live = json.bool("live", default = false)
+        val newState = json.stringOrNull("newState") ?: return
+        val playWhenReady = json.boolOrNull("playWhenReady") ?: false
+        val live = json.boolOrNull("live") ?: false
         val state = when (newState) {
             "idle" -> PlaybackState.Idle
             "buffering" -> PlaybackState.Prepared(playWhenReady, buffering = true, ended = false)
@@ -559,10 +559,10 @@ class MsePlayer internal constructor(
             "ended" -> PlaybackState.Prepared(playWhenReady = false, buffering = false, ended = true)
             "error" -> PlaybackState.Error(
                 PlayerError(
-                    json.str("code") ?: "E60033",
-                    json.str("message"),
-                    canRetry = json.bool("canRetry", default = true),
-                    needReset = json.bool("needReset", default = false),
+                    json.stringOrNull("code") ?: "E60033",
+                    json.stringOrNull("message"),
+                    canRetry = json.boolOrNull("canRetry") ?: true,
+                    needReset = json.boolOrNull("needReset") ?: false,
                 ),
             )
             else -> return
@@ -575,23 +575,23 @@ class MsePlayer internal constructor(
     }
 
     private fun applyPicture(json: JsonObject) {
-        val videoWidth = (json["videoWidth"] as? JsonPrimitive)?.intOrNull ?: 0
-        val videoHeight = (json["videoHeight"] as? JsonPrimitive)?.intOrNull ?: 0
+        val videoWidth = json.intOrNull("videoWidth") ?: 0
+        val videoHeight = json.intOrNull("videoHeight") ?: 0
         if (videoWidth <= 0 || videoHeight <= 0) return
         _status.update { it.copy(videoSize = VideoSize(videoWidth, videoHeight)) }
     }
 
     private fun applyCatalog(json: JsonObject) {
-        val audioOnly = json.bool("audioOnly", default = false)
+        val audioOnly = json.boolOrNull("audioOnly") ?: false
         val actual = if (audioOnly) {
             VideoQualityState.AUDIO_ONLY
         } else {
-            json.str("quality") ?: VideoQualityState.AUTO
+            json.stringOrNull("quality") ?: VideoQualityState.AUTO
         }
         val prefer = if (audioOnly) {
             VideoQualityState.AUDIO_ONLY
         } else {
-            json.str("preferQuality") ?: config.preferVideoQuality.first
+            json.stringOrNull("preferQuality") ?: config.preferVideoQuality.first
         }
         val engineOptions = json.qualityOptions().filter {
             it.quality != VideoQualityState.AUDIO_ONLY && it.quality != "tiny"
@@ -603,7 +603,7 @@ class MsePlayer internal constructor(
             actualQuality = actual,
             preferredQuality = prefer,
         )
-        _captions.value = CaptionState(tracks = json.captionTracks(), selectedLanguage = json.str("caption"))
+        _captions.value = CaptionState(tracks = json.captionTracks(), selectedLanguage = json.stringOrNull("caption"))
     }
 
     private fun fail(error: Throwable, message: String, needReset: Boolean) {
@@ -652,36 +652,21 @@ class MsePlayer internal constructor(
     }
 }
 
-private fun JsonObject.str(key: String): String? =
-    (this[key] as? JsonPrimitive)?.contentOrNull
-
-private fun JsonObject.long(key: String): Long =
-    (this[key] as? JsonPrimitive)?.longOrNull ?: 0L
-
-private fun JsonObject.bool(key: String, default: Boolean): Boolean {
-    val primitive = this[key] as? JsonPrimitive ?: return default
-    return primitive.booleanOrNull ?: (primitive.content == "true")
-}
-
 private fun JsonObject.captionTracks(): List<CaptionTrack> {
-    val rows = this["captionTracks"] as? JsonArray ?: return emptyList()
-    return rows.mapNotNull { element ->
-        val row = element as? JsonObject ?: return@mapNotNull null
-        val vssId = row.str("vssId") ?: return@mapNotNull null
+    return objects("captionTracks").mapNotNull { row ->
+        val vssId = row.stringOrNull("vssId") ?: return@mapNotNull null
         CaptionTrack(
-            languageCode = row.str("languageCode").orEmpty(),
-            displayName = row.str("displayName") ?: vssId,
+            languageCode = row.stringOrNull("languageCode").orEmpty(),
+            displayName = row.stringOrNull("displayName") ?: vssId,
             vssId = vssId,
-            kind = row.str("kind").orEmpty(),
+            kind = row.stringOrNull("kind").orEmpty(),
         )
     }
 }
 
 private fun JsonObject.qualityOptions(): List<VideoQualityOption> {
-    val qualities = this["qualities"] as? JsonArray ?: return emptyList()
-    return qualities.mapNotNull { element ->
-        val option = element as? JsonObject ?: return@mapNotNull null
-        val quality = (option["quality"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
-        VideoQualityOption(quality, (option["label"] as? JsonPrimitive)?.contentOrNull ?: quality)
+    return objects("qualities").mapNotNull { option ->
+        val quality = option.stringOrNull("quality") ?: return@mapNotNull null
+        VideoQualityOption(quality, option.stringOrNull("label") ?: quality)
     }
 }
