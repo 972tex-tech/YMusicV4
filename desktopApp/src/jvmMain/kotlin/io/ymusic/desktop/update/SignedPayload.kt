@@ -2,8 +2,8 @@ package io.ymusic.desktop.update
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import projectcommon.json.stringOrNull
 import java.security.KeyFactory
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
@@ -32,9 +32,9 @@ object SignedPayload {
     fun open(manifestJson: String, publicKeyBase64: String): JsonObject {
         val root = runCatching { json.parseToJsonElement(manifestJson).jsonObject }.getOrNull()
             ?: throw UpdateVerificationException("manifest is not a JSON object")
-        val payload = root["payload"]?.asStringOrNull()
+        val payload = root.stringOrNull("payload")?.takeIf { it.isNotEmpty() }
             ?: throw UpdateVerificationException("manifest has no payload")
-        val signature = root["signature"]?.asStringOrNull()
+        val signature = root.stringOrNull("signature")?.takeIf { it.isNotEmpty() }
             ?: throw UpdateVerificationException("manifest is not signed")
         if (!verify(payload, signature, publicKeyBase64)) {
             throw UpdateVerificationException("manifest signature does not match the pinned key")
@@ -54,7 +54,3 @@ object SignedPayload {
             }
         }.getOrDefault(false)
 }
-
-/** kotlinx-serialization throws on a non-string primitive; this keeps parse errors uniform. */
-internal fun kotlinx.serialization.json.JsonElement.asStringOrNull(): String? =
-    runCatching { (this as? JsonPrimitive)?.content }.getOrNull()?.takeIf { it.isNotEmpty() }

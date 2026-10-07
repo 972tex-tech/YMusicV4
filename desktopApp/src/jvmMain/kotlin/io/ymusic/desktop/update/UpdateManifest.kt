@@ -1,6 +1,11 @@
 package io.ymusic.desktop.update
 
 import kotlinx.serialization.json.JsonObject
+import projectcommon.json.intOrNull
+import projectcommon.json.longOrNull
+import projectcommon.json.objectOrNull
+import projectcommon.json.objects
+import projectcommon.json.stringOrNull
 
 /**
  * One release, as published in the update manifest.
@@ -55,29 +60,28 @@ object UpdateManifest {
      */
     fun parseVerified(manifestJson: String, publicKeyBase64: String, platformKey: String): Release? {
         val body = SignedPayload.open(manifestJson, publicKeyBase64)
-        val versionCode = body["versionCode"]?.asStringOrNull()?.toIntOrNull()
+        val versionCode = body.intOrNull("versionCode")
             ?: throw UpdateVerificationException("payload has no usable versionCode")
-        val platform = (body["platforms"] as? JsonObject)?.get(platformKey)?.let { it as? JsonObject }
+        val platform = body.objectOrNull("platforms")?.objectOrNull(platformKey)
             ?: return null
-        val installer = (platform["installer"] as? JsonObject)
+        val installer = platform.objectOrNull("installer")
             ?: throw UpdateVerificationException("platform entry has no installer")
-        val files = (platform["files"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { entry ->
-            val o = entry as? JsonObject ?: return@mapNotNull null
-            val path = o["path"]?.asStringOrNull() ?: return@mapNotNull null
-            val hash = o["sha256"]?.asStringOrNull()?.lowercase() ?: return@mapNotNull null
-            FileEntry(path, hash, o["size"]?.asStringOrNull()?.toLongOrNull() ?: -1L)
+        val files = platform.objects("files").mapNotNull { o ->
+            val path = o.nonEmptyString("path") ?: return@mapNotNull null
+            val hash = o.nonEmptyString("sha256")?.lowercase() ?: return@mapNotNull null
+            FileEntry(path, hash, o.longOrNull("size") ?: -1L)
         }
         return Release(
             versionCode = versionCode,
             files = files,
-            blobBaseUrl = platform["blobBaseUrl"]?.asStringOrNull().orEmpty(),
-            versionName = body["versionName"]?.asStringOrNull().orEmpty(),
-            url = installer["url"]?.asStringOrNull()
+            blobBaseUrl = platform.stringOrNull("blobBaseUrl").orEmpty(),
+            versionName = body.stringOrNull("versionName").orEmpty(),
+            url = installer.nonEmptyString("url")
                 ?: throw UpdateVerificationException("platform entry has no installer url"),
-            sha256 = installer["sha256"]?.asStringOrNull()?.lowercase()
+            sha256 = installer.nonEmptyString("sha256")?.lowercase()
                 ?: throw UpdateVerificationException("platform entry has no installer sha256"),
-            sizeBytes = installer["size"]?.asStringOrNull()?.toLongOrNull() ?: -1L,
-            notes = body["notes"]?.asStringOrNull().orEmpty(),
+            sizeBytes = installer.longOrNull("size") ?: -1L,
+            notes = body.stringOrNull("notes").orEmpty(),
         )
     }
 }
@@ -95,3 +99,5 @@ fun currentPlatformKey(): String {
         else -> "linux-$arch"
     }
 }
+
+private fun JsonObject.nonEmptyString(key: String): String? = stringOrNull(key)?.takeIf { it.isNotEmpty() }
