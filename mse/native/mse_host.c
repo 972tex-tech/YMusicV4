@@ -84,6 +84,8 @@ struct MseHost {
     int ring_r;
     int ring_w;
     int ring_n;
+    /* Bumped by every ring flush; a chunk pulled before a flush must not be written after it. */
+    unsigned ring_gen;
     int aq_started;
     int aq_buf_bytes;
     int flushing;
@@ -295,7 +297,7 @@ static void ring_write(MseHost *h, const uint8_t *p, int n)
     while (n > 0) {
         int space, chunk;
         /* Do not wait while holding mu — AudioQueue cannot drain then. */
-        if (h->ring_n >= h->ring_cap || h->released || h->flushing || !h->playing)
+        if (h->ring_n >= h->ring_cap || h->released || h->flushing)
             return;
         space = h->ring_cap - h->ring_n;
         chunk = n < space ? n : space;
@@ -429,6 +431,7 @@ static int start_aq(MseHost *h, int rate, int ch)
     h->ring = ring;
     h->ring_cap = cap;
     h->ring_r = h->ring_w = h->ring_n = 0;
+    h->ring_gen++;
     h->aq_buf_bytes = buf_bytes;
     pthread_mutex_unlock(&h->mu);
     for (i = 0; i < 4; i++) {
@@ -615,6 +618,7 @@ static int start_sl(MseHost *h, int rate, int ch)
     h->ring = ring;
     h->ring_cap = cap;
     h->ring_r = h->ring_w = h->ring_n = 0;
+    h->ring_gen++;
     h->aq_buf_bytes = buf_bytes;
     pthread_mutex_unlock(&h->mu);
     (*bq)->RegisterCallback(bq, sl_callback, h);
@@ -805,8 +809,10 @@ static void *dec_loop(void *arg)
         while (filled < 8) {
             int want;
             int dac = 0;
+            unsigned gen;
             pthread_mutex_lock(&h->mu);
             want = ring_ms(h) < 400;
+            gen = h->ring_gen;
             pthread_mutex_unlock(&h->mu);
             if (!want)
                 break;
@@ -850,7 +856,7 @@ static void *dec_loop(void *arg)
                 dac = h->sl_player != NULL;
 #endif
                 h->samples_pulled += frames;
-                if (dac && !h->flushing)
+                if (dac && !h->flushing && gen == h->ring_gen)
                     ring_write(h, (const uint8_t *)pcm, nbytes);
                 if (dac && !h->aq_started && ring_ms(h) >= 160) {
                     h->aq_started = 1;
@@ -948,6 +954,7 @@ static void aq_kill(MseHost *h)
     ring = h->ring;
     h->ring = NULL;
     h->ring_cap = h->ring_r = h->ring_w = h->ring_n = 0;
+    h->ring_gen++;
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
     if (aq) {
@@ -977,6 +984,7 @@ static void aq_pause_flush(MseHost *h)
     h->flushing = 1;
     h->aq_started = 0;
     h->ring_r = h->ring_w = h->ring_n = 0;
+    h->ring_gen++;
     pthread_cond_broadcast(&h->cv);
 #ifdef __APPLE__
     aq = h->aq;
@@ -1228,35 +1236,32 @@ void mse_host_play(MseHost *h)
 
 void mse_host_pause(MseHost *h)
 {
+    double t;
 #ifdef __APPLE__
     AudioQueueRef aq;
 #endif
     if (!h)
         return;
+    t = host_clock(h);
+    /* Stop the device before clearing playing: a callback that sees playing == 0 while the device still
+     * runs enqueues silence, which then plays ahead of the music on resume (an audible gap). */
+#ifdef __APPLE__
     pthread_mutex_lock(&h->mu);
-    if (h->playing) {
-        pthread_mutex_unlock(&h->mu);
-        {
-            double t = host_clock(h);
-            pthread_mutex_lock(&h->mu);
-            if (h->playing) {
-                h->hold = t;
-                h->playing = 0;
-            }
-        }
-    }
-    pthread_cond_broadcast(&h->cv);
-#ifdef __APPLE__
     aq = h->aq;
-#endif
     pthread_mutex_unlock(&h->mu);
-#ifdef __APPLE__
     if (aq)
         AudioQueuePause(aq);
 #endif
 #ifdef __ANDROID__
     sl_set_playing(h, 0);
 #endif
+    pthread_mutex_lock(&h->mu);
+    if (h->playing) {
+        h->hold = t;
+        h->playing = 0;
+    }
+    pthread_cond_broadcast(&h->cv);
+    pthread_mutex_unlock(&h->mu);
 }
 
 static void seek_common(MseHost *h, double seconds)
@@ -1283,6 +1288,7 @@ static void seek_common(MseHost *h, double seconds)
         free(h->ring);
         h->ring = NULL;
         h->ring_cap = h->ring_r = h->ring_w = h->ring_n = 0;
+        h->ring_gen++;
         h->flushing = 0;
         pthread_mutex_unlock(&h->mu);
 #endif
@@ -1304,6 +1310,7 @@ static void seek_common(MseHost *h, double seconds)
     h->aq_started = 0;
     h->dac_tick_ns = 0;
     h->ring_r = h->ring_w = h->ring_n = 0;
+    h->ring_gen++;
 #endif
     h->vpts = -1;
     pthread_mutex_unlock(&h->mu);
@@ -1331,6 +1338,7 @@ void mse_host_reset(MseHost *h)
     free(h->ring);
     h->ring = NULL;
     h->ring_cap = h->ring_r = h->ring_w = h->ring_n = 0;
+    h->ring_gen++;
     h->flushing = 0;
     pthread_mutex_unlock(&h->mu);
 #endif
@@ -1354,6 +1362,7 @@ void mse_host_reset(MseHost *h)
     h->aq_started = 0;
     h->dac_tick_ns = 0;
     h->ring_r = h->ring_w = h->ring_n = 0;
+    h->ring_gen++;
 #endif
     h->vpts = -1;
     pthread_mutex_lock(&h->frame_mu);
