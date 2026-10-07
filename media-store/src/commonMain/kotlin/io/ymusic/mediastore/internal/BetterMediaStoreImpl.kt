@@ -52,11 +52,13 @@ internal class BetterMediaStoreImpl(
             val uri = draft.uri.canonicalString()
             val existing = bucketQ.findBucketByUriIncludingDeleted(uri).executeAsOneOrNull()
             val ts = now()
+            // A removed parent is no parent: the bucket would be live yet unreachable from the roots.
+            val parentId = draft.parentId?.takeIf { bucketQ.findBucketById(it).executeAsOneOrNull() != null }
             val id = if (existing != null) {
-                bucketQ.updateBucket(draft.parentId, draft.name, draft.aliasName, ts, existing.id)
+                bucketQ.updateBucket(parentId, draft.name, draft.aliasName, ts, existing.id)
                 existing.id
             } else {
-                bucketQ.insertBucket(draft.parentId, uri, draft.name, draft.aliasName, ts, ts)
+                bucketQ.insertBucket(parentId, uri, draft.name, draft.aliasName, ts, ts)
                 bucketQ.lastInsertRowId().executeAsOne()
             }
             bucketQ.findBucketById(id).executeAsOne().toModel()
