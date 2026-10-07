@@ -40,7 +40,8 @@ import androidx.compose.ui.zIndex
  * scroll edges of whatever scrollable it hosts ([androidx.compose.foundation.lazy.LazyListState] or a
  * [androidx.compose.foundation.ScrollState]) as [canScrollBackward]/[canScrollForward] so the shadows
  * follow it. [buttons] fills the bottom bar (right-aligned). [maxWidth] widens it past the 560dp
- * picker width for a dialog with more to lay out (the download options).
+ * picker width for a dialog with more to lay out (the download options). [titleAction] sits at the
+ * title bar's end (the equalizer's preset menu).
  */
 @Composable
 fun ElevatedBarDialog(
@@ -50,6 +51,7 @@ fun ElevatedBarDialog(
     canScrollForward: Boolean,
     buttons: @Composable RowScope.() -> Unit,
     maxWidth: Dp = 560.dp,
+    titleAction: (@Composable () -> Unit)? = null,
     body: @Composable () -> Unit,
 ) {
     // The title/button bars sit a step above the body. On dark, the full SurfaceElevated lift (0x12 →
@@ -75,11 +77,17 @@ fun ElevatedBarDialog(
                 Column {
                     val topShadow by animateDpAsState(if (canScrollBackward) 6.dp else 0.dp)
                     Column(Modifier.fillMaxWidth().zIndex(1f).shadow(topShadow).background(barColor)) {
-                        Text(
-                            title,
-                            style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                        )
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 24.dp, end = if (titleAction != null) 16.dp else 24.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                title,
+                                style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+                                modifier = Modifier.weight(1f).padding(vertical = 16.dp),
+                            )
+                            titleAction?.invoke()
+                        }
                         HorizontalDivider(color = DesignColors.Divider)
                     }
                     Box(Modifier.weight(1f, fill = false).heightIn(max = bodyMax)) { body() }
