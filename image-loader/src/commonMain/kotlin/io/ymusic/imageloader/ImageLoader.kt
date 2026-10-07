@@ -48,6 +48,7 @@ class ImageLoader(
     memoryCacheBytes: Long = 32L * 1024 * 1024,
     networkParallelism: Int = 4,
     localParallelism: Int = 2,
+    private val variantIndex: VariantIndex = MemoryVariantIndex(),
 ) {
     internal val logger = logger?.fork("image-loader")
     private val memory = MemoryImageCache(memoryCacheBytes)
@@ -115,6 +116,7 @@ class ImageLoader(
     suspend fun load(request: ImageRequest, cacheInMemory: Boolean = true): ImageBitmap {
         val key = memoryKey(request)
         memory.peek(key)?.let { return it }
+        peekCovering(request)?.let { return it }
         val flight = synchronized(lock) {
             inFlight.getOrPut(key) {
                 Flight(scope.async(start = CoroutineStart.LAZY) { loadUncached(request, key, cacheInMemory) })
@@ -139,10 +141,22 @@ class ImageLoader(
     private suspend fun loadUncached(request: ImageRequest, key: String, cacheInMemory: Boolean): ImageBitmap =
         gateFor(request).withPermit {
             memory.peek(key)?.let { return@withPermit it } // a load that finished while this one waited
-            val bitmap = fromScaledCache(key) ?: fetchAndDecode(request, key)
+            val bitmap = fromScaledCache(key) ?: try {
+                fetchAndDecode(request, key)
+            } catch (e: ImageLoadException) {
+                // Offline or every variant gone: any size of this identity beats nothing — returned,
+                // not cached under this size, so a sharp decode replaces it once a source answers.
+                memory.peekLargest(request.key)?.let { stand -> return@withPermit stand }
+                throw e
+            }
             if (cacheInMemory) memory.put(key, bitmap)
             bitmap
         }
+
+    private fun peekCovering(request: ImageRequest): ImageBitmap? {
+        val size = requestBucket(request)
+        return memory.peekCovering(request.key, size.width, size.height, scaleSuffix(request.scale))
+    }
 
     private fun gateFor(request: ImageRequest): LifoGate =
         if (request.sources.any { it.url.startsWith("http://") || it.url.startsWith("https://") }) networkGate else localGate
@@ -208,14 +222,26 @@ class ImageLoader(
         return decoded.bitmap
     }
 
-    /** The request's sources in [orderSources] order until one decodes; failures fall through. */
+    /**
+     * The request's sources in [orderSources] order until one decodes; failures fall through. What
+     * each attempt learns (the measured size, or NotFound) goes to the [variantIndex].
+     */
     private suspend fun fetchFromSources(request: ImageRequest): DecodedImage {
         val size = requestBucket(request)
+        val record = variantIndex.get(request.key)
         var failure: ImageLoadException? = null
-        for (source in orderSources(request.sources, size, request.scale)) {
+        for (source in orderSources(request.sources, size, request.scale, record)) {
+            val sourceKey = imageCacheKey(source.url)
+            if (sourceKey in record.missing) {
+                if (failure == null) failure = ImageLoadException(ImageLoadException.Reason.NotFound, "known missing: ${source.url}")
+                continue
+            }
             try {
-                return fetchSource(source, size, request.scale)
+                val decoded = fetchSource(source, size, request.scale)
+                variantIndex.recordFetched(request.key, sourceKey, decoded.sourceWidth, decoded.sourceHeight)
+                return decoded
             } catch (e: ImageLoadException) {
+                if (e.reason == ImageLoadException.Reason.NotFound) variantIndex.recordMissing(request.key, sourceKey)
                 logger?.log(Logger.Level.DEBUG, "source failed (${e.reason}): ${source.url}")
                 // Keep the most telling failure: anything beats NotFound, which only wins if unanimous.
                 if (failure == null || failure.reason == ImageLoadException.Reason.NotFound) failure = e
@@ -263,33 +289,46 @@ internal fun requestBucket(request: ImageRequest): IntSize =
 /** `key@WxH`, plus `~fit` for a fit decode (smaller than the cover decode of the same box). */
 internal fun memoryKey(request: ImageRequest): String {
     val size = requestBucket(request)
-    val suffix = if (request.scale == ImageScale.Fit) "~fit" else ""
-    return "${request.key}@${size.width}x${size.height}$suffix"
+    return "${request.key}@${size.width}x${size.height}${scaleSuffix(request.scale)}"
 }
+
+internal fun scaleSuffix(scale: ImageScale): String = if (scale == ImageScale.Fit) "~fit" else ""
 
 /**
- * Sources to try for a [size] box: those whose declared size (after crop) covers it, smallest
- * first; then those with no declared size, in order; then the smaller ones, largest first — the
- * best available when nothing covers. A single source is just itself.
+ * Sources to try for a [size] box. A source's size is what [record] measured when it was fetched,
+ * else its declared size after crop. Order: those that cover the box, smallest first (already
+ * fetched ones before untried ones — likely on disk); then those of unknown size, as given; then
+ * the smaller ones, largest first, fetched before untried — the best available when nothing covers.
  */
-internal fun orderSources(sources: List<ImageSource>, size: IntSize, scale: ImageScale): List<ImageSource> {
+internal fun orderSources(
+    sources: List<ImageSource>,
+    size: IntSize,
+    scale: ImageScale,
+    record: VariantRecord = VariantRecord.EMPTY,
+): List<ImageSource> {
     if (sources.size < 2) return sources
-    val (known, unknown) = sources.partition { it.width > 0 && it.height > 0 }
-    val (covering, smaller) = known.partition { covers(it, size, scale) }
-    return covering.sortedBy { effectiveWidth(it) } + unknown + smaller.sortedByDescending { effectiveWidth(it) }
+    val measured = sources.associateWith { record.fetched[imageCacheKey(it.url)] ?: declaredSize(it) }
+    val fetched = sources.filterTo(HashSet()) { imageCacheKey(it.url) in record.fetched }
+    val (known, unknown) = sources.partition { measured.getValue(it) != null }
+    val (covering, smaller) = known.partition { covers(measured.getValue(it)!!, size, scale) }
+    return covering.sortedWith(compareBy<ImageSource> { it !in fetched }.thenBy { measured.getValue(it)!!.first }) +
+        unknown +
+        smaller.sortedWith(compareBy<ImageSource> { it !in fetched }.thenByDescending { measured.getValue(it)!!.first })
 }
 
-internal fun effectiveWidth(source: ImageSource): Int = source.width
-
-internal fun effectiveHeight(source: ImageSource): Int = when (source.crop) {
-    SourceCrop.None -> source.height
-    SourceCrop.Letterbox16x9 -> minOf(source.height, source.width * 9 / 16)
+/** The declared size after crop, or null when not declared. */
+internal fun declaredSize(source: ImageSource): Pair<Int, Int>? {
+    if (source.width <= 0 || source.height <= 0) return null
+    val height = when (source.crop) {
+        SourceCrop.None -> source.height
+        SourceCrop.Letterbox16x9 -> minOf(source.height, source.width * 9 / 16)
+    }
+    return source.width to height
 }
 
-/** The source (after crop) is large enough that decoding it for [size] needs no upscale. */
-internal fun covers(source: ImageSource, size: IntSize, scale: ImageScale): Boolean {
-    val w = effectiveWidth(source)
-    val h = effectiveHeight(source)
+/** An image of [sourceSize] decoded for [size] needs no upscale. */
+internal fun covers(sourceSize: Pair<Int, Int>, size: IntSize, scale: ImageScale): Boolean {
+    val (w, h) = sourceSize
     if (w <= 0 || h <= 0) return false
     return when (scale) {
         ImageScale.Cover -> w >= size.width && h >= size.height
