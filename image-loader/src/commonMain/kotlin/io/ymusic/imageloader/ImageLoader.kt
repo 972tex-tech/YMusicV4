@@ -13,6 +13,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import okio.ByteString.Companion.encodeUtf8
 import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.minutes
@@ -160,6 +161,15 @@ class ImageLoader(
 
     private fun gateFor(request: ImageRequest): LifoGate =
         if (request.sources.any { it.url.startsWith("http://") || it.url.startsWith("https://") }) networkGate else localGate
+
+    /**
+     * Load [request] in the background so a later [load] of it finds it in memory — e.g. the next
+     * queue item's art before the song changes. Best effort: a failure is logged, as [loadOrNull].
+     */
+    fun prefetch(request: ImageRequest) {
+        if (memory.peek(memoryKey(request)) != null) return
+        scope.launch { loadOrNull(request) }
+    }
 
     suspend fun load(url: String, maxWidth: Int, maxHeight: Int, cacheInMemory: Boolean = true): ImageBitmap =
         load(ImageRequest.of(url, maxWidth, maxHeight), cacheInMemory)
