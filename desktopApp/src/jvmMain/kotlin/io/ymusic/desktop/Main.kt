@@ -117,7 +117,6 @@ import io.ymusic.ui.DarkDesignColors
 import io.ymusic.ui.LightDesignColors
 import io.ymusic.ui.VideoOverlayNative
 import io.ymusic.ui.WebViewSabrSpecResolver
-import io.ymusic.ui.downloadCaptionPreference
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.importSessionCookies
@@ -696,7 +695,6 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
             ),
             mediaCache = playerCache, // read-only (see YtStreamDownloader): reuse cached playback bytes
             segmentIndex = segmentIndex,
-            captionPreference = { settings.downloadCaptionPreference() },
             // The user's chosen download location — always set: the download flow requires picking one
             // before enqueue.
             downloadFolder = { settings.downloadLocationFolder()!! },

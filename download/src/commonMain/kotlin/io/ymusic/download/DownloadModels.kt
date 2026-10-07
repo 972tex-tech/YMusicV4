@@ -77,7 +77,7 @@ class DownloadRequest(
     val fileName: String? = null,
     /** The `audioTrack.id` to download (a dubbed language); null = the video's default track. */
     val audioTrackId: String? = null,
-    /** The caption tracks to fetch; null = [captionLanguage], else the settings-driven [CaptionPreference]. */
+    /** The caption tracks to fetch; null = [captionLanguage]. */
     val captions: CaptionChoice? = null,
     /** A preferred audio language (`en`), resolved when the download runs: the dubbed track in it, else
      *  the default track. Used when [audioTrackId] is null. */

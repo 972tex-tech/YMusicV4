@@ -18,22 +18,12 @@ import kmphttp.byteString
 import okio.IOException
 import okio.use
 
-/** Which caption tracks to fetch, distilled from the user's settings (captured by the caller). */
-class CaptionPreference(val languages: Set<String>, val includeDefault: Boolean) {
-    companion object {
-        val None = CaptionPreference(emptySet(), false)
-    }
-}
-
 /** Caption tracks to fetch: the ones a per-task [choice] names (MP3 takes them as lyrics); else the
- *  track in [preferredLanguage] or, lacking it, the video's default; else the preference-driven
- *  [selectCaptions] — none for MP3, whose captions are opt-in per download. */
+ *  track in [preferredLanguage] or, lacking it, the video's default; else none. */
 internal fun captionsToDownload(
-    format: DownloadFormat,
     tracks: List<CaptionTrack>,
     choice: CaptionChoice?,
-    pref: CaptionPreference,
-    preferredLanguage: String? = null,
+    preferredLanguage: String?,
 ): List<CaptionTrack> = when {
     choice != null -> choice.languages.mapNotNull { key -> tracks.firstOrNull { captionKey(it.languageCode, it.isAsr) == key } }
     preferredLanguage != null -> listOfNotNull(
@@ -41,26 +31,7 @@ internal fun captionsToDownload(
             ?: tracks.firstOrNull { sameLanguage(it.languageCode, preferredLanguage) }
             ?: tracks.firstOrNull { it.isDefault },
     )
-    format == DownloadFormat.MP3 -> emptyList()
-    else -> selectCaptions(tracks, pref)
-}
-
-/**
- * The caption tracks to download: those whose language matches a preference (exact or base-language,
- * e.g. `pt` matches `pt-BR`). If none match and [CaptionPreference.includeDefault] is set, fall back to
- * the video's default track — when it has one. Empty when nothing applies.
- */
-internal fun selectCaptions(tracks: List<CaptionTrack>, pref: CaptionPreference): List<CaptionTrack> {
-    if (tracks.isEmpty()) return emptyList()
-    val wanted = tracks.filter {
-        it.languageCode in pref.languages || it.languageCode.substringBefore('-') in pref.languages
-    }
-    if (wanted.isNotEmpty()) return wanted
-    return if (pref.includeDefault) {
-        listOfNotNull(tracks.firstOrNull { it.isDefault })
-    } else {
-        emptyList()
-    }
+    else -> emptyList()
 }
 
 /** One downloaded elementary media stream: its selected [format] and the scratch file it landed in. */
@@ -113,7 +84,6 @@ class YtStreamDownloader(
 
     suspend fun download(
         task: DownloadTask,
-        captions: CaptionPreference,
         onPreparing: () -> Unit,
         onDownloading: () -> Unit,
         onProgress: (done: Long, total: Long) -> Unit,
@@ -121,7 +91,7 @@ class YtStreamDownloader(
         onPreparing()
         var spec = resolveSpec(task.videoId)
         val (audioFmt, videoFmt) = selectFormats(task, spec.formats)
-        val captionPicks = captionsToDownload(task.format, spec.captionTracks, task.captions, captions, task.captionLanguage)
+        val captionPicks = captionsToDownload(spec.captionTracks, task.captions, task.captionLanguage)
 
         val audioScratch = storage.scratch(task.id, "audio")
         val videoScratch = if (videoFmt != null) storage.scratch(task.id, "video") else null

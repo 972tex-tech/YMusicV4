@@ -50,7 +50,6 @@ class DownloadPipeline(
 
     suspend fun run(
         task: DownloadTask,
-        captions: CaptionPreference,
         destinationFolder: String,
         onPreparing: () -> Unit,
         onDownloading: () -> Unit,
@@ -58,7 +57,7 @@ class DownloadPipeline(
         onProgress: (done: Long, total: Long) -> Unit,
     ): Result {
         // 1. download the elementary streams (+ captions) to scratch files.
-        val streams = downloader.download(task, captions, onPreparing, onDownloading, onProgress)
+        val streams = downloader.download(task, onPreparing, onDownloading, onProgress)
         val audioFmt = streams.audio.format
         val videoFmt = streams.video?.format
         val base = baseName(task)

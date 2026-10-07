@@ -57,7 +57,6 @@ import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.WebViewSabrSpecResolver
-import io.ymusic.ui.downloadCaptionPreference
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.mediaStoreArtFetcher
@@ -507,7 +506,6 @@ class YMusicApplication : Application() {
                     androidSegmentDatabaseDriver(applicationContext, name = "download_segments.db"),
                     now = { System.currentTimeMillis() },
                 ),
-                captionPreference = { shared.settings.downloadCaptionPreference() },
                 // The user's chosen download location (SAF content:// or file://) — always set: the download
                 // flow requires picking one before enqueue.
                 downloadFolder = { shared.settings.downloadLocationFolder()!! },

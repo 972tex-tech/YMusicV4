@@ -45,7 +45,7 @@ class DownloadErrorCodeTest {
     fun no_audio_format_fails_with_E70011() = runBlocking {
         // A spec with no audio format — selectFormats throws before any I/O.
         val e = assertFailsWith<TechnicalException> {
-            downloader(spec()).download(task(DownloadFormat.M4A), CaptionPreference.None, {}, {}) { _, _ -> }
+            downloader(spec()).download(task(DownloadFormat.M4A), {}, {}) { _, _ -> }
         }
         assertEquals("E70011", e.code)
     }

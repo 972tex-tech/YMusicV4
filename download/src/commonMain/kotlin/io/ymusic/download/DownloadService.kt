@@ -53,9 +53,6 @@ class DownloadService(
     /** Persistent segment index used to resume SABR downloads (share the player cache's index). */
     segmentIndex: SegmentIndex? = null,
     logger: Logger? = null,
-    /** Current caption selection, read fresh per download (the shell sources it from settings). Keeps the
-     *  service headless and avoids persisting the preference on each task. Defaults to no captions. */
-    private val captionPreference: suspend () -> CaptionPreference = { CaptionPreference.None },
     /** The user's chosen download-location folder uri, read fresh at publish time (shell sources it from
      *  settings, falling back to the platform's default downloads dir). Always concrete — the UX requires
      *  a location before a download runs. */
@@ -269,7 +266,6 @@ class DownloadService(
         try {
             val result = pipeline.run(
                 task,
-                captions = captionPreference(),
                 destinationFolder = downloadFolder(),
                 onPreparing = { setStateAsync(task.id, DownloadState.PREPARING) },
                 onDownloading = { setStateAsync(task.id, DownloadState.DOWNLOADING) },
