@@ -40,6 +40,15 @@ suspend fun SettingsStore.put(
     value: Boolean,
 ) = putBoolean(setting.key, value)
 
+data class IntSetting(val key: String, val default: Int)
+
+fun SettingsStore.flow(setting: IntSetting): StateFlow<Int> = int(setting.key, setting.default)
+
+suspend fun SettingsStore.put(
+    setting: IntSetting,
+    value: Int,
+) = putInt(setting.key, value)
+
 /**
  * The app language, seeded on first ask: a blank read resolves [default], PERSISTS it, and returns
  * it — from then on the key is never blank and is the single source of truth for every reader (the
@@ -65,6 +74,9 @@ object AppSettings {
      * controls show (the app's own notification always carries the art). The v4 form of legacy's
      * albumArtOnLockScreen ALBUM_ART/ALBUM_ART2 trick.
      */
+
+    /** Player cache size limit in MB; 0 = no cache. The cache also leaves the disk's last 100 MB free. */
+    val playerCacheMaxMb = IntSetting("playerCache.maxMb", 2048)
 
     /** UI language override (BCP-47); empty = follow the system locale. */
     val uiLanguage = StringSetting("app.uiLanguage", "")
