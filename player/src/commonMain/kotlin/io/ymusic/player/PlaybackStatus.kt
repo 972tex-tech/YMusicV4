@@ -59,6 +59,7 @@ data class PlaybackConfig(
     val speed: Float = 1f,
     val pitchFactor: Float = 1f,
     val eqBands: List<Float> = List(10) { 0f },
+    /** Low-shelf gain below ~90 Hz, −12..+12 dB; negative cuts. */
     val bassBoostDb: Float = 0f,
     /** 1 = natural stereo; 0 = mono; >1 = wider. */
     val virtualizer: Float = 1f,

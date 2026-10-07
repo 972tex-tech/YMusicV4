@@ -267,7 +267,7 @@ void audio_fx_set_bass(AudioFx *fx, float db)
 {
     if (!fx)
         return;
-    fx->bass_db = clampf(db, 0.f, 12.f);
+    fx->bass_db = clampf(db, -12.f, 12.f);
     rebuild(fx);
 }
 

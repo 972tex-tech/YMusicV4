@@ -453,7 +453,7 @@ class MsePlayer internal constructor(
         ) {
             videoSurface.setAudioEffect(
                 FloatArray(10) { index -> config.eqBands.getOrElse(index) { 0f } },
-                config.bassBoostDb.coerceIn(0f, 12f),
+                config.bassBoostDb.coerceIn(-12f, 12f),
                 config.virtualizer.coerceIn(0f, 2f),
             )
         }

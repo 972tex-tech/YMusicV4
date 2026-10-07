@@ -299,7 +299,7 @@ internal class PlayerImpl(
         pushConfig(currentConfig.copy(eqBands = ten))
     }
 
-    override fun setBassBoost(db: Float) = pushConfig(currentConfig.copy(bassBoostDb = db.coerceIn(0f, 12f)))
+    override fun setBassBoost(db: Float) = pushConfig(currentConfig.copy(bassBoostDb = db.coerceIn(-12f, 12f)))
 
     override fun setVirtualizer(width: Float) =
         pushConfig(currentConfig.copy(virtualizer = width.coerceIn(0f, 2f)))
