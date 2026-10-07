@@ -134,6 +134,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             onSelect = { code -> pickLocale(gl = code) },
         )
         DownloadSettingsSection(graph)
+        PlayerCacheRow(graph)
         if (graph.exportSessionCookies != null && graph.scanQrCode != null &&
             graph.confirmDeviceOwner != null
         ) {

@@ -341,4 +341,7 @@
         <item quantity="other">%1$d من الفيديوهات المحددة موجودة بالفعل في مكتبتك.</item>
     </plurals>
     <string name="error_network">تعذّر الوصول إلى YouTube. تحقق من اتصالك وحاول مرة أخرى.</string>
+    <string name="settings_player_cache">ذاكرة التخزين المؤقت للمشغّل</string>
+    <string name="settings_player_cache_summary">الحد الأقصى %1$s · المستخدم %2$s · الموفَّر %3$s</string>
+    <string name="settings_player_cache_off">بدون تخزين مؤقت</string>
 </resources>

@@ -118,9 +118,12 @@ import io.ymusic.ui.resources.tab_music
 import io.ymusic.ui.resources.tab_recommended
 import io.ymusic.ui.resources.tab_top_tracks
 import io.ymusic.ui.sponsorblock.SponsorBlockCoordinator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
@@ -184,6 +187,12 @@ fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<App
         else -> androidx.compose.foundation.isSystemInDarkTheme()
     }
     var section by sectionState
+    LaunchedEffect(graph.playerCache, graph.settings) {
+        val cache = graph.playerCache ?: return@LaunchedEffect
+        graph.settings.flow(AppSettings.playerCacheMaxMb).collect { mb ->
+            withContext(Dispatchers.IO) { cache.blobs.setMaxSize(mb * 1024L * 1024L) }
+        }
+    }
     LaunchedEffect(graph.player, graph.settings) {
         val quality = graph.settings.string(PlaybackQualitySettingKey, VideoQualityState.AUTO).value
         if (quality != VideoQualityState.AUDIO_ONLY) graph.player.selectVideoQuality(quality)

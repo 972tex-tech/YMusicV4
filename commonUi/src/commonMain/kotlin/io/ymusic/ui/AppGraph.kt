@@ -163,6 +163,8 @@ class AppGraph(
      * SponsorBlock skip-segment fetch. Defaults to [MockSponsorBlockApi] until the real HTTP
      * client is wired. Shells pass a SQLite [sponsorBlockStore] for cache + per-video whitelist.
      */
+    /** The player cache, for its size limit and Settings' usage line; null hides the setting. */
+    val playerCache: io.ymusic.ytmedia.cache.MediaCache? = null,
     sponsorBlockApi: SponsorBlockApi = MockSponsorBlockApi(),
     sponsorBlockStore: SponsorBlockStore = InMemorySponsorBlockStore(),
     // Kept last so shells pass it as the trailing lambda.
