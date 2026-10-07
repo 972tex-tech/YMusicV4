@@ -67,6 +67,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.TimeSource
 
@@ -144,7 +146,7 @@ internal fun AudioOnlyArtWave(
         }
         val art = rememberArtTransition(url, decodeSize)
         Box(Modifier.matchParentSize().blur(28.dp)) {
-            ArtLayer(art)
+            ArtBackdrop(art)
         }
         Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.36f)))
         Row(
@@ -157,8 +159,7 @@ internal fun AudioOnlyArtWave(
                     .shadow(10.dp, RoundedCornerShape(8.dp))
                     .clip(RoundedCornerShape(8.dp)),
             ) {
-                if (art.shading) ArtShade()
-                ArtLayer(art)
+                ArtSquare(art)
             }
             Spacer(Modifier.width(14.dp))
             Canvas(Modifier.weight(1f).fillMaxHeight()) {
@@ -186,18 +187,22 @@ private const val ART_FADE_IN_MS = 420
 private const val ART_MIN_SHADE_MS = 220L
 private const val ART_SHIMMER_MS = 1300
 private const val ART_RESIZE_SETTLE_MS = 400L
+private const val ART_BACKDROP_DIM = 0.3f
 
 /**
- * One art picture driving both Now Playing layers in lockstep. Every url change runs the same
- * sequence — the current picture fades out over the shade, the shade holds at least
- * [ART_MIN_SHADE_MS] (longer while the load runs), the new picture fades in — whatever the cache
- * holds. A view that grows only swaps in a sharper decode of the same picture, no transition.
+ * Now Playing's art across a url change, the same every time: the square's [previous] picture
+ * fades out to the shade while the backdrop keeps it, dimmed by [dim]; the shade holds at least
+ * [ART_MIN_SHADE_MS] (longer while the load runs); then [current] fades in on both layers and the
+ * dim lifts. A view that grows swaps in a sharper decode of the same picture, no transition.
  */
 private class ArtTransition {
-    var bitmap by mutableStateOf<ImageBitmap?>(null)
+    var previous by mutableStateOf<ImageBitmap?>(null)
+    var current by mutableStateOf<ImageBitmap?>(null)
     var url: String? = null
     var shading by mutableStateOf(false)
-    val alpha = Animatable(0f)
+    val outAlpha = Animatable(1f)
+    val inAlpha = Animatable(0f)
+    val dim = Animatable(0f)
 }
 
 @Composable
@@ -208,7 +213,7 @@ private fun rememberArtTransition(url: String?, decodeSize: IntSize): ArtTransit
     val ready = decodeSize.width > 0 && decodeSize.height > 0
 
     LaunchedEffect(url, loader, ready) {
-        if (!ready || (state.url == url && state.bitmap != null)) return@LaunchedEffect
+        if (!ready || (state.url == url && state.current != null)) return@LaunchedEffect
         coroutineScope {
             val next = async {
                 if (url == null || loader == null) {
@@ -220,10 +225,18 @@ private fun rememberArtTransition(url: String?, decodeSize: IntSize): ArtTransit
                 }
             }
             val shadeFrom = TimeSource.Monotonic.markNow()
-            state.shading = url != null
-            if (state.bitmap != null) state.alpha.animateTo(0f, tween(ART_FADE_OUT_MS, easing = FastOutSlowInEasing))
-            state.bitmap = null
+            // An interrupted fade-in becomes the outgoing picture from where it got to.
+            state.current?.let { half ->
+                state.outAlpha.snapTo(state.inAlpha.value)
+                state.previous = half
+                state.current = null
+            }
             state.url = url
+            state.shading = url != null
+            listOf(
+                launch { state.outAlpha.animateTo(0f, tween(ART_FADE_OUT_MS, easing = FastOutSlowInEasing)) },
+                launch { state.dim.animateTo(ART_BACKDROP_DIM, tween(ART_FADE_OUT_MS, easing = FastOutSlowInEasing)) },
+            ).joinAll()
             val bitmap = next.await()
             val held = shadeFrom.elapsedNow().inWholeMilliseconds
             if (held < ART_FADE_OUT_MS + ART_MIN_SHADE_MS) delay(ART_FADE_OUT_MS + ART_MIN_SHADE_MS - held)
@@ -231,38 +244,58 @@ private fun rememberArtTransition(url: String?, decodeSize: IntSize): ArtTransit
                 state.shading = false
                 return@coroutineScope
             }
-            state.alpha.snapTo(0f)
-            state.bitmap = bitmap
-            state.alpha.animateTo(1f, tween(ART_FADE_IN_MS, easing = FastOutSlowInEasing))
+            state.inAlpha.snapTo(0f)
+            state.current = bitmap
+            listOf(
+                launch { state.inAlpha.animateTo(1f, tween(ART_FADE_IN_MS, easing = FastOutSlowInEasing)) },
+                launch { state.dim.animateTo(0f, tween(ART_FADE_IN_MS, easing = FastOutSlowInEasing)) },
+            ).joinAll()
+            state.previous = null
             state.shading = false
         }
     }
 
     LaunchedEffect(decodeSize) {
         val shownUrl = state.url ?: return@LaunchedEffect
-        if (state.bitmap == null || shownUrl != url || loader == null) return@LaunchedEffect
+        if (state.current == null || shownUrl != url || loader == null) return@LaunchedEffect
         delay(ART_RESIZE_SETTLE_MS)
         val key = imageCacheKey(shownUrl)
         val sharper = loader.peek(shownUrl, decodeSize.width, decodeSize.height, cacheKey = key)
             ?: loader.loadOrNull(shownUrl, decodeSize.width, decodeSize.height, cacheKey = key)
-        if (sharper != null && state.url == shownUrl && state.bitmap != null) state.bitmap = sharper
+        if (sharper != null && state.url == shownUrl && state.current != null) state.current = sharper
     }
     return state
 }
 
 @Composable
-private fun BoxScope.ArtLayer(art: ArtTransition, modifier: Modifier = Modifier) {
-    val bitmap = art.bitmap ?: return
+private fun BoxScope.ArtImageLayer(bitmap: ImageBitmap?, alpha: () -> Float) {
+    if (bitmap == null) return
     Image(
         bitmap,
         contentDescription = null,
-        modifier = modifier.matchParentSize().graphicsLayer { alpha = art.alpha.value },
+        modifier = Modifier.matchParentSize().graphicsLayer { this.alpha = alpha() },
         contentScale = ContentScale.Crop,
     )
 }
 
-/** A soft light band sweeping a dim square while the next picture is on its way; dark in every
- *  theme, since it sits on the dark hole between two pictures. */
+/** The backdrop keeps the outgoing picture (dimmed) under the incoming one's fade-in. */
+@Composable
+private fun BoxScope.ArtBackdrop(art: ArtTransition) {
+    ArtImageLayer(art.previous) { 1f }
+    ArtImageLayer(art.current) { art.inAlpha.value }
+    Box(Modifier.matchParentSize().graphicsLayer { alpha = art.dim.value }.background(Color.Black))
+}
+
+/** The square fades the outgoing picture out over the shade, then the incoming one in. */
+@Composable
+private fun BoxScope.ArtSquare(art: ArtTransition) {
+    if (art.shading) ArtShade()
+    ArtImageLayer(art.previous) { art.outAlpha.value }
+    ArtImageLayer(art.current) { art.inAlpha.value }
+}
+
+/** A soft light band sweeping a dark square while the next picture is on its way — opaque, so the
+ *  dimmed backdrop behind doesn't tint it, and dark in every theme. */
 @Composable
 private fun BoxScope.ArtShade() {
     val sweep by rememberInfiniteTransition().animateFloat(
@@ -271,7 +304,7 @@ private fun BoxScope.ArtShade() {
         animationSpec = infiniteRepeatable(tween(ART_SHIMMER_MS, easing = LinearEasing)),
     )
     Box(
-        Modifier.matchParentSize().background(Color.White.copy(alpha = 0.07f)).drawWithCache {
+        Modifier.matchParentSize().background(Color.Black).background(Color.White.copy(alpha = 0.07f)).drawWithCache {
             val band = size.width * 0.6f
             val x = sweep * size.width
             val brush = Brush.linearGradient(
