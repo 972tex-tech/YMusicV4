@@ -1,5 +1,11 @@
 package io.ymusic.ui
 
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import io.ymusic.imageloader.DecodedImage
 import io.ymusic.imageloader.ImageFetcher
 import io.ymusic.imageloader.decodeScaled
 import io.ymusic.mediastore.BetterMediaStore
@@ -7,6 +13,7 @@ import io.ymusic.mediastore.model.MediaStoreItem
 import kmpcommon.uri.Uri
 import kmpcommon.uri.UriBuilder
 import kmpffmpeg.metadata.FfmpegMetadataGetter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
@@ -36,6 +43,56 @@ fun localArtUrl(item: MediaStoreItem): String? =
  *  and its url carries no rotating query params, so it is stable enough for long-lived uris. */
 fun youtubeThumbUrl(videoId: String): String = "https://i.ytimg.com/vi/$videoId/mqdefault.jpg"
 
+/** `art://yt/<videoId>` — a video's best thumbnail at the view size, for a file not in the store. */
+fun youtubeArtUrl(videoId: String): String =
+    UriBuilder().scheme("art").authority("yt").appendPathSegment(videoId).buildString()
+
+private const val MQDEFAULT_WIDTH = 320
+
+/**
+ * The thumbnail for [videoId] at [size]: [youtubeThumbUrl] when it covers the view, else the best
+ * that exists — maxresdefault/hq720 (1280×720) only for HD uploads, then hqdefault, which every
+ * video has but as a 4:3 frame with the 16:9 picture letterboxed inside, so its bars are trimmed.
+ */
+private suspend fun youtubeArt(network: ImageFetcher, videoId: String, size: IntSize, url: String): DecodedImage {
+    val candidates = buildList {
+        if (size.width > MQDEFAULT_WIDTH || size.height > MQDEFAULT_WIDTH * 9 / 16) {
+            add("https://i.ytimg.com/vi/$videoId/maxresdefault.jpg" to false)
+            add("https://i.ytimg.com/vi/$videoId/hq720.jpg" to false)
+            add("https://i.ytimg.com/vi/$videoId/hqdefault.jpg" to true)
+        }
+        add(youtubeThumbUrl(videoId) to false)
+    }
+    var failure: IOException? = null
+    for ((candidate, letterboxed) in candidates) {
+        try {
+            val decoded = network.fetch(Uri.parse(candidate), size) ?: continue
+            return if (letterboxed) decoded.trimLetterbox() else decoded
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            failure = e
+        }
+    }
+    throw IOException("no YouTube thumbnail for $videoId: $url", failure)
+}
+
+/** The 16:9 band of a 4:3 frame: the picture inside YouTube's letterboxed hqdefault. */
+private fun DecodedImage.trimLetterbox(): DecodedImage {
+    val width = bitmap.width
+    val height = width * 9 / 16
+    if (height <= 0 || height >= bitmap.height) return this
+    val band = ImageBitmap(width, height)
+    Canvas(band).drawImageRect(
+        bitmap,
+        srcOffset = IntOffset(0, (bitmap.height - height) / 2),
+        srcSize = IntSize(width, height),
+        dstSize = IntSize(width, height),
+        paint = Paint(),
+    )
+    return DecodedImage(band, downscaled)
+}
+
 /**
  * The `art:` resolver: media id → [store] item → artwork, decoded to the view size. Embedded
  * covers and video frames are ffmpeg-extracted via [getter] (every such fetch spawns one ffmpeg);
@@ -51,8 +108,14 @@ fun mediaStoreArtFetcher(
     network: ImageFetcher,
     maxImageBytes: Long = 32L * 1024 * 1024,
 ): ImageFetcher = ImageFetcher { uri, size ->
-    if (uri.scheme?.toString() != "art" || uri.authority?.toString() != "pic") return@ImageFetcher null
+    if (uri.scheme?.toString() != "art") return@ImageFetcher null
     val url = uri.toString()
+    if (uri.authority?.toString() == "yt") {
+        val videoId = uri.path.toString().substringAfterLast('/').takeIf { it.isNotEmpty() }
+            ?: throw IOException("malformed art uri: $url")
+        return@ImageFetcher youtubeArt(network, videoId, size, url)
+    }
+    if (uri.authority?.toString() != "pic") return@ImageFetcher null
     val id = uri.path.toString().substringAfterLast('/').toLongOrNull()
         ?: throw IOException("malformed art uri: $url")
     val item = store.findItem(id)
@@ -60,11 +123,7 @@ fun mediaStoreArtFetcher(
     val youtubeVid = item.youtubeVid
     val source = when {
         item.thumbnailStreamIndex != null -> getter.getAttachedPic(item.uri)
-        youtubeVid != null -> {
-            val thumbUrl = youtubeThumbUrl(youtubeVid)
-            return@ImageFetcher network.fetch(Uri.parse(thumbUrl), size)
-                ?: throw IOException("network fetcher declined $thumbUrl for: $url")
-        }
+        youtubeVid != null -> return@ImageFetcher youtubeArt(network, youtubeVid, size, url)
         item.videoCodec != null -> getter.extractThumbnail(item.uri)
         else -> throw IOException("media item $id has no artwork source: $url")
     }
