@@ -431,7 +431,7 @@
     <string name="settings_section_privacy">Privacy</string>
     <string name="settings_section_about">About</string>
     <string name="settings_quick_download">Quick download</string>
-    <string name="sound_bass_boost">Bass boost</string>
+    <string name="sound_bass">Bass</string>
     <string name="sound_virtualizer_title">Virtualizer</string>
     <string name="sound_eq_hint">Drag a fader to shape the sound</string>
 </resources>

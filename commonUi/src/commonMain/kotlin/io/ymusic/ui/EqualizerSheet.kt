@@ -53,7 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.player.Player
 import io.ymusic.ui.resources.Res
-import io.ymusic.ui.resources.sound_bass_boost
+import io.ymusic.ui.resources.sound_bass
 import io.ymusic.ui.resources.sound_eq
 import io.ymusic.ui.resources.sound_eq_hint
 import io.ymusic.ui.resources.sound_ok
@@ -147,7 +147,7 @@ internal fun EqualizerFxSheet(player: Player, onDismiss: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 RotaryKnob(
-                    title = stringResource(Res.string.sound_bass_boost),
+                    title = stringResource(Res.string.sound_bass),
                     fraction = (config.bassBoostDb + BASS_MAX_DB) / (2 * BASS_MAX_DB),
                     valueText = "${dbLabel(config.bassBoostDb)} dB",
                     onChange = { player.setBassBoost((it * 2 * BASS_MAX_DB - BASS_MAX_DB).roundToInt().toFloat()) },

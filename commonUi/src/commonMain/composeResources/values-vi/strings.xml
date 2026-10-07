@@ -341,7 +341,7 @@
     <string name="settings_section_privacy">Quyền riêng tư</string>
     <string name="settings_section_about">Giới thiệu</string>
     <string name="settings_quick_download">Tải nhanh</string>
-    <string name="sound_bass_boost">Tăng bass</string>
+    <string name="sound_bass">Bass</string>
     <string name="sound_virtualizer_title">Virtualizer</string>
     <string name="sound_eq_hint">Kéo thanh trượt để chỉnh âm thanh</string>
 </resources>
