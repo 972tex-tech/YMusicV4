@@ -1,9 +1,10 @@
 package io.ymusic.download
 
 import io.ymusic.ytmedia.sabr.CaptionTrack
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
+import projectcommon.json.boolOrNull
+import projectcommon.json.objects
+import projectcommon.json.stringOrNull
 
 /** One downloadable caption: a video's own track, or one of YouTube's auto-translations of it. */
 internal class CaptionEntry(
@@ -26,28 +27,27 @@ internal class CaptionEntry(
  * Reads the download JSON's flattened `captionTracks` / `translationLanguages`.
  */
 internal fun captionEntries(data: JsonObject): List<CaptionEntry> {
-    val own = (data["captionTracks"] as? JsonArray).orEmpty().mapNotNull { element ->
-        val track = element as? JsonObject ?: return@mapNotNull null
-        val url = track.str("baseUrl")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-        val lang = track.str("languageCode") ?: return@mapNotNull null
+    val own = data.objects("captionTracks").mapNotNull { track ->
+        val url = track.stringOrNull("baseUrl")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val lang = track.stringOrNull("languageCode") ?: return@mapNotNull null
         CaptionEntry(
             languageCode = lang,
-            name = track.str("name") ?: lang,
+            name = track.stringOrNull("name") ?: lang,
             baseUrl = url,
-            isDefault = track.str("isDefault")?.toBoolean() ?: false,
-            isAsr = track.str("isAsr")?.toBoolean() ?: false,
+            isDefault = track.boolOrNull("isDefault") ?: false,
+            isAsr = track.boolOrNull("isAsr") ?: false,
             isTranslated = false,
         )
     }
     val picked = (own.filter { !it.isAsr } + own.filter { it.isAsr }).distinctBy { it.languageCode }
     val source = own.firstOrNull { !it.isAsr } ?: own.firstOrNull() ?: return picked
     val taken = picked.map { it.languageCode }.toMutableSet()
-    val translated = (data["translationLanguages"] as? JsonArray).orEmpty().mapNotNull { element ->
-        val lang = (element as? JsonObject)?.str("languageCode") ?: return@mapNotNull null
+    val translated = data.objects("translationLanguages").mapNotNull { language ->
+        val lang = language.stringOrNull("languageCode") ?: return@mapNotNull null
         if (!taken.add(lang)) return@mapNotNull null
         CaptionEntry(
             languageCode = lang,
-            name = element.str("name") ?: lang,
+            name = language.stringOrNull("name") ?: lang,
             baseUrl = source.baseUrl + (if ('?' in source.baseUrl) "&" else "?") + "tlang=" + lang,
             isDefault = false,
             isAsr = false,
@@ -56,7 +56,3 @@ internal fun captionEntries(data: JsonObject): List<CaptionEntry> {
     }
     return picked + translated
 }
-
-private fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.content
-
-private fun JsonArray?.orEmpty(): List<kotlinx.serialization.json.JsonElement> = this ?: emptyList()

@@ -45,6 +45,7 @@ kotlin {
             // MediaBlobCache guards its in-memory span index with a SynchronizedObject so the (non-suspend)
             // PinnedSource.close() can unpin without runBlocking.
             implementation(Libs.Kotlinx.atomicfu)
+            implementation(project(":projectCommon"))
             // api: SqlDelightSegmentIndex's constructor takes a SqlDriver (the app builds the platform one).
             api(Libs.SqlDelight.runtime)
         }

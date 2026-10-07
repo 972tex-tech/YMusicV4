@@ -45,7 +45,7 @@ kotlin {
             // ffmpeg (non-apple): convert best-audio to mp3, mux audio+video into one container.
             implementation(project(":kmpFfmpeg"))
             implementation(Libs.Kotlinx.coroutinesCore)
-            implementation(Libs.Kotlinx.serializationJson)
+            implementation(project(":projectCommon"))
             api(Libs.SqlDelight.runtime)
         }
 

@@ -4,9 +4,14 @@ import io.ymusic.ytmedia.sabr.AdaptiveFormat
 import kmpcommon.error.CodedError
 import kmpcommon.error.TechnicalException
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import projectcommon.json.boolOrNull
+import projectcommon.json.intOrNull
+import projectcommon.json.longOrNull
+import projectcommon.json.objectOrNull
+import projectcommon.json.objects
+import projectcommon.json.stringOrNull
 
 /** The video is a live broadcast in progress: there is no finished file to download until it ends. A
  *  well-known category ([code] `"live"`) the UI renders as its own message, not an error code. */
@@ -65,14 +70,14 @@ class DownloadOptions(
 
         fun parse(playerResponseJson: String, ffmpegAvailable: Boolean): DownloadOptions {
             val data = json.parseToJsonElement(playerResponseJson).jsonObject
-            val details = data["videoDetails"] as? JsonObject
-            if (details?.str("isLive")?.toBoolean() == true) throw LiveVideoException(details.str("videoId"))
-            val streaming = data["streamingData"] as? JsonObject
+            val details = data.objectOrNull("videoDetails")
+            if (details?.boolOrNull("isLive") == true) throw LiveVideoException(details.stringOrNull("videoId"))
+            val streaming = data.objectOrNull("streamingData")
                 ?: throw TechnicalException("E70041", "download options: no streamingData")
             val formats = SabrSpecBuilder.adaptiveFormats(streaming)
-            val raw = (streaming["adaptiveFormats"] as? JsonArray).orEmpty().map { it.jsonObject }
+            val raw = streaming.objects("adaptiveFormats")
             val durationMs = formats.maxOfOrNull { it.approxDurationMs.toLong() }?.takeIf { it > 0 }
-                ?: ((data["videoDetails"] as? JsonObject)?.str("lengthSeconds")?.toLongOrNull() ?: 0L) * 1000
+                ?: (details?.longOrNull("lengthSeconds") ?: 0L) * 1000
             if (formats.none { it.mimeType.startsWith("audio") && it.clen > 0 }) {
                 throw TechnicalException("E70042", "download options: no audio format")
             }
@@ -86,7 +91,7 @@ class DownloadOptions(
         }
 
         private fun videoOptions(formats: List<AdaptiveFormat>, raw: List<JsonObject>, durationMs: Long): List<VideoOption> {
-            val fpsByItag = raw.associate { (it.str("itag")?.toIntOrNull() ?: -1) to (it.str("fps")?.toIntOrNull() ?: 0) }
+            val fpsByItag = raw.associate { (it.intOrNull("itag") ?: -1) to (it.intOrNull("fps") ?: 0) }
             val heights = formats.filter { it.isVideo && it.clen > 0 }.mapNotNull { it.height }.distinct().sortedDescending()
             val opus = FormatSelection.bestAudio(formats, preferAac = false)
             val webmAudioBytes = if (opus?.mimeType?.contains("webm") == true) opus.clen else bytesAt(OPUS_TRANSCODE_BPS, durationMs)
@@ -123,17 +128,13 @@ class DownloadOptions(
 
         private fun audioTracks(raw: List<JsonObject>): List<AudioTrackOption> {
             val tracks = raw.mapNotNull { fmt ->
-                val track = fmt["audioTrack"] as? JsonObject ?: return@mapNotNull null
-                val id = track.str("id") ?: return@mapNotNull null
-                AudioTrackOption(id, track.str("displayName") ?: id, track.str("audioIsDefault")?.toBoolean() ?: false)
+                val track = fmt.objectOrNull("audioTrack") ?: return@mapNotNull null
+                val id = track.stringOrNull("id") ?: return@mapNotNull null
+                AudioTrackOption(id, track.stringOrNull("displayName") ?: id, track.boolOrNull("audioIsDefault") ?: false)
             }.distinctBy { it.id }
             return if (tracks.size > 1) tracks.sortedByDescending { it.isDefault } else emptyList()
         }
 
         private fun bytesAt(bitsPerSecond: Long, durationMs: Long): Long = bitsPerSecond / 8 * durationMs / 1000
-
-        private fun JsonObject.str(key: String): String? = (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.content
-
-        private fun JsonArray?.orEmpty(): List<kotlinx.serialization.json.JsonElement> = this ?: emptyList()
     }
 }
