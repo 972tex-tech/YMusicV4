@@ -148,9 +148,9 @@ internal fun EqualizerFxSheet(player: Player, onDismiss: () -> Unit) {
             ) {
                 RotaryKnob(
                     title = stringResource(Res.string.sound_bass_boost),
-                    fraction = config.bassBoostDb / BASS_MAX_DB,
-                    valueText = "+${config.bassBoostDb.roundToInt()} dB",
-                    onChange = { player.setBassBoost((it * BASS_MAX_DB).roundToInt().toFloat()) },
+                    fraction = (config.bassBoostDb + BASS_MAX_DB) / (2 * BASS_MAX_DB),
+                    valueText = "${dbLabel(config.bassBoostDb)} dB",
+                    onChange = { player.setBassBoost((it * 2 * BASS_MAX_DB - BASS_MAX_DB).roundToInt().toFloat()) },
                 )
                 RotaryKnob(
                     title = stringResource(Res.string.sound_virtualizer_title),
