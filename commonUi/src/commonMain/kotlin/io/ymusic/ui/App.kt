@@ -349,6 +349,11 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             }
         }
         val availableOffline = rememberAvailableOffline(graph)
+        // Scan results are notification-class: shown on whatever screen is open — collected at the root,
+        // since the shell (and anything inside it) is torn down while desktop Now Playing covers it.
+        LaunchedEffect(scanController) {
+            scanController.summaries.collect { showSnackbar(it) }
+        }
         LaunchedEffect(coordinator) {
             coordinator.player.queue.collect {
                 if (it.items.isEmpty()) {
@@ -637,10 +642,6 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                 }
                             }
                         }
-                        // Scan results are notification-class: show them on whatever screen is open.
-                        LaunchedEffect(scanController) {
-                            scanController.summaries.collect { showSnackbar(it) }
-                        }
                         CompositionLocalProvider(
                             LocalScrollHost provides scrollHost,
                             LocalSnackbar provides showSnackbar,
@@ -655,7 +656,6 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                             Scaffold(
                                 modifier = Modifier.nestedScroll(collapseConnection),
                                 containerColor = Color.Transparent,
-                                snackbarHost = { SnackbarHost(snackbarHostState) },
                                 topBar = {
                                     // Search and the detail pages carry their own app bars.
                                     if (layers.isEmpty()) {
@@ -897,6 +897,10 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 }
                 DownloadDialogHost(graph, pendingDownload) { pendingDownload = null }
                 QuickDownloadHost(graph, pendingQuickDownload) { pendingQuickDownload = null }
+            }
+            // Last, so messages land over everything — the shell, Now Playing — whichever screen is up.
+            Box(Modifier.fillMaxSize()) {
+                SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
             }
         }
     }
