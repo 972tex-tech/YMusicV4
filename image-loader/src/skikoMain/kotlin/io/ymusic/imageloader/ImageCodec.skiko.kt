@@ -14,7 +14,6 @@ import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.impl.use
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 // `use` here is skiko's (impl.use): kotlin.io.use needs AutoCloseable, absent from Managed on native.
@@ -23,7 +22,7 @@ import kotlin.math.roundToInt
 // a fast scroll), only the scaled bitmap stays resident.
 internal actual fun decodeScaled(bytes: ByteArray, maxWidth: Int, maxHeight: Int): DecodedImage {
     Image.makeFromEncoded(bytes).use { image ->
-        val scale = min(maxWidth.toFloat() / image.width, maxHeight.toFloat() / image.height)
+        val scale = max(maxWidth.toFloat() / image.width, maxHeight.toFloat() / image.height)
         // toComposeImageBitmap() copies the pixels, so the source is safe to close in both branches.
         if (scale >= 1f) return DecodedImage(image.toComposeImageBitmap(), downscaled = false)
         val w = max(1, (image.width * scale).roundToInt())

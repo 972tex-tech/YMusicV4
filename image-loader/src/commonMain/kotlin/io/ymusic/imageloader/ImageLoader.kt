@@ -17,7 +17,7 @@ import kotlin.concurrent.Volatile
  * - **Memory**: images decode at (or just above) the requested display size — the full-resolution
  *   original is never kept. Decoded bitmaps live in a bounded in-memory LRU keyed by url + size.
  * - **[fetchers]** are asked in order; the first non-null result wins. Each fetcher fetches AND
- *   decodes to fit the requested size — guarding (byte caps, retries) is the fetcher's own.
+ *   decodes to cover the requested size — guarding (byte caps, retries) is the fetcher's own.
  * - **[scaledCache]** (optional) persists the *scaled* image, so a warm start skips both the fetch
  *   and the full-size decode.
  * - **Priority is LIFO** with [parallelism] concurrent loads: the newest request wins, and a
@@ -61,7 +61,7 @@ class ImageLoader(
         memory.peek("$cacheKey@${bucketPx(maxWidth)}x${bucketPx(maxHeight)}")
 
     /**
-     * The image at [url], scaled down to fit [maxWidth]×[maxHeight] pixels (aspect kept, never
+     * The image at [url], scaled down to cover [maxWidth]×[maxHeight] pixels (aspect kept, never
      * upscaled). Suspends until loaded; throws [IOException] on a failed fetch and rethrows decode
      * failures — callers showing a placeholder catch and log (see `AsyncImage`).
      *
@@ -158,8 +158,11 @@ class ImageLoader(
         return decoded.bitmap
     }
 
-    private fun diskKey(key: String): String = key.encodeUtf8().sha256().hex()
+    /** Bump [SCALED_CACHE_VERSION] when the scaling rule changes: entries scaled the old way must miss. */
+    private fun diskKey(key: String): String = "$SCALED_CACHE_VERSION:$key".encodeUtf8().sha256().hex()
 }
+
+private const val SCALED_CACHE_VERSION = 2
 
 /** Round the target up to a 64px step: stable cache keys across ±layout-pixel jitter. */
 internal fun bucketPx(px: Int): Int = (((px.coerceIn(1, 1 shl 20) - 1) / 64) + 1) * 64

@@ -4,7 +4,7 @@ import androidx.compose.ui.unit.IntSize
 import kmpcommon.uri.Uri
 
 /**
- * One uri-scheme resolver: fetch the data AND decode it to fit [IntSize] — however suits its
+ * One uri-scheme resolver: fetch the data AND decode it to cover [IntSize] — however suits its
  * storage best (a file decode, a capped stream drain, even scale-during-extraction). The loader
  * parses the caller's url once and asks its fetchers in order; the first non-null result wins.
  * Return null when the [uri]'s scheme isn't yours. Everything is a fetcher — http ([networkFetcher]),

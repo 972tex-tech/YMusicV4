@@ -6,11 +6,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 
-/** [downscaled] is false when the source already fit the request — nothing was shrunk. */
+/** [downscaled] is false when the source was no larger than the request — nothing was shrunk. */
 class DecodedImage(val bitmap: ImageBitmap, val downscaled: Boolean)
 
 /**
- * Decode [bytes] into a bitmap fitting [size] (aspect kept, never upscaled) — the building block
+ * Decode [bytes] into a bitmap covering [size] (aspect kept, never upscaled) — the building block
  * for [ImageFetcher] implementations whose data is in memory. Platform decoders scale during/right
  * after decode so the full-size image never stays resident. Throws on undecodable bytes.
  */
