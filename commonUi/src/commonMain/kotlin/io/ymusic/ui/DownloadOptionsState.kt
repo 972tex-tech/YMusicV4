@@ -41,10 +41,9 @@ internal class DownloadOptionsState(
     private val downloads: DownloadService,
     private val preferredCaptionLanguages: Set<String>,
     private val includeDefaultCaption: Boolean,
-    saveAsQuickInitially: Boolean = false,
 ) {
     /** Also keep these picks as the Quick download preset. */
-    var saveAsQuick by mutableStateOf(saveAsQuickInitially)
+    var saveAsQuick by mutableStateOf(false)
 
     var options by mutableStateOf<DownloadOptions?>(null)
         private set

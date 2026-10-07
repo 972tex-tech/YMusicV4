@@ -84,8 +84,6 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
             downloads = downloads,
             preferredCaptionLanguages = graph.settings.flow(AppSettings.preferredCaptionLanguages).value,
             includeDefaultCaption = graph.settings.flow(AppSettings.downloadDefaultCaption).value,
-            // Checked once the user has saved their own preset, so later picks keep it current.
-            saveAsQuickInitially = graph.settings.flow(AppSettings.quickDownloadPreset).value.isNotBlank(),
         )
     }
     LaunchedEffect(state) { state.load(log) }
