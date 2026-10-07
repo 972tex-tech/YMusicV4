@@ -60,6 +60,17 @@ class ImageLoader(
     fun peek(url: String, maxWidth: Int, maxHeight: Int, cacheKey: String = url): ImageBitmap? =
         memory.peek("$cacheKey@${bucketPx(maxWidth)}x${bucketPx(maxHeight)}")
 
+    /** [load], or null on a failed fetch/decode — logged here, for callers that keep showing what they had. */
+    suspend fun loadOrNull(url: String, maxWidth: Int, maxHeight: Int, cacheKey: String = url): ImageBitmap? =
+        try {
+            load(url, maxWidth, maxHeight, cacheKey)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            logger?.log(Logger.Level.WARN, "load failed: $url", e)
+            null
+        }
+
     /** Any size of [cacheKey] already in memory (the largest) — an interim frame while [load] runs. */
     fun peekAnySize(cacheKey: String): ImageBitmap? = memory.peekLargest(cacheKey)
 
