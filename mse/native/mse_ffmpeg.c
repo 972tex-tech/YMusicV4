@@ -446,13 +446,15 @@ static void vlog_starve_ahead(MseAv *a, double clock, size_t rd)
 {
     double nxt = a->vf.f[rd].pts;
     double extra = nxt - clock;
+    /* Under 1s ahead is ordinary send pacing (every frame), not a gap. */
+    if (extra < 1.0)
+        return;
     if (nxt == a->starve_log_pts && clock - a->starve_log_clock < 1.0)
         return;
     a->starve_log_pts = nxt;
     a->starve_log_clock = clock;
-    if (extra >= 1.0)
-        mse_critf(MSE_LOG_INFO, "mse-v starve-ahead clock=%.3f extra=%.3f vf=%zu/%zu next=%.3f",
-                  clock, extra, rd, a->vf.n, nxt);
+    mse_critf(MSE_LOG_INFO, "mse-v starve-ahead clock=%.3f extra=%.3f vf=%zu/%zu next=%.3f",
+              clock, extra, rd, a->vf.n, nxt);
     vlog_state(a, clock, "starve-ahead", extra);
 }
 
