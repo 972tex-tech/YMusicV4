@@ -183,6 +183,42 @@ function streamingForHost(sd: Record<string, unknown>, sabrUrl: string): Record<
   return streaming;
 }
 
+const MUSIC_DESCRIPTION_PREFIX = "Provided to YouTube by";
+const CREDIT_SEPARATOR = " · ";
+
+/**
+ * The track's artist for file tags. Auto-generated music uploads describe themselves as "Provided to
+ * YouTube by <label>", then `Title · Artist · Artist` — the only artist credit /player carries; else
+ * the channel name minus " - Topic" and an "Official" suffix.
+ */
+function trackArtist(vd: Record<string, unknown>): string {
+  const desc = typeof vd["shortDescription"] === "string" ? vd["shortDescription"] : "";
+  if (desc.indexOf(MUSIC_DESCRIPTION_PREFIX) === 0) {
+    const credit = desc.split("\n").find((line) => line.indexOf(CREDIT_SEPARATOR) >= 0);
+    if (credit !== undefined) {
+      const names = credit
+        .split(CREDIT_SEPARATOR)
+        .slice(1)
+        .map((s) => s.trim())
+        .filter((s) => s !== "");
+      if (names.length > 0) return names.join(", ");
+    }
+  }
+  const author = typeof vd["author"] === "string" ? vd["author"] : "";
+  return author
+    .replace(/ - Topic$/, "")
+    .replace(/[^\w,]+official\b/gi, "")
+    .trim();
+}
+
+/** A copy of videoDetails whose `author` is the track artist; the cached response stays as fetched. */
+function videoDetailsForHost(v: unknown): unknown {
+  const vd = asRec(v);
+  if (!vd) return v;
+  const artist = trackArtist(vd);
+  return artist ? Object.assign({}, vd, { "author": artist }) : vd;
+}
+
 function buildDownloadJson(e: Entry): Record<string, unknown> {
   const rec = e.rec!;
   const sd = asRec(rec["streamingData"]) || {};
@@ -195,7 +231,7 @@ function buildDownloadJson(e: Entry): Record<string, unknown> {
     "clientNameId": 1,
     "clientVersion": cver,
     "playerJs": js,
-    "videoDetails": rec["videoDetails"],
+    "videoDetails": videoDetailsForHost(rec["videoDetails"]),
     "microformat": rec["microformat"],
     "playabilityStatus": rec["playabilityStatus"],
     "streamingData": streaming,
