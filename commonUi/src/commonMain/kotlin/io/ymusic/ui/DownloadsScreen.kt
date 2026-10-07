@@ -126,7 +126,11 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 items(items, key = { it.id }) { task ->
                     DownloadCard(
                         task, service,
-                        onPlay = { task.fileUri?.let { coordinator.playLocalUri(it, task.title, task.artist, task.thumbnailUrl) } },
+                        onPlay = {
+                            task.fileUri?.let { uri ->
+                                scope.launch { coordinator.playDownloaded(uri, task.videoId, task.title, task.artist) }
+                            }
+                        },
                         onRevealLibrary = if (store != null) ({
                             scope.launch {
                                 // Resolve the folder from the file's own persisted uri, not the current

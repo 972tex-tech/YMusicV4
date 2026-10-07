@@ -12,6 +12,7 @@ import io.ymusic.player.Player
 import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
 import kmpcommon.log.info
+import kmpcommon.uri.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.combine
@@ -168,10 +169,15 @@ class PlaybackCoordinator(
         player.setQueue(listOf(song.toLocalMedia()))
     }
 
-    /** Play a local file by uri now (queue of one) with the given display metadata — for a downloaded
-     *  item, which may not be a [MediaStoreItem] (no download location set, so no [PlayableItem.LocalMedia.mediaId]). */
-    fun playLocalUri(uri: String, title: String, artist: String?, thumbnailUrl: String?) {
-        player.setQueue(listOf(PlayableItem.LocalMedia(uri = uri, title = title, artist = artist, thumbnailUrl = thumbnailUrl)))
+    /**
+     * Play a finished download now (queue of one). Its library item when the store has indexed it —
+     * same id, tags and embedded-cover art as the Library; else the file by uri with [videoId]'s
+     * thumbnail, resolved at the view size by the `art:` fetcher.
+     */
+    suspend fun playDownloaded(uri: String, videoId: String, title: String, artist: String?) {
+        mediaStore?.findItemByUri(Uri.parse(uri))?.let { return playLocalSingle(it) }
+        val art = if (mediaStore != null) youtubeArtUrl(videoId) else youtubeThumbUrl(videoId)
+        player.setQueue(listOf(PlayableItem.LocalMedia(uri = uri, title = title, artist = artist, thumbnailUrl = art)))
     }
 
     /** Queue [song] right after the current item. */
