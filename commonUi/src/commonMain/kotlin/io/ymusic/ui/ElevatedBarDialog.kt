@@ -58,15 +58,18 @@ fun ElevatedBarDialog(
     // 0x1F) reads too strongly against the near-black body, so use the gentler SurfaceDim step there
     // (the divider + scroll shadow still delineate the bars); light keeps the usual elevated grey.
     val barColor = if (DesignColors.isDark) DesignColors.SurfaceDim else DesignColors.SurfaceElevated
-    BoxWithConstraints {
-        val bodyMax = if (maxHeight.value.isFinite() && maxHeight > 0.dp) {
-            (maxHeight * 0.85f - 112.dp).coerceAtLeast(240.dp)
-        } else {
-            420.dp
-        }
-        val wide = maxWidth > 560.dp
-        // Dialog, not BasicAlertDialog: that one clamps its content to 560dp whatever the properties.
-        Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = !wide)) {
+    val wide = maxWidth > 560.dp
+    // Dialog, not BasicAlertDialog: that one clamps its content to 560dp whatever the properties.
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = !wide)) {
+        // Measured inside the Dialog: its constraints are the window. Outside, a caller in a scrolling
+        // column has no height bound at all.
+        BoxWithConstraints {
+            val windowHeight = this.maxHeight
+            val bodyMax = if (windowHeight.value.isFinite() && windowHeight > 0.dp) {
+                (windowHeight * 0.85f - 112.dp).coerceAtLeast(240.dp)
+            } else {
+                420.dp
+            }
             Surface(
                 shape = RoundedCornerShape(4.dp),
                 color = DesignColors.Surface,
