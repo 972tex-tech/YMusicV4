@@ -45,7 +45,7 @@ private fun ConfirmDialog(message: String, onDismiss: () -> Unit, actions: @Comp
         canScrollBackward = false,
         canScrollForward = false,
         buttons = {
-            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel), color = DesignColors.InkSoft) }
+            DialogSecondaryButton(stringResource(Res.string.dialog_cancel), onClick = onDismiss)
             actions()
         },
     ) {

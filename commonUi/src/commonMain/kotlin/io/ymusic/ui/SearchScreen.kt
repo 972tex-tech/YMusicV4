@@ -27,7 +27,6 @@ import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -353,7 +352,7 @@ private fun FilterDialog(
         onDismiss = onDismiss,
         canScrollBackward = scrollState.canScrollBackward,
         canScrollForward = scrollState.canScrollForward,
-        buttons = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) } },
+        buttons = { DialogSecondaryButton(stringResource(Res.string.dialog_cancel), onClick = onDismiss) },
     ) {
         Column(
             Modifier

@@ -770,7 +770,7 @@ private fun DeleteFromDiskDialog(
         canScrollBackward = false,
         canScrollForward = false,
         buttons = {
-            TextButton(enabled = !busy, onClick = dismiss) { Text(stringResource(Res.string.dialog_cancel)) }
+            DialogSecondaryButton(stringResource(Res.string.dialog_cancel), enabled = !busy, onClick = dismiss)
             TextButton(
                 enabled = !busy,
                 onClick = {
@@ -1145,7 +1145,7 @@ internal fun PlaylistNameDialog(
         canScrollBackward = false,
         canScrollForward = false,
         buttons = {
-            TextButton(enabled = !busy, onClick = dismiss) { Text(stringResource(Res.string.dialog_cancel)) }
+            DialogSecondaryButton(stringResource(Res.string.dialog_cancel), enabled = !busy, onClick = dismiss)
             TextButton(enabled = canSubmit, onClick = submit) { Text(confirmLabel, color = DesignColors.Accent) }
         },
     ) {
@@ -1176,7 +1176,7 @@ private fun DeletePlaylistDialog(name: String, onDismiss: () -> Unit, delete: su
         canScrollBackward = false,
         canScrollForward = false,
         buttons = {
-            TextButton(enabled = !busy, onClick = dismiss) { Text(stringResource(Res.string.dialog_cancel)) }
+            DialogSecondaryButton(stringResource(Res.string.dialog_cancel), enabled = !busy, onClick = dismiss)
             TextButton(
                 enabled = !busy,
                 onClick = {
@@ -1232,7 +1232,7 @@ private fun AddToPlaylistDialog(store: BetterMediaStore, song: MediaStoreItem, o
         onDismiss = onDismiss,
         canScrollBackward = listState.canScrollBackward,
         canScrollForward = listState.canScrollForward,
-        buttons = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) } },
+        buttons = { DialogSecondaryButton(stringResource(Res.string.dialog_cancel), onClick = onDismiss) },
     ) {
         val loaded = lists
         if (loaded == null) {

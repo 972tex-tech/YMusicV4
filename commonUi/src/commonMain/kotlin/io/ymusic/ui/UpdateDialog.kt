@@ -75,8 +75,9 @@ fun UpdateDialog(graph: AppGraph) {
         canScrollBackward = false,
         canScrollForward = false,
         buttons = {
-            TextButton(onClick = { dismissedVersion = versionCode; updates.dismiss(versionCode) }) {
-                Text(stringResource(Res.string.update_later))
+            DialogSecondaryButton(stringResource(Res.string.update_later)) {
+                dismissedVersion = versionCode
+                updates.dismiss(versionCode)
             }
             when (val s = status) {
                 is AppUpdateStatus.Available ->

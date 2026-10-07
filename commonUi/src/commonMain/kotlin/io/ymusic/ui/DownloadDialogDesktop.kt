@@ -103,7 +103,7 @@ internal fun DownloadDialogDesktop(
                 style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSoft),
                 maxLines = 2,
             )
-            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel), color = DesignColors.InkSoft) }
+            DialogSecondaryButton(stringResource(Res.string.dialog_cancel), onClick = onDismiss)
             val ready = state.options != null && !state.isLive && DownloadFileNames.finalize(state.fileName).isNotEmpty()
             TextButton(onClick = onDownload, enabled = ready) {
                 Text(stringResource(Res.string.download_action), color = if (ready) DesignColors.Accent else DesignColors.InkFaint)

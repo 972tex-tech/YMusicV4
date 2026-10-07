@@ -15,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -174,7 +173,7 @@ private fun LinkDevicesDialog(
         canScrollBackward = scroll.canScrollBackward,
         canScrollForward = scroll.canScrollForward,
         buttons = {
-            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) }
+            DialogSecondaryButton(stringResource(Res.string.dialog_cancel), onClick = onDismiss)
         },
     ) {
         Column(

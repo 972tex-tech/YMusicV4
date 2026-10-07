@@ -41,7 +41,7 @@ internal fun QuickDownloadRow(graph: AppGraph) {
         canScrollBackward = false,
         canScrollForward = false,
         buttons = {
-            TextButton(onClick = { draft = null }) { Text(stringResource(Res.string.dialog_cancel)) }
+            DialogSecondaryButton(stringResource(Res.string.dialog_cancel)) { draft = null }
             TextButton(onClick = { save(editing) }) { Text(stringResource(Res.string.download_save)) }
         },
     ) {

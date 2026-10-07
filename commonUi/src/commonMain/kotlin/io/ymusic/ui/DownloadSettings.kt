@@ -140,7 +140,7 @@ internal fun DefaultDownloadLocationPrompt(graph: AppGraph) {
             canScrollBackward = false,
             canScrollForward = false,
             buttons = {
-                TextButton(onClick = { candidate = null }) { Text("Not now") }
+                DialogSecondaryButton("Not now") { candidate = null }
                 TextButton(onClick = {
                     scope.launch { graph.settings.put(AppSettings.downloadLocation, bucket.uri.toString()) }
                     candidate = null
@@ -219,7 +219,7 @@ private fun CaptionLanguagesDialog(
         canScrollBackward = scroll.canScrollBackward,
         canScrollForward = scroll.canScrollForward,
         buttons = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            DialogSecondaryButton("Cancel", onClick = onDismiss)
             TextButton(onClick = { onConfirm(working, default) }) { Text("Save") }
         },
     ) {

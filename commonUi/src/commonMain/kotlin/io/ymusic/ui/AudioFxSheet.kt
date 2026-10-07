@@ -91,13 +91,11 @@ internal fun PlaybackFxSheet(player: Player, onDismiss: () -> Unit) {
         canScrollBackward = scroll.canScrollBackward,
         canScrollForward = scroll.canScrollForward,
         buttons = {
-            TextButton(
-                onClick = {
-                    player.volume = 1f
-                    player.speed = 1f
-                    player.setPitch(1f)
-                },
-            ) { Text(stringResource(Res.string.sound_reset), color = DesignColors.Ink) }
+            DialogSecondaryButton(stringResource(Res.string.sound_reset)) {
+                player.volume = 1f
+                player.speed = 1f
+                player.setPitch(1f)
+            }
             TextButton(onClick = onDismiss) {
                 Text(stringResource(Res.string.sound_ok), color = DesignColors.Accent)
             }
@@ -140,13 +138,11 @@ internal fun EqualizerFxSheet(player: Player, onDismiss: () -> Unit) {
         canScrollBackward = scroll.canScrollBackward,
         canScrollForward = scroll.canScrollForward,
         buttons = {
-            TextButton(
-                onClick = {
-                    player.setEqBands(List(10) { 0f })
-                    player.setBassBoost(0f)
-                    player.setVirtualizer(1f)
-                },
-            ) { Text(stringResource(Res.string.sound_reset), color = DesignColors.Ink) }
+            DialogSecondaryButton(stringResource(Res.string.sound_reset)) {
+                player.setEqBands(List(10) { 0f })
+                player.setBassBoost(0f)
+                player.setVirtualizer(1f)
+            }
             TextButton(onClick = onDismiss) {
                 Text(stringResource(Res.string.sound_ok), color = DesignColors.Accent)
             }

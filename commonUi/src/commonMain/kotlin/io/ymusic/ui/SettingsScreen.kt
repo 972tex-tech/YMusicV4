@@ -19,7 +19,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -263,7 +262,7 @@ private fun LicensesRow() {
             onDismiss = { open = false },
             canScrollBackward = listState.canScrollBackward,
             canScrollForward = listState.canScrollForward,
-            buttons = { TextButton(onClick = { open = false }) { Text(stringResource(Res.string.dialog_cancel)) } },
+            buttons = { DialogSecondaryButton(stringResource(Res.string.dialog_cancel)) { open = false } },
         ) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
                 item("intro") {
@@ -385,7 +384,7 @@ private fun LocalePickerDialog(
         onDismiss = onDismiss,
         canScrollBackward = listState.canScrollBackward,
         canScrollForward = listState.canScrollForward,
-        buttons = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.dialog_cancel)) } },
+        buttons = { DialogSecondaryButton(stringResource(Res.string.dialog_cancel), onClick = onDismiss) },
     ) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
             items(entries, key = { it.code }) { option ->
