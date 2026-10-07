@@ -343,5 +343,5 @@
     <string name="settings_quick_download">Tải nhanh</string>
     <string name="sound_bass_boost">Tăng bass</string>
     <string name="sound_virtualizer_title">Virtualizer</string>
-    <string name="sound_eq_hint">Kéo một điểm để chỉnh âm thanh</string>
+    <string name="sound_eq_hint">Kéo thanh trượt để chỉnh âm thanh</string>
 </resources>

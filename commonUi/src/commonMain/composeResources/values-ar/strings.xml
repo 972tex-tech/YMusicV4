@@ -352,5 +352,5 @@
     <string name="settings_quick_download">تنزيل سريع</string>
     <string name="sound_bass_boost">تعزيز الباس</string>
     <string name="sound_virtualizer_title">المحاكي</string>
-    <string name="sound_eq_hint">اسحب نقطة لضبط الصوت</string>
+    <string name="sound_eq_hint">اسحب منزلقًا لضبط الصوت</string>
 </resources>
