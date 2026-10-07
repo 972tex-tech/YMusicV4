@@ -1,5 +1,6 @@
 package io.ymusic.ytmedia.proxy
 
+import io.ymusic.ytmedia.sabr.ADAPTIVE_FORMATS_HEADER
 import kmpcommon.io.AsyncSource
 import kmphttp.AsyncInterceptor
 import kmphttp.Cache
@@ -21,11 +22,12 @@ import kotlin.time.Duration
 /**
  * Routes googlevideo SABR POSTs through [LocalMediaProxy] (cache HIT/BACKOFF/tee + dummy video
  * tail on the selected video itag). Everything else goes to [inner]. [LocalMediaProxy.client]
- * must be [inner], not this wrapper, or a miss recurses.
+ * must be [inner], not this wrapper, or a miss recurses. With no [proxy], SABR POSTs go to [inner]
+ * minus [ADAPTIVE_FORMATS_HEADER], which must never reach googlevideo.
  */
 class SabrProxyHttpClient(
     private val inner: KmpHttpClient,
-    private val proxy: LocalMediaProxy,
+    private val proxy: LocalMediaProxy?,
 ) : KmpHttpClient {
     override val interceptors: List<AsyncInterceptor> get() = inner.interceptors
     override val networkInterceptors: List<AsyncInterceptor> get() = inner.networkInterceptors
@@ -40,6 +42,9 @@ class SabrProxyHttpClient(
     override suspend fun execute(request: Request, options: RedirectOptions, timeout: Duration?): Response {
         val url = request.url.toString()
         if (!isSabrPost(url, request.method)) return inner.execute(request, options, timeout)
+        if (proxy == null) {
+            return inner.execute(request.newBuilder().removeHeader(ADAPTIVE_FORMATS_HEADER).build(), options, timeout)
+        }
         val body = request.body?.let { readRequestBody(it) }
         val headers = request.headers.toList()
         val pr = proxy.serveRequest(url, request.method, body, headers)

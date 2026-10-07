@@ -71,10 +71,14 @@ fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
         return s
     }
 
-    var audioFormats = request.selectedAudioFormats.sortedByDescending(::score)
+    // Empty 16/17 means server-side format selection: the catalog is the ladder.
+    val audioLadder = request.selectedAudioFormats.ifEmpty {
+        request.adaptiveFormats.filter { !it.isVideo }.map { it.toFormatId() }
+    }
+    var audioFormats = audioLadder.sortedByDescending(::score)
     audioFormats = narrowAudioFormats(audioFormats, request, byCacheKey)
 
-    val audioItags = request.selectedAudioFormats.map { it.itag }.toSet()
+    val audioItags = audioLadder.map { it.itag }.toSet()
     val audioBuffered = request.bufferedRanges.filter { it.formatId.itag in audioItags }
     val audio = findCachedSegments(playerTimeMs, audioFormats, audioBuffered, MIN_AUDIO_READAHEAD_MS)
 
@@ -82,14 +86,23 @@ fun MediaCache.serveSabr(request: VideoPlaybackAbrRequest): SabrServe {
     // Audio-only (bitfield=1): googlevideo sends no video. Do not serve cached
     // video either. Lockstep is MSE dummy `buffered` + request 40=1, not Cx.
     if (!isAudioOnly) {
-        val videoFormats = request.selectedVideoFormats.sortedByDescending { f ->
+        var videoLadder = request.selectedVideoFormats.ifEmpty {
+            request.adaptiveFormats.filter { it.isVideo }.map { it.toFormatId() }
+        }
+        val requested = abr.requestedVideoResolution
+        if (requested != null && requested > 0 && byCacheKey.isNotEmpty()) {
+            videoLadder = videoLadder.filter { f ->
+                (byCacheKey[f.cacheKey]?.let { minOf(it.width ?: 0, it.height ?: 0) } ?: 0) >= requested
+            }
+        }
+        val videoFormats = videoLadder.sortedByDescending { f ->
             var s = byCacheKey[f.cacheKey]?.let { minOf(it.width ?: 0, it.height ?: 0) } ?: 0
             val mime = itagMime[f.itag] ?: ""
             if ("webm" in mime) s += 10_000
             if (mime in selectedMimes) s += 20_000
             s
         }
-        val videoItags = request.selectedVideoFormats.map { it.itag }.toSet()
+        val videoItags = videoLadder.map { it.itag }.toSet()
         val videoBuffered = request.bufferedRanges.filter { it.formatId.itag in videoItags }
         video = findCachedSegments(playerTimeMs, videoFormats, videoBuffered, MIN_VIDEO_READAHEAD_MS)
     }

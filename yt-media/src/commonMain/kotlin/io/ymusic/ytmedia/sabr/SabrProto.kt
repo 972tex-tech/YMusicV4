@@ -265,11 +265,23 @@ class VideoPlaybackAbrRequest(
     val selectedVideoFormats: List<FormatId>,
     val streamerContext: StreamerContext,
     val ustreamerConfig: ByteArray?,
-    // Fields 568/569 are OUR private extensions (the player shim injects them into request
-    // bodies so an interceptor knows format metadata); parsed, never encoded.
+    // 568/569 are the legacy WebView shim's private fields (parsed, never encoded). MSE sends the
+    // catalog as [ADAPTIVE_FORMATS_HEADER] instead; see [withAdaptiveFormats].
     val adaptiveFormats: List<AdaptiveFormat> = emptyList(),
     val videoId: String = "",
 ) {
+    fun withAdaptiveFormats(formats: List<AdaptiveFormat>) = VideoPlaybackAbrRequest(
+        clientAbrState = clientAbrState,
+        selectedFormats = selectedFormats,
+        bufferedRanges = bufferedRanges,
+        selectedAudioFormats = selectedAudioFormats,
+        selectedVideoFormats = selectedVideoFormats,
+        streamerContext = streamerContext,
+        ustreamerConfig = ustreamerConfig,
+        adaptiveFormats = formats,
+        videoId = videoId,
+    )
+
     companion object {
         fun from(fields: List<ProtoField>) = VideoPlaybackAbrRequest(
             clientAbrState = ClientAbrState.from(checkNotNull(fields.message(1))),

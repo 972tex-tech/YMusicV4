@@ -15,7 +15,7 @@ Layers (bottom-up):
 - `proto/` — minimal protobuf wire reader/writer (varint, fixed32/64, length-delimited)
 - `ump/` — UMP framing: part ids + the UMP varint codec (NOT protobuf varints)
 - `sabr/` — SABR request/response protobuf models + `SabrStreamSpec` input params
-- `proxy/` — player media proxy: cache HIT/tee + audio-only dummy video tail
+- `proxy/` — player media proxy: cache HIT/tee + audio-only dummy video tail; engine-js sends the adaptiveFormats catalog as base64 JSON `X-Ym-Af` (stripped before googlevideo)
 
 SABR request/response loop, UMP parts, VOD vs live, and audio-only dummy rules:
 [`SABR.md`](SABR.md).

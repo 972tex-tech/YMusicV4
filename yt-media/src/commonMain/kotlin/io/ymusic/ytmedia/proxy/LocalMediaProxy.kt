@@ -6,8 +6,10 @@ import io.ymusic.ytmedia.cache.SabrServe
 import io.ymusic.ytmedia.cache.serveProgressive
 import io.ymusic.ytmedia.cache.serveSabr
 import io.ymusic.ytmedia.proto.ProtoReader
+import io.ymusic.ytmedia.sabr.ADAPTIVE_FORMATS_HEADER
 import io.ymusic.ytmedia.sabr.VideoPlaybackAbrRequest
 import io.ymusic.ytmedia.sabr.formatCacheKey
+import io.ymusic.ytmedia.sabr.parseAdaptiveFormatsHeader
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.asAsyncSource
 import kmpcommon.log.Logger
@@ -134,6 +136,7 @@ class LocalMediaProxy(
         extraHeaders: List<Pair<String, String>> = emptyList(),
     ): ProxyResponse {
         val sabrReq = body?.let { parseSabrRequest(url, method, it.peek(), it.size) }
+            ?.withAdaptiveFormatsHeader(extraHeaders)
         // A cache-serve fault must never fail the request — fall through to the network — but it's a real
         // bug (bad parse, cache read), so log it as a breadcrumb rather than swallowing it silently.
         val hit = runCatching { serveFromCache(url, method, sabrReq) }
@@ -288,6 +291,18 @@ class LocalMediaProxy(
         }.getOrNull()
     }
 
+    /** A malformed header is an engine-js bug: logged, and the request still forwards without the catalog. */
+    private fun VideoPlaybackAbrRequest.withAdaptiveFormatsHeader(
+        headers: List<Pair<String, String>>,
+    ): VideoPlaybackAbrRequest {
+        val raw = headers.firstOrNull { it.first.equals(ADAPTIVE_FORMATS_HEADER, ignoreCase = true) }?.second
+            ?: return this
+        val formats = runCatching { parseAdaptiveFormatsHeader(raw) }
+            .onFailure { log?.log(Logger.Level.WARN, "ignoring malformed $ADAPTIVE_FORMATS_HEADER", it) }
+            .getOrNull()
+        return if (formats.isNullOrEmpty()) this else withAdaptiveFormats(formats)
+    }
+
     private fun text(status: Int, reason: String, body: String): ProxyResponse {
         val bytes = body.encodeToByteArray()
         return ProxyResponse(
@@ -311,7 +326,8 @@ class LocalMediaProxy(
     companion object {
         const val FORWARD_PATH = "/ymusicForward"
         const val HEALTH_PATH = "/health"
-        private val SKIP_FORWARD_HEADERS = setOf("host", "content-length", "transfer-encoding", "connection")
+        private val SKIP_FORWARD_HEADERS =
+            setOf("host", "content-length", "transfer-encoding", "connection", ADAPTIVE_FORMATS_HEADER.lowercase())
     }
 }
 
