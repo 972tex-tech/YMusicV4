@@ -39,8 +39,8 @@ private object LastDownloadChoice {
 internal class DownloadOptionsState(
     val video: YtFeedItem,
     private val downloads: DownloadService,
-    private val preferredCaptionLanguages: Set<String>,
-    private val includeDefaultCaption: Boolean,
+    /** The Quick download caption language the dialog starts from; null starts with captions Off. */
+    private val preferredCaptionLanguage: String?,
 ) {
     /** Also keep these picks as the Quick download preset. */
     var saveAsQuick by mutableStateOf(false)
@@ -140,15 +140,17 @@ internal class DownloadOptionsState(
     private fun pickHeight(video: List<VideoOption>, preferred: Int): Int? =
         video.firstOrNull { it.height <= preferred }?.height ?: video.lastOrNull()?.height
 
-    /** The first settings-preferred language among the video's own tracks (uploaded before
-     *  auto-generated); else the video's default caption when the settings ask for it; else Off. Never an
-     *  auto-translation — that is only ever a deliberate pick. */
+    /** What Quick download would take: the video's own track in [preferredCaptionLanguage] (exact or base
+     *  language, uploaded before auto-generated), else its default track. Never an auto-translation — that
+     *  is only ever a deliberate pick. */
     private fun defaultCaption(tracks: List<CaptionOption>): String? {
+        val language = preferredCaptionLanguage ?: return null
         val own = tracks.filter { !it.isTranslated }
-        val wanted = own.filter { it.languageCode in preferredCaptionLanguages || it.languageCode.substringBefore('-') in preferredCaptionLanguages }
-        (wanted.firstOrNull { !it.isAsr } ?: wanted.firstOrNull())?.let { return it.key }
-        if (!includeDefaultCaption) return null
-        return own.firstOrNull { it.isDefault }?.key
+        val wanted = own.filter {
+            it.languageCode.equals(language, ignoreCase = true) ||
+                it.languageCode.substringBefore('-').equals(language.substringBefore('-'), ignoreCase = true)
+        }
+        return (wanted.firstOrNull { !it.isAsr } ?: wanted.firstOrNull() ?: own.firstOrNull { it.isDefault })?.key
     }
 }
 

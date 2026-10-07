@@ -130,15 +130,6 @@ object AppSettings {
     val downloadLocation = StringSetting("download.location", "")
 
     /**
-     * Caption languages to fetch alongside a downloaded media (BCP-47 codes). Independent of
-     * [downloadDefaultCaption]: these are the extra languages to grab when a video offers them.
-     */
-    val preferredCaptionLanguages = StringSetSetting("download.captionLanguages")
-
-    /** Always fetch the media's own default caption track, on top of any [preferredCaptionLanguages]. */
-    val downloadDefaultCaption = BoolSetting("download.captionDefault", true)
-
-    /**
      * Skip SponsorBlock segments on YouTube items. Default on; a per-video whitelist still
      * excludes individual videos.
      */

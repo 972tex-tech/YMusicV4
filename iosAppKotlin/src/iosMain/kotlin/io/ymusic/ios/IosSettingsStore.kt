@@ -29,8 +29,6 @@ internal class IosSettingsStore(
             "theme.accent",
             "app.uiLanguage",
             "download.location",
-            "download.captionLanguages",
-            "download.captionDefault",
             "download.quickPreset",
             "playerCache.maxMb",
             PlaybackQualitySettingKey,

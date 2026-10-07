@@ -69,14 +69,15 @@ class InMemorySettingsStoreTest {
     fun stringSetSettingRoundTrips() =
         runTest {
             val store = InMemorySettingsStore()
-            val captions = store.flow(AppSettings.preferredCaptionLanguages)
+            val setting = StringSetSetting("test.languages")
+            val captions = store.flow(setting)
             assertEquals(emptySet(), captions.value)
 
-            store.put(AppSettings.preferredCaptionLanguages, linkedSetOf("en", "vi", "pt-BR"))
+            store.put(setting, linkedSetOf("en", "vi", "pt-BR"))
             // Order preserved, view is reactive.
             assertEquals(listOf("en", "vi", "pt-BR"), captions.value.toList())
 
-            store.put(AppSettings.preferredCaptionLanguages, emptySet())
+            store.put(setting, emptySet())
             assertEquals(emptySet(), captions.value)
         }
 
@@ -84,10 +85,11 @@ class InMemorySettingsStoreTest {
     fun boolSettingRoundTrips() =
         runTest {
             val store = InMemorySettingsStore()
-            val flag = store.flow(AppSettings.downloadDefaultCaption)
+            val setting = BoolSetting("test.flag", true)
+            val flag = store.flow(setting)
             assertEquals(true, flag.value) // default
 
-            store.put(AppSettings.downloadDefaultCaption, false)
+            store.put(setting, false)
             assertEquals(false, flag.value)
         }
 

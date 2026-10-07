@@ -82,8 +82,7 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
         DownloadOptionsState(
             video = video,
             downloads = downloads,
-            preferredCaptionLanguages = graph.settings.flow(AppSettings.preferredCaptionLanguages).value,
-            includeDefaultCaption = graph.settings.flow(AppSettings.downloadDefaultCaption).value,
+            preferredCaptionLanguage = graph.quickDownload.value.captionLanguage,
         )
     }
     LaunchedEffect(state) { state.load(log) }
