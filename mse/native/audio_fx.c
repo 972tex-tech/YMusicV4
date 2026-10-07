@@ -11,6 +11,8 @@
 #define AFX_BASS_HZ 150.f
 #define AFX_LIMIT 32112.f /* -0.18 dBFS on the s16 scale */
 #define AFX_LIMIT_RELEASE_S 0.08f
+#define AFX_LIMIT_ABSORB_DB 6.f
+#define AFX_MAKEUP_DB 3.f
 #define AFX_GRID 48
 #define PI 3.14159265358979323846f
 
@@ -159,28 +161,43 @@ static float bq_tick(Biquad *b, int ch, float x)
     return y;
 }
 
-/* Largest boost of the whole chain over 20 Hz .. min(20 kHz, 0.45 fs), in dB (0 when it only cuts). */
-static float max_boost_db(const AudioFx *fx, float fs)
+/* ITU-R BS.1770 K-weighting at 48 kHz (pre-filter shelf + RLB high-pass): a loudness-perception weight. */
+static const Biquad k_shelf = {1.53512486f, -2.69169619f, 1.19839281f, -1.69065929f, 0.73248077f, {0, 0}, {0, 0}};
+static const Biquad k_rlb = {1.f, -2.f, 1.f, -1.99004745f, 0.99007225f, {0, 0}, {0, 0}};
+
+/*
+ * Over a log-spaced 20 Hz .. min(20 kHz, 0.45 fs) grid (pink-noise-like music: equal energy per octave),
+ * the chain's K-weighted power-average gain (how much louder it sounds) and its largest boost, in dB.
+ */
+static void chain_gain_db(const AudioFx *fx, float fs, float *loudness, float *max_boost)
 {
     int i, k;
     float top = fminf(20000.f, 0.45f * fs);
+    double num = 0, den = 0;
     float worst = 0.f;
     for (k = 0; k < AFX_GRID; k++) {
         float f = 20.f * powf(top / 20.f, (float)k / (float)(AFX_GRID - 1));
         float w = 2.f * PI * f / fs;
-        float sum = bq_gain_db(&fx->bass, w);
+        float wk = 2.f * PI * f / 48000.f;
+        float g = bq_gain_db(&fx->bass, w);
+        double weight;
         for (i = 0; i < AFX_BANDS; i++)
-            sum += bq_gain_db(&fx->peak[i], w);
-        if (sum > worst)
-            worst = sum;
+            g += bq_gain_db(&fx->peak[i], w);
+        if (g > worst)
+            worst = g;
+        weight = pow(10.0, (bq_gain_db(&k_shelf, wk) + bq_gain_db(&k_rlb, wk)) / 10.0);
+        num += weight * pow(10.0, g / 10.0);
+        den += weight;
     }
-    return worst;
+    *loudness = (float)(10.0 * log10(num / den));
+    *max_boost = worst;
 }
 
 /* Call with fx->mu held (or before the instance is shared). */
 static void rebuild(AudioFx *fx)
 {
     int i;
+    float loudness, max_boost, pre_db;
     float fs = (float)(fx->rate > 0 ? fx->rate : 48000);
     fx->color_on = 0;
     for (i = 0; i < AFX_BANDS; i++) {
@@ -191,9 +208,11 @@ static void rebuild(AudioFx *fx)
     bq_lowshelf(&fx->bass, fs, AFX_BASS_HZ, fx->bass_db);
     if (fabsf(fx->bass_db) >= 0.05f)
         fx->color_on = 1;
-    /* Half the peak boost as headroom: full compensation makes a boost sound like a cut of everything
-     * else; the limiter catches what the other half pushes over. */
-    fx->pre = powf(10.f, -0.5f * max_boost_db(fx, fs) / 20.f);
+    /* Loudness-matched pre-gain, so a setting reshapes the sound without changing how loud it is; but the
+     * limiter never absorbs more than AFX_LIMIT_ABSORB_DB of a big boost, and cuts get only AFX_MAKEUP_DB back. */
+    chain_gain_db(fx, fs, &loudness, &max_boost);
+    pre_db = fminf(-loudness, AFX_LIMIT_ABSORB_DB - max_boost);
+    fx->pre = powf(10.f, clampf(pre_db, -12.f, AFX_MAKEUP_DB) / 20.f);
     fx->lim_release = 1.f - expf(-1.f / (AFX_LIMIT_RELEASE_S * fs));
     if (fabsf(fx->width - 1.f) >= 0.02f)
         fx->color_on = 1;
