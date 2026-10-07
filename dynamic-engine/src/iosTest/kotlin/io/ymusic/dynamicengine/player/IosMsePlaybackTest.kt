@@ -13,10 +13,9 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.longOrNull
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
+import projectcommon.json.longOrNull
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -68,7 +67,7 @@ class IosMsePlaybackTest {
             var frames = 0
             while (nowMs() < deadline) {
                 val st = withContext(dispatcher) { player.status(log) }
-                dur = (st["durationMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                dur = st.longOrNull("durationMs") ?: 0L
                 frames = player.mseFrames(surface.host)
                 if (frames >= 2 && dur > 0) break
                 delay(250)
@@ -80,11 +79,11 @@ class IosMsePlaybackTest {
             withContext(dispatcher) { player.play(log) }
             delay(400)
             val moving = withContext(dispatcher) {
-                (player.status(log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                player.status(log).longOrNull("positionMs") ?: 0L
             }
             delay(1_200)
             val later = withContext(dispatcher) {
-                (player.status(log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                player.status(log).longOrNull("positionMs") ?: 0L
             }
             println("ios-mse clock $moving -> $later")
             assertTrue(later > moving, "play did not advance clock $moving -> $later")
@@ -92,11 +91,11 @@ class IosMsePlaybackTest {
             withContext(dispatcher) { player.pause(log) }
             delay(400)
             val pausedAt = withContext(dispatcher) {
-                (player.status(log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                player.status(log).longOrNull("positionMs") ?: 0L
             }
             delay(800)
             val still = withContext(dispatcher) {
-                (player.status(log)["positionMs"] as? JsonPrimitive)?.longOrNull ?: 0L
+                player.status(log).longOrNull("positionMs") ?: 0L
             }
             println("ios-mse pause $pausedAt -> $still")
             assertTrue(abs(still - pausedAt) < 1_500, "clock kept moving while paused $pausedAt -> $still")

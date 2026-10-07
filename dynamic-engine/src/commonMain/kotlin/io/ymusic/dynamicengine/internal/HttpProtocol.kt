@@ -23,19 +23,20 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonArray
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import okio.Buffer
 import okio.IOException
+import projectcommon.json.arrayOrNull
+import projectcommon.json.boolOrNull
+import projectcommon.json.longOrNull
+import projectcommon.json.objectOrNull
+import projectcommon.json.stringOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -85,14 +86,14 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
             val prepared = try {
                 val head = JsonReader(src).readObject()
                 log = protocolLogger(parked, head, "http", head.propOf("url"))
-                val method = head["method"]?.jsonPrimitive?.content ?: "GET"
-                val url = head["url"]?.jsonPrimitive?.content ?: ""
-                val headers = (head["headers"] as? JsonArray).orEmpty().map { entry ->
+                val method = head.stringOrNull("method") ?: "GET"
+                val url = head.stringOrNull("url") ?: ""
+                val headers = head.arrayOrNull("headers").orEmpty().map { entry ->
                     val pair = entry.jsonArray
                     pair[0].jsonPrimitive.content to pair[1].jsonPrimitive.content
                 }
-                val opts = head["opts"] as? JsonObject
-                val bodyCmd = head["bodyCmd"]?.jsonPrimitive?.content
+                val opts = head.objectOrNull("opts")
+                val bodyCmd = head.stringOrNull("bodyCmd")
 
                 // The request body rides its own pipe, opened lazily on the transport's first pull
                 // — a response that never needs the body (cache hit, early error) never transfers
@@ -139,10 +140,10 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                         .apply { for ((name, value) in headers) addHeader(name, value) }
                         .method(method, requestBody)
                         .build(),
-                    redirects = opts?.get("followRedirects")?.jsonPrimitive?.booleanOrNull
+                    redirects = opts?.boolOrNull("followRedirects")
                         ?.let { RedirectOptions(followRedirects = it, followSslRedirects = it) }
                         ?: client.defaultRedirectOptions,
-                    timeout = opts?.get("timeoutMs")?.jsonPrimitive?.longOrNull?.milliseconds
+                    timeout = opts?.longOrNull("timeoutMs")?.milliseconds
                         ?: client.defaultExecuteTimeout,
                 )
             } catch (_: PipeResetException) {

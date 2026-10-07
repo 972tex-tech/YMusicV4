@@ -5,8 +5,8 @@ import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.FakeHttpClient
 import io.ymusic.dynamicengine.embeddedEngineJsSource
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import projectcommon.json.objectOrNull
+import projectcommon.json.stringOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -92,12 +92,12 @@ class YtSessionTest {
             val rec = m.use { engine ->
                 engine.jsonCommand("get_player_config", { }) { it.readObject() }
             }
-            assertEquals("test-event-id", rec["eventId"]?.jsonPrimitive?.content)
-            assertTrue(rec["jsUrl"]?.jsonPrimitive?.content.orEmpty().contains("player_es6"), rec.toString())
-            val bg = rec["bgChallenge"]?.jsonObject
-            assertEquals("TESTPROG", bg?.get("program")?.jsonPrimitive?.content)
-            assertEquals("trayride", bg?.get("globalName")?.jsonPrimitive?.content)
-            assertTrue(rec["ytcfg"]?.jsonObject?.isNotEmpty() == true, rec.toString())
+            assertEquals("test-event-id", rec.stringOrNull("eventId"))
+            assertTrue(rec.stringOrNull("jsUrl").orEmpty().contains("player_es6"), rec.toString())
+            val bg = rec.objectOrNull("bgChallenge")
+            assertEquals("TESTPROG", bg?.stringOrNull("program"))
+            assertEquals("trayride", bg?.stringOrNull("globalName"))
+            assertTrue(rec.objectOrNull("ytcfg")?.isNotEmpty() == true, rec.toString())
         } finally {
             m.close()
         }

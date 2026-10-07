@@ -54,6 +54,7 @@ kotlin {
                 api(project(":kmpHttp:core"))
                 // api: EngineError implements kmpcommon.error.CodedError; call() takes a JsonObject
                 api(project(":kmpCommon"))
+                implementation(project(":projectCommon"))
                 api(project(":settings"))
                 api(project(":mse"))
                 api(Libs.Kotlinx.serializationJson)

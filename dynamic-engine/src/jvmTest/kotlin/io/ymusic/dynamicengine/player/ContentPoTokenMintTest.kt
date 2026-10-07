@@ -14,9 +14,8 @@ import kmphttp.InMemoryCookieJar
 import kmphttp.OkKmpHttpClient
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
+import projectcommon.json.intOrNull
+import projectcommon.json.stringOrNull
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -68,11 +67,11 @@ class ContentPoTokenMintTest {
                 ) { it.readObject() }
             }
             println("mintPo rec=$rec")
-            val token = rec["contentPoToken"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            val len = rec["contentPoTokenLen"]?.jsonPrimitive?.intOrNull ?: token.length
-            val step = rec["step"]?.jsonPrimitive?.contentOrNull
-            val ytGets = rec["ytGets"]?.jsonPrimitive?.intOrNull ?: 0
-            val eventIdGets = rec["eventIdGets"]?.jsonPrimitive?.intOrNull ?: 0
+            val token = rec.stringOrNull("contentPoToken").orEmpty()
+            val len = rec.intOrNull("contentPoTokenLen") ?: token.length
+            val step = rec.stringOrNull("step")
+            val ytGets = rec.intOrNull("ytGets") ?: 0
+            val eventIdGets = rec.intOrNull("eventIdGets") ?: 0
             println("mintPo ytGets=$ytGets eventIdGets=$eventIdGets len=$len")
             assertTrue(token.length >= 20, "token too short step=$step rec=$rec")
             assertTrue(len >= 20, "len=$len")

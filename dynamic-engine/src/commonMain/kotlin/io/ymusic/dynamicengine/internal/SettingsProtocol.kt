@@ -21,11 +21,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import okio.Buffer
+import projectcommon.json.primitiveOrNull
+import projectcommon.json.stringOrNull
 
 internal fun QuickJsRuntime.installSettings(settings: SettingsStore, parked: ParkedLoggers) {
     // Store touches leave the engine thread (the engine-thread rule, AGENTS.md):
@@ -101,11 +101,11 @@ private suspend fun serveSettings(
 }
 
 private fun JsonObject.requireString(key: String): String =
-    this[key]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotEmpty)
+    stringOrNull(key)?.takeIf(String::isNotEmpty)
         ?: throw SettingsRequestError("settings request missing '$key'")
 
 private fun JsonObject.requirePrimitive(key: String): JsonPrimitive =
-    this[key] as? JsonPrimitive ?: throw SettingsRequestError("settings request missing '$key'")
+    primitiveOrNull(key) ?: throw SettingsRequestError("settings request missing '$key'")
 
 private fun badDefault(): Nothing = throw SettingsRequestError("settings request has an invalid 'default'")
 

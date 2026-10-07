@@ -23,14 +23,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import okio.Buffer
+import projectcommon.json.arrayOrNull
+import projectcommon.json.stringOrNull
 
 /**
  * Serves the `"cookie/get"` / `"cookie/set"` pipe commands (the host side of the bundle's Cookies
@@ -124,7 +124,7 @@ private const val STACK_CAP = 4096
 
 /** A non-empty, well-formed URL field of the head; anything else is a caller bug (`E20040`). */
 private fun JsonObject.requireHttpUrl(key: String): HttpUrl {
-    val raw = this[key]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotEmpty)
+    val raw = stringOrNull(key)?.takeIf(String::isNotEmpty)
         ?: throw CookieRequestError("cookie request missing '$key'")
     return raw.toHttpUrlOrNull() ?: throw CookieRequestError("cookie request has an invalid '$key': $raw")
 }
@@ -132,7 +132,7 @@ private fun JsonObject.requireHttpUrl(key: String): HttpUrl {
 /** A non-empty array of non-empty strings; the `Cookies.set` client always sends `setCookie` as an
  *  array (a lone header is a one-element array). Absent/empty is a caller bug (`E20040`). */
 private fun JsonObject.requireStringList(key: String): List<String> {
-    val values = (this[key] as? JsonArray)
+    val values = arrayOrNull(key)
         ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotEmpty) }
         .orEmpty()
     return values.ifEmpty { throw CookieRequestError("cookie request missing '$key'") }

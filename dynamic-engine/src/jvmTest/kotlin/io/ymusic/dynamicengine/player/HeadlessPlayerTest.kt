@@ -35,14 +35,13 @@ import kmphttp.Response
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 import okhttp3.ResponseBody
 import okio.Buffer
 import okio.FileSystem
 import okio.ForwardingSource
 import okio.buffer
+import projectcommon.json.boolOrNull
+import projectcommon.json.long
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -186,8 +185,8 @@ class HeadlessPlayerTest {
             val deadline = System.currentTimeMillis() + 90_000
             while (System.currentTimeMillis() < deadline) {
                 val st = withContext(testEngineDispatcher) { player.status(log) }
-                val pos = st.longField("positionMs")
-                lastBuffered = st.longField("bufferedMs")
+                val pos = st.long("positionMs")
+                lastBuffered = st.long("bufferedMs")
                 if (pos > lastPos + 200) lastMoveAt = System.currentTimeMillis()
                 lastPos = pos
                 samples += pos to lastBuffered
@@ -275,15 +274,15 @@ class HeadlessPlayerTest {
             val readyBy = System.currentTimeMillis() + 60_000
             var pos = 0L
             while (System.currentTimeMillis() < readyBy) {
-                pos = withContext(testEngineDispatcher) { player.status(log) }.longField("positionMs")
+                pos = withContext(testEngineDispatcher) { player.status(log) }.long("positionMs")
                 if (pos >= 2_000L) break
                 delay(400)
             }
             assertTrue(pos >= 2_000L, "clock did not start pos=$pos rec=${http.summary()}")
             suspend fun mediaPerWall(windowMs: Long): Double {
-                val a = withContext(testEngineDispatcher) { player.status(log) }.longField("positionMs")
+                val a = withContext(testEngineDispatcher) { player.status(log) }.long("positionMs")
                 delay(windowMs)
-                val b = withContext(testEngineDispatcher) { player.status(log) }.longField("positionMs")
+                val b = withContext(testEngineDispatcher) { player.status(log) }.long("positionMs")
                 return (b - a).toDouble() / windowMs.toDouble()
             }
             val atOne = mediaPerWall(2_500)
@@ -371,29 +370,29 @@ class HeadlessPlayerTest {
             val startWait = System.currentTimeMillis()
             while (System.currentTimeMillis() - startWait < 25_000) {
                 val st = withContext(testEngineDispatcher) { player.status(log) }
-                lastPos = st.longField("positionMs")
-                lastBuffered = st.longField("bufferedMs")
-                println("live-ao wait pos=$lastPos buffered=$lastBuffered live=${st.flag("live")} dur=${st.longField("durationMs")}")
+                lastPos = st.long("positionMs")
+                lastBuffered = st.long("bufferedMs")
+                println("live-ao wait pos=$lastPos buffered=$lastBuffered live=${st.boolOrNull("live") == true} dur=${st.long("durationMs")}")
                 if (lastPos > 1_000) break
                 delay(500)
             }
             run {
                 val st = withContext(testEngineDispatcher) { player.status(log) }
-                lastPos = st.longField("positionMs")
-                lastBuffered = st.longField("bufferedMs")
+                lastPos = st.long("positionMs")
+                lastBuffered = st.long("bufferedMs")
                 leadAtZero = (lastBuffered - lastPos).coerceIn(3_000L, 45_000L)
                 posAtZero = lastPos
                 withContext(testEngineDispatcher) { player.setQuality("auto", true, log) }
                 switched = true
                 lastMoveAt = System.currentTimeMillis()
-                println("live-ao switch pos=$posAtZero lead=$leadAtZero buffered=$lastBuffered live=${st.flag("live")}")
+                println("live-ao switch pos=$posAtZero lead=$leadAtZero buffered=$lastBuffered live=${st.boolOrNull("live") == true}")
             }
             val deadline = System.currentTimeMillis() + 120_000
             while (System.currentTimeMillis() < deadline) {
                 val st = withContext(testEngineDispatcher) { player.status(log) }
-                val pos = st.longField("positionMs")
-                lastBuffered = st.longField("bufferedMs")
-                val audioOnly = st.flag("audioOnly")
+                val pos = st.long("positionMs")
+                lastBuffered = st.long("bufferedMs")
+                val audioOnly = st.boolOrNull("audioOnly") == true
                 if (pos > lastPos + 200) lastMoveAt = System.currentTimeMillis()
                 lastPos = pos
                 val need = posAtZero + leadAtZero + NEED_POS_MS
@@ -413,11 +412,11 @@ class HeadlessPlayerTest {
             val st = withContext(testEngineDispatcher) { player.status(log) }
             println(
                 "live-ao pos=$lastPos buffered=$lastBuffered selV=$selV " +
-                    "posAtZero=$posAtZero lead=$leadAtZero audioOnly=${st.flag("audioOnly")} " +
+                    "posAtZero=$posAtZero lead=$leadAtZero audioOnly=${st.boolOrNull("audioOnly") == true} " +
                     "quality=${st["quality"]} rec=${http.summary()}",
             )
-            assertTrue(switched, "never reached auto leftover to switch zero pos=$lastPos buffered=$lastBuffered live=${st.flag("live")}")
-            assertTrue(st.flag("audioOnly"), "not audio-only after zero")
+            assertTrue(switched, "never reached auto leftover to switch zero pos=$lastPos buffered=$lastBuffered live=${st.boolOrNull("live") == true}")
+            assertTrue(st.boolOrNull("audioOnly") == true, "not audio-only after zero")
             assertTrue(
                 lastPos >= posAtZero + leadAtZero + NEED_POS_MS,
                 "clock did not pass leftover drain pos=$lastPos need=${posAtZero + leadAtZero + NEED_POS_MS} selV=$selV",
@@ -632,9 +631,4 @@ private fun containsMediaItag(ump: ByteArray, itag: Int): Boolean {
         }
     }
     return false
-}
-
-private fun JsonObject.flag(key: String): Boolean {
-    val p = this[key] as? JsonPrimitive ?: return false
-    return p.booleanOrNull == true || p.content == "true"
 }

@@ -8,10 +8,9 @@ import kmpcommon.io.BufferedAsyncSource
 import kmphttp.json.JsonReader
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonPrimitive
 import okio.Buffer
 import okio.IOException
+import projectcommon.json.intOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -53,7 +52,7 @@ class ProdBundleSmokeTest {
             pipe.sink.close()
             val src = BufferedAsyncSource(pipe.source.asAsyncSource())
             val rh = JsonReader(src).readObject()
-            assertEquals(200, rh["status"]?.jsonPrimitive?.int)
+            assertEquals(200, rh.intOrNull("status"))
             val body = Buffer()
             while (src.read(body, 4096L) != -1L) { /* to EOF */ }
             assertEquals("payload bytes", body.readUtf8())

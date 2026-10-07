@@ -26,16 +26,15 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import okio.Buffer
 import okio.use
+import projectcommon.json.objectOrNull
+import projectcommon.json.stringOrNull
 
 /**
  * Serves the `cache/…` pipe commands (the host side of the bundle's Cache client) on a [CacheStore].
@@ -58,10 +57,10 @@ import okio.use
 internal fun QuickJsRuntime.installCapture(store: CacheStore?, parked: ParkedLoggers) {
     onAccept("log/capture") { pipe ->
         serve(pipe, parked, "log/capture") { head, _ ->
-            val code = head["code"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() } ?: "E20088"
-            val message = head["message"]?.jsonPrimitive?.contentOrNull ?: "PO rejected"
-            val scopeName = head["scope"]?.jsonPrimitive?.contentOrNull
-            val key = head["key"]?.jsonPrimitive?.contentOrNull
+            val code = head.stringOrNull("code")?.takeIf { it.isNotEmpty() } ?: "E20088"
+            val message = head.stringOrNull("message") ?: "PO rejected"
+            val scopeName = head.stringOrNull("scope")
+            val key = head.stringOrNull("key")
             val file = if (store != null && !scopeName.isNullOrEmpty() && !key.isNullOrEmpty()) {
                 withContext(Dispatchers.IO) {
                     store.get(scopeName, key)?.filePath?.let { path ->
@@ -166,14 +165,13 @@ private val SITE_CODE = Regex("""E\d{5}""")
 private const val STACK_CAP = 4096
 
 private fun JsonObject.requireString(field: String): String =
-    this[field]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() }
+    stringOrNull(field)?.takeIf { it.isNotEmpty() }
         ?: throw CacheRequestError("cache request missing '$field'")
 
 /** The caller's opaque custom metadata (`meta`): a string→string map; non-string values dropped. */
 private fun JsonObject.readCustom(): Map<String, String> =
-    (this["meta"] as? JsonObject)?.mapNotNull { (k, v) ->
-        (v as? JsonPrimitive)?.contentOrNull?.let { k to it }
-    }.orEmpty().toMap()
+    objectOrNull("meta")?.let { meta -> meta.keys.mapNotNull { k -> meta.stringOrNull(k)?.let { k to it } } }
+        .orEmpty().toMap()
 
 private fun metaJson(meta: CacheStore.Meta, hit: Boolean?): JsonObject = buildJsonObject {
     if (hit != null) put("hit", hit)

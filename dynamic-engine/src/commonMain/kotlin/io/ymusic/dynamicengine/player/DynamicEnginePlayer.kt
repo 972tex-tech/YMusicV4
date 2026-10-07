@@ -24,12 +24,10 @@ import kmphttp.json.JsonReader
 import kmphttp.json.JsonSyntaxException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.longOrNull
+import projectcommon.json.intOrNull
+import projectcommon.json.objects
+import projectcommon.json.stringOrNull
 
 /**
  * YouTube playback via JS player commands. MSE is JS + native C (sync getters). The app supplies
@@ -208,15 +206,13 @@ class DynamicEnginePlayer private constructor(
 
     suspend fun captionTracks(logger: Logger? = null): List<CaptionTrackInfo> {
         val o = engine.jsonCommand("player/captions", { }, logger) { it.readObject() }
-        val arr = o["tracks"] as? JsonArray ?: return emptyList()
-        return arr.mapNotNull { el ->
-            val t = el as? JsonObject ?: return@mapNotNull null
-            val vss = t.str("vssId") ?: return@mapNotNull null
+        return o.objects("tracks").mapNotNull { t ->
+            val vss = t.stringOrNull("vssId") ?: return@mapNotNull null
             CaptionTrackInfo(
                 vssId = vss,
-                languageCode = t.str("languageCode") ?: "",
-                kind = t.str("kind") ?: "",
-                displayName = t.str("displayName") ?: vss,
+                languageCode = t.stringOrNull("languageCode") ?: "",
+                kind = t.stringOrNull("kind") ?: "",
+                displayName = t.stringOrNull("displayName") ?: vss,
             )
         }
     }
@@ -271,7 +267,7 @@ class DynamicEnginePlayer private constructor(
     suspend fun mintContentPoToken(videoId: String, logger: Logger? = null): String =
         engine.jsonCommand("player/mintPo", { w -> w.name("videoId").value(videoId) }, logger) { r ->
             val o = r.readObject()
-            val token = (o["contentPoToken"] as? JsonPrimitive)?.content.orEmpty()
+            val token = o.stringOrNull("contentPoToken").orEmpty()
             if (token.length < 20) error("missing contentPoToken")
             token
         }
@@ -363,17 +359,9 @@ data class CaptionLine(
     val text: String,
 )
 
-internal fun JsonObject.longField(key: String): Long =
-    (this[key] as? JsonPrimitive)?.longOrNull ?: 0L
-
-private fun JsonObject.str(key: String): String? =
-    (this[key] as? JsonPrimitive)?.contentOrNull
-
 private fun JsonObject.captionLines(): List<CaptionLine> {
-    val arr = this["lines"] as? JsonArray ?: return emptyList()
-    return arr.mapNotNull { el ->
-        val o = el as? JsonObject ?: return@mapNotNull null
-        val id = (o["id"] as? JsonPrimitive)?.intOrNull ?: return@mapNotNull null
-        CaptionLine(id = id, text = o.str("text").orEmpty())
+    return objects("lines").mapNotNull { o ->
+        val id = o.intOrNull("id") ?: return@mapNotNull null
+        CaptionLine(id = id, text = o.stringOrNull("text").orEmpty())
     }
 }
