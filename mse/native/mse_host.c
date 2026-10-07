@@ -114,15 +114,13 @@ struct MseHost {
         double ms;
         int n;
         int live;
-        int fading;
     } tr_mark[256];
     int tr_mark_n;
 #endif
 #ifdef __APPLE__
     AudioQueueRef aq;
-    /* Pending fade-out pause (see aq_fade_fire) and whether the callback should keep feeding audio for it. */
+    /* Pending fade-out pause (see aq_fade_fire). */
     struct AqFadeJob *aq_fade;
-    int aq_fading;
 #endif
 #ifdef __ANDROID__
     SLObjectItf sl_engine;
@@ -408,11 +406,12 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
         AudioQueueEnqueueBuffer(q, buf, 0, NULL);
         return;
     }
-    live = (h->playing || h->aq_fading) && h->ring;
+    /* Not gated on playing: the queue still calls back about one buffer after AudioQueuePause, and that
+     * buffer plays right after the ones already queued on resume. Silence there was a ~43 ms hole
+     * ~100 ms into every resume; the ring's next audio is what belongs in it. */
+    live = h->ring != NULL;
     if (live)
         n = ring_read(h, (uint8_t *)buf->mAudioData, cap);
-    if (h->flushing || !live)
-        n = 0;
     if (n > 0 && h->rate > 0 && h->ch > 0) {
         h->samples_played += n / frame_bytes(h);
         h->dac_tick_ns = now_ns();
@@ -438,7 +437,6 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
         h->tr_mark[k].ms = h->tr_play_ns > 0 ? (now_ns() - h->tr_play_ns) / 1e6 : 0;
         h->tr_mark[k].n = n;
         h->tr_mark[k].live = live;
-        h->tr_mark[k].fading = h->aq_fading;
         h->tr_mark_n++;
         for (i = 0; i < n; i++)
             h->tr_cap[(h->tr_cap_total + i) % h->tr_cap_bytes] = ((uint8_t *)buf->mAudioData)[i];
@@ -480,7 +478,6 @@ static AqFadeJob *aq_fade_take(MseHost *h)
 {
     AqFadeJob *j = h->aq_fade;
     h->aq_fade = NULL;
-    h->aq_fading = 0;
     return j;
 }
 
@@ -504,7 +501,6 @@ static void aq_fade_fire(void *ctx)
         owned = h->aq_fade == j;
         if (owned) {
             h->aq_fade = NULL;
-            h->aq_fading = 0;
         }
         pthread_mutex_unlock(&h->mu);
         AudioQueuePause(j->aq);
@@ -637,10 +633,9 @@ static void sl_callback(SLAndroidSimpleBufferQueueItf bq, void *user)
         pthread_mutex_unlock(&h->mu);
         return;
     }
-    if (h->playing && h->ring)
+    /* Same as aq_callback: a buffer requested around pause plays on resume, so it gets the ring's audio. */
+    if (h->ring)
         n = ring_read(h, dst, cap);
-    if (h->flushing || !h->playing)
-        n = 0;
     if (n > 0 && h->rate > 0 && h->ch > 0) {
         h->samples_played += n / frame_bytes(h);
         h->dac_tick_ns = now_ns();
@@ -981,9 +976,9 @@ static void *dec_loop(void *arg)
                         int k = i % 256;
                         if (h->tr_mark[k].at < start)
                             continue;
-                        len += snprintf(marks + len, 96, "byte=%lld ms=%.1f n=%d live=%d fading=%d\n",
+                        len += snprintf(marks + len, 96, "byte=%lld ms=%.1f n=%d live=%d\n",
                                         h->tr_mark[k].at - start, h->tr_mark[k].ms, h->tr_mark[k].n,
-                                        h->tr_mark[k].live, h->tr_mark[k].fading);
+                                        h->tr_mark[k].live);
                     }
                     dump_seq = ++h->tr_dump_seq;
                 } else {
@@ -1509,7 +1504,6 @@ void mse_host_pause(MseHost *h)
                 job->h = h;
                 job->aq = aq;
                 h->aq_fade = job;
-                h->aq_fading = 1;
             }
         }
         pthread_mutex_unlock(&h->mu);
