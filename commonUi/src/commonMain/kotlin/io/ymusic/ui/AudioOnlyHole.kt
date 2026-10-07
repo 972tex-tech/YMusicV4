@@ -2,8 +2,7 @@ package io.ymusic.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -30,22 +29,25 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -61,9 +63,12 @@ import io.ymusic.settings.SettingsStore
 import io.ymusic.settings.flow
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.overlay_fps
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.TimeSource
 
 private const val WAVE_BARS = 40
 
@@ -132,11 +137,16 @@ internal fun AudioOnlyArtWave(
         }
     }
     BoxWithConstraints(modifier.clipToBounds()) {
+        val side = minOf(maxHeight * 0.86f, maxWidth * 0.32f)
+        // One decode covering both the hole (backdrop) and the square, so both layers share it.
+        val decodeSize = with(LocalDensity.current) {
+            IntSize(maxOf(maxWidth, side).roundToPx(), maxOf(maxHeight, side).roundToPx())
+        }
+        val art = rememberArtTransition(url, decodeSize)
         Box(Modifier.matchParentSize().blur(28.dp)) {
-            TransitionArt(url, blurWhileLoading = false)
+            ArtLayer(art)
         }
         Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.36f)))
-        val side = minOf(maxHeight * 0.86f, maxWidth * 0.32f)
         Row(
             Modifier.fillMaxSize().padding(start = 12.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -147,7 +157,8 @@ internal fun AudioOnlyArtWave(
                     .shadow(10.dp, RoundedCornerShape(8.dp))
                     .clip(RoundedCornerShape(8.dp)),
             ) {
-                TransitionArt(url, blurWhileLoading = true)
+                if (art.shading) ArtShade()
+                ArtLayer(art)
             }
             Spacer(Modifier.width(14.dp))
             Canvas(Modifier.weight(1f).fillMaxHeight()) {
@@ -170,98 +181,107 @@ internal fun AudioOnlyArtWave(
     }
 }
 
-private const val ART_FADE_MS = 450
-private const val ART_PULSE_MS = 1100
-private val ArtLoadingBlur = 18.dp
+private const val ART_FADE_OUT_MS = 260
+private const val ART_FADE_IN_MS = 420
+private const val ART_MIN_SHADE_MS = 220L
+private const val ART_SHIMMER_MS = 1300
+private const val ART_RESIZE_SETTLE_MS = 400L
 
 /**
- * Now Playing's art, never blank between tracks: the previous picture stays (blurred when
- * [blurWhileLoading]) until the new one is decoded, which then fades in over it. A cached copy at
- * another size (the mini player's) shows at once and the sharp decode fades over it; with nothing
- * shown yet, a pulsing placeholder stands in.
+ * One art picture driving both Now Playing layers in lockstep. Every url change runs the same
+ * sequence — the current picture fades out over the shade, the shade holds at least
+ * [ART_MIN_SHADE_MS] (longer while the load runs), the new picture fades in — whatever the cache
+ * holds. A view that grows only swaps in a sharper decode of the same picture, no transition.
  */
-@Composable
-private fun BoxScope.TransitionArt(url: String?, blurWhileLoading: Boolean) {
-    val loader = LocalImageLoader.current
-    var sizePx by remember { mutableStateOf(IntSize.Zero) }
-    // Seeded from memory on the first frame, so an open with the art already cached never blinks.
-    var shown by remember {
-        mutableStateOf(if (url != null) loader?.peekAnySize(imageCacheKey(url))?.let { ShownArt(it, url) } else null)
-    }
-    var incoming by remember { mutableStateOf<ImageBitmap?>(null) }
-    var loading by remember { mutableStateOf(url != null && shown == null) }
-    val fade = remember { Animatable(1f) }
-    val stale = loading && shown?.url != url
-    val previousBlur by animateDpAsState(if (blurWhileLoading && stale) ArtLoadingBlur else 0.dp)
-
-    LaunchedEffect(url, sizePx, loader) {
-        if (url == null) {
-            shown = null
-            loading = false
-            return@LaunchedEffect
-        }
-        if (loader == null || sizePx == IntSize.Zero) return@LaunchedEffect
-        val key = imageCacheKey(url)
-        suspend fun reveal(next: ImageBitmap) {
-            if (shown == null) {
-                shown = ShownArt(next, url)
-                return
-            }
-            fade.snapTo(0f)
-            incoming = next
-            try {
-                fade.animateTo(1f, tween(ART_FADE_MS, easing = FastOutSlowInEasing))
-            } finally {
-                shown = ShownArt(next, url)
-                incoming = null
-            }
-        }
-        val exact = loader.peek(url, sizePx.width, sizePx.height, cacheKey = key)
-        if (exact != null) {
-            loading = false
-            if (shown?.url == url) shown = ShownArt(exact, url) else reveal(exact)
-            return@LaunchedEffect
-        }
-        loading = true
-        if (shown?.url != url) loader.peekAnySize(key)?.let { reveal(it) }
-        val sharp = loader.loadOrNull(url, sizePx.width, sizePx.height, cacheKey = key)
-        loading = false
-        if (sharp != null) reveal(sharp)
-    }
-
-    Box(Modifier.matchParentSize().onSizeChanged { sizePx = it }) {
-        val base = shown
-        if (base == null) {
-            if (loading) ArtLoadingPulse()
-        } else {
-            Image(
-                base.bitmap,
-                contentDescription = null,
-                modifier = Modifier.matchParentSize().blur(previousBlur),
-                contentScale = ContentScale.Crop,
-            )
-        }
-        incoming?.let { next ->
-            Image(
-                next,
-                contentDescription = null,
-                modifier = Modifier.matchParentSize().graphicsLayer { alpha = fade.value },
-                contentScale = ContentScale.Crop,
-            )
-        }
-    }
+private class ArtTransition {
+    var bitmap by mutableStateOf<ImageBitmap?>(null)
+    var url: String? = null
+    var shading by mutableStateOf(false)
+    val alpha = Animatable(0f)
 }
 
-private class ShownArt(val bitmap: ImageBitmap, val url: String)
+@Composable
+private fun rememberArtTransition(url: String?, decodeSize: IntSize): ArtTransition {
+    val loader = LocalImageLoader.current
+    val state = remember { ArtTransition() }
+    val size by rememberUpdatedState(decodeSize)
+    val ready = decodeSize.width > 0 && decodeSize.height > 0
+
+    LaunchedEffect(url, loader, ready) {
+        if (!ready || (state.url == url && state.bitmap != null)) return@LaunchedEffect
+        coroutineScope {
+            val next = async {
+                if (url == null || loader == null) {
+                    null
+                } else {
+                    val key = imageCacheKey(url)
+                    loader.peek(url, size.width, size.height, cacheKey = key)
+                        ?: loader.loadOrNull(url, size.width, size.height, cacheKey = key)
+                }
+            }
+            val shadeFrom = TimeSource.Monotonic.markNow()
+            state.shading = url != null
+            if (state.bitmap != null) state.alpha.animateTo(0f, tween(ART_FADE_OUT_MS, easing = FastOutSlowInEasing))
+            state.bitmap = null
+            state.url = url
+            val bitmap = next.await()
+            val held = shadeFrom.elapsedNow().inWholeMilliseconds
+            if (held < ART_FADE_OUT_MS + ART_MIN_SHADE_MS) delay(ART_FADE_OUT_MS + ART_MIN_SHADE_MS - held)
+            if (bitmap == null) {
+                state.shading = false
+                return@coroutineScope
+            }
+            state.alpha.snapTo(0f)
+            state.bitmap = bitmap
+            state.alpha.animateTo(1f, tween(ART_FADE_IN_MS, easing = FastOutSlowInEasing))
+            state.shading = false
+        }
+    }
+
+    LaunchedEffect(decodeSize) {
+        val shownUrl = state.url ?: return@LaunchedEffect
+        if (state.bitmap == null || shownUrl != url || loader == null) return@LaunchedEffect
+        delay(ART_RESIZE_SETTLE_MS)
+        val key = imageCacheKey(shownUrl)
+        val sharper = loader.peek(shownUrl, decodeSize.width, decodeSize.height, cacheKey = key)
+            ?: loader.loadOrNull(shownUrl, decodeSize.width, decodeSize.height, cacheKey = key)
+        if (sharper != null && state.url == shownUrl && state.bitmap != null) state.bitmap = sharper
+    }
+    return state
+}
 
 @Composable
-private fun BoxScope.ArtLoadingPulse() {
-    val alpha by rememberInfiniteTransition().animateFloat(
-        initialValue = 0.45f,
-        targetValue = 0.85f,
-        animationSpec = infiniteRepeatable(tween(ART_PULSE_MS, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+private fun BoxScope.ArtLayer(art: ArtTransition, modifier: Modifier = Modifier) {
+    val bitmap = art.bitmap ?: return
+    Image(
+        bitmap,
+        contentDescription = null,
+        modifier = modifier.matchParentSize().graphicsLayer { alpha = art.alpha.value },
+        contentScale = ContentScale.Crop,
     )
-    Box(Modifier.matchParentSize().graphicsLayer { this.alpha = alpha }.background(DesignColors.Placeholder))
+}
+
+/** A soft light band sweeping a dim square while the next picture is on its way; dark in every
+ *  theme, since it sits on the dark hole between two pictures. */
+@Composable
+private fun BoxScope.ArtShade() {
+    val sweep by rememberInfiniteTransition().animateFloat(
+        initialValue = -1f,
+        targetValue = 2f,
+        animationSpec = infiniteRepeatable(tween(ART_SHIMMER_MS, easing = LinearEasing)),
+    )
+    Box(
+        Modifier.matchParentSize().background(Color.White.copy(alpha = 0.07f)).drawWithCache {
+            val band = size.width * 0.6f
+            val x = sweep * size.width
+            val brush = Brush.linearGradient(
+                colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.10f), Color.Transparent),
+                start = Offset(x - band, 0f),
+                end = Offset(x, size.height),
+            )
+            onDrawBehind { drawRect(brush) }
+        },
+    )
 }
 
 /** Video hole plus the audio-only overlay when [showsAudioOnly]. */
