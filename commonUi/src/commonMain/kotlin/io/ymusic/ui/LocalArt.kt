@@ -50,18 +50,18 @@ fun youtubeArtUrl(videoId: String): String =
 private const val MQDEFAULT_WIDTH = 320
 
 /**
- * The thumbnail for [videoId] at [size]: [youtubeThumbUrl] when it covers the view, else the best
- * that exists — maxresdefault/hq720 (1280×720) only for HD uploads, then hqdefault, which every
- * video has but as a 4:3 frame with the 16:9 picture letterboxed inside, so its bars are trimmed.
+ * The thumbnail for [videoId] at [size]: [youtubeThumbUrl] when it covers the view, else sddefault
+ * (640×480), falling back to hqdefault (480×360) since sddefault isn't generated for every upload.
+ * Both are 4:3 frames with the 16:9 picture letterboxed inside, so their bars are trimmed.
  */
 private suspend fun youtubeArt(network: ImageFetcher, videoId: String, size: IntSize, url: String): DecodedImage {
-    val candidates = buildList {
-        if (size.width > MQDEFAULT_WIDTH || size.height > MQDEFAULT_WIDTH * 9 / 16) {
-            add("https://i.ytimg.com/vi/$videoId/maxresdefault.jpg" to false)
-            add("https://i.ytimg.com/vi/$videoId/hq720.jpg" to false)
-            add("https://i.ytimg.com/vi/$videoId/hqdefault.jpg" to true)
-        }
-        add(youtubeThumbUrl(videoId) to false)
+    val candidates = if (size.width > MQDEFAULT_WIDTH || size.height > MQDEFAULT_WIDTH * 9 / 16) {
+        listOf(
+            "https://i.ytimg.com/vi/$videoId/sddefault.jpg" to true,
+            "https://i.ytimg.com/vi/$videoId/hqdefault.jpg" to true,
+        )
+    } else {
+        listOf(youtubeThumbUrl(videoId) to false)
     }
     var failure: IOException? = null
     for ((candidate, letterboxed) in candidates) {
@@ -77,7 +77,7 @@ private suspend fun youtubeArt(network: ImageFetcher, videoId: String, size: Int
     throw IOException("no YouTube thumbnail for $videoId: $url", failure)
 }
 
-/** The 16:9 band of a 4:3 frame: the picture inside YouTube's letterboxed hqdefault. */
+/** The 16:9 band of a 4:3 frame: the picture inside YouTube's letterboxed sddefault/hqdefault. */
 private fun DecodedImage.trimLetterbox(): DecodedImage {
     val width = bitmap.width
     val height = width * 9 / 16
