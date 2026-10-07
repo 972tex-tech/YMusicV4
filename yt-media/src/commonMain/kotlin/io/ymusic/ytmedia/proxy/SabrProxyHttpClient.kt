@@ -20,10 +20,10 @@ import okio.Buffer
 import kotlin.time.Duration
 
 /**
- * Routes googlevideo SABR POSTs through [LocalMediaProxy] (cache HIT/BACKOFF/tee + dummy video
- * tail on the selected video itag). Everything else goes to [inner]. [LocalMediaProxy.client]
- * must be [inner], not this wrapper, or a miss recurses. With no [proxy], SABR POSTs go to [inner]
- * minus [ADAPTIVE_FORMATS_HEADER], which must never reach googlevideo.
+ * Routes cacheable googlevideo SABR POSTs — the ones engine-js tagged with [ADAPTIVE_FORMATS_HEADER] —
+ * through [LocalMediaProxy] (cache HIT/BACKOFF/tee). Everything else goes straight to [inner], with
+ * the header removed since it must never reach googlevideo. [LocalMediaProxy.client] must be [inner],
+ * not this wrapper, or a miss recurses.
  */
 class SabrProxyHttpClient(
     private val inner: KmpHttpClient,
@@ -41,7 +41,9 @@ class SabrProxyHttpClient(
 
     override suspend fun execute(request: Request, options: RedirectOptions, timeout: Duration?): Response {
         val url = request.url.toString()
-        if (!isSabrPost(url, request.method)) return inner.execute(request, options, timeout)
+        if (!isSabrPost(url, request.method) || request.header(ADAPTIVE_FORMATS_HEADER) == null) {
+            return inner.execute(request, options, timeout)
+        }
         if (proxy == null) {
             return inner.execute(request.newBuilder().removeHeader(ADAPTIVE_FORMATS_HEADER).build(), options, timeout)
         }
