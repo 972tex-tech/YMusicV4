@@ -8,16 +8,16 @@ import kmphttp.json.JsonWriter
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
 import okio.FileSystem
 import okio.Path
 import okio.buffer
 import okio.use
+import projectcommon.json.boolOrNull
+import projectcommon.json.longOrNull
+import projectcommon.json.objects
+import projectcommon.json.string
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
@@ -93,9 +93,8 @@ internal class PersistentCookieStore(
             runCatching { fileSystem.delete(file) }
             return
         }
-        (root[KEY_COOKIES] as? JsonArray)
-            .orEmpty()
-            .mapNotNull { element -> (element as? JsonObject)?.let { cookieFrom(it) } }
+        root.objects(KEY_COOKIES)
+            .mapNotNull { cookieFrom(it) }
             .associateByTo(cookies) { CookieKey(it.name, it.domain, it.path) }
     }
 
@@ -134,24 +133,21 @@ internal class PersistentCookieStore(
                 .value(json.string(KEY_VALUE))
                 // Only persistent cookies are ever written, and expiresAt is what makes the
                 // rebuilt cookie persistent again.
-                .expiresAt(json[KEY_EXPIRES_AT]?.jsonPrimitive?.longOrNull ?: return null)
+                .expiresAt(json.longOrNull(KEY_EXPIRES_AT) ?: return null)
                 .path(json.string(KEY_PATH))
             val domain = json.string(KEY_DOMAIN)
-            if (json[KEY_HOST_ONLY]?.jsonPrimitive?.booleanOrNull == true) {
+            if (json.boolOrNull(KEY_HOST_ONLY) == true) {
                 builder.hostOnlyDomain(domain)
             } else {
                 builder.domain(domain)
             }
-            if (json[KEY_SECURE]?.jsonPrimitive?.booleanOrNull == true) builder.secure()
-            if (json[KEY_HTTP_ONLY]?.jsonPrimitive?.booleanOrNull == true) builder.httpOnly()
+            if (json.boolOrNull(KEY_SECURE) == true) builder.secure()
+            if (json.boolOrNull(KEY_HTTP_ONLY) == true) builder.httpOnly()
             builder.build()
         } catch (_: Throwable) {
             null
         }
     }
-
-    private fun JsonObject.string(key: String): String =
-        this[key]?.jsonPrimitive?.content ?: error("missing $key")
 
     private data class CookieKey(val name: String, val domain: String, val path: String)
 

@@ -4,12 +4,12 @@ import io.ymusic.remoteconfig.AppUpdate.Companion.value
 import io.ymusic.remoteconfig.BundleVersion.Companion.value
 import kmphttp.json.JsonWriter
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.long
-import kotlinx.serialization.json.longOrNull
+import projectcommon.json.boolOrNull
+import projectcommon.json.intOrNull
+import projectcommon.json.long
+import projectcommon.json.longOrNull
+import projectcommon.json.objectOrNull
+import projectcommon.json.string
 
 /** A JS bundle the service publishes. [version] is compared against the revision already on disk. */
 data class BundleVersion(val version: Long, val url: String) {
@@ -125,22 +125,3 @@ data class RemoteConfigData(
         }
     }
 }
-
-// Read through JsonPrimitive rather than the typed accessors where the service is free to send a
-// number as a JSON number or as a string.
-private fun JsonObject.string(key: String): String = this[key]?.jsonPrimitive?.string ?: error("Missing string key $key")
-
-private val JsonPrimitive.string: String get() {
-    check(isString) { "Not a json string" }
-    return content
-}
-
-private fun JsonObject.intOrNull(key: String): Int? = this[key]?.jsonPrimitive?.intOrNull
-
-private fun JsonObject.longOrNull(key: String): Long? = this[key]?.jsonPrimitive?.longOrNull
-
-private fun JsonObject.long(key: String): Long = this[key]?.jsonPrimitive?.long ?: error("Missing long key $key")
-
-private fun JsonObject.boolOrNull(key: String): Boolean? = this[key]?.jsonPrimitive?.booleanOrNull
-
-private fun JsonObject.objectOrNull(key: String): JsonObject? = this[key] as? JsonObject

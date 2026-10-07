@@ -3,7 +3,9 @@ package io.ymusic.remoteconfig
 import kmphttp.json.JsonWriter
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.long
+import projectcommon.json.long
+import projectcommon.json.objectOrNull
+import projectcommon.json.string
 
 /** One anonymous usage event. [at] is epoch ms when it HAPPENED — a queued event keeps its time. */
 data class PulseEvent(
@@ -18,9 +20,9 @@ data class PulseEvent(
 
         /** Strict: this only ever parses our own queue file, so half an event is a write bug. */
         fun from(json: JsonObject): PulseEvent = PulseEvent(
-            name = checkNotNull(json[KEY_NAME]?.jsonPrimitive?.content) { "Missing $KEY_NAME" },
-            at = checkNotNull(json[KEY_AT]?.jsonPrimitive).long,
-            properties = (json[KEY_PROPS] as? JsonObject)
+            name = json.string(KEY_NAME),
+            at = json.long(KEY_AT),
+            properties = json.objectOrNull(KEY_PROPS)
                 ?.mapValues { (_, value) -> value.jsonPrimitive.content }
                 .orEmpty(),
         )

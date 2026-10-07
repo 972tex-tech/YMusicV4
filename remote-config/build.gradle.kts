@@ -42,6 +42,7 @@ kotlin {
             api(project(":kmpHttp:core"))
             api(Libs.Okio.core)
             implementation(project(":kmpCommon")) // Logger, BufferedAsyncSource
+            implementation(project(":projectCommon"))
             implementation(project(":kmpHttp:json")) // JsonReader — no @Serializable anywhere
             implementation(Libs.Kotlinx.atomicfu) // SynchronizedObject for the cookie store
         }
