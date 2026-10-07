@@ -16,6 +16,9 @@ import kmphttp.ResponseBody
 import kmphttp.ResponseBuilder
 import kmphttp.SslConfig
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
 import okio.Buffer
 import kotlin.time.Duration
 
@@ -49,7 +52,8 @@ class SabrProxyHttpClient(
         }
         val body = request.body?.let { readRequestBody(it) }
         val headers = request.headers.toList()
-        val pr = proxy.serveRequest(url, request.method, body, headers)
+        // Callers include the QuickJS engine thread; the cache serve is blocking SQLite + disk.
+        val pr = withContext(Dispatchers.IO) { proxy.serveRequest(url, request.method, body, headers) }
         val finalUrl = pr.url.ifEmpty { url }
         val built = if (finalUrl == url) request else request.newBuilder().url(finalUrl).build()
         return ResponseBuilder()
