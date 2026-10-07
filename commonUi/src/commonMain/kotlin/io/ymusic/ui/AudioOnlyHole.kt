@@ -28,10 +28,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import io.ymusic.player.Player
 import io.ymusic.player.VideoQualityState
 import io.ymusic.settings.AppSettings
@@ -44,6 +46,13 @@ import kotlinx.coroutines.isActive
 import org.jetbrains.compose.resources.stringResource
 
 private const val WAVE_BARS = 40
+
+/** STARTED while the window is on screen, focused or not; drops when minimized/backgrounded. */
+@Composable
+private fun windowVisible(): Boolean {
+    val state by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    return state.isAtLeast(Lifecycle.State.STARTED)
+}
 
 /** Audio-only by the user's pick, or because the source has no video to show. */
 @Composable
@@ -78,8 +87,7 @@ internal fun AudioOnlyArtWave(
     modifier: Modifier = Modifier,
 ) {
     val status by player.status.collectAsState()
-    val focused = LocalWindowInfo.current.isWindowFocused
-    val sampling = status.playWhenReady && focused
+    val sampling = status.playWhenReady && windowVisible()
     val levels by produceState(FloatArray(WAVE_BARS), player, sampling) {
         val buf = FloatArray(WAVE_BARS)
         if (!sampling) {
@@ -175,8 +183,7 @@ private fun FpsBadge(player: Player, settings: SettingsStore, modifier: Modifier
 @Composable
 private fun FpsBadgeActive(player: Player, modifier: Modifier = Modifier) {
     val status by player.status.collectAsState()
-    val focused = LocalWindowInfo.current.isWindowFocused
-    val sampling = status.playWhenReady && focused
+    val sampling = status.playWhenReady && windowVisible()
     val fps by produceState(0, player, sampling) {
         if (!sampling) {
             value = 0
