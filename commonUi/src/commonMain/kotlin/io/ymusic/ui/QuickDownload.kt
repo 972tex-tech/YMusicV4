@@ -63,15 +63,22 @@ data class QuickDownloadPreset(
         private const val KEY_AUDIO = "audioLanguage"
         private const val KEY_CAPTION = "captionLanguage"
 
-        /** M4A, the default audio track, captions in the device language — until the user saves a preset. */
-        fun default(): QuickDownloadPreset =
-            QuickDownloadPreset(DownloadFormat.M4A, height = null, audioLanguage = null, captionLanguage = systemLanguageTag())
+        /**
+         * Opus (YouTube's best audio, ~256 kbps in WebM) when ffmpeg can write the WebM, else M4A; the default
+         * audio track; captions in the device language — until the user saves a preset.
+         */
+        fun default(ffmpegAvailable: Boolean): QuickDownloadPreset = QuickDownloadPreset(
+            format = if (ffmpegAvailable) DownloadFormat.AUDIO_WEBM else DownloadFormat.M4A,
+            height = null,
+            audioLanguage = null,
+            captionLanguage = systemLanguageTag(),
+        )
 
         /** [default] when never saved, or when the saved format is unknown to this build (an older app version). */
-        fun decode(raw: String): QuickDownloadPreset {
-            if (raw.isBlank()) return default()
+        fun decode(raw: String, ffmpegAvailable: Boolean): QuickDownloadPreset {
+            if (raw.isBlank()) return default(ffmpegAvailable)
             val json = Json.parseToJsonElement(raw).jsonObject
-            val format = DownloadFormat.entries.firstOrNull { it.name == json.string(KEY_FORMAT) } ?: return default()
+            val format = DownloadFormat.entries.firstOrNull { it.name == json.string(KEY_FORMAT) } ?: return default(ffmpegAvailable)
             return QuickDownloadPreset(
                 format = format,
                 height = json.intOrNull(KEY_HEIGHT),

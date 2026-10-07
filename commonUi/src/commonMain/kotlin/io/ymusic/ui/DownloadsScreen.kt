@@ -358,7 +358,8 @@ private fun actionsFor(
 private fun DownloadFormat.badge(): String = when (this) {
     DownloadFormat.MP3 -> "MP3"
     DownloadFormat.M4A -> "M4A"
-    DownloadFormat.AUDIO_WEBM, DownloadFormat.VIDEO_WEBM -> "WEBM"
+    DownloadFormat.AUDIO_WEBM -> "OPUS"
+    DownloadFormat.VIDEO_WEBM -> "WEBM"
     DownloadFormat.VIDEO_MP4 -> "MP4"
 }
 

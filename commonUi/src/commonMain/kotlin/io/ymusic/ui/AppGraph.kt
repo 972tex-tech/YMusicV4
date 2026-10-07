@@ -179,7 +179,7 @@ class AppGraph(
 
     /** The Quick download preset, [QuickDownloadPreset.default] until one is saved. Change it with [saveQuickDownload]. */
     val quickDownload: StateFlow<QuickDownloadPreset> =
-        settings.flow(AppSettings.quickDownloadPreset).mapState(QuickDownloadPreset::decode)
+        settings.flow(AppSettings.quickDownloadPreset).mapState { QuickDownloadPreset.decode(it, downloads?.ffmpegAvailable == true) }
 
     suspend fun saveQuickDownload(preset: QuickDownloadPreset) = settings.put(AppSettings.quickDownloadPreset, preset.encode())
     /**

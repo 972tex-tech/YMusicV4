@@ -400,7 +400,8 @@ private fun AudioFormats(state: DownloadOptionsState, audio: List<AudioOption>) 
 }
 
 internal fun DownloadFormat.displayName(): String = when (this) {
-    DownloadFormat.AUDIO_WEBM, DownloadFormat.VIDEO_WEBM -> "WebM"
+    DownloadFormat.AUDIO_WEBM -> "Opus"
+    DownloadFormat.VIDEO_WEBM -> "WebM"
     DownloadFormat.M4A -> "M4A"
     DownloadFormat.MP3 -> "MP3"
     DownloadFormat.VIDEO_MP4 -> "MP4"
