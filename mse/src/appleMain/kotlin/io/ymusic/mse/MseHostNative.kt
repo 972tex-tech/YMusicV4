@@ -10,6 +10,7 @@ import io.ymusic.mse.cinterop.mse_host_set_bass
 import io.ymusic.mse.cinterop.mse_host_set_eq
 import io.ymusic.mse.cinterop.mse_host_set_js_event
 import io.ymusic.mse.cinterop.mse_host_set_pitch
+import io.ymusic.mse.cinterop.mse_host_set_preamp
 import io.ymusic.mse.cinterop.mse_host_set_speed
 import io.ymusic.mse.cinterop.mse_host_set_video_surface
 import io.ymusic.mse.cinterop.mse_host_set_virtualizer
@@ -124,6 +125,11 @@ actual object MseHostNative {
     actual fun setVirtualizer(handle: Long, width: Float) {
         if (handle == 0L) return
         mse_host_set_virtualizer(handle.toCPointer<COpaque>(), width)
+    }
+
+    actual fun setPreamp(handle: Long, db: Float) {
+        if (handle == 0L) return
+        mse_host_set_preamp(handle.toCPointer<COpaque>(), db)
     }
 
     actual fun pcmLevels(handle: Long, out: FloatArray): Int {

@@ -13,6 +13,7 @@ expect class MseVideoSurface {
         bands: FloatArray,
         bass: Float,
         virtualizer: Float,
+        preamp: Float,
     )
 
     /** Fixed-position log-frequency bars in 0..1. Returns count written. */

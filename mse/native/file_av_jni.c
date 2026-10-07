@@ -287,6 +287,14 @@ Java_io_ymusic_mse_FileAvNative_setVirtualizer(JNIEnv *env, jclass cls, jlong ha
 }
 
 JNIEXPORT void JNICALL
+Java_io_ymusic_mse_FileAvNative_setPreamp(JNIEnv *env, jclass cls, jlong handle, jfloat db)
+{
+    (void)env;
+    (void)cls;
+    file_av_set_preamp((FileAv *)(intptr_t)handle, db);
+}
+
+JNIEXPORT void JNICALL
 Java_io_ymusic_mse_FileAvNative_setAudioIndex(JNIEnv *env, jclass cls, jlong handle, jint index)
 {
     (void)env;

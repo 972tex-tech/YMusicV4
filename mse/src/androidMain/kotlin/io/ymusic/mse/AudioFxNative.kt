@@ -26,6 +26,8 @@ object AudioFxNative {
 
     @JvmStatic external fun setVirtualizer(handle: Long, width: Float)
 
+    @JvmStatic external fun setPreamp(handle: Long, db: Float)
+
     @JvmStatic external fun stretch(
         handle: Long,
         inBuf: ByteBuffer,

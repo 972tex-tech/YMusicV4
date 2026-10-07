@@ -27,6 +27,7 @@ struct AudioFx {
     float volume;
     float bands[AFX_BANDS];
     float bass_db;
+    float preamp_db;
     float width;
     float speed;
     float pitch;
@@ -212,7 +213,9 @@ static void rebuild(AudioFx *fx)
      * limiter never absorbs more than AFX_LIMIT_ABSORB_DB of a big boost, and cuts get only AFX_MAKEUP_DB back. */
     chain_gain_db(fx, fs, &loudness, &max_boost);
     pre_db = fminf(-loudness, AFX_LIMIT_ABSORB_DB - max_boost);
-    fx->pre = powf(10.f, clampf(pre_db, -12.f, AFX_MAKEUP_DB) / 20.f);
+    fx->pre = powf(10.f, (clampf(pre_db, -12.f, AFX_MAKEUP_DB) + fx->preamp_db) / 20.f);
+    if (fabsf(fx->preamp_db) >= 0.05f)
+        fx->color_on = 1;
     fx->lim_release = 1.f - expf(-1.f / (AFX_LIMIT_RELEASE_S * fs));
     if (fabsf(fx->width - 1.f) >= 0.02f)
         fx->color_on = 1;
@@ -347,6 +350,16 @@ void audio_fx_set_virtualizer(AudioFx *fx, float width)
         return;
     pthread_mutex_lock(&fx->mu);
     fx->width = clampf(width, 0.f, 2.f);
+    rebuild(fx);
+    pthread_mutex_unlock(&fx->mu);
+}
+
+void audio_fx_set_preamp(AudioFx *fx, float db)
+{
+    if (!fx)
+        return;
+    pthread_mutex_lock(&fx->mu);
+    fx->preamp_db = clampf(db, -12.f, 12.f);
     rebuild(fx);
     pthread_mutex_unlock(&fx->mu);
 }

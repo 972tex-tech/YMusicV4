@@ -25,6 +25,8 @@ expect object MseHostNative {
 
     fun setVirtualizer(handle: Long, width: Float)
 
+    fun setPreamp(handle: Long, db: Float)
+
     /** Fixed-position log-frequency bars in 0..1. Returns count written. */
     fun pcmLevels(handle: Long, out: FloatArray): Int
 }

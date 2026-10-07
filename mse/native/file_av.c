@@ -2247,6 +2247,12 @@ void file_av_set_eq(FileAv *p, const float bands_db[10])
         audio_fx_set_eq(p->fx, bands_db);
 }
 
+void file_av_set_preamp(FileAv *p, float db)
+{
+    if (p && p->fx)
+        audio_fx_set_preamp(p->fx, db);
+}
+
 void file_av_set_bass(FileAv *p, float db)
 {
     if (p && p->fx)

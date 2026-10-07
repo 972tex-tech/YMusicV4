@@ -388,6 +388,14 @@ Java_io_ymusic_mse_MseHostNative_setVirtualizer(JNIEnv *env, jclass cls, jlong h
     mse_host_set_virtualizer((MseHost *)(intptr_t)handle, width);
 }
 
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_setPreamp(JNIEnv *env, jclass cls, jlong handle, jfloat db)
+{
+    (void)env;
+    (void)cls;
+    mse_host_set_preamp((MseHost *)(intptr_t)handle, db);
+}
+
 JNIEXPORT jint JNICALL
 Java_io_ymusic_mse_MseHostNative_pcmLevels(JNIEnv *env, jclass cls, jlong handle, jfloatArray out)
 {

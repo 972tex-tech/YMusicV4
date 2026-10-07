@@ -1819,6 +1819,12 @@ void mse_host_set_bass(MseHost *h, float db)
         audio_fx_set_bass(h->fx, db);
 }
 
+void mse_host_set_preamp(MseHost *h, float db)
+{
+    if (h && h->fx)
+        audio_fx_set_preamp(h->fx, db);
+}
+
 void mse_host_set_virtualizer(MseHost *h, float width)
 {
     if (h && h->fx)

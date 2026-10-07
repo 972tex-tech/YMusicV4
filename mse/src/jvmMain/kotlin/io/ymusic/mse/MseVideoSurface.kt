@@ -44,11 +44,13 @@ actual class MseVideoSurface {
         bands: FloatArray,
         bass: Float,
         virtualizer: Float,
+        preamp: Float,
     ) {
         if (host == 0L) return
         MseHostNative.setEq(host, bands)
         MseHostNative.setBass(host, bass)
         MseHostNative.setVirtualizer(host, virtualizer)
+        MseHostNative.setPreamp(host, preamp)
     }
 
     actual fun pcmLevels(out: FloatArray): Int =
