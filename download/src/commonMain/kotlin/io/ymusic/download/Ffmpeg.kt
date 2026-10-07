@@ -63,15 +63,16 @@ class Ffmpeg(
     ) = run(m4aArgs(input, output, copy, captions, metadata, cover), onProgressUs)
 
     /** best audio → audio-only WebM (+ any [captions], as WebVTT): Opus is copied ([copy]=true), anything
-     *  else is transcoded to Opus — WebM can't hold AAC. */
+     *  else is transcoded to Opus — WebM can't hold AAC. A JPEG [cover] goes in as a Matroska attachment. */
     suspend fun toWebmAudio(
         input: String,
         output: String,
         copy: Boolean,
         captions: List<SubtitleInput> = emptyList(),
+        cover: String? = null,
         metadata: List<Pair<String, String>> = emptyList(),
         onProgressUs: ((Long) -> Unit)? = null,
-    ) = run(webmAudioArgs(input, output, copy, captions, metadata), onProgressUs)
+    ) = run(webmAudioArgs(input, output, copy, captions, metadata, cover), onProgressUs)
 
     /** Mux VP9 video + Opus audio (+ any [captions], as WebVTT) into one WebM, stream-copying A/V. */
     suspend fun muxWebm(
@@ -165,13 +166,18 @@ internal fun m4aArgs(
     add("-f"); add("ipod"); add(output.ffSpec()) // ipod = the m4a muxer
 }
 
-/** best audio (+ subtitles as WebVTT) → audio-only WebM. Audio is copied ([copy]) or → Opus. */
+/**
+ * best audio (+ subtitles as WebVTT) → audio-only WebM. Audio is copied ([copy]) or → Opus. With a
+ * [cover] it is written by the `matroska` muxer: the `webm` one drops attachments (WebM's spec omits
+ * them), and Matroska-reading players take a `cover.jpg` attachment as the artwork.
+ */
 internal fun webmAudioArgs(
     audio: String,
     output: String,
     copy: Boolean,
     captions: List<SubtitleInput>,
     metadata: List<Pair<String, String>>,
+    cover: String? = null,
 ): List<String> = buildList {
     add("-i"); add(audio.ffSpec())
     captions.forEach { add("-i"); add(it.path.ffSpec()) }
@@ -185,8 +191,13 @@ internal fun webmAudioArgs(
     }
     if (captions.isNotEmpty()) { add("-c:s"); add("webvtt") }
     addAll(subtitleMetaArgs(captions))
+    if (cover != null) {
+        add("-attach"); add(cover.ffSpec())
+        add("-metadata:s:t:0"); add("mimetype=image/jpeg")
+        add("-metadata:s:t:0"); add("filename=cover.jpg")
+    }
     addAll(metaArgs(metadata))
-    add("-f"); add("webm"); add(output.ffSpec())
+    add("-f"); add(if (cover != null) "matroska" else "webm"); add(output.ffSpec())
 }
 
 /** Mux video+audio (+subtitles as mov_text) into an MP4. Video is stream-copied, audio → AAC. */

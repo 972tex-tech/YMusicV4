@@ -23,7 +23,7 @@ fun interface SabrSpecResolver {
  * pipeline works whether the final file is a `file://` path or an Android `content://` SAF document):
  *
  *  1a. download the elementary stream(s) + captions to scratch files ([YtStreamDownloader]).
- *  1b. audio-only MP3/M4A: fetch the largest JPEG thumbnail as cover art ([CoverArt]), best-effort.
+ *  1b. audio-only downloads: fetch the largest JPEG thumbnail as cover art ([CoverArt]), best-effort.
  *  2.  mux/convert + embed metadata with [ffmpeg] into a final scratch file.
  *  3.  clean up the elementary scratch files.
  *  4.  publish the final scratch to the destination (returns its uri) — the shell then adds it to the
@@ -102,7 +102,9 @@ class DownloadPipeline(
             DownloadFormat.M4A -> withCover(task) { cover ->
                 ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), captions = subs, cover = cover, metadata = meta, onProgressUs = onFfProgress)
             }
-            DownloadFormat.AUDIO_WEBM -> ff.toWebmAudio(audio.path, out.path, copy = audioFmt.mimeType.contains("webm"), captions = subs, metadata = meta, onProgressUs = onFfProgress)
+            DownloadFormat.AUDIO_WEBM -> withCover(task) { cover ->
+                ff.toWebmAudio(audio.path, out.path, copy = audioFmt.mimeType.contains("webm"), captions = subs, cover = cover, metadata = meta, onProgressUs = onFfProgress)
+            }
             DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
             DownloadFormat.VIDEO_MP4 -> ff.muxMp4(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
         }
