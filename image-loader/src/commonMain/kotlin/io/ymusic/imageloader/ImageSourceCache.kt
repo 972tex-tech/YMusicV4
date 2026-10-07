@@ -1,25 +1,27 @@
 package io.ymusic.imageloader
 
 import kmpcommon.io.AsyncSource
+import kmpcommon.io.asAsyncSource
 import kmphttp.cache.DiskLruCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import okio.Buffer
+import okio.ByteString.Companion.encodeUtf8
 import okio.FileSystem
 import okio.IOException
 import okio.Path
 import okio.use
 
 /**
- * Compressed originals, owned by the loader (the Coil/Glide model): the network body streams to
- * disk — the heap holds one segment, never the image — and decoding happens from the FILE. Keyed by
- * URL identity only (no size), so every size bucket shares one download. The image client should
- * carry no HTTP cache of its own — this replaces it, with LRU-by-size instead of HTTP freshness
- * (right for immutable-per-URL thumbnails).
+ * Compressed originals (the Coil/Glide model): the body streams to disk — the heap holds one
+ * segment, never the image — and decoding happens from the FILE. Keyed by source identity only (no
+ * size), so every size bucket shares one copy. [networkFetcher] keeps its downloads here (its client
+ * should carry no HTTP cache — this replaces it, with LRU-by-size instead of HTTP freshness, right
+ * for immutable-per-URL thumbnails); app fetchers can keep expensive extractions here too.
  */
-internal class ImageSourceCache(
-    internal val fileSystem: FileSystem,
+class ImageSourceCache(
+    val fileSystem: FileSystem,
     directory: Path,
     maxBytes: Long = 128L * 1024 * 1024,
 ) {
@@ -30,8 +32,8 @@ internal class ImageSourceCache(
         maxSize = maxBytes,
     )
 
-    /** The committed entry's file (LRU-refreshed), or null on a miss. */
-    internal suspend fun filePath(key: String): Path? = withContext(Dispatchers.IO) {
+    /** The committed entry's file (LRU-refreshed), or null on a miss. [key] is a [sourceCacheKey]. */
+    suspend fun filePath(key: String): Path? = withContext(Dispatchers.IO) {
         cache.get(key)?.use { it.getPath(0) }
     }
 
@@ -40,7 +42,7 @@ internal class ImageSourceCache(
      * streaming (Content-Length can lie or be absent); whether the bytes ARE an image is the
      * decoder's verdict, not ours. Nothing is committed on failure.
      */
-    internal suspend fun write(
+    suspend fun write(
         key: String,
         body: AsyncSource,
         maxImageBytes: Long,
@@ -73,6 +75,10 @@ internal class ImageSourceCache(
         filePath(key) ?: throw IOException("image source entry vanished after commit: $key")
     }
 
+    /** [write] for a blocking [body] (e.g. a process's stdout), drained on the IO dispatcher. */
+    suspend fun write(key: String, body: okio.Source, maxImageBytes: Long, url: String): Path =
+        write(key, body.asAsyncSource(), maxImageBytes, url)
+
     /** Evict down to the budget now instead of waiting for the throttled background cleanup. */
     suspend fun trimNow() = withContext(Dispatchers.IO) { cache.trimNow() }
 
@@ -83,3 +89,6 @@ internal class ImageSourceCache(
         const val SEGMENT = 64L * 1024
     }
 }
+
+/** The disk key for a source identity (any string — a url key, or an app's own fingerprint). */
+fun sourceCacheKey(identity: String): String = identity.encodeUtf8().sha256().hex()

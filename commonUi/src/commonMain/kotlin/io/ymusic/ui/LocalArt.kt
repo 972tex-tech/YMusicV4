@@ -7,8 +7,11 @@ import io.ymusic.imageloader.ImageLoadException
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.imageloader.ImageRequest
 import io.ymusic.imageloader.ImageScale
+import io.ymusic.imageloader.ImageSourceCache
 import io.ymusic.imageloader.decodeChecked
 import io.ymusic.imageloader.decodeScaled
+import io.ymusic.imageloader.decodeScaledFile
+import io.ymusic.imageloader.sourceCacheKey
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.model.MediaStoreItem
 import kmpcommon.uri.UriBuilder
@@ -67,11 +70,16 @@ fun loaderYoutubeArt(loader: () -> ImageLoader): YoutubeArt = YoutubeArt { video
  * a file with no embedded cover but a YouTube video id — and `art://yt/<id>` — goes to
  * [youtubeArt]. That branch sits before the video-frame one: tagged videos show the real poster
  * rather than an arbitrary frame. `youtubeVid` is scan-validated to the 11-char id alphabet.
+ *
+ * With a [coverCache], an extracted cover or frame is kept on disk, keyed by the file's uri, size
+ * and mtime (a changed file re-extracts): every view size then decodes from that file instead of
+ * spawning ffmpeg again.
  */
 fun mediaStoreArtFetcher(
     getter: FfmpegMetadataGetter,
     store: BetterMediaStore,
     youtubeArt: YoutubeArt,
+    coverCache: ImageSourceCache? = null,
     maxImageBytes: Long = 32L * 1024 * 1024,
 ): ImageFetcher = ImageFetcher { uri, size, scale ->
     if (uri.scheme?.toString() != "art") return@ImageFetcher null
@@ -87,15 +95,21 @@ fun mediaStoreArtFetcher(
     val item = store.findItem(id)
         ?: throw ImageLoadException(ImageLoadException.Reason.NotFound, "no media item for art uri: $url")
     val youtubeVid = item.youtubeVid
-    val source = when {
-        item.thumbnailStreamIndex != null -> getter.getAttachedPic(item.uri)
+    val kind = when {
+        item.thumbnailStreamIndex != null -> "cover"
         youtubeVid != null -> return@ImageFetcher youtubeArt.load(youtubeVid, size, scale)
-        item.videoCodec != null -> getter.extractThumbnail(item.uri)
+        item.videoCodec != null -> "frame"
         else -> throw ImageLoadException(ImageLoadException.Reason.NotFound, "media item $id has no artwork source: $url")
+    }
+    suspend fun extract(): Source = if (kind == "cover") getter.getAttachedPic(item.uri) else getter.extractThumbnail(item.uri)
+    if (coverCache != null) {
+        val key = sourceCacheKey("$kind:${item.uri}:${item.fileSize}:${item.lastModified}")
+        val file = coverCache.filePath(key) ?: extract().use { coverCache.write(key, it, maxImageBytes, url) }
+        return@ImageFetcher decodeChecked(url) { decodeScaledFile(coverCache.fileSystem, file, size, scale) }
     }
     // ByteArray: the in-memory platform decoders behind decodeScaled are bytes-only (Skia codec),
     // and embedded art is small — the cap guards a mislabeled stream.
-    val bytes = readCapped(source, maxImageBytes, url)
+    val bytes = readCapped(extract(), maxImageBytes, url)
     decodeChecked(url) { decodeScaled(bytes, size, scale) }
 }
 

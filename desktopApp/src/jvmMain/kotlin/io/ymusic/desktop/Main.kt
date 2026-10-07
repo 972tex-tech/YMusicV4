@@ -79,6 +79,7 @@ import io.ymusic.dynamicengine.yt.ytLoginStatus
 import io.ymusic.imageloader.DiskScaledImageCache
 import io.ymusic.imageloader.DiskVariantIndex
 import io.ymusic.imageloader.ImageLoader
+import io.ymusic.imageloader.ImageSourceCache
 import io.ymusic.imageloader.defaultMemoryCacheBudget
 import io.ymusic.imageloader.fileFetcher
 import io.ymusic.imageloader.networkFetcher
@@ -583,7 +584,12 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
             imageNetworkFetcher,
             fileFetcher(),
             resolveFfmpeg()?.let {
-                mediaStoreArtFetcher(FfmpegMetadataGetter(it), mediaStore, loaderYoutubeArt { checkNotNull(loaderRef) })
+                mediaStoreArtFetcher(
+                    FfmpegMetadataGetter(it),
+                    mediaStore,
+                    loaderYoutubeArt { checkNotNull(loaderRef) },
+                    coverCache = ImageSourceCache(FileSystem.SYSTEM, File(dataDir, "image-cover-cache").absolutePath.toPath(), 64L * 1024 * 1024),
+                )
             },
         ),
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, File(dataDir, "image-scaled-cache").absolutePath.toPath()),

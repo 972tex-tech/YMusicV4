@@ -25,6 +25,7 @@ import io.ymusic.dynamicengine.player.bindMseNativeLogs
 import io.ymusic.imageloader.DiskScaledImageCache
 import io.ymusic.imageloader.DiskVariantIndex
 import io.ymusic.imageloader.ImageLoader
+import io.ymusic.imageloader.ImageSourceCache
 import io.ymusic.imageloader.defaultMemoryCacheBudget
 import io.ymusic.imageloader.fileFetcher
 import io.ymusic.imageloader.networkFetcher
@@ -326,6 +327,7 @@ class YMusicApplication : Application() {
                         FfmpegMetadataGetter(it, AndroidFfInputResolver(contentResolver)),
                         mediaStore,
                         loaderYoutubeArt { checkNotNull(loaderRef) },
+                        coverCache = ImageSourceCache(FileSystem.SYSTEM, cacheDir.resolve("image-cover-cache").toOkioPath(), 32L * 1024 * 1024),
                     )
                 },
             ),
