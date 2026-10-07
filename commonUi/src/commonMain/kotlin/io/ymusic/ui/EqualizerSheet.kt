@@ -73,6 +73,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -88,6 +89,8 @@ private val FaderTrackWidth = 4.dp
 private val FaderCapWidth = 22.dp
 private val FaderCapHeight = 14.dp
 private val KnobSize = 104.dp
+private const val KNOB_SWEEP_DEGREES = 270f
+private const val KNOB_HUB_FRACTION = 0.15f
 private val KnobStroke = 7.dp
 private val MenuCurveWidth = 26.dp
 private val MenuCurveHeight = 12.dp
@@ -353,8 +356,9 @@ private fun dbLabel(db: Float): String {
 }
 
 /**
- * A 270° rotary control: drag up or right to raise, down or left to lower. The value arc fills from the
- * lower-left stop; the face's dot points at the current value.
+ * A 270° rotary control: drag around the dial, clockwise to raise. The value moves by the angle swept, not
+ * to the touch point, so grabbing anywhere never jumps it. Near the hub, where the angle is unstable, an
+ * up/right drag raises instead. The value arc fills from the lower-left stop; the dot points at the value.
  */
 @Composable
 private fun RotaryKnob(title: String, fraction: Float, valueText: String, onChange: (Float) -> Unit) {
@@ -373,9 +377,19 @@ private fun RotaryKnob(title: String, fraction: Float, valueText: String, onChan
                     down.consume()
                     dragging = true
                     var value = current
+                    val hub = Offset(size.width / 2f, size.height / 2f)
+                    var lastAngle = angleDegrees(down.position - hub)
                     drag(down.id) { move ->
-                        val delta = move.positionChange()
-                        value = (value + (delta.x - delta.y) / (size.height * 1.5f)).coerceIn(0f, 1f)
+                        val fromHub = move.position - hub
+                        val angle = angleDegrees(fromHub)
+                        val step = if (fromHub.getDistance() < size.width * KNOB_HUB_FRACTION) {
+                            val delta = move.positionChange()
+                            (delta.x - delta.y) / (size.height * 1.5f)
+                        } else {
+                            ((angle - lastAngle + 540f) % 360f - 180f) / KNOB_SWEEP_DEGREES
+                        }
+                        lastAngle = angle
+                        value = (value + step).coerceIn(0f, 1f)
                         change(value)
                         move.consume()
                     }
@@ -389,8 +403,8 @@ private fun RotaryKnob(title: String, fraction: Float, valueText: String, onChan
                 val pad = stroke / 2 + 2.dp.toPx()
                 val arcTopLeft = Offset(pad, pad)
                 val arcSize = Size(size.width - 2 * pad, size.height - 2 * pad)
-                drawArc(track, 135f, 270f, useCenter = false, topLeft = arcTopLeft, size = arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
-                val sweep = 270f * current
+                drawArc(track, 135f, KNOB_SWEEP_DEGREES, useCenter = false, topLeft = arcTopLeft, size = arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+                val sweep = KNOB_SWEEP_DEGREES * current
                 if (sweep > 0f) {
                     drawArc(
                         accent.copy(alpha = if (dragging) 0.35f else 0.2f),
@@ -419,6 +433,9 @@ private fun RotaryKnob(title: String, fraction: Float, valueText: String, onChan
         )
     }
 }
+
+/** Screen-space angle of [v] in degrees; y points down, so clockwise is positive. */
+private fun angleDegrees(v: Offset): Float = atan2(v.y, v.x) * 180f / PI.toFloat()
 
 /** A Catmull-Rom spline through [points], as cubic Béziers. */
 private fun smoothPath(points: List<Offset>): Path = Path().apply {
