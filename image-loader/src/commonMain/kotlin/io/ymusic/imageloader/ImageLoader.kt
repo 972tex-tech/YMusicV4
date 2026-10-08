@@ -282,11 +282,8 @@ class ImageLoader(
         return decoded.cropped(source.crop)
     }
 
-    /** Bump [SCALED_CACHE_VERSION] when the scaling rule changes: entries scaled the old way must miss. */
-    private fun diskKey(key: String): String = "$SCALED_CACHE_VERSION:$key".encodeUtf8().sha256().hex()
+    private fun diskKey(key: String): String = key.encodeUtf8().sha256().hex()
 }
-
-private const val SCALED_CACHE_VERSION = 3
 
 private val NOT_FOUND_TTL = 10.minutes
 

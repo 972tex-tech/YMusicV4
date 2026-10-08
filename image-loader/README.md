@@ -38,7 +38,7 @@ Our own simple Compose image loader (jvm + android + compose-iOS targets).
 - **Scaled decode + caches** — decodes **scaled to cover (or fit) the view size** (Android subsampled
   `BitmapFactory`, Skia draw-down on desktop/iOS via a shared `skikoMain` source set — the full-size image never
   stays resident), memory-LRUs decoded bitmaps, and persists scaled copies that are smaller than their source as
-  lossy WebP (`ScaledImageCache` / `DiskScaledImageCache`, versioned key) so warm starts skip fetch + full decode.
+  lossy WebP (`ScaledImageCache` / `DiskScaledImageCache`) so warm starts skip fetch + full decode.
   `DecodedImage` carries the source size; `downscaled` is derived from it. `SourceCrop.Letterbox16x9` takes the
   middle 16:9 band of a 4:3 frame (YouTube's hqdefault/sddefault).
 
