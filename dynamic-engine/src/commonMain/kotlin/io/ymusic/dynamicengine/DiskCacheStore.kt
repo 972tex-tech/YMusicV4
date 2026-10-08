@@ -7,6 +7,7 @@ import kmpcommon.io.writeAll
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -41,9 +42,13 @@ import kotlin.random.Random
  *
  * okio + SQLite calls are blocking, so they run on [ioDispatcher] (`Dispatchers.IO` on the JVM; the
  * caller passes it since `IO` is not a common API). [now] supplies epoch-millis stamps (injectable for
- * tests). Each [put] streams into its own tmp unlocked; only the reveal (move + row) and [delete]
- * serialize on a [Mutex]. The DB serializes its own writes, and reads ([get]'s `touch` + `list`) need no
- * app lock. Eviction is the JS's job.
+ * tests). Eviction is the JS's job.
+ *
+ * **Concurrent writers: the last to START wins.** [put] and [delete] take a per-key ticket when they
+ * begin; a put streams into its own tmp with no lock held (a body can stay open for a whole player
+ * session) and reveals it only if no later put/delete of the key began meanwhile — otherwise it drops
+ * its tmp, as if written and immediately overwritten. [writeLock] guards only the tickets and the short
+ * reveal (move + row) / delete; reads ([get]'s `touch` + `list`) take no app lock.
  */
 class DiskCacheStore(
     driver: SqlDriver,
@@ -58,6 +63,11 @@ class DiskCacheStore(
 
     private val queries = CacheDatabase(driver).cacheEntryQueries
     private val writeLock = Mutex()
+
+    /** Per blob stem; guarded by [writeLock]. Dropped once no put of the key is in flight. */
+    private class KeyTurn(var latest: Long = 0, var inFlight: Int = 0)
+    private val turns = HashMap<String, KeyTurn>()
+    private var lastTicket = 0L
 
     override suspend fun get(scope: String, key: String): CacheStore.Entry? = withContext(ioDispatcher) {
         val stored = queries.selectOne(scope, key, ::toMeta).executeAsOneOrNull() ?: return@withContext null
@@ -84,35 +94,39 @@ class DiskCacheStore(
         custom: Map<String, String>,
         body: AsyncSource,
     ): CacheStore.Meta {
+        val id = stem(scope, key)
         val tmp = tmpPath(scope, key)
         val blob = blobPath(scope, key)
         val customJson = json.encodeToString(custom)
-        // The body streams from a JS pipe that can stall indefinitely: stage it to a per-put tmp
-        // OUTSIDE [writeLock], which every put/delete on this store queues behind.
-        log?.log(Logger.Level.INFO, "DBG put stage $scope/$key")
-        val size = withContext(ioDispatcher) {
-            fileSystem.createDirectories(directory)
-            try {
-                fileSystem.sink(tmp).buffer().use { sink -> sink.writeAll(body) }
-            } catch (e: Throwable) {
-                fileSystem.delete(tmp, mustExist = false)
-                throw e
-            }
+        val ticket = writeLock.withLock {
+            val turn = turns.getOrPut(id) { KeyTurn() }
+            turn.inFlight++
+            (++lastTicket).also { turn.latest = it }
         }
-        log?.log(Logger.Level.INFO, "DBG put staged $scope/$key wait")
         try {
+            log?.log(Logger.Level.INFO, "DBG put stage $scope/$key #$ticket")
+            val size = withContext(ioDispatcher) {
+                fileSystem.createDirectories(directory)
+                fileSystem.sink(tmp).buffer().use { sink -> sink.writeAll(body) }
+            }
+            log?.log(Logger.Level.INFO, "DBG put staged $scope/$key #$ticket wait")
             return writeLock.withLock {
-                log?.log(Logger.Level.INFO, "DBG put LOCKED $scope/$key")
+                val superseded = turns.getValue(id).latest != ticket
+                log?.log(Logger.Level.INFO, "DBG put LOCKED $scope/$key #$ticket superseded=$superseded")
                 withContext(ioDispatcher) {
-                    // Reveal the blob, then write the row LAST; a failed row write deletes the
-                    // just-revealed blob so no zombie survives.
-                    fileSystem.atomicMove(tmp, blob)
                     val ts = now()
-                    try {
-                        queries.upsert(scope, key, size, ts, ts, customJson)
-                    } catch (e: Throwable) {
-                        fileSystem.delete(blob, mustExist = false)
-                        throw e
+                    if (superseded) {
+                        fileSystem.delete(tmp, mustExist = false)
+                    } else {
+                        // Reveal the blob, then write the row LAST; a failed row write deletes the
+                        // just-revealed blob so no zombie survives.
+                        fileSystem.atomicMove(tmp, blob)
+                        try {
+                            queries.upsert(scope, key, size, ts, ts, customJson)
+                        } catch (e: Throwable) {
+                            fileSystem.delete(blob, mustExist = false)
+                            throw e
+                        }
                     }
                     CacheStore.Meta(key, size, updatedAt = ts, lastUsed = ts, custom = custom)
                 }
@@ -120,11 +134,19 @@ class DiskCacheStore(
         } catch (e: Throwable) {
             fileSystem.delete(tmp, mustExist = false)
             throw e
+        } finally {
+            withContext(NonCancellable) {
+                writeLock.withLock {
+                    val turn = turns.getValue(id)
+                    if (--turn.inFlight == 0) turns.remove(id)
+                }
+            }
         }
     }
 
     override suspend fun delete(scope: String, key: String) = writeLock.also { log?.log(Logger.Level.INFO, "DBG delete wait $scope/$key") }.withLock {
         log?.log(Logger.Level.INFO, "DBG delete LOCKED $scope/$key")
+        turns[stem(scope, key)]?.latest = ++lastTicket
         withContext(ioDispatcher) {
             // Blob first, then row: if this is interrupted the blob never outlives its row (no zombie).
             fileSystem.delete(blobPath(scope, key), mustExist = false)
