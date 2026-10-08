@@ -85,7 +85,7 @@ export async function getSession(maxAge: number): Promise<YtSession> {
     if (cached != null) inMemory = cached;
   }
   const held = inMemory;
-  if (held != null && Date.now() - held.fetchedAt <= maxAge) return held;
+  if (held != null && maxAge > 0 && Date.now() - held.fetchedAt <= maxAge) return held;
 
   try {
     return await scrapeInFlight();
