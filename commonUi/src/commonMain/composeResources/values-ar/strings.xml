@@ -4,6 +4,12 @@
     <string name="section_library">المكتبة</string>
     <string name="section_play_again">تشغيل مرة أخرى</string>
     <string name="section_downloads">مدير التنزيلات</string>
+    <string name="downloads_filter_all">الكل</string>
+    <string name="downloads_filter_running">قيد التنزيل</string>
+    <string name="downloads_filter_waiting">في الانتظار</string>
+    <string name="downloads_filter_paused">متوقف مؤقتًا</string>
+    <string name="downloads_filter_completed">مكتمل</string>
+    <string name="downloads_filter_error">خطأ</string>
     <string name="section_settings">الإعدادات</string>
     <string name="section_donate">تبرّع</string>
     <string name="section_facebook">أعجبنا على فيسبوك</string>

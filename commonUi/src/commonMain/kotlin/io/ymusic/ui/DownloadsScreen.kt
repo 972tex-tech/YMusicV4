@@ -1,6 +1,7 @@
 package io.ymusic.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,10 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
@@ -30,8 +31,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,17 +47,26 @@ import io.ymusic.download.DownloadService
 import io.ymusic.download.DownloadState
 import io.ymusic.download.DownloadTask
 import io.ymusic.download.DownloadTasksAggregator
+import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.downloads_filter_all
+import io.ymusic.ui.resources.downloads_filter_completed
+import io.ymusic.ui.resources.downloads_filter_error
+import io.ymusic.ui.resources.downloads_filter_paused
+import io.ymusic.ui.resources.downloads_filter_running
+import io.ymusic.ui.resources.downloads_filter_waiting
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
- * The Download Manager. Media Cards grouped into status sections (Downloading / Queued / Paused / Needs
- * attention / Completed) in an adaptive grid — one column on a phone, more as width allows — with a
- * Pause-all / Resume-all FAB bottom-right. Each card: art + title + a status pill, the progress bar and
- * byte counts aligned under the text, a per-state overflow menu, and an inline Retry on failures.
+ * The Download Manager: a status filter chip row over one flat adaptive grid (one column on a phone,
+ * more as width allows), with a Pause-all / Resume-all FAB bottom-right. Each card: art + title + a status
+ * pill, the progress bar and byte counts aligned under the text, a per-state overflow menu, and an inline
+ * Retry on failures.
  */
 @Composable
 fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
@@ -82,17 +95,10 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         return
     }
 
-    // Sections in fixed order. Completed sorts by finish time (updatedAt, the date shown on the card);
-    // the rest keep queue order (createdAt), newest first.
-    val sections = DownloadSection.entries.mapNotNull { section ->
-        val items = visible.filter { it.state.section() == section }
-        val sorted = if (section == DownloadSection.COMPLETED) {
-            items.sortedByDescending { it.updatedAt }
-        } else {
-            items.sortedByDescending { it.createdAt }
-        }
-        sorted.takeIf { it.isNotEmpty() }?.let { section to it }
-    }
+    var filter by rememberSaveable { mutableStateOf(DownloadFilter.ALL) }
+    // Added order only, never state: a task changing state must keep its slot.
+    val ordered = visible.sortedByDescending { it.createdAt }
+    val shown = ordered.filter { filter.matches(it.state) }
     val running = visible.any { it.state.isActive }
     val paused = visible.any { it.state == DownloadState.PAUSED }
 
@@ -105,27 +111,40 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val store = graph.mediaStore
     val scope = rememberCoroutineScope()
 
-    Box(Modifier.fillMaxSize()) {
-        LazyVerticalGrid(
-            state = gridState,
-            columns = GridCells.Adaptive(DownloadCardMinWidth),
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = DesignSpacing.MarginCompact,
-                end = DesignSpacing.MarginCompact,
-                top = DesignSpacing.Space8,
-                bottom = FabClearance, // so the last card isn't hidden behind the FAB
-            ),
-            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter),
-            verticalArrangement = Arrangement.spacedBy(CardGap),
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space8),
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
         ) {
-            sections.forEach { (section, items) ->
-                item(span = { GridItemSpan(maxLineSpan) }, key = "header:${section.name}") {
-                    SectionHeader(section.title, items.size)
-                }
-                items(items, key = { it.id }) { task ->
+            DownloadFilter.entries.forEach { entry ->
+                val label = stringResource(entry.label)
+                LibraryChip(
+                    if (entry == DownloadFilter.ALL) label else "$label ${visible.count { entry.matches(it.state) }}",
+                    selected = entry == filter,
+                ) { filter = entry }
+            }
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Adaptive(DownloadCardMinWidth),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = DesignSpacing.MarginCompact,
+                    end = DesignSpacing.MarginCompact,
+                    top = DesignSpacing.Space8,
+                    bottom = FabClearance, // so the last card isn't hidden behind the FAB
+                ),
+                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter),
+                verticalArrangement = Arrangement.spacedBy(CardGap),
+            ) {
+                items(shown, key = { it.id }) { task ->
                     DownloadCard(
                         task, service,
+                        modifier = Modifier.animateItem(),
                         onPlay = {
                             task.fileUri?.let { uri ->
                                 scope.launch { coordinator.playDownloaded(uri, task.videoId, task.title, task.artist) }
@@ -148,51 +167,36 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     )
                 }
             }
-        }
 
-        if (running || paused) {
-            ExtendedFloatingActionButton(
-                onClick = { if (running) service.pauseAll() else service.resumeAll() },
-                text = { Text(if (running) "Pause all" else "Resume all") },
-                icon = { Icon(if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow, null) },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(DesignSpacing.Space16),
-            )
+            if (running || paused) {
+                ExtendedFloatingActionButton(
+                    onClick = { if (running) service.pauseAll() else service.resumeAll() },
+                    text = { Text(if (running) "Pause all" else "Resume all") },
+                    icon = { Icon(if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow, null) },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(DesignSpacing.Space16),
+                )
+            }
         }
     }
 }
 
-/** The status sections, in display order. CANCELED has no section (it's filtered out of the screen). */
-private enum class DownloadSection(val title: String) {
-    ACTIVE("Downloading"),
-    QUEUED("Queued"),
-    PAUSED("Paused"),
-    FAILED("Needs attention"),
-    COMPLETED("Completed"),
-}
+/** The filter chips, in display order. CANCELED matches none (it's filtered out of the screen). */
+private enum class DownloadFilter(val label: StringResource) {
+    ALL(Res.string.downloads_filter_all),
+    RUNNING(Res.string.downloads_filter_running),
+    WAITING(Res.string.downloads_filter_waiting),
+    PAUSED(Res.string.downloads_filter_paused),
+    COMPLETED(Res.string.downloads_filter_completed),
+    ERROR(Res.string.downloads_filter_error),
+    ;
 
-private fun DownloadState.section(): DownloadSection? = when (this) {
-    DownloadState.PREPARING, DownloadState.DOWNLOADING, DownloadState.PROCESSING -> DownloadSection.ACTIVE
-    DownloadState.QUEUED -> DownloadSection.QUEUED
-    DownloadState.PAUSED -> DownloadSection.PAUSED
-    DownloadState.FAILED -> DownloadSection.FAILED
-    DownloadState.COMPLETED -> DownloadSection.COMPLETED
-    DownloadState.CANCELED -> null
-}
-
-@Composable
-private fun SectionHeader(title: String, count: Int) {
-    val danger = title == DownloadSection.FAILED.title
-    Row(
-        Modifier.fillMaxWidth().padding(top = DesignSpacing.Space16, bottom = DesignSpacing.Space4),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
-    ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall,
-            color = if (danger) MaterialTheme.colorScheme.error else DesignColors.Ink,
-        )
-        StatusChip("$count", DesignColors.SurfaceDim, DesignColors.InkMuted, mono = true)
+    fun matches(state: DownloadState): Boolean = when (this) {
+        ALL -> state != DownloadState.CANCELED
+        RUNNING -> state == DownloadState.PREPARING || state == DownloadState.DOWNLOADING || state == DownloadState.PROCESSING
+        WAITING -> state == DownloadState.QUEUED
+        PAUSED -> state == DownloadState.PAUSED
+        COMPLETED -> state == DownloadState.COMPLETED
+        ERROR -> state == DownloadState.FAILED
     }
 }
 
@@ -203,6 +207,7 @@ private fun SectionHeader(title: String, count: Int) {
 private fun DownloadCard(
     task: DownloadTask,
     service: DownloadService,
+    modifier: Modifier,
     onPlay: () -> Unit,
     onRevealLibrary: (() -> Unit)?,
     onRevealFolder: (() -> Unit)?,
@@ -213,7 +218,7 @@ private fun DownloadCard(
         shape = RoundedCornerShape(CardCorner),
         color = if (failed) c.dangerSoft else c.surface,
         border = BorderStroke(1.dp, if (failed) c.danger.copy(alpha = 0.4f) else c.border),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(CardPadding), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
             Row(horizontalArrangement = Arrangement.spacedBy(CardGap)) {
@@ -310,13 +315,12 @@ private fun StatusPill(task: DownloadTask, c: DownloadColors) {
 }
 
 @Composable
-private fun StatusChip(label: String, container: Color, content: Color, mono: Boolean = false) {
+private fun StatusChip(label: String, container: Color, content: Color) {
     Surface(shape = RoundedCornerShape(percent = 50), color = container) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
             color = content,
-            fontFamily = if (mono) FontFamily.Monospace else null,
             modifier = Modifier.padding(horizontal = DesignSpacing.Space8, vertical = DesignSpacing.Space2),
         )
     }

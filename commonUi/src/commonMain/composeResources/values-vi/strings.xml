@@ -4,6 +4,12 @@
     <string name="section_library">Thư viện</string>
     <string name="section_play_again">Phát lại</string>
     <string name="section_downloads">Trình quản lý tải xuống</string>
+    <string name="downloads_filter_all">Tất cả</string>
+    <string name="downloads_filter_running">Đang tải</string>
+    <string name="downloads_filter_waiting">Đang chờ</string>
+    <string name="downloads_filter_paused">Tạm dừng</string>
+    <string name="downloads_filter_completed">Hoàn tất</string>
+    <string name="downloads_filter_error">Lỗi</string>
     <string name="section_settings">Cài đặt</string>
     <string name="section_donate">Ủng hộ</string>
     <string name="section_facebook">Thích chúng tôi trên Facebook</string>
