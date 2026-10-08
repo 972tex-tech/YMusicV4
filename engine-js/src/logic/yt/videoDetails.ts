@@ -50,6 +50,33 @@ onAccept(
   }),
 );
 
+// The rating endpoint by the viewer's new status.
+const RATE_ENDPOINTS: Record<string, string> = {
+  "LIKE": "like/like",
+  "DISLIKE": "like/dislike",
+  "INDIFFERENT": "like/removelike",
+};
+
+// {"videoId","status","token"} -> {}. `status` is the viewer's new rating (LIKE | DISLIKE |
+// INDIFFERENT); `token` is the details' rateTokens entry for it.
+onAccept(
+  "yt/video/rate",
+  commandHandler(async (src, out) => {
+    const args = await src.readJsonObject();
+    const videoId = requiredString(args, "videoId", "yt/video/rate");
+    const status = requiredString(args, "status", "yt/video/rate");
+    const token = requiredString(args, "token", "yt/video/rate");
+    const endpoint = RATE_ENDPOINTS[status];
+    if (endpoint === undefined) throw JsEngineErrorImpl.parse("yt/video/rate status " + status);
+    await innertubeJson(
+      endpoint,
+      { "target": { "videoId": videoId }, "params": token },
+      hostLogger(args, "yt/video/rate"),
+    );
+    await writeJson(out, {});
+  }),
+);
+
 // {"token","text"} -> the posted WireComment. `token` is a page's createToken.
 onAccept(
   "yt/comment/create",
@@ -65,6 +92,44 @@ onAccept(
     const posted = commentPageOf(root)["comments"][0];
     if (posted === undefined) {
       throw new JsEngineErrorImpl("create_comment answered without the posted comment", "E20093");
+    }
+    await writeJson(out, posted);
+  }),
+);
+
+// {"token"} -> {}. `token` is a comment's likeToken / unlikeToken.
+onAccept(
+  "yt/comment/action",
+  commandHandler(async (src, out) => {
+    const args = await src.readJsonObject();
+    const token = requiredString(args, "token", "yt/comment/action");
+    await innertubeJson(
+      "comment/perform_comment_action",
+      { "actions": [token] },
+      hostLogger(args, "yt/comment/action"),
+    );
+    await writeJson(out, {});
+  }),
+);
+
+// {"token","text"} -> the posted reply. `token` is the parent comment's replyToken.
+onAccept(
+  "yt/comment/reply",
+  commandHandler(async (src, out) => {
+    const args = await src.readJsonObject();
+    const token = requiredString(args, "token", "yt/comment/reply");
+    const text = requiredString(args, "text", "yt/comment/reply");
+    const root = await innertubeJson(
+      "comment/create_comment_reply",
+      { "createReplyParams": token, "commentText": text },
+      hostLogger(args, "yt/comment/reply"),
+    );
+    const posted = commentPageOf(root)["comments"][0];
+    if (posted === undefined) {
+      throw new JsEngineErrorImpl(
+        "create_comment_reply answered without the posted reply",
+        "E20098",
+      );
     }
     await writeJson(out, posted);
   }),

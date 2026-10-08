@@ -36,6 +36,47 @@ function setOwner(out: WireVideoDetails, owner: unknown): void {
   if (subscribers !== undefined) out["subscribers"] = subscribers;
 }
 
+// A likeEndpoint's params field by the status it sets.
+const RATE_PARAMS: Record<string, string> = {
+  "LIKE": "likeParams",
+  "DISLIKE": "dislikeParams",
+  "INDIFFERENT": "removeLikeParams",
+};
+
+/** Collect the likeEndpoints a toggle button's taps carry into `tokens` — skipping a sign-in
+ *  modal, whose Sign-in button nests the endpoint to run after sign-in. */
+function collectRateTokens(toggle: unknown, tokens: Record<string, string>): void {
+  walk(toggle, (key, value) => {
+    if (key === "modalEndpoint") return true;
+    if (key !== "likeEndpoint") return;
+    const status = asString(get(value, "status"));
+    const field = status !== undefined ? RATE_PARAMS[status] : undefined;
+    const params = field !== undefined ? asString(get(value, field)) : undefined;
+    if (status !== undefined && params !== undefined && tokens[status] === undefined) {
+      tokens[status] = params;
+    }
+    return true;
+  });
+}
+
+function setRating(out: WireVideoDetails, vm: Record<string, unknown>): void {
+  const like = get(vm, "likeButtonViewModel", "likeButtonViewModel");
+  const status = asString(get(like, "likeStatusEntity", "likeStatus"));
+  if (status !== undefined) out["likeStatus"] = status;
+  const toggle = get(like, "toggleButtonViewModel", "toggleButtonViewModel");
+  const count = asString(get(toggle, "defaultButtonViewModel", "buttonViewModel", "title"));
+  if (count !== undefined && count !== "") out["likeCount"] = count;
+  const liked = asString(get(toggle, "toggledButtonViewModel", "buttonViewModel", "title"));
+  if (liked !== undefined && liked !== "") out["likeCountLiked"] = liked;
+  const tokens: Record<string, string> = {};
+  collectRateTokens(toggle, tokens);
+  collectRateTokens(
+    get(vm, "dislikeButtonViewModel", "dislikeButtonViewModel", "toggleButtonViewModel"),
+    tokens,
+  );
+  if (tokens["LIKE"] !== undefined) out["rateTokens"] = tokens;
+}
+
 export function videoDetailsOf(root: Record<string, unknown>): WireVideoDetails {
   const out: WireVideoDetails = {};
   walk(root, (key, value) => {
@@ -43,6 +84,10 @@ export function videoDetailsOf(root: Record<string, unknown>): WireVideoDetails 
     if (key === "videoPrimaryInfoRenderer") {
       const title = textOf(value["title"]);
       if (title !== undefined) out["title"] = title;
+      return;
+    }
+    if (key === "segmentedLikeDislikeButtonViewModel") {
+      setRating(out, value);
       return true;
     }
     if (key === "videoDescriptionHeaderRenderer") {
@@ -108,6 +153,11 @@ function entitiesOf(root: Record<string, unknown>): Record<string, Record<string
   return out;
 }
 
+/** A toolbar command's comment action token (signed out, the command is a sign-in prompt). */
+function commentAction(command: unknown): string | undefined {
+  return asString(get(command, "innertubeCommand", "performCommentActionEndpoint", "action"));
+}
+
 function commentOf(
   vm: unknown,
   entities: Record<string, Record<string, unknown>>,
@@ -136,10 +186,50 @@ function commentOf(
   if (replies !== undefined && replies !== "" && replies !== "0") comment["replyCount"] = replies;
   const pinned = textOf(get(vm, "pinnedText"));
   if (pinned !== undefined && pinned !== "") comment["pinned"] = pinned;
+  const likesLiked = asString(get(payload, "toolbar", "likeCountLiked"));
+  if (likesLiked !== undefined && likesLiked !== "" && likesLiked !== "0") {
+    comment["likesLiked"] = likesLiked;
+  }
   const stateKey = asString(get(vm, "toolbarStateKey"));
   const state = stateKey !== undefined ? entities[stateKey] : undefined;
   const heart = asString(get(state, "engagementToolbarStateEntityPayload", "heartState"));
   if (heart === "TOOLBAR_HEART_STATE_HEARTED") comment["hearted"] = true;
+  const likeState = asString(get(state, "engagementToolbarStateEntityPayload", "likeState"));
+  if (likeState === "TOOLBAR_LIKE_STATE_LIKED") comment["liked"] = true;
+  const surfaceKey = asString(get(vm, "toolbarSurfaceKey"));
+  const surface = get(
+    surfaceKey !== undefined ? entities[surfaceKey] : undefined,
+    "engagementToolbarSurfaceEntityPayload",
+  );
+  const like = commentAction(get(surface, "likeCommand"));
+  const unlike = commentAction(get(surface, "unlikeCommand"));
+  if (like !== undefined && unlike !== undefined) {
+    comment["likeToken"] = like;
+    comment["unlikeToken"] = unlike;
+  }
+  const reply = get(
+    surface,
+    "replyCommand",
+    "innertubeCommand",
+    "createCommentReplyDialogEndpoint",
+    "dialog",
+    "commentReplyDialogRenderer",
+  );
+  const replyToken = asString(
+    get(
+      reply,
+      "replyButton",
+      "buttonRenderer",
+      "serviceEndpoint",
+      "createCommentReplyEndpoint",
+      "createReplyParams",
+    ),
+  );
+  if (replyToken !== undefined) {
+    comment["replyToken"] = replyToken;
+    const placeholder = textOf(get(reply, "placeholderText"));
+    if (placeholder !== undefined) comment["replyPlaceholder"] = placeholder;
+  }
   return comment;
 }
 

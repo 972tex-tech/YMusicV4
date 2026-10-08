@@ -246,6 +246,14 @@ export interface WireVideoDetails {
   /** "4.55M subscribers". */
   subscribers?: string;
   factoids?: WireFactoid[];
+  /** The like button's count ("19M"), and its count once the viewer's own like is in. */
+  likeCount?: string;
+  likeCountLiked?: string;
+  /** The viewer's rating: "LIKE" | "DISLIKE" | "INDIFFERENT". */
+  likeStatus?: string;
+  /** Engine-private yt/video/rate tokens keyed by the new status (LIKE / DISLIKE / INDIFFERENT);
+   *  absent when the viewer cannot rate (signed out — the button only prompts sign-in). */
+  rateTokens?: Record<string, string>;
   /** Plain text; links and timestamps stay inline as their visible text. */
   description?: string;
   /** "2.4M" — the comment total, absent when comments are off. */
@@ -263,6 +271,16 @@ export interface WireComment {
   /** "1 year ago" (YouTube appends "(edited)" itself). */
   published?: string;
   likes?: string;
+  /** [likes] once the viewer's own like is in. */
+  likesLiked?: string;
+  /** The viewer liked it. */
+  liked?: boolean;
+  /** Engine-private yt/comment/action tokens; absent when the viewer cannot like (signed out). */
+  likeToken?: string;
+  unlikeToken?: string;
+  /** Engine-private yt/comment/reply token; absent when the viewer cannot reply. */
+  replyToken?: string;
+  replyPlaceholder?: string;
   /** "962" — absent on a reply and on a thread with none. */
   replyCount?: string;
   /** yt/comments token for this thread's replies. */
