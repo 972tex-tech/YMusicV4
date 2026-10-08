@@ -273,11 +273,18 @@ export interface WireComment {
   likes?: string;
   /** [likes] once the viewer's own like is in. */
   likesLiked?: string;
-  /** The viewer liked it. */
+  /** The viewer liked / disliked it. */
   liked?: boolean;
-  /** Engine-private yt/comment/action tokens; absent when the viewer cannot like (signed out). */
+  disliked?: boolean;
+  /** Engine-private yt/comment/action tokens; absent when the viewer cannot rate (signed out). */
   likeToken?: string;
   unlikeToken?: string;
+  dislikeToken?: string;
+  undislikeToken?: string;
+  /** Engine-private tokens present only on the viewer's own comments: yt/comment/action deletes,
+   *  yt/comment/edit replaces the text. */
+  deleteToken?: string;
+  editToken?: string;
   /** Engine-private yt/comment/reply token; absent when the viewer cannot reply. */
   replyToken?: string;
   replyPlaceholder?: string;

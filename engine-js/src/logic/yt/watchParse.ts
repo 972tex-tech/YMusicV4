@@ -158,6 +158,43 @@ function commentAction(command: unknown): string | undefined {
   return asString(get(command, "innertubeCommand", "performCommentActionEndpoint", "action"));
 }
 
+/** The ⋮ menu item with [icon] (own comments only: EDIT / DELETE), told apart by icon since the
+ *  label is localized. */
+function menuItem(menu: unknown, icon: string): unknown {
+  const items = get(menu, "innertubeCommand", "menuEndpoint", "menu", "menuRenderer", "items");
+  if (!Array.isArray(items)) return undefined;
+  for (const item of items) {
+    const renderer =
+      get(item, "menuServiceItemRenderer") ?? get(item, "menuNavigationItemRenderer");
+    if (asString(get(renderer, "icon", "iconType")) === icon) return renderer;
+  }
+  return undefined;
+}
+
+/** The first `key` endpoint nested anywhere under `node` (behind dialogs / confirm buttons). */
+function nested(node: unknown, key: string): unknown {
+  let found: unknown;
+  walk(node, (k, v) => {
+    if (found !== undefined) return true;
+    if (k !== key) return;
+    found = v;
+    return true;
+  });
+  return found;
+}
+
+// An edit token names its endpoint: a top-level comment and a reply update through different calls.
+export const EDIT_COMMENT = "c:";
+export const EDIT_REPLY = "r:";
+
+function editToken(menu: unknown): string | undefined {
+  const item = menuItem(menu, "EDIT");
+  const comment = asString(get(nested(item, "updateCommentEndpoint"), "updateCommentParams"));
+  if (comment !== undefined) return EDIT_COMMENT + comment;
+  const reply = asString(get(nested(item, "updateCommentReplyEndpoint"), "updateReplyParams"));
+  return reply !== undefined ? EDIT_REPLY + reply : undefined;
+}
+
 function commentOf(
   vm: unknown,
   entities: Record<string, Record<string, unknown>>,
@@ -181,13 +218,13 @@ function commentOf(
   const published = asString(get(payload, "properties", "publishedTime"));
   if (published !== undefined) comment["published"] = published;
   const likes = asString(get(payload, "toolbar", "likeCountNotliked"));
-  if (likes !== undefined && likes !== "" && likes !== "0") comment["likes"] = likes;
+  if (likes !== undefined && likes.trim() !== "" && likes !== "0") comment["likes"] = likes;
   const replies = asString(get(payload, "toolbar", "replyCount"));
   if (replies !== undefined && replies !== "" && replies !== "0") comment["replyCount"] = replies;
   const pinned = textOf(get(vm, "pinnedText"));
   if (pinned !== undefined && pinned !== "") comment["pinned"] = pinned;
   const likesLiked = asString(get(payload, "toolbar", "likeCountLiked"));
-  if (likesLiked !== undefined && likesLiked !== "" && likesLiked !== "0") {
+  if (likesLiked !== undefined && likesLiked.trim() !== "" && likesLiked !== "0") {
     comment["likesLiked"] = likesLiked;
   }
   const stateKey = asString(get(vm, "toolbarStateKey"));
@@ -196,6 +233,7 @@ function commentOf(
   if (heart === "TOOLBAR_HEART_STATE_HEARTED") comment["hearted"] = true;
   const likeState = asString(get(state, "engagementToolbarStateEntityPayload", "likeState"));
   if (likeState === "TOOLBAR_LIKE_STATE_LIKED") comment["liked"] = true;
+  if (likeState === "TOOLBAR_LIKE_STATE_DISLIKED") comment["disliked"] = true;
   const surfaceKey = asString(get(vm, "toolbarSurfaceKey"));
   const surface = get(
     surfaceKey !== undefined ? entities[surfaceKey] : undefined,
@@ -207,6 +245,19 @@ function commentOf(
     comment["likeToken"] = like;
     comment["unlikeToken"] = unlike;
   }
+  const dislike = commentAction(get(surface, "dislikeCommand"));
+  const undislike = commentAction(get(surface, "undislikeCommand"));
+  if (dislike !== undefined && undislike !== undefined) {
+    comment["dislikeToken"] = dislike;
+    comment["undislikeToken"] = undislike;
+  }
+  const menu = get(surface, "menuCommand");
+  const remove = asString(
+    get(nested(menuItem(menu, "DELETE"), "performCommentActionEndpoint"), "action"),
+  );
+  if (remove !== undefined) comment["deleteToken"] = remove;
+  const editing = editToken(menu);
+  if (editing !== undefined) comment["editToken"] = editing;
   const reply = get(
     surface,
     "replyCommand",

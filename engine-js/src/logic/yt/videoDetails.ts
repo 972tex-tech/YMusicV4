@@ -6,7 +6,7 @@ import { JsEngineErrorImpl, commandHandler } from "../../protocol/command";
 import { hostLogger } from "../../protocol/logger";
 import { innertubeJson } from "./innertube";
 import { asString } from "./scan";
-import { commentPageOf, videoDetailsOf } from "./watchParse";
+import { EDIT_COMMENT, EDIT_REPLY, commentPageOf, videoDetailsOf } from "./watchParse";
 
 async function writeJson(out: PipeSink, value: object): Promise<void> {
   const p = out.writeObjectAsJson(value as Record<string, unknown>);
@@ -97,7 +97,7 @@ onAccept(
   }),
 );
 
-// {"token"} -> {}. `token` is a comment's likeToken / unlikeToken.
+// {"token"} -> {}. `token` is one of a comment's like / unlike / dislike / undislike / delete tokens.
 onAccept(
   "yt/comment/action",
   commandHandler(async (src, out) => {
@@ -132,5 +132,32 @@ onAccept(
       );
     }
     await writeJson(out, posted);
+  }),
+);
+
+// {"token","text"} -> {}. `token` is a comment's editToken; `text` replaces the comment's text.
+onAccept(
+  "yt/comment/edit",
+  commandHandler(async (src, out) => {
+    const args = await src.readJsonObject();
+    const token = requiredString(args, "token", "yt/comment/edit");
+    const text = requiredString(args, "text", "yt/comment/edit");
+    const log = hostLogger(args, "yt/comment/edit");
+    if (token.indexOf(EDIT_COMMENT) === 0) {
+      await innertubeJson(
+        "comment/update_comment",
+        { "updateCommentParams": token.slice(EDIT_COMMENT.length), "commentText": text },
+        log,
+      );
+    } else if (token.indexOf(EDIT_REPLY) === 0) {
+      await innertubeJson(
+        "comment/update_comment_reply",
+        { "updateReplyParams": token.slice(EDIT_REPLY.length), "replyText": text },
+        log,
+      );
+    } else {
+      throw JsEngineErrorImpl.parse("yt/comment/edit token kind");
+    }
+    await writeJson(out, {});
   }),
 );
