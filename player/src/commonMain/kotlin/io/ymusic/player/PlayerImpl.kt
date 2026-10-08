@@ -462,19 +462,13 @@ internal class PlayerImpl(
         return random.nextInt(controller.unplayedCount() + unloaded) < unloaded
     }
 
-    /** In order: keep [LOAD_AHEAD] items queued past the current one. Shuffle over an unknown length:
-     *  keep that many unplayed. A known-length shuffle loads only through its pick roll. */
+    /** Any mode: the current item sits within the queue's last [LOAD_AHEAD] items. */
     private fun maybeLoadAhead() {
         val state = more ?: return
         if (!state.hasMore || state.loading || state.error != null) return
         val queue = controller.state
         if (queue.currentIndex < 0) return
-        val ahead = when {
-            !queue.shuffle -> queue.items.lastIndex - queue.currentIndex
-            state.totalCount == null -> controller.unplayedCount()
-            else -> return
-        }
-        if (ahead < LOAD_AHEAD) startLoad(pickNext = false)
+        if (queue.items.lastIndex - queue.currentIndex < LOAD_AHEAD) startLoad(pickNext = false)
     }
 
     private fun startLoad(pickNext: Boolean) {
