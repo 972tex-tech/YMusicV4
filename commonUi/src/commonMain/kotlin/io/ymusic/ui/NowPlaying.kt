@@ -72,6 +72,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -85,6 +86,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -296,12 +298,15 @@ fun MiniPlayer(
  * right pane carries the top bar and the queue. Full screen overrides both: video only, edge to
  * edge, with the auto-hiding overlay.
  */
+private val LocalOpenChannel = staticCompositionLocalOf<(url: String, title: String) -> Unit> { { _, _ -> } }
+
 @Composable
 fun NowPlayingScreen(
     graph: AppGraph,
     coordinator: PlaybackCoordinator,
     onClose: () -> Unit,
     onPeek: (Float) -> Unit = {},
+    onOpenChannel: (url: String, title: String) -> Unit = { _, _ -> },
 ) {
     var fullscreen by remember { mutableStateOf(false) }
     DisposableEffect(fullscreen) {
@@ -344,8 +349,28 @@ fun NowPlayingScreen(
     ) {
         // No full-screen fill: the video hole is opaque (TextureView) and the chrome paints
         // Surface itself. A wrapping Surface under the picture is 1× overdraw on every pixel.
-        Box(Modifier.fillMaxSize(), content = { shell() })
+        CompositionLocalProvider(LocalOpenChannel provides onOpenChannel) {
+            Box(Modifier.fillMaxSize(), content = { shell() })
+        }
     }
+}
+
+/** The current item's artist line. A YouTube video's opens its channel — from the queue item, or
+ *  once the player response names it. */
+@Composable
+private fun ArtistLine(current: PlayableItem?, status: PlaybackStatus, style: TextStyle, modifier: Modifier) {
+    val video = current as? PlayableItem.YtMedia
+    val details = status.details?.takeIf { video != null && it.videoId == video.videoId }
+    val text = current?.displaySubtitle ?: details?.channelTitle ?: return
+    val url = video?.channelUrl ?: details?.channelUrl
+    val openChannel = LocalOpenChannel.current
+    Text(
+        text,
+        style = style,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.then(if (url != null) Modifier.clickable { openChannel(url, text) } else Modifier),
+    )
 }
 
 /** The video alone, edge to edge, with the auto-hiding overlay; its full-screen button exits. */
@@ -488,15 +513,12 @@ private fun PortraitNowPlaying(
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,
                         )
-                        current?.displaySubtitle?.let {
-                            Text(
-                                it,
-                                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 5.dp),
-                            )
-                        }
+                        ArtistLine(
+                            current,
+                            status,
+                            TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+                            Modifier.padding(top = 5.dp),
+                        )
                         status.error?.let { PlaybackErrorRow(player, it) }
                     }
                     SeekBar(player, progress)
@@ -668,15 +690,12 @@ private fun BoxScope.VideoOverlayControls(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        current?.displaySubtitle?.let {
-            Text(
-                it,
-                style = TextStyle(fontSize = 11.sp, color = Color(0xFFDADADA)),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 3.dp),
-            )
-        }
+        ArtistLine(
+            current,
+            status,
+            TextStyle(fontSize = 11.sp, color = Color(0xFFDADADA)),
+            Modifier.padding(top = 3.dp),
+        )
     }
 
     Box(Modifier.align(Alignment.Center)) {

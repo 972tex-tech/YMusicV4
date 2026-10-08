@@ -905,6 +905,19 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                             nowPlayingPeeking = false
                         },
                         onPeek = { nowPlayingPeeking = it > 0.5f },
+                        onOpenChannel = { url, title ->
+                            graph.pip.nowPlayingOpen.value = false
+                            nowPlayingPeeking = false
+                            openItem(
+                                io.ymusic.dynamicengine.yt.YtFeedItem(
+                                    kind = io.ymusic.dynamicengine.yt.YtFeedItem.KIND_CHANNEL,
+                                    id = url,
+                                    title = title,
+                                    channelId = url,
+                                    url = url,
+                                ),
+                            )
+                        },
                     )
                 }
                 DownloadDialogHost(graph, pendingDownload) { pendingDownload = null }

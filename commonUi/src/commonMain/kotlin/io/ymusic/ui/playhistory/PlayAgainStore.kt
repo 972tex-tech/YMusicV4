@@ -229,6 +229,7 @@ private fun encodeItems(items: List<PlayableItem>): String = buildJsonArray {
                         put("videoId", item.videoId)
                         put("title", item.title)
                         put("artist", item.artist)
+                        put("channelUrl", item.channelUrl)
                         put("thumbnailUrl", item.thumbnailUrl)
                         put("duration", item.duration)
                         put("durationMs", item.durationMs)
@@ -261,6 +262,7 @@ private fun decodeItems(json: String): List<PlayableItem> =
                 duration = obj.stringOrNull("duration"),
                 durationMs = obj.longOrNull("durationMs"),
                 live = obj.bool("live"),
+                channelUrl = obj.stringOrNull("channelUrl"),
             )
             else -> error("Unknown play-again item type $type")
         }
