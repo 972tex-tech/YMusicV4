@@ -2,7 +2,6 @@ package io.ymusic.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -171,10 +170,8 @@ private fun PlayAgainCard(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(DesignColors.Surface, cardShape)
+            .background(DesignColors.SurfaceElevated, cardShape)
             .border(1.dp, DesignColors.Divider, cardShape)
-            .clip(cardShape)
-            .clickable(onClick = onPlay)
             .padding(start = DesignSpacing.Space16, end = DesignSpacing.Space4, top = DesignSpacing.Space8, bottom = DesignSpacing.Space16),
         verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
     ) {
