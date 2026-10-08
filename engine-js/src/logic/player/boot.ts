@@ -20,6 +20,7 @@ import { installSabrIntercept } from "../yt/sabr_http";
 import { installAdaptiveFormatsHeader } from "../yt/sabr_af";
 import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
 import { isYmLive } from "./live";
+import { channelUrl } from "../yt/parse";
 import {
   captionTrackRows,
   installCaptionMinter,
@@ -147,6 +148,7 @@ function applyPictureFromResponse(): boolean {
 function bindPictureSize(player: MoviePlayer): void {
   player["addEventListener"]("onVideoDataChange", function () {
     if (applyPictureFromResponse()) notifyListen("picture");
+    notifyListen("details");
     notifyListen("progress");
     notifyListen("state");
   });
@@ -1248,6 +1250,24 @@ class Player {
     };
   }
 
+  /** The presenting video's owner channel, from its player response (absent until it lands). */
+  details(): Record<string, unknown> {
+    const videoId = this.currentVideoId();
+    const out: Record<string, unknown> = { "videoId": videoId };
+    const player = moviePlayer();
+    if (!player || videoId === "") return out;
+    const pr = asRec(player["getPlayerResponse"]());
+    const vd = pr ? asRec(pr["videoDetails"]) : null;
+    if (!vd || vd["videoId"] !== videoId) return out;
+    const author = vd["author"];
+    if (typeof author === "string" && author !== "") out["channelTitle"] = author;
+    const channelId = vd["channelId"];
+    if (typeof channelId === "string" && channelId.indexOf("UC") === 0) {
+      out["channelUrl"] = channelUrl(channelId);
+    }
+    return out;
+  }
+
   progress(): Record<string, unknown> {
     const clock = this.progressClock();
     const st = this.listenState();
@@ -1405,6 +1425,10 @@ export function picturePlayer(): Record<string, unknown> {
   return ytPlayer.picture();
 }
 
+export function detailsPlayer(): Record<string, unknown> {
+  return ytPlayer.details();
+}
+
 export function catalogPlayer(): Record<string, unknown> {
   return ytPlayer.catalog();
 }
@@ -1414,7 +1438,7 @@ export function catalogReady(): boolean {
   return moviePlayer() != null;
 }
 
-export type ListenKind = "progress" | "state" | "picture";
+export type ListenKind = "progress" | "state" | "picture" | "details";
 
 let catalogHook: (() => void) | null = null;
 let listenHook: ((kind: ListenKind) => void) | null = null;

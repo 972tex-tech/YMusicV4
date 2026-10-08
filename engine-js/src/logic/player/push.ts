@@ -3,11 +3,13 @@
 //   progress — onVideoProgress: position, buffer, duration, seek window
 //   state    — onStateChange: newState, playWhenReady, live, error extras
 //   picture  — onVideoDataChange: videoWidth, videoHeight
+//   details  — onVideoDataChange: videoId, channelTitle, channelUrl
 
 import { JsEngineErrorImpl } from "../../protocol/command";
 import {
   catalogPlayer,
   catalogReady,
+  detailsPlayer,
   ListenKind,
   picturePlayer,
   playerStatePlayer,
@@ -38,6 +40,7 @@ async function waitHostClose(pipe: Pipe): Promise<void> {
 function snapshot(kind: ListenKind): Record<string, unknown> {
   if (kind === "progress") return progressClockPlayer();
   if (kind === "state") return playerStatePlayer();
+  if (kind === "details") return detailsPlayer();
   return picturePlayer();
 }
 
@@ -67,6 +70,14 @@ function sameState(a: Record<string, unknown>, b: Record<string, unknown>): bool
 
 function samePicture(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
   return a["videoWidth"] === b["videoWidth"] && a["videoHeight"] === b["videoHeight"];
+}
+
+function sameDetails(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  return (
+    a["videoId"] === b["videoId"] &&
+    a["channelTitle"] === b["channelTitle"] &&
+    a["channelUrl"] === b["channelUrl"]
+  );
 }
 
 function sameCatalog(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
@@ -103,6 +114,7 @@ function sameListen(
 ): boolean {
   if (kind === "progress") return sameProgress(a, b);
   if (kind === "state") return sameState(a, b);
+  if (kind === "details") return sameDetails(a, b);
   return samePicture(a, b);
 }
 
@@ -128,9 +140,10 @@ export async function listenPlayerStatus(pipe: Pipe): Promise<void> {
 
   try {
     setListenHook(function (kind: ListenKind) {
-      push([kind]);
+      // The player response can land after the first onVideoDataChange; a state change re-checks.
+      push(kind === "state" ? ["state", "details"] : [kind]);
     });
-    push(["state", "progress", "picture"]);
+    push(["state", "progress", "picture", "details"]);
     await waitHostClose(pipe);
   } finally {
     setListenHook(null);
