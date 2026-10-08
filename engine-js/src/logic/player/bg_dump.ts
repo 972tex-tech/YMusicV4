@@ -56,6 +56,8 @@ function ensureDump(): Pipe | null {
         "scope": SCOPE,
         "key": sessionKey,
         "meta": {},
+        // Open for the whole player session, written in bursts.
+        "idleTimeoutMs": 0,
       }),
     ),
   ).then(
