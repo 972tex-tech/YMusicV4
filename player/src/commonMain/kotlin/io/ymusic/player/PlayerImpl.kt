@@ -496,7 +496,7 @@ internal class PlayerImpl(
                 current.copy(
                     loading = false,
                     hasMore = page.hasMore,
-                    totalCount = if (page.hasMore) current.totalCount else controller.state.items.size,
+                    totalCount = if (page.hasMore) src.totalCount ?: current.totalCount else controller.state.items.size,
                     resumeToken = src.resumeToken.takeIf { page.hasMore },
                 )
             }

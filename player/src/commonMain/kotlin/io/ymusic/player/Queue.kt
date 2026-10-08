@@ -36,7 +36,8 @@ data class QueueState(
  * [Player.loadMore]. Calls never overlap.
  */
 interface QueueSource {
-    /** The whole list's length, loaded or not, when the source knows it; weighs shuffle picks. */
+    /** The whole list's length, loaded or not, when the source knows it; weighs shuffle picks. Read
+     *  again after every page, so a source may learn it from its first page. */
     val totalCount: Int?
 
     /** Opaque state the app can store to rebuild this source later (where the list continues);
