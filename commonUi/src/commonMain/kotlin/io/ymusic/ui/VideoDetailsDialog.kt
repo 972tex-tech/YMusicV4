@@ -25,8 +25,11 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -57,9 +60,12 @@ import io.ymusic.dynamicengine.yt.YtChip
 import io.ymusic.dynamicengine.yt.YtComment
 import io.ymusic.dynamicengine.yt.YtCommentPage
 import io.ymusic.dynamicengine.yt.YtVideoDetails
+import io.ymusic.dynamicengine.yt.commentAction
 import io.ymusic.dynamicengine.yt.createComment
 import io.ymusic.dynamicengine.yt.extractComments
 import io.ymusic.dynamicengine.yt.extractVideoDetails
+import io.ymusic.dynamicengine.yt.rateVideo
+import io.ymusic.dynamicengine.yt.replyToComment
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_close
 import io.ymusic.ui.resources.retry
@@ -69,13 +75,18 @@ import io.ymusic.ui.resources.video_details
 import io.ymusic.ui.resources.video_details_comment_hint
 import io.ymusic.ui.resources.video_details_comments
 import io.ymusic.ui.resources.video_details_comments_off
+import io.ymusic.ui.resources.video_details_dislike
 import io.ymusic.ui.resources.video_details_hide_replies
+import io.ymusic.ui.resources.video_details_like
 import io.ymusic.ui.resources.video_details_more_replies
 import io.ymusic.ui.resources.video_details_no_comments
 import io.ymusic.ui.resources.video_details_post
 import io.ymusic.ui.resources.video_details_posted
 import io.ymusic.ui.resources.video_details_replies
+import io.ymusic.ui.resources.video_details_reply
+import io.ymusic.ui.resources.video_details_reply_posted
 import io.ymusic.ui.resources.video_details_sign_in_to_comment
+import io.ymusic.ui.resources.video_details_sign_in_to_rate
 import kmpcommon.error.CodedError
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
@@ -109,12 +120,25 @@ internal class VideoDetailsState(
     val replies = mutableStateMapOf<String, CommentList>()
     var posting by mutableStateOf(false)
     var postErrorCode by mutableStateOf<String?>(null)
+    var likeStatus by mutableStateOf(YtVideoDetails.INDIFFERENT)
+
+    /** A failed rate / comment-like, for the UI to surface once. */
+    var actionErrorCode by mutableStateOf<String?>(null)
+
+    /** The viewer's comment likes made in this dialog, over each comment's served state. */
+    val commentLiked = mutableStateMapOf<String, Boolean>()
+
+    /** The comment whose reply box is open. */
+    var replyingTo by mutableStateOf<String?>(null)
+    var replyPosting by mutableStateOf(false)
+    var replyErrorCode by mutableStateOf<String?>(null)
 
     fun load() {
         detailsErrorCode = null
         scope.launch {
             try {
                 val loaded = graph.engines.extractVideoDetails(videoId, log)
+                likeStatus = loaded.likeStatus
                 details = loaded
                 loaded.commentsContinuation?.let { reloadComments(it) }
             } catch (error: CancellationException) {
@@ -160,6 +184,73 @@ internal class VideoDetailsState(
         val list = CommentList().apply { continuation = comment.repliesContinuation }
         replies[comment.id] = list
         loadMore(list)
+    }
+
+    /** Toggle [status] (LIKE / DISLIKE) optimistically; a failure restores the previous rating. */
+    fun toggleRating(status: String) {
+        val target = if (likeStatus == status) YtVideoDetails.INDIFFERENT else status
+        val token = details?.rateTokens?.get(target) ?: return
+        val previous = likeStatus
+        likeStatus = target
+        scope.launch {
+            try {
+                graph.engines.rateVideo(videoId, target, token, log)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "rate video failed", error)
+                if (likeStatus == target) likeStatus = previous
+                actionErrorCode = (error as? CodedError)?.code ?: "E20097"
+            }
+        }
+    }
+
+    fun isLiked(comment: YtComment): Boolean = commentLiked[comment.id] ?: comment.liked
+
+    fun toggleCommentLike(comment: YtComment) {
+        val liked = isLiked(comment)
+        val token = (if (liked) comment.unlikeToken else comment.likeToken) ?: return
+        commentLiked[comment.id] = !liked
+        scope.launch {
+            try {
+                graph.engines.commentAction(token, log)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "comment like failed", error)
+                commentLiked[comment.id] = liked
+                actionErrorCode = (error as? CodedError)?.code ?: "E20099"
+            }
+        }
+    }
+
+    fun openReply(comment: YtComment) {
+        replyingTo = if (replyingTo == comment.id) null else comment.id
+        replyErrorCode = null
+    }
+
+    /** Reply to [parent] (a top-level comment); the reply lands at the top of its open thread. */
+    fun postReply(parent: YtComment, text: String, onPosted: () -> Unit) {
+        val token = parent.replyToken ?: return
+        if (replyPosting) return
+        replyPosting = true
+        replyErrorCode = null
+        scope.launch {
+            try {
+                val posted = graph.engines.replyToComment(token, text, log)
+                val thread = replies.getOrPut(parent.id) { CommentList().apply { continuation = parent.repliesContinuation } }
+                thread.comments.add(0, posted)
+                replyingTo = null
+                onPosted()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "reply failed", error)
+                replyErrorCode = (error as? CodedError)?.code ?: "E20100"
+            } finally {
+                replyPosting = false
+            }
+        }
     }
 
     fun post(text: String, onPosted: () -> Unit) {
@@ -218,6 +309,14 @@ private fun VideoDetailsContent(
     modifier: Modifier,
 ) {
     val details = state.details
+    val snackbar = LocalSnackbar.current
+    val actionError = state.actionErrorCode?.let { errorMessage(it) }
+    LaunchedEffect(actionError) {
+        if (actionError != null) {
+            snackbar(actionError)
+            state.actionErrorCode = null
+        }
+    }
     val nearEnd by remember {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -230,7 +329,7 @@ private fun VideoDetailsContent(
     }
     LazyColumn(modifier, state = listState) {
         when {
-            details != null -> item("details") { DetailsHeader(details, onOpenChannel) }
+            details != null -> item("details") { DetailsHeader(state, details, onOpenChannel) }
             state.detailsErrorCode != null -> item("error") {
                 ErrorState(state.detailsErrorCode!!, Modifier.fillMaxWidth().heightIn(min = 240.dp)) { state.load() }
             }
@@ -241,7 +340,7 @@ private fun VideoDetailsContent(
 }
 
 @Composable
-private fun DetailsHeader(details: YtVideoDetails, onOpenChannel: (url: String, title: String) -> Unit) {
+private fun DetailsHeader(state: VideoDetailsState, details: YtVideoDetails, onOpenChannel: (url: String, title: String) -> Unit) {
     Column(
         Modifier.fillMaxWidth().padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space8),
         verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
@@ -259,27 +358,87 @@ private fun DetailsHeader(details: YtVideoDetails, onOpenChannel: (url: String, 
                 }
             }
         }
-        details.channelTitle?.let { name ->
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val name = details.channelTitle
             val url = details.channelUrl
             Row(
                 Modifier
-                    .fillMaxWidth()
+                    .weight(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .then(if (url != null) Modifier.clickable { onOpenChannel(url, name) } else Modifier),
+                    .then(if (name != null && url != null) Modifier.clickable { onOpenChannel(url, name) } else Modifier),
                 horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Avatar(details.channelThumbs, 40.dp)
-                Column {
-                    Text(name, style = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink))
-                    details.subscribers?.let {
-                        Text(it, style = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary))
+                if (name != null) {
+                    Avatar(details.channelThumbs, 40.dp)
+                    Column {
+                        Text(
+                            name,
+                            style = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        details.subscribers?.let {
+                            Text(it, style = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary))
+                        }
                     }
                 }
             }
+            RatingPill(state, details)
         }
         details.description?.takeIf { it.isNotBlank() }?.let { Description(it) }
         HorizontalDivider(color = DesignColors.Divider)
+    }
+}
+
+/** Like (with count) | dislike. Signed out, a tap explains that rating needs sign-in. */
+@Composable
+private fun RatingPill(state: VideoDetailsState, details: YtVideoDetails) {
+    val snackbar = LocalSnackbar.current
+    val signIn = stringResource(Res.string.video_details_sign_in_to_rate)
+    val canRate = details.rateTokens.isNotEmpty()
+    val tap = { status: String -> if (canRate) state.toggleRating(status) else snackbar(signIn) }
+    val liked = state.likeStatus == YtVideoDetails.LIKE
+    val disliked = state.likeStatus == YtVideoDetails.DISLIKE
+    val ink = DesignColors.Ink
+    Row(
+        Modifier.clip(RoundedCornerShape(999.dp)).background(DesignColors.SurfaceDim),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier
+                .clickable { tap(YtVideoDetails.LIKE) }
+                .padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space8),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+        ) {
+            Icon(
+                if (liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                stringResource(Res.string.video_details_like),
+                Modifier.size(18.dp),
+                tint = ink,
+            )
+            (if (liked) details.likeCountLiked ?: details.likeCount else details.likeCount)?.let {
+                Text(it, style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = ink))
+            }
+        }
+        Box(Modifier.size(width = 1.dp, height = 20.dp).background(DesignColors.Divider))
+        Box(
+            Modifier
+                .clickable { tap(YtVideoDetails.DISLIKE) }
+                .padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space8),
+        ) {
+            Icon(
+                if (disliked) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
+                stringResource(Res.string.video_details_dislike),
+                Modifier.size(18.dp),
+                tint = ink,
+            )
+        }
     }
 }
 
@@ -337,10 +496,11 @@ private fun LazyListScope.commentsSection(
     }
     items(state.comments.comments, key = { "c:" + it.id }) { comment ->
         Column {
-            CommentRow(comment, onOpenChannel, indent = false)
+            CommentRow(state, comment, onOpenChannel, indent = false)
+            if (state.replyingTo == comment.id) ReplyComposer(state, comment)
             if (comment.repliesContinuation != null) RepliesToggle(state, comment)
             state.replies[comment.id]?.let { list ->
-                list.comments.forEach { reply -> CommentRow(reply, onOpenChannel, indent = true) }
+                list.comments.forEach { reply -> CommentRow(state, reply, onOpenChannel, indent = true) }
                 ListFooter(list, indent = true, moreLabel = stringResource(Res.string.video_details_more_replies)) { state.loadMore(list) }
             }
         }
@@ -374,26 +534,57 @@ private fun Composer(state: VideoDetailsState, header: YtCommentPage) {
         Text(stringResource(Res.string.video_details_sign_in_to_comment), style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary))
         return
     }
-    var draft by remember { mutableStateOf("") }
     val snackbar = LocalSnackbar.current
     val posted = stringResource(Res.string.video_details_posted)
+    CommentField(
+        placeholder = header.composerPlaceholder ?: stringResource(Res.string.video_details_comment_hint),
+        posting = state.posting,
+        errorCode = state.postErrorCode,
+    ) { text, clear -> state.post(text) { clear(); snackbar(posted) } }
+}
+
+@Composable
+private fun ReplyComposer(state: VideoDetailsState, parent: YtComment) {
+    val snackbar = LocalSnackbar.current
+    val posted = stringResource(Res.string.video_details_reply_posted)
+    Box(Modifier.padding(start = DesignSpacing.Space48 + DesignSpacing.Space16, end = DesignSpacing.Space16)) {
+        CommentField(
+            placeholder = parent.replyPlaceholder ?: stringResource(Res.string.video_details_comment_hint),
+            posting = state.replyPosting,
+            errorCode = state.replyErrorCode,
+            autoFocus = true,
+        ) { text, clear -> state.postReply(parent, text) { clear(); snackbar(posted) } }
+    }
+}
+
+/** A text box + send. [onSend] gets the trimmed text and a callback clearing the draft on success. */
+@Composable
+private fun CommentField(
+    placeholder: String,
+    posting: Boolean,
+    errorCode: String?,
+    autoFocus: Boolean = false,
+    onSend: (text: String, clear: () -> Unit) -> Unit,
+) {
+    var draft by remember { mutableStateOf("") }
     val send = {
         val text = draft.trim()
-        if (text.isNotEmpty()) state.post(text) { draft = ""; snackbar(posted) }
+        if (text.isNotEmpty()) onSend(text) { draft = "" }
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         AppTextField(
             value = draft,
             onValueChange = { draft = it },
-            label = header.composerPlaceholder ?: stringResource(Res.string.video_details_comment_hint),
+            label = placeholder,
             modifier = Modifier.weight(1f),
             singleLine = false,
-            isError = state.postErrorCode != null,
-            supportingText = state.postErrorCode?.let { errorMessage(it) },
+            autoFocus = autoFocus,
+            isError = errorCode != null,
+            supportingText = errorCode?.let { errorMessage(it) },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { send() }),
         )
-        if (state.posting) {
+        if (posting) {
             CircularProgressIndicator(Modifier.padding(DesignSpacing.Space8).size(24.dp), strokeWidth = 2.dp)
         } else {
             IconButton(onClick = send, enabled = draft.isNotBlank()) {
@@ -404,7 +595,12 @@ private fun Composer(state: VideoDetailsState, header: YtCommentPage) {
 }
 
 @Composable
-private fun CommentRow(comment: YtComment, onOpenChannel: (url: String, title: String) -> Unit, indent: Boolean) {
+private fun CommentRow(
+    state: VideoDetailsState,
+    comment: YtComment,
+    onOpenChannel: (url: String, title: String) -> Unit,
+    indent: Boolean,
+) {
     val author = comment.author
     val authorUrl = comment.authorChannelUrl
     val openAuthor = if (author != null && authorUrl != null) Modifier.clickable { onOpenChannel(authorUrl, author) } else Modifier
@@ -439,17 +635,47 @@ private fun CommentRow(comment: YtComment, onOpenChannel: (url: String, title: S
             SelectionContainer {
                 Text(comment.text, style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = DesignColors.Ink))
             }
-            if (comment.likes != null || comment.hearted) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
-                    comment.likes?.let {
-                        Icon(Icons.Outlined.ThumbUp, null, Modifier.size(14.dp), tint = DesignColors.InkSecondary)
-                        Text(it, style = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary))
-                    }
-                    if (comment.hearted) {
-                        Icon(Icons.Filled.Favorite, null, Modifier.padding(start = DesignSpacing.Space8).size(14.dp), tint = DesignColors.Accent)
-                    }
-                }
-            }
+            CommentActions(state, comment, canReply = !indent)
+        }
+    }
+}
+
+/** Like (a toggle when signed in, else just the count) · creator heart · Reply (signed in, top level). */
+@Composable
+private fun CommentActions(state: VideoDetailsState, comment: YtComment, canReply: Boolean) {
+    val liked = state.isLiked(comment)
+    val canLike = comment.likeToken != null && comment.unlikeToken != null
+    val count = if (liked) comment.likesLiked ?: comment.likes else comment.likes
+    val replyable = canReply && comment.replyToken != null
+    if (!canLike && count == null && !comment.hearted && !replyable) return
+    val muted = DesignColors.InkSecondary
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .then(if (canLike) Modifier.clickable { state.toggleCommentLike(comment) } else Modifier)
+                .padding(vertical = DesignSpacing.Space4, horizontal = if (canLike) DesignSpacing.Space4 else 0.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
+        ) {
+            Icon(
+                if (liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                stringResource(Res.string.video_details_like),
+                Modifier.size(14.dp),
+                tint = if (liked) DesignColors.Ink else muted,
+            )
+            count?.let { Text(it, style = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = muted)) }
+        }
+        if (comment.hearted) Icon(Icons.Filled.Favorite, null, Modifier.size(14.dp), tint = DesignColors.Accent)
+        if (replyable) {
+            Text(
+                stringResource(Res.string.video_details_reply),
+                style = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .clickable { state.openReply(comment) }
+                    .padding(horizontal = DesignSpacing.Space8, vertical = DesignSpacing.Space4),
+            )
         }
     }
 }

@@ -388,4 +388,9 @@
     <string name="video_details_sign_in_to_comment">سجّل الدخول لإضافة تعليق</string>
     <string name="video_details_post">نشر</string>
     <string name="video_details_posted">تم نشر التعليق</string>
+    <string name="video_details_like">إعجاب</string>
+    <string name="video_details_dislike">عدم إعجاب</string>
+    <string name="video_details_sign_in_to_rate">سجّل الدخول لتقييم هذا الفيديو</string>
+    <string name="video_details_reply">رد</string>
+    <string name="video_details_reply_posted">تم نشر الرد</string>
 </resources>
