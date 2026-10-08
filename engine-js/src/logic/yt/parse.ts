@@ -1056,6 +1056,15 @@ export function collectPage(
         }
         return true;
       }
+      // The view-model form playlist browse pages switched to (verified live 2026-10-08).
+      if (key === "continuationItemViewModel") {
+        if (continuation === undefined) {
+          continuation = asString(
+            get(value, "continuationCommand", "innertubeCommand", "continuationCommand", "token"),
+          );
+        }
+        return true;
+      }
       if (SKIP_KEYS[key] === true) return true;
       return;
     });
