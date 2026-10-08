@@ -231,14 +231,14 @@ private fun DownloadCard(
     val c = downloadColors()
     val failed = task.state == DownloadState.FAILED
     Surface(
-        shape = RoundedCornerShape(CardCorner),
+        shape = RoundedCornerShape(MediaCardCorner),
         color = if (failed) c.dangerSoft else c.surface,
         border = BorderStroke(1.dp, if (failed) c.danger.copy(alpha = 0.4f) else c.border),
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(CardPadding), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
             Row(horizontalArrangement = Arrangement.spacedBy(CardGap)) {
-                LibraryThumb(icon = Icons.Outlined.FileDownload, badge = null, artUrl = task.thumbnailUrl, corner = CardCorner)
+                LibraryThumb(icon = Icons.Outlined.FileDownload, badge = null, artUrl = task.thumbnailUrl, corner = MediaCardCorner)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
                     Text(
                         task.title,
@@ -475,7 +475,7 @@ private fun downloadColors(): DownloadColors {
 
 // --- layout tokens (match the mockup's media-card metrics) ---------------------------------------
 private val BadgeCorner = 3.dp
-private val CardCorner = 6.dp // match the video thumbnail radius (RectThumb)
+internal val MediaCardCorner = 6.dp // match the video thumbnail radius (RectThumb)
 private val CardPadding = 14.dp
 private val CardGap = 12.dp // thumb ↔ text
 private val ThumbSize = 56.dp // LibraryThumb's size

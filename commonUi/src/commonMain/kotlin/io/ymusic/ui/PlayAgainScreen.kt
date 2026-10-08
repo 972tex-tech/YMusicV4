@@ -159,7 +159,7 @@ private fun PlayAgainCard(
 ) {
     val fromBeginning = stringResource(Res.string.menu_play_from_beginning)
     val remove = stringResource(Res.string.menu_remove)
-    val cardShape = RoundedCornerShape(16.dp)
+    val cardShape = RoundedCornerShape(MediaCardCorner)
     Column(
         modifier
             .fillMaxWidth()
