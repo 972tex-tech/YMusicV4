@@ -244,10 +244,15 @@ onAccept(
   "yt/logout",
   commandHandler(async (src, out) => {
     await src.readJsonObject();
+    console.info("DBG logout start");
     await clearAuthCookies(YT);
+    console.info("DBG logout www cleared");
     await clearAuthCookies(YT_MOBILE);
+    console.info("DBG logout m cleared");
     await clearCachedAccount();
+    console.info("DBG logout account cache cleared");
     await invalidateSession();
+    console.info("DBG logout session invalidated");
     await writeJson(out, { "signedIn": false });
   }),
 );
@@ -260,8 +265,11 @@ onAccept(
   "yt/session/refresh",
   commandHandler(async (src, out) => {
     await src.readJsonObject();
+    console.info("DBG refresh start");
     await invalidateSession();
+    console.info("DBG refresh invalidated");
     await getSession(0);
+    console.info("DBG refresh done");
     await writeJson(out, { "ok": true });
   }),
 );

@@ -89,6 +89,7 @@ class DiskCacheStore(
         val customJson = json.encodeToString(custom)
         // The body streams from a JS pipe that can stall indefinitely: stage it to a per-put tmp
         // OUTSIDE [writeLock], which every put/delete on this store queues behind.
+        log?.log(Logger.Level.INFO, "DBG put stage $scope/$key")
         val size = withContext(ioDispatcher) {
             fileSystem.createDirectories(directory)
             try {
@@ -98,8 +99,10 @@ class DiskCacheStore(
                 throw e
             }
         }
+        log?.log(Logger.Level.INFO, "DBG put staged $scope/$key wait")
         try {
             return writeLock.withLock {
+                log?.log(Logger.Level.INFO, "DBG put LOCKED $scope/$key")
                 withContext(ioDispatcher) {
                     // Reveal the blob, then write the row LAST; a failed row write deletes the
                     // just-revealed blob so no zombie survives.
@@ -120,7 +123,8 @@ class DiskCacheStore(
         }
     }
 
-    override suspend fun delete(scope: String, key: String) = writeLock.withLock {
+    override suspend fun delete(scope: String, key: String) = writeLock.also { log?.log(Logger.Level.INFO, "DBG delete wait $scope/$key") }.withLock {
+        log?.log(Logger.Level.INFO, "DBG delete LOCKED $scope/$key")
         withContext(ioDispatcher) {
             // Blob first, then row: if this is interrupted the blob never outlives its row (no zombie).
             fileSystem.delete(blobPath(scope, key), mustExist = false)

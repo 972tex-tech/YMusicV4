@@ -205,14 +205,18 @@ internal class AccountController(
     }
 
     fun signOut() {
+        log?.log(Logger.Level.INFO, "DBG signOut clicked scopeActive=${scope.coroutineContext[kotlinx.coroutines.Job]?.isActive}")
         scope.launch {
+            log?.log(Logger.Level.INFO, "DBG signOut launched")
             // The UI flips to signed-out either way (the user asked to leave), but a failed engine
             // logout leaves the jar authenticated — that mismatch must reach telemetry.
             runCatching { graph.engines.ytLogout() }
                 .onFailure { log?.captureError(it, "logout failed — jar may stay authenticated") }
+            log?.log(Logger.Level.INFO, "DBG ytLogout returned")
             // Re-scrape anonymous so the account identifiers drop out of subsequent requests.
             runCatching { graph.engines.ytRefreshSession() }
                 .onFailure { log?.log(Logger.Level.WARN, "post-logout session refresh failed", it) }
+            log?.log(Logger.Level.INFO, "DBG refresh returned")
             _signedIn.value = false
             _account.value = null
             loginEpoch.value += 1

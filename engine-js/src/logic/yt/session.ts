@@ -101,6 +101,7 @@ export async function getSession(maxAge: number): Promise<YtSession> {
 
 /** The one running scrape, started if none is — concurrent waiters share it. */
 function scrapeInFlight(): Promise<YtSession> {
+  console.info("DBG scrapeInFlight joining=" + (inFlight != null));
   if (inFlight == null) {
     inFlight = (async () => {
       try {
@@ -260,6 +261,7 @@ async function scrapeSession(): Promise<YtSession> {
   // The app language rides Accept-Language (next to PREF), so the homepage answers in it and its
   // ytcfg HL echoes the effective value back into this session.
   const hl = await pulledAppLanguage();
+  console.info("DBG scrape hl pulled");
   const res = await executeWithCookies(
     ORIGIN + "/",
     HttpRequest.get(ORIGIN + "/")
