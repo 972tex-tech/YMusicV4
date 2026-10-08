@@ -69,8 +69,9 @@ class PlayAgainRecorder(
                             if (next != null) write(next.atItemStart())
                         }
                         next == null || prev == null -> Unit
+                        next.queue.currentItem != prev.queue.currentItem -> write(next.atItemStart())
                         next.queue.items != prev.queue.items || next.queue.currentIndex != prev.queue.currentIndex ->
-                            write(next.atItemStart())
+                            write(next)
                         prev.playing && !next.playing -> write(next)
                         next.playing && lastWriteAt.elapsedNow() >= PROGRESS_EVERY -> write(next)
                     }
