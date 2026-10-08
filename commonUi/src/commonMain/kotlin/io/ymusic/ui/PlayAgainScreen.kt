@@ -170,7 +170,7 @@ private fun PlayAgainCard(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(DesignColors.SurfaceElevated, cardShape)
+            .background(DesignColors.SettingsCard, cardShape)
             .border(1.dp, DesignColors.Divider, cardShape)
             .padding(start = DesignSpacing.Space16, end = DesignSpacing.Space4, top = DesignSpacing.Space8, bottom = DesignSpacing.Space16),
         verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
