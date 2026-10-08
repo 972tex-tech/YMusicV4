@@ -107,6 +107,8 @@ data class YtPageHeader(
     val thumbs: List<YtThumb> = emptyList(),
     /** Channel banner variants. */
     val banner: List<YtThumb> = emptyList(),
+    /** A playlist's length when its header states one; null otherwise (Mixes, music pages). */
+    val itemCount: Int? = null,
 )
 
 /** One browse tab of a channel page (Home / Videos / …). [url] is the app link fetching the channel

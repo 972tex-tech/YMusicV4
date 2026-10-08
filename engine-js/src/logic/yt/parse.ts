@@ -500,6 +500,9 @@ function pageHeaderOf(header: unknown): WirePageHeader | null {
         for (const p of parts) {
           const t = textOf(get(p, "text"));
           if (t !== undefined && t !== "") texts.push(t);
+          // "Playlist · 31 videos · 1,007,162 views": the count leads the views.
+          const count = t === undefined ? undefined : itemCountOf(t);
+          if (count !== undefined && out["itemCount"] === undefined) out["itemCount"] = count;
         }
         if (texts.length > 0) lines.push(texts.join(" · "));
       }
@@ -527,10 +530,10 @@ function pageHeaderOf(header: unknown): WirePageHeader | null {
   if (isObj(legacy)) {
     const title = textOf(legacy["title"]);
     if (title !== undefined) out["title"] = title;
-    const sub =
-      textOf(legacy["videosCountText"]) ??
-      textOf(legacy["numVideosText"]) ??
-      textOf(legacy["subscriberCountText"]);
+    const countText = textOf(legacy["videosCountText"]) ?? textOf(legacy["numVideosText"]);
+    const count = countText === undefined ? undefined : itemCountOf(countText);
+    if (count !== undefined) out["itemCount"] = count;
+    const sub = countText ?? textOf(legacy["subscriberCountText"]);
     if (sub !== undefined) out["subtitleLine1"] = sub;
     const thumbs = thumbsOf(legacy["avatar"]);
     if (thumbs !== undefined) out["thumbs"] = thumbs;
@@ -539,6 +542,20 @@ function pageHeaderOf(header: unknown): WirePageHeader | null {
     return out;
   }
   return null;
+}
+
+/** A YouTube playlist holds at most this many videos — a bigger number is a view count. */
+const MAX_PLAYLIST_ITEMS = 5000;
+
+/**
+ * "31 videos" / "1,234 video" / "1.234 vidéos" → the number; undefined for anything abbreviated
+ * ("2.9M views": no space after the digits) or past [MAX_PLAYLIST_ITEMS] (an exact view count).
+ */
+function itemCountOf(text: string): number | undefined {
+  const m = /^(\d{1,3}(?:[.,\u00a0\u202f ]\d{3})*|\d+)\s+\S/.exec(text);
+  if (m === null || m[1] === undefined) return undefined;
+  const n = parseInt(m[1].replace(/\D/g, ""), 10);
+  return n > 0 && n <= MAX_PLAYLIST_ITEMS ? n : undefined;
 }
 
 /** The `sp` query param out of a results-page url — the fallback carrier for filter params. */

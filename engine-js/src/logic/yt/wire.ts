@@ -92,6 +92,8 @@ export interface WirePageHeader {
   thumbs?: WireThumb[];
   /** Channel banner variants. */
   banner?: WireThumb[];
+  /** Playlist length from the header's "31 videos" part; absent when the header shows none. */
+  itemCount?: number;
 }
 
 /** One browse tab of a channel page (Home / Videos / Shorts / …). `url` is the app link fetching

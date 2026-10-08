@@ -73,6 +73,7 @@ private suspend fun readPageHeader(r: JsonReader): YtPageHeader {
     var subtitleLine2: String? = null
     var thumbs: List<YtThumb> = emptyList()
     var banner: List<YtThumb> = emptyList()
+    var itemCount: Int? = null
     r.beginObject()
     while (r.hasNextObjectKey()) {
         when (r.nextKey()) {
@@ -81,11 +82,12 @@ private suspend fun readPageHeader(r: JsonReader): YtPageHeader {
             "subtitleLine2" -> subtitleLine2 = r.stringOrNull()
             "thumbs" -> thumbs = r.readArrayOf { readThumb(it) }
             "banner" -> banner = r.readArrayOf { readThumb(it) }
+            "itemCount" -> itemCount = r.intOrNull()
             else -> r.skipValue()
         }
     }
     r.endObject()
-    return YtPageHeader(title, subtitleLine1, subtitleLine2, thumbs, banner)
+    return YtPageHeader(title, subtitleLine1, subtitleLine2, thumbs, banner, itemCount)
 }
 
 private suspend fun readPageTab(r: JsonReader): YtPageTab {
