@@ -252,7 +252,8 @@ private fun QueueStrip(session: PlayAgainSession, modifier: Modifier) {
 /** "artist · 7 of 32 · 6:05 PM" — or "Resume at 1:12:40" for long content left mid-item. */
 @Composable
 private fun sessionLine(session: PlayAgainSession): String {
-    val position = if (session.resumesMidItem) {
+    // Under a second the clock reads 0:00 — that is the track's start, not a resume point.
+    val position = if (session.resumesMidItem && session.positionMs >= 1_000L) {
         stringResource(Res.string.play_again_resume_at, formatProgressClock(session.positionMs))
     } else {
         stringResource(Res.string.play_again_track_of, session.queueIndex + 1, session.queueSize)
