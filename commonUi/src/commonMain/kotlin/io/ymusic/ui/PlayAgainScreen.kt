@@ -1,17 +1,30 @@
 package io.ymusic.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,20 +36,36 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import io.ymusic.player.formatProgressClock
 import io.ymusic.ui.playhistory.PlayAgainSession
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.menu_play_from_beginning
 import io.ymusic.ui.resources.menu_remove
-import io.ymusic.ui.resources.play_again_continue_at
+import io.ymusic.ui.resources.play_again_days_ago
 import io.ymusic.ui.resources.play_again_empty
+import io.ymusic.ui.resources.play_again_resume
+import io.ymusic.ui.resources.play_again_resume_at
+import io.ymusic.ui.resources.play_again_track_of
+import io.ymusic.ui.resources.play_again_yesterday
 import kmpcommon.error.TechnicalException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.daysUntil
+import kotlinx.datetime.toLocalDateTime
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 /** "Play again" (legacy Rewind playlist): the queues played lately, newest first; a tap resumes one. */
 @Composable
@@ -99,9 +128,15 @@ fun PlayAgainScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         code != null -> ErrorState(code) { reloads++ }
         list == null -> CenteredBox { CircularProgressIndicator() }
         list.isEmpty() -> EmptyState(stringResource(Res.string.play_again_empty), onReload = { reloads++ })
-        else -> LazyColumn(Modifier.fillMaxSize()) {
+        else -> LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = PlayAgainCardMinWidth),
+            modifier = Modifier.fillMaxSize().background(DesignColors.SurfaceDim),
+            contentPadding = PaddingValues(DesignSpacing.Space16),
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+            verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+        ) {
             items(list, key = { it.queueId }) { session ->
-                PlayAgainRow(
+                PlayAgainCard(
                     session,
                     onPlay = { restore(session, fromBeginning = false) },
                     onPlayFromBeginning = { restore(session, fromBeginning = true) },
@@ -116,8 +151,16 @@ fun PlayAgainScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     }
 }
 
+/** One column on a phone; side-by-side cards on a wide window. */
+private val PlayAgainCardMinWidth = 340.dp
+private val StripTileSize = 30.dp
+
+/** Room kept for the "+N" label after the tiles (three digits at the sub style). */
+private val StripMoreLabelWidth = 32.dp
+
+/** A saved queue: its current item, a strip of the queue around it (played dimmed, current ringed), Resume. */
 @Composable
-private fun PlayAgainRow(
+private fun PlayAgainCard(
     session: PlayAgainSession,
     onPlay: () -> Unit,
     onPlayFromBeginning: () -> Unit,
@@ -125,40 +168,125 @@ private fun PlayAgainRow(
 ) {
     val fromBeginning = stringResource(Res.string.menu_play_from_beginning)
     val remove = stringResource(Res.string.menu_remove)
-    Row(
-        modifier = Modifier
+    val cardShape = RoundedCornerShape(16.dp)
+    Column(
+        Modifier
             .fillMaxWidth()
+            .background(DesignColors.Surface, cardShape)
+            .border(1.dp, DesignColors.Divider, cardShape)
+            .clip(cardShape)
             .clickable(onClick = onPlay)
-            .padding(
-                start = DesignSpacing.Space16,
-                end = DesignSpacing.Space4,
-                top = DesignSpacing.Space8,
-                bottom = DesignSpacing.Space8,
-            ),
-        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
-        verticalAlignment = Alignment.Top,
+            .padding(start = DesignSpacing.Space16, end = DesignSpacing.Space4, top = DesignSpacing.Space8, bottom = DesignSpacing.Space16),
+        verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
     ) {
-        LibraryThumb(
-            Icons.AutoMirrored.Filled.QueueMusic,
-            badge = "${session.queueIndex + 1}/${session.queueSize}",
-            artUrl = session.thumbnailUrl,
-        )
-        Column(Modifier.weight(1f)) {
-            Text(session.title, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(
-                stringResource(
-                    Res.string.play_again_continue_at,
-                    formatProgressClock(if (session.resumesMidItem) session.positionMs else 0L),
-                ),
-                style = ListSubStyle,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = DesignSpacing.Space4),
-            )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(top = DesignSpacing.Space8),
+        ) {
+            LibraryThumb(Icons.Default.MusicNote, badge = null, artUrl = session.thumbnailUrl)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    session.title,
+                    style = ListTitleStyle.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    sessionLine(session),
+                    style = ListSubStyle,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = DesignSpacing.Space4),
+                )
+            }
+            MoreMenu(ItemActions(listOf(fromBeginning to onPlayFromBeginning, remove to onRemove)))
         }
-        MoreMenu(
-            ItemActions(listOf(fromBeginning to onPlayFromBeginning, remove to onRemove)),
-            Modifier.padding(top = DesignSpacing.Space2),
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+            modifier = Modifier.padding(end = DesignSpacing.Space8),
+        ) {
+            QueueStrip(session, Modifier.weight(1f))
+            Button(
+                onClick = onPlay,
+                colors = ButtonDefaults.buttonColors(containerColor = DesignColors.Accent, contentColor = Color.White),
+                contentPadding = PaddingValues(horizontal = DesignSpacing.Space16),
+                modifier = Modifier.height(36.dp),
+            ) {
+                Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp))
+                Text(
+                    stringResource(Res.string.play_again_resume),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = DesignSpacing.Space4),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueStrip(session: PlayAgainSession, modifier: Modifier) {
+    BoxWithConstraints(modifier) {
+        val gap = DesignSpacing.Space4
+        // Whole tiles only: the ones that don't fit fold into the "+N" label, never a squeezed tile.
+        val fit = ((maxWidth - StripMoreLabelWidth + gap) / (StripTileSize + gap)).toInt().coerceAtLeast(1)
+        val currentOffset = session.queueIndex - session.stripStart
+        val first = (currentOffset - fit + 1).coerceIn(0, (session.stripThumbs.size - 1).coerceAtLeast(0))
+        val shown = session.stripThumbs.drop(first).take(fit)
+        val more = session.queueSize - session.stripStart - first - shown.size
+        Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
+            val tileShape = RoundedCornerShape(6.dp)
+            shown.forEachIndexed { offset, url ->
+                val index = session.stripStart + first + offset
+                Box(
+                    Modifier
+                        .size(StripTileSize)
+                        .alpha(if (index < session.queueIndex) 0.35f else 1f)
+                        .then(
+                            if (index == session.queueIndex) Modifier.border(2.dp, DesignColors.Accent, tileShape) else Modifier,
+                        )
+                        .padding(if (index == session.queueIndex) 2.dp else 0.dp)
+                        .clip(tileShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ArtImage(url, tileShape) { ThumbPlaceholder(Icons.Default.MusicNote, 14.dp) }
+                }
+            }
+            if (more > 0) {
+                Text(
+                    "+$more",
+                    style = ListSubStyle.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = DesignSpacing.Space4),
+                )
+            }
+        }
+    }
+}
+
+/** "artist · 7 of 32 · 6:05 PM" — or "Resume at 1:12:40" for long content left mid-item. */
+@Composable
+private fun sessionLine(session: PlayAgainSession): String {
+    val position = if (session.resumesMidItem) {
+        stringResource(Res.string.play_again_resume_at, formatProgressClock(session.positionMs))
+    } else {
+        stringResource(Res.string.play_again_track_of, session.queueIndex + 1, session.queueSize)
+    }
+    return listOfNotNull(session.subtitle, position, playedWhen(session.updatedAt)).joinToString(" · ")
+}
+
+/** Today → the time ("18:05"), then "Yesterday", then "N days ago". */
+@OptIn(ExperimentalTime::class)
+@Composable
+private fun playedWhen(epochMs: Long): String? {
+    if (epochMs <= 0L) return null
+    val zone = TimeZone.currentSystemDefault()
+    val played = Instant.fromEpochMilliseconds(epochMs).toLocalDateTime(zone)
+    val today = Clock.System.now().toLocalDateTime(zone).date
+    return when (val days = played.date.daysUntil(today)) {
+        in Int.MIN_VALUE..0 -> "${played.hour}:${played.minute.toString().padStart(2, '0')}"
+        1 -> stringResource(Res.string.play_again_yesterday)
+        else -> pluralStringResource(Res.plurals.play_again_days_ago, days, days)
     }
 }
