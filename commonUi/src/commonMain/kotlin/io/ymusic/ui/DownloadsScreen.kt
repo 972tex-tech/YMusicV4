@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -117,81 +118,78 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val store = graph.mediaStore
     val scope = rememberCoroutineScope()
 
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = DesignSpacing.MarginCompact, vertical = DesignSpacing.Space8),
-            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+    Box(Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            state = gridState,
+            columns = GridCells.Adaptive(DownloadCardMinWidth),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = DesignSpacing.MarginCompact,
+                end = DesignSpacing.MarginCompact,
+                top = DesignSpacing.Space8,
+                bottom = FabClearance, // so the last card isn't hidden behind the FAB
+            ),
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter),
+            verticalArrangement = Arrangement.spacedBy(CardGap),
         ) {
-            DownloadFilter.entries.forEach { entry ->
-                val label = stringResource(entry.label)
-                LibraryChip(
-                    if (entry == DownloadFilter.ALL) label else "$label ${visible.count { entry.matches(it.state) }}",
-                    selected = entry == filter,
-                ) { filter = entry }
-            }
-        }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            LazyVerticalGrid(
-                state = gridState,
-                columns = GridCells.Adaptive(DownloadCardMinWidth),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = DesignSpacing.MarginCompact,
-                    end = DesignSpacing.MarginCompact,
-                    top = DesignSpacing.Space8,
-                    bottom = FabClearance, // so the last card isn't hidden behind the FAB
-                ),
-                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter),
-                verticalArrangement = Arrangement.spacedBy(CardGap),
-            ) {
-                items(shown, key = { it.id }) { task ->
-                    DownloadCard(
-                        task, service,
-                        modifier = Modifier.animateItem(),
-                        onPlay = {
-                            task.fileUri?.let { uri ->
-                                scope.launch { coordinator.playDownloaded(uri, task.videoId, task.title, task.artist) }
-                            }
-                        },
-                        onRevealLibrary = if (store != null) ({
-                            scope.launch {
-                                // Resolve the folder from the file's own persisted uri, not the current
-                                // download-location setting (which may have changed since): the item's
-                                // registered bucket, else the file's parent folder as a Library bucket.
-                                // Null falls back to just opening the Library.
-                                val uri = task.fileUri
-                                folderReveal?.value = uri?.let { store.findItemByUri(Uri.parse(it)) }?.bucketId
-                                    ?: uri?.parentFolderUri()?.let { store.findBucketByUri(Uri.parse(it)) }?.id
-                                navigate(AppSection.Library)
-                            }
-                            Unit
-                        }) else null,
-                        onRevealFolder = graph.revealInFolder?.let { hook -> { task.fileUri?.let { uri -> scope.launch { hook(uri) } }; Unit } },
-                    )
+            item(span = { GridItemSpan(maxLineSpan) }, key = "filters") {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+                ) {
+                    DownloadFilter.entries.forEach { entry ->
+                        val label = stringResource(entry.label)
+                        LibraryChip(
+                            if (entry == DownloadFilter.ALL) label else "$label ${visible.count { entry.matches(it.state) }}",
+                            selected = entry == filter,
+                        ) { filter = entry }
+                    }
                 }
             }
-
-            if (shown.isEmpty()) {
-                CenteredBox(Modifier.fillMaxSize()) {
-                    Text(
-                        stringResource(filter.empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            if (running || paused) {
-                ExtendedFloatingActionButton(
-                    onClick = { if (running) service.pauseAll() else service.resumeAll() },
-                    text = { Text(if (running) "Pause all" else "Resume all") },
-                    icon = { Icon(if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow, null) },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(DesignSpacing.Space16),
+            items(shown, key = { it.id }) { task ->
+                DownloadCard(
+                    task, service,
+                    modifier = Modifier.animateItem(),
+                    onPlay = {
+                        task.fileUri?.let { uri ->
+                            scope.launch { coordinator.playDownloaded(uri, task.videoId, task.title, task.artist) }
+                        }
+                    },
+                    onRevealLibrary = if (store != null) ({
+                        scope.launch {
+                            // Resolve the folder from the file's own persisted uri, not the current
+                            // download-location setting (which may have changed since): the item's
+                            // registered bucket, else the file's parent folder as a Library bucket.
+                            // Null falls back to just opening the Library.
+                            val uri = task.fileUri
+                            folderReveal?.value = uri?.let { store.findItemByUri(Uri.parse(it)) }?.bucketId
+                                ?: uri?.parentFolderUri()?.let { store.findBucketByUri(Uri.parse(it)) }?.id
+                            navigate(AppSection.Library)
+                        }
+                        Unit
+                    }) else null,
+                    onRevealFolder = graph.revealInFolder?.let { hook -> { task.fileUri?.let { uri -> scope.launch { hook(uri) } }; Unit } },
                 )
             }
+        }
+
+        if (shown.isEmpty()) {
+            CenteredBox(Modifier.fillMaxSize()) {
+                Text(
+                    stringResource(filter.empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        if (running || paused) {
+            ExtendedFloatingActionButton(
+                onClick = { if (running) service.pauseAll() else service.resumeAll() },
+                text = { Text(if (running) "Pause all" else "Resume all") },
+                icon = { Icon(if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow, null) },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(DesignSpacing.Space16),
+            )
         }
     }
 }
