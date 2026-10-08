@@ -71,7 +71,7 @@ elseif(UNIX)
     "-Wl,-rpath,${FFMPEG_ROOT}/lib")
   # libpulse-simple is dlopen'd by aq_pulse.c; only its headers are needed here.
   find_path(PULSE_INCLUDE_DIR pulse/simple.h REQUIRED)
-  target_sources(mseffmpegjni PRIVATE aq_pulse.c)
+  target_sources(mseffmpegjni PRIVATE aq_pulse.c mse_hwdev.c)
   target_include_directories(mseffmpegjni PRIVATE ${PULSE_INCLUDE_DIR})
   target_link_libraries(mseffmpegjni PRIVATE dl m pthread)
 endif()

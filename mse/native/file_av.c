@@ -28,7 +28,9 @@
 #define FILE_AV_AQ 1
 #elif defined(__linux__) && !defined(__ANDROID__)
 #include "aq_pulse.h"
+#include "mse_hwdev.h"
 #define FILE_AV_AQ 1
+#define FILE_AV_LINUX_HW 1
 #endif
 #ifdef __APPLE__
 #include <mach/mach_time.h>
@@ -82,6 +84,9 @@ struct FileAv {
     int ended;
     int want_video;
     int v_need_key; /* after rest: drop until a key at/after the clock */
+#ifdef FILE_AV_LINUX_HW
+    AVPacket *v_first; /* first packet into the current vdec, until it yields a frame */
+#endif
     int audio_index; /* -1 = first audio */
     int blit_w;
     int blit_h;
@@ -273,6 +278,13 @@ static int vout_push(FileAv *p, AVFrame *src)
 static const AVCodec *find_vdec(enum AVCodecID id)
 {
     const AVCodec *c;
+#ifdef FILE_AV_LINUX_HW
+    if ((id == AV_CODEC_ID_VP9 || id == AV_CODEC_ID_AV1) && mse_hwdev_usable(id)) {
+        c = avcodec_find_decoder_by_name(id == AV_CODEC_ID_VP9 ? "vp9" : "av1");
+        if (c)
+            return c;
+    }
+#endif
     if (id == AV_CODEC_ID_VP9) {
         c = avcodec_find_decoder_by_name("libvpx-vp9");
         if (c)
@@ -326,6 +338,15 @@ static AVCodecContext *open_codec(AVStream *st, int video)
     if (video) {
         enum AVCodecID id = st->codecpar->codec_id;
         int try_vt = (id == AV_CODEC_ID_H264 || id == AV_CODEC_ID_HEVC);
+#ifdef FILE_AV_LINUX_HW
+        if ((try_vt || id == AV_CODEC_ID_VP9 || id == AV_CODEC_ID_AV1) && mse_hwdev_usable(id)) {
+            ctx->get_format = mse_hwdev_get_format;
+            ctx->hw_device_ctx = av_buffer_ref(mse_hwdev_get());
+            /* vout[] + vfr hold surfaces outside the decoder's fixed CUDA pool. */
+            ctx->extra_hw_frames = VOUT_N + 2;
+        }
+        try_vt = 0;
+#endif
         if (try_vt) {
             AVBufferRef *hw = NULL;
             ctx->get_format = get_format_prefer_hw;
@@ -334,7 +355,7 @@ static AVCodecContext *open_codec(AVStream *st, int video)
                 ctx->extra_hw_frames = 4;
             }
         }
-        if (id == AV_CODEC_ID_VP9 || id == AV_CODEC_ID_VP8) {
+        if ((id == AV_CODEC_ID_VP9 || id == AV_CODEC_ID_VP8) && !ctx->hw_device_ctx) {
             ctx->thread_count = 4;
             ctx->thread_type = FF_THREAD_FRAME;
         }
@@ -400,6 +421,9 @@ static double media_time_locked(FileAv *p)
 static void drop_video_state_locked(FileAv *p)
 {
     avcodec_free_context(&p->vdec);
+#ifdef FILE_AV_LINUX_HW
+    av_packet_free(&p->v_first);
+#endif
     pq_clear(&p->vq);
     vout_clear(p);
     av_frame_unref(p->vfr);
@@ -1622,6 +1646,34 @@ static int pump_video(FileAv *p, double clock)
     return present_head(p);
 }
 
+#ifdef FILE_AV_LINUX_HW
+/* The GPU turned the codec down (native av1 has no software path): swap in a software decoder and
+   replay the packet it started from, so the queued GOP stays decodable. Caller holds mu, dec_busy set. */
+static void reopen_if_hw_rejected_locked(FileAv *p)
+{
+    AVStream *st;
+    if (!p->vdec || !p->vdec->hw_device_ctx || mse_hwdev_usable(p->vdec->codec_id) || !p->fmt)
+        return;
+    mse_critf(MSE_LOG_INFO, "file-av reopen %s in software", avcodec_get_name(p->vdec->codec_id));
+    avcodec_free_context(&p->vdec);
+    st = p->fmt->streams[p->v_st];
+    p->vdec = open_codec(st, 1);
+    if (!p->vdec) {
+        av_packet_free(&p->v_first);
+        set_err(p, "video decoder");
+        return;
+    }
+    p->dec_drain = 0;
+    if (p->v_first) {
+        AVPacket *first = p->v_first;
+        AVCodecContext *dec = p->vdec;
+        pthread_mutex_unlock(&p->mu);
+        avcodec_send_packet(dec, first);
+        pthread_mutex_lock(&p->mu);
+    }
+}
+#endif
+
 static void *dec_loop(void *arg)
 {
     FileAv *p = arg;
@@ -1670,10 +1722,17 @@ static void *dec_loop(void *arg)
                 pthread_mutex_unlock(&p->mu);
                 continue;
             }
+#ifdef FILE_AV_LINUX_HW
+            if (!p->v_first && p->vdec->hw_device_ctx)
+                p->v_first = av_packet_clone(pkt);
+#endif
             pthread_mutex_unlock(&p->mu);
             avcodec_send_packet(p->vdec, pkt);
             av_packet_free(&pkt);
             pthread_mutex_lock(&p->mu);
+#ifdef FILE_AV_LINUX_HW
+            reopen_if_hw_rejected_locked(p);
+#endif
             p->dec_busy = 0;
             pthread_cond_broadcast(&p->cv);
             pthread_mutex_unlock(&p->mu);
@@ -1681,11 +1740,17 @@ static void *dec_loop(void *arg)
         }
         if (got < 0) {
             av_frame_unref(p->vfr);
+#ifdef FILE_AV_LINUX_HW
+            reopen_if_hw_rejected_locked(p);
+#endif
             p->dec_busy = 0;
             pthread_cond_broadcast(&p->cv);
             pthread_mutex_unlock(&p->mu);
             continue;
         }
+#ifdef FILE_AV_LINUX_HW
+        av_packet_free(&p->v_first);
+#endif
         p->dec_busy = 0;
         pthread_cond_broadcast(&p->cv);
         while (!p->stop && p->opened && epoch == p->dec_epoch && p->vout_n >= VOUT_N)

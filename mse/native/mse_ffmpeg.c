@@ -24,6 +24,10 @@
 #include "mse_vt_present.h"
 #include "mse_vt_blit.h"
 #endif
+#if defined(__linux__) && !defined(__ANDROID__)
+#define MSE_LINUX_HW 1
+#include "mse_hwdev.h"
+#endif
 
 #include <pthread.h>
 #include <stdarg.h>
@@ -85,6 +89,9 @@ struct MseAv {
     size_t bgra_n[2];
     int bgra_i;
     AVFrame *hw_sw;
+#ifdef MSE_LINUX_HW
+    int hw_errs; /* decode errors since the last good GPU frame */
+#endif
     int blit_w, blit_h;
     int blit_log_dw, blit_log_dh;
     int rate;
@@ -323,6 +330,13 @@ static void mse_av_log(void *ptr, int level, const char *fmt, va_list vl)
             MseAv *a = ctx && ctx->opaque ? (MseAv *)ctx->opaque : NULL;
             if (a && ctx->codec_id)
                 a->vt_fail_id = ctx->codec_id;
+        }
+#endif
+#ifdef MSE_LINUX_HW
+        if (fmt && strstr(fmt, "hwaccel initialisation returned error")) {
+            AVCodecContext *ctx = ptr;
+            if (ctx && ctx->codec_id)
+                mse_hwdev_mark_failed(ctx->codec_id);
         }
 #endif
         snprintf(line, sizeof(line), "ffmpeg %s", buf);
@@ -1598,6 +1612,13 @@ static int mc_try_open(MseAv *a)
 static const AVCodec *find_video_codec(enum AVCodecID id, int sw_only)
 {
     const AVCodec *c;
+#ifdef MSE_LINUX_HW
+    if (!sw_only && (id == AV_CODEC_ID_VP9 || id == AV_CODEC_ID_AV1) && mse_hwdev_usable(id)) {
+        c = avcodec_find_decoder_by_name(id == AV_CODEC_ID_VP9 ? "vp9" : "av1");
+        if (c)
+            return c;
+    }
+#endif
     if (id == AV_CODEC_ID_VP9) {
         c = avcodec_find_decoder_by_name("libvpx-vp9");
         if (c)
@@ -1828,6 +1849,18 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         }
     }
 #endif
+#ifdef MSE_LINUX_HW
+    if (video && mse_hwdev_usable(par->codec_id) &&
+        (par->codec_id == AV_CODEC_ID_H264 || par->codec_id == AV_CODEC_ID_HEVC ||
+         par->codec_id == AV_CODEC_ID_VP9 || par->codec_id == AV_CODEC_ID_AV1)) {
+        (*ctxp)->hw_device_ctx = av_buffer_ref(mse_hwdev_get());
+        (*ctxp)->get_format = mse_hwdev_get_format;
+        /* vhold + the receive frame sit outside the decoder's fixed CUDA surface pool. */
+        (*ctxp)->extra_hw_frames = 4;
+        (*ctxp)->thread_count = 1;
+        (*ctxp)->thread_type = 0;
+    }
+#endif
     if (avcodec_open2(*ctxp, codec, NULL) < 0) {
 #ifdef __APPLE__
         if (video && (*ctxp)->hw_device_ctx) {
@@ -1837,6 +1870,13 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
             a->vt_fail_id = par->codec_id;
             if (avcodec_open2(*ctxp, codec, NULL) >= 0)
                 goto opened;
+        }
+#endif
+#ifdef MSE_LINUX_HW
+        if (video && (*ctxp)->hw_device_ctx) {
+            mse_hwdev_mark_failed(par->codec_id);
+            avcodec_free_context(ctxp);
+            return open_decoder(a, video, par);
         }
 #endif
         mse_critf(MSE_LOG_WARN, "mse-v open decoder fail id=%d %s", (int)par->codec_id,
@@ -1850,13 +1890,19 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         return open_decoder(a, video, par);
     }
 #endif
+#ifdef MSE_LINUX_HW
+    if (video && (*ctxp)->hw_device_ctx && !mse_hwdev_usable(par->codec_id)) {
+        avcodec_free_context(ctxp);
+        return open_decoder(a, video, par);
+    }
+#endif
 opened:
     (*ctxp)->pkt_timebase = (AVRational){ 1, 1000 };
     (*ctxp)->time_base = (AVRational){ 1, 1000 };
     if (video)
         vlog("open %s %dx%d threads=%d vt=%d", codec->name, (*ctxp)->width, (*ctxp)->height,
              (*ctxp)->thread_count,
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(MSE_LINUX_HW)
              (*ctxp)->hw_device_ctx ? 1 : 0
 #else
              0
@@ -3430,6 +3476,27 @@ static int scale_bgra(MseAv *a, AVFrame *frame, uint8_t **bgra, int *w, int *h)
 #if !PRODUCTION
     double t0, xfer_ms = 0, scale_ms;
 #endif
+#ifdef MSE_LINUX_HW
+    if (frame->hw_frames_ctx) {
+        if (!a->hw_sw)
+            a->hw_sw = av_frame_alloc();
+        if (!a->hw_sw)
+            return -1;
+        av_frame_unref(a->hw_sw);
+#if !PRODUCTION
+        t0 = now_ms();
+#endif
+        if (av_hwframe_transfer_data(a->hw_sw, frame, 0) < 0)
+            return -1;
+#if !PRODUCTION
+        xfer_ms = now_ms() - t0;
+#endif
+        a->hw_sw->colorspace = frame->colorspace;
+        a->hw_sw->color_range = frame->color_range;
+        a->hw_errs = 0;
+        sw = a->hw_sw;
+    }
+#endif
 #ifdef __APPLE__
     if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX && frame->data[3]) {
         int tw, th;
@@ -3649,6 +3716,13 @@ static void video_decode_error(MseAv *a, double pts, int err)
         mse_critf(MSE_LOG_WARN, "mse-v decode-dead id=%d t=%.3f", (int)a->vt_fail_id, pts);
         close_video_decoder(a);
         return;
+    }
+#endif
+#ifdef MSE_LINUX_HW
+    /* Stream switches and seeks error in software too; only a run of them condemns the GPU. */
+    if (a->vdec && a->vdec->hw_device_ctx && ++a->hw_errs >= 3) {
+        a->hw_errs = 0;
+        mse_hwdev_mark_failed(a->vdec->codec_id);
     }
 #endif
     mse_critf(MSE_LOG_WARN, "mse-v decode-err close-reopen t=%.3f", pts);
