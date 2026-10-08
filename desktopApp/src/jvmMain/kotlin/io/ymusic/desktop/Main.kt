@@ -200,6 +200,7 @@ private val rootLogger: Logger =
 @Volatile private var autoDownloadUpdates: Boolean = false
 
 fun main() {
+    defaultLinuxSoftwareRendering()
     // Opened before anything else: crash-reporting consent lives here.
     val settings = kotlinx.coroutines.runBlocking {
         val dir = ymusicDataDir().apply { mkdirs() }
@@ -1388,6 +1389,17 @@ private fun applyWindowChrome(dark: Boolean) {
         "apple.awt.application.appearance",
         if (dark) "NSAppearanceNameDarkAqua" else "NSAppearanceNameAqua",
     )
+}
+
+/**
+ * GPU skiko is not trustworthy on Linux: NVIDIA's GL and Vulkan under Xwayland render frames that
+ * never reach the screen, and nothing errors for skiko to fall back on. SKIKO_RENDER_API or
+ * -Dskiko.renderApi opts back into the GPU.
+ */
+private fun defaultLinuxSoftwareRendering() {
+    if (!System.getProperty("os.name").lowercase().contains("linux")) return
+    if (System.getenv("SKIKO_RENDER_API") != null || System.getProperty("skiko.renderApi") != null) return
+    System.setProperty("skiko.renderApi", "SOFTWARE_FAST")
 }
 
 private val LocalAppWindow = staticCompositionLocalOf<java.awt.Window?> { null }
