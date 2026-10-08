@@ -329,7 +329,7 @@ JS client (engine-js `protocol/cache.ts`): every method takes the scope first �
 
 ```
 cache/get     JS→K {"scope":…,"key":…}                        K→JS {"hit":true,"size":N,"updatedAt":T,"lastUsed":T,"key":…,"meta":{…}} + value bytes   (or {"hit":false})
-cache/put     JS→K {"scope":…,"key":…,"meta":{…}} + bytes, half-close   K→JS {"size":N,"updatedAt":T,"lastUsed":T,"key":…,"meta":{…}}
+cache/put     JS→K {"scope":…,"key":…,"meta":{…},"idleTimeoutMs"?:N} + bytes, half-close   K→JS {"size":N,"updatedAt":T,"lastUsed":T,"key":…,"meta":{…}}
 cache/delete  JS→K {"scope":…,"key":…}                        K→JS (no body — END)
 cache/list    JS→K {"scope":…}                                K→JS [{"size","updatedAt","lastUsed","key","meta"}, …]
 ```
@@ -338,6 +338,8 @@ cache/list    JS→K {"scope":…}                                K→JS [{"size
 Structured RESET (§0 boundary contract), classified at the host:
 - `E20050` — a missing/blank `scope`/`key`, or a malformed head. A caller bug.
 - `E20051` — the `CacheStore` threw (disk I/O). A `CodedError` from the store keeps its own code.
+- `E20052` — a `cache/put` body sent no bytes for `idleTimeoutMs` (default 30 s; `0` = no limit, for a
+  deliberately long-open stream). The staged value is dropped.
 
 ---
 

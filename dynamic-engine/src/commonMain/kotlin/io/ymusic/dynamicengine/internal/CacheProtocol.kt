@@ -22,6 +22,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -33,6 +34,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import okio.Buffer
 import okio.use
+import projectcommon.json.longOrNull
 import projectcommon.json.objectOrNull
 import projectcommon.json.stringOrNull
 
@@ -43,10 +45,11 @@ import projectcommon.json.stringOrNull
  * lands whole in Kotlin.
  * ```
  * cache/get     JS→K {"scope":…,"key":…}              K→JS {"hit":true,size,updatedAt,lastUsed,key,meta} + bytes  (or {"hit":false})
- * cache/put     JS→K {"scope":…,"key":…,"meta":{…}} + bytes   K→JS {size,updatedAt,lastUsed,key,meta}
+ * cache/put     JS→K {"scope":…,"key":…,"meta":{…},"idleTimeoutMs"?:N} + bytes   K→JS {size,updatedAt,lastUsed,key,meta}
  * cache/delete  JS→K {"scope":…,"key":…}              K→JS (END)
  * cache/list    JS→K {"scope":…}                      K→JS [{size,updatedAt,lastUsed,key,meta}, …]
  * ```
+ * A put body silent for `idleTimeoutMs` (default [PUT_IDLE_TIMEOUT_MS]; 0 = never) fails `E20052`.
  * Failures RESET the typed [WireError] contract: `E20050` (missing/blank `scope`/`key` or a malformed
  * head) and `E20051` (the store threw), a [CodedError] from the store keeping its own code.
  */
@@ -101,7 +104,9 @@ internal fun QuickJsRuntime.installCache(store: CacheStore, parked: ParkedLogger
             val scope = head.requireString("scope")
             val key = head.requireString("key")
             val custom = head.readCustom()
-            val meta = withContext(Dispatchers.IO) { store.put(scope, key, custom, body) }
+            val idleMs = head.longOrNull("idleTimeoutMs") ?: PUT_IDLE_TIMEOUT_MS
+            val source = if (idleMs > 0) body.idleTimeout(idleMs) else body
+            val meta = withContext(Dispatchers.IO) { store.put(scope, key, custom, source) }
             pipe.sink.writeJson(metaJson(meta, hit = null))
         }
     }
@@ -185,6 +190,21 @@ private fun metaJson(meta: CacheStore.Meta, hit: Boolean?): JsonObject = buildJs
 private suspend fun PipeSink.writeJson(element: JsonElement) {
     val buf = Buffer().writeUtf8(element.toString())
     send(buf, buf.size)
+}
+
+private const val PUT_IDLE_TIMEOUT_MS = 30_000L
+
+private fun AsyncSource.idleTimeout(millis: Long): AsyncSource = object : AsyncSource {
+    override suspend fun read(sink: Buffer, byteCount: Long): Long =
+        withTimeoutOrNull(millis) { this@idleTimeout.read(sink, byteCount) }
+            ?: throw CachePutIdleError("cache put body idle for ${millis}ms")
+
+    override fun close() = this@idleTimeout.close()
+}
+
+private class CachePutIdleError(message: String) : Exception(message), CodedError {
+    override val code = "E20052"
+    override val userMessage: String? = null
 }
 
 private class CacheRequestError(message: String) : Exception(message), CodedError {
