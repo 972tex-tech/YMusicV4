@@ -30,6 +30,9 @@ export interface WireFeedItem {
   ctaText?: string;
   /** Channel-link target: tapping the byline/avatar navigates here. */
   channelId?: string;
+  /** A video's owner channel / credited artists — the player's artist line (mini player, Now
+   *  Playing, media session), independent of whatever the subtitle lines show. */
+  channelTitle?: string;
   /** The app-internal link opening this item's detail surface ("/playlist?list=…" / "/channel/…").
    *  Composed by the engine and round-tripped back VERBATIM (yt/playlist, yt/channel) — the query
    *  may carry engine-private state the app must not interpret. Absent = the item has no page. */

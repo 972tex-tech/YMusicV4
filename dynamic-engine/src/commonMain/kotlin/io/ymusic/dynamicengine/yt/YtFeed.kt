@@ -32,6 +32,9 @@ data class YtFeedItem(
     val ctaText: String? = null,
     /** Channel-link target: tapping the byline/avatar navigates here. */
     val channelId: String? = null,
+    /** A video's owner channel / credited artists — the player's artist line (mini player, Now
+     *  Playing, media session), independent of the subtitle lines. */
+    val channelTitle: String? = null,
     /** The app-internal link opening this item's detail surface ("/playlist?…" / "/channel/…").
      *  Engine-composed and round-tripped back VERBATIM ([extractPlaylistDetail] /
      *  [extractChannelDetail]) — the query may carry engine-private state the app must not

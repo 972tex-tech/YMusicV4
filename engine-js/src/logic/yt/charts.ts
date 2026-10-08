@@ -134,7 +134,10 @@ function chartItem(entry: unknown): WireFeedItem | null {
   const channelId = asString(entry["externalChannelId"]);
   if (channelId !== undefined) item["channelId"] = channelId;
   const byline = artistNames(entry["artists"]) ?? asString(entry["channelName"]);
-  if (byline !== undefined) item["subtitleLine1"] = byline;
+  if (byline !== undefined) {
+    item["subtitleLine1"] = byline;
+    item["channelTitle"] = byline;
+  }
   const stats: string[] = [];
   const position = get(entry, "chartEntryMetadata", "currentPosition");
   if (typeof position === "number") stats.push("#" + position);

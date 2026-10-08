@@ -56,6 +56,7 @@ function videoItem(r: Record<string, unknown>): WireFeedItem | null {
       get(r["shortBylineText"], "runs", 0, "navigationEndpoint", "browseEndpoint", "browseId"),
     );
   if (channelId !== undefined) item["channelId"] = channelId;
+  if (byline !== undefined) item["channelTitle"] = byline;
   const thumbs = thumbsOf(r["thumbnail"]);
   if (thumbs !== undefined) item["thumbs"] = thumbs;
   // Shelf videos (gridVideoRenderer, live 2026-07-22) carry no lengthText — the duration is the
@@ -405,17 +406,29 @@ function lockupItem(lv: Record<string, unknown>): WireFeedItem | null {
   );
   let byline: string | undefined;
   let line2: string | undefined;
+  let channelTitle: string | undefined;
+  let channelId: string | undefined;
   if (Array.isArray(rows)) {
     // A row's DISPLAY parts, joined " · " ("Private" + "Playlist" on the library's own playlists).
-    // A part whose text carries commandRuns is a navigation link ("View full playlist"), not
-    // metadata — skipped, so it never poses as a count or subtitle.
+    // A part linking anywhere but a channel is a navigation link ("View full playlist"), not
+    // metadata — skipped, so it never poses as a count or subtitle. The channel link is the byline.
     const rowText = (row: unknown): string | undefined => {
       const parts = get(row, "metadataParts");
       if (!Array.isArray(parts)) return undefined;
       const texts: string[] = [];
       for (const p of parts) {
-        if (Array.isArray(get(p, "text", "commandRuns"))) continue;
         const t = textOf(get(p, "text"));
+        const runs = get(p, "text", "commandRuns");
+        if (Array.isArray(runs)) {
+          const browseId = asString(
+            get(runs, 0, "onTap", "innertubeCommand", "browseEndpoint", "browseId"),
+          );
+          if (browseId === undefined || browseId.indexOf("UC") !== 0) continue;
+          if (channelTitle === undefined && t !== undefined && t !== "") {
+            channelTitle = t;
+            channelId = browseId;
+          }
+        }
         if (t !== undefined && t !== "") texts.push(t);
       }
       return texts.length > 0 ? texts.join(" · ") : undefined;
@@ -431,6 +444,11 @@ function lockupItem(lv: Record<string, unknown>): WireFeedItem | null {
     if (kind === "video") {
       const badge = lockupOwnerBadge(rows);
       if (badge !== undefined) item["ownerBadge"] = badge;
+      if (channelId !== undefined) item["channelId"] = channelId;
+      // A collab byline links a channel-picker dialog, not a channel — row 0 of a two-row video
+      // lockup is the byline regardless.
+      const owner = channelTitle ?? (rows.length >= 2 && line2 !== undefined ? byline : undefined);
+      if (owner !== undefined) item["channelTitle"] = owner;
     }
   }
 
@@ -609,7 +627,9 @@ function watchCardVideoItem(r: unknown): WireFeedItem | null {
   const item: WireFeedItem = { "kind": "video", "id": id, "title": title };
   item["thumbs"] = videoThumb(id);
   setDurationBadge(item, textOf(r["lengthText"]));
-  setLines(item, [textOf(r["byline"]), textOf(r["subtitle"])]);
+  const byline = textOf(r["byline"]);
+  if (byline !== undefined) item["channelTitle"] = byline;
+  setLines(item, [byline, textOf(r["subtitle"])]);
   return item;
 }
 
