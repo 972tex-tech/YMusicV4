@@ -98,7 +98,7 @@ async function requestCookieMap(url: string): Promise<Record<string, string | un
   }
   if (isYoutubeHost(url) && url.indexOf("googlevideo.com") === -1) {
     await ensureConsent(map);
-    await syncLanguagePref(map);
+    await syncPref(map);
   }
   return map;
 }
@@ -201,7 +201,7 @@ export function invalidateAppLanguage(): void {
 export async function applyLocaleCookie(gl: string): Promise<boolean> {
   const map = await Cookies.get(YT_ORIGIN);
   const hl = await pulledAppLanguage();
-  const pref = prefWithout(map["PREF"], ["hl", "gl", "al"]);
+  const pref = prefWithout(map["PREF"], ["hl", "gl", "al", "app"]);
   if (hl !== undefined) pref.push("hl=" + hl);
   if (gl.length > 0) pref.push("gl=" + gl);
   const next = pref.join("&");
@@ -216,19 +216,25 @@ export async function applyLocaleCookie(gl: string): Promise<boolean> {
   return true;
 }
 
-/** Re-assert the app language onto `map`'s PREF hl slot (the one app-owned truth in the cookie):
- *  the WebView's pages can rewrite PREF underneath us, and a drifted hl is repaired on the next
- *  cooked request. The gl slot is deliberately left alone — the region is YouTube's to control
- *  (its rewrites are legitimate; the next session refresh parses them back). */
-async function syncLanguagePref(map: Record<string, string | undefined>): Promise<boolean> {
+/** Repair `map`'s PREF on every cooked request — the WebView's pages can rewrite it underneath us:
+ *  re-assert the app language into the hl slot, and drop `app` (`app=m`, persisted by the mobile
+ *  sign-in's `persist_app=1`, redirects www.youtube.com to m.youtube.com — a mobile session whose
+ *  BotGuard program the desktop player can't mint with). The gl slot is deliberately left alone —
+ *  the region is YouTube's to control (its rewrites are legitimate; the next session refresh parses
+ *  them back). */
+async function syncPref(map: Record<string, string | undefined>): Promise<boolean> {
   const hl = await pulledAppLanguage();
-  if (hl === undefined) return false;
-  const kept = prefWithout(map["PREF"], ["hl", "al"]);
-  const pref = kept.concat(["hl=" + hl]);
+  const pref = prefWithout(map["PREF"], hl === undefined ? ["app"] : ["hl", "al", "app"]);
+  if (hl !== undefined) pref.push("hl=" + hl);
   const next = pref.join("&");
   if (next === (map["PREF"] ?? "")) return false;
-  await Cookies.set(YT_ORIGIN, ["PREF=" + next + "; Domain=.youtube.com" + COOKIE_ATTRS]);
-  map["PREF"] = next;
+  await Cookies.set(YT_ORIGIN, [
+    pref.length > 0
+      ? "PREF=" + next + "; Domain=.youtube.com" + COOKIE_ATTRS
+      : "PREF=; Domain=.youtube.com" + EXPIRED,
+  ]);
+  if (pref.length > 0) map["PREF"] = next;
+  else delete map["PREF"];
   return true;
 }
 
