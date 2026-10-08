@@ -442,7 +442,7 @@ internal class PlayerImpl(
         sourceJob?.cancel()
         sourceJob = null
         source = newSource
-        more = newSource?.let { QueueMore(totalCount = it.totalCount) }
+        more = newSource?.let { QueueMore(totalCount = it.totalCount, resumeToken = it.resumeToken) }
     }
 
     override fun loadMore() {
@@ -497,6 +497,7 @@ internal class PlayerImpl(
                     loading = false,
                     hasMore = page.hasMore,
                     totalCount = if (page.hasMore) current.totalCount else controller.state.items.size,
+                    resumeToken = src.resumeToken.takeIf { page.hasMore },
                 )
             }
             if (pickNext && page.items.isNotEmpty() && controller.state.shuffle) {

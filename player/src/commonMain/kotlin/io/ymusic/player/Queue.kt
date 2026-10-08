@@ -39,6 +39,10 @@ interface QueueSource {
     /** The whole list's length, loaded or not, when the source knows it; weighs shuffle picks. */
     val totalCount: Int?
 
+    /** Opaque state the app can store to rebuild this source later (where the list continues);
+     *  null when it can't be resumed. Read after every page. */
+    val resumeToken: String? get() = null
+
     /** The next page. Throws on failure; the player keeps the error in [QueueMore.error]. */
     suspend fun loadMore(): Page
 
@@ -46,12 +50,14 @@ interface QueueSource {
     class Page(val items: List<PlayableItem>, val hasMore: Boolean)
 }
 
-/** The [QueueSource] side of [QueueState]: [totalCount] becomes the loaded size once it ends. */
+/** The [QueueSource] side of [QueueState]: [totalCount] becomes the loaded size once it ends;
+ *  [resumeToken] is the source's latest [QueueSource.resumeToken]. */
 data class QueueMore(
     val totalCount: Int? = null,
     val hasMore: Boolean = true,
     val loading: Boolean = false,
     val error: Throwable? = null,
+    val resumeToken: String? = null,
 )
 
 /**
