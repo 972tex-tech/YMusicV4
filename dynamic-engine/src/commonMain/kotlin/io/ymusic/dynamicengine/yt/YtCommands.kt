@@ -142,6 +142,45 @@ suspend fun DynamicEngineManager.watchNext(
     w.optionalField("continuation", continuation)
 }
 
+/**
+ * The play queue's first page for [videoId]: its radio, the videos after it. When YouTube has no
+ * radio for it, its related videos instead, with no continuation (the queue ends there).
+ */
+suspend fun DynamicEngineManager.startRadioQueue(videoId: String, logger: Logger? = null): YtFeedPage = feedCommand(
+    "yt/queue",
+    logger.cmd("startRadioQueue", "videoId" to videoId),
+) { w ->
+    w.name("videoId").value(videoId)
+}
+
+/**
+ * The play queue continuing a playlist page's list after [videoId], the item at [index] of it. [url]
+ * is the page's engine link, passed back verbatim. [YtFeedPage.pageHeader] carries the list's
+ * itemCount when it is finite.
+ */
+suspend fun DynamicEngineManager.playlistQueue(
+    url: String,
+    videoId: String,
+    index: Int,
+    logger: Logger? = null,
+): YtFeedPage = feedCommand(
+    "yt/queue",
+    logger.cmd("playlistQueue", "url" to url, "videoId" to videoId, "index" to index),
+) { w ->
+    w.name("url").value(url)
+    w.name("videoId").value(videoId)
+    w.name("index").value(index.toLong())
+}
+
+/** The play queue's next page from a [startRadioQueue] / [playlistQueue] page's continuation. */
+suspend fun DynamicEngineManager.queueContinuation(continuation: String, logger: Logger? = null): YtFeedPage =
+    feedCommand(
+        "yt/queue",
+        logger.cmd("queueContinuation", "continuation" to continuation.crumbToken()),
+    ) { w ->
+        w.name("continuation").value(continuation)
+    }
+
 suspend fun DynamicEngineManager.searchSuggestions(query: String, logger: Logger? = null): List<String> =
     use { engine ->
         engine.jsonCommand("yt/suggest", log = logger.cmd("searchSuggestions"), writeFields = { w ->

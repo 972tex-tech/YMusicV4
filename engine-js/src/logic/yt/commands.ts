@@ -32,7 +32,7 @@ import {
   rankSearchItems,
 } from "./parse";
 import { asString, get } from "./scan";
-import type { WireFeedPage, WireLocales, WireSuggest } from "./wire";
+import type { WireFeedItem, WireFeedPage, WireLocales, WireSuggest } from "./wire";
 
 function putIfString(
   fields: Record<string, unknown>,
@@ -389,6 +389,19 @@ onAccept(
 
 // Watch-next: {"videoId"} or {"continuation"}; the related list plus the autoplay target.
 // (Mix playlist reads go through yt/playlist — this is the playback-queue surface.)
+// The end screen is the better related list — YouTube's own "watch next" picks, and it carries the
+// Mix/radio tiles the secondary column can miss. It sits outside collectPage's scanned roots
+// (playerOverlays) and largely repeats that column, so it leads and the repeats drop. Music ranks
+// first: a video's related list is full of reaction/commentary uploads a music app should not
+// autoplay ahead of the songs.
+function relatedItems(root: Record<string, unknown>, page: WireFeedPage): WireFeedItem[] {
+  const endScreen = collectItems(get(root, "playerOverlays", "playerOverlayRenderer", "endScreen"));
+  const first = page["sections"][0];
+  const related = first !== undefined && first["header"] === undefined ? first["items"] : [];
+  if (endScreen.length === 0 && related.length === 0) return [];
+  return rankSearchItems(dedupeItems(endScreen.concat(related)));
+}
+
 onAccept(
   "yt/next",
   commandHandler(async (src, out) => {
@@ -400,20 +413,11 @@ onAccept(
     }
     const root = await innertubeJson("next", fields, hostLogger(args, "yt/next"));
     const page = collectPage(root);
-    // The end screen is the better related list — YouTube's own "watch next" picks, and it carries
-    // the Mix/radio tiles the secondary column can miss. It sits outside collectPage's scanned
-    // roots (playerOverlays) and largely repeats that column, so merge it in FIRST and drop the
-    // repeats. This is the playback queue, so music leads: a video's related list is full of
-    // reaction/commentary uploads that a music app should not autoplay ahead of the songs.
-    const endScreen = collectItems(
-      get(root, "playerOverlays", "playerOverlayRenderer", "endScreen"),
-    );
+    const related = relatedItems(root, page);
     const first = page["sections"][0];
-    const related = first !== undefined && first["header"] === undefined ? first["items"] : [];
-    if (endScreen.length > 0 || related.length > 0) {
-      const merged = rankSearchItems(dedupeItems(endScreen.concat(related)));
-      if (first !== undefined && first["header"] === undefined) first["items"] = merged;
-      else page["sections"].unshift({ "layout": "list", "items": merged });
+    if (related.length > 0) {
+      if (first !== undefined && first["header"] === undefined) first["items"] = related;
+      else page["sections"].unshift({ "layout": "list", "items": related });
     }
     const autoplay = asString(
       get(
@@ -433,6 +437,102 @@ onAccept(
     await writePage(out, page);
   }),
 );
+
+// The play queue: always the watch-page /next playlist panel, sent the way YouTube's web player
+// sends it while a playlist plays. {"videoId"} starts that video's radio (RD<videoId>), falling back
+// to its related videos — with no continuation — when YouTube has none; {"url","videoId","index"}
+// continues a playlist page's list after videoId; {"continuation"} is the previous page's. A page
+// holds only the videos AFTER the requested one: the server answers a ~200-item window around it.
+onAccept(
+  "yt/queue",
+  commandHandler(async (src, out) => {
+    const args = await src.readJsonObject();
+    const log = hostLogger(args, "yt/queue");
+    const continuation = asString(args["continuation"]);
+    if (continuation !== undefined) {
+      const at = parseMixToken(continuation);
+      if (at === null) throw JsEngineErrorImpl.parse("yt/queue continuation is not a queue token");
+      const window = await queueWindow(at.videoId, at.playlistId, at.index, log);
+      await writePage(out, window.page ?? { "sections": [] });
+      return;
+    }
+    const videoId = asString(args["videoId"]);
+    if (videoId === undefined)
+      throw JsEngineErrorImpl.parse("yt/queue needs videoId or continuation");
+    const url = asString(args["url"]);
+    if (url === undefined) {
+      const radio = await queueWindow(videoId, "RD" + videoId, 0, log);
+      if (radio.page !== null) {
+        await writePage(out, radio.page);
+        return;
+      }
+      const related = relatedItems(radio.root, collectPage(radio.root)).filter(
+        (it) => it["kind"] === "video" && it["id"] !== videoId,
+      );
+      await writePage(out, { "sections": [{ "layout": "list", "items": related }] });
+      return;
+    }
+    const index = args["index"];
+    await writePage(
+      out,
+      (await queueWindow(videoId, queuePlaylistId(url), typeof index === "number" ? index : 0, log))
+        .page ?? { "sections": [] },
+    );
+  }),
+);
+
+/** The playlist an app link plays: "/playlist?list=<id>", or a YouTube Music "…?id=VL<id>" page. */
+function queuePlaylistId(url: string): string {
+  const query = urlQuery(url);
+  const list = query["list"];
+  if (list !== undefined) return list;
+  const id = query["id"];
+  if (id !== undefined && id.indexOf("VL") === 0) return id.slice(2);
+  throw JsEngineErrorImpl.parse("yt/queue url names no playlist: " + url);
+}
+
+/** /next for [playlistId] around [videoId] (at [index]); page null when YouTube shows no panel. */
+async function queueWindow(
+  videoId: string,
+  playlistId: string,
+  index: number,
+  log: JsLogger,
+): Promise<{ root: Record<string, unknown>; page: WireFeedPage | null }> {
+  const root = await innertubeJson(
+    "next",
+    {
+      "videoId": videoId,
+      "playlistId": playlistId,
+      "params": "OAE%3D",
+      "playlistIndex": index,
+      "racyCheckOk": false,
+      "contentCheckOk": false,
+      "autonavState": "STATE_OFF",
+      "playbackContext": { "vis": 0, "lactMilliseconds": "-1" },
+      "captionsRequested": false,
+    },
+    log,
+  );
+  const windowPage = collectPage(root);
+  const header = windowPage["pageHeader"];
+  const panel = windowPage["sections"][0];
+  if (header === undefined || panel === undefined) return { root, page: null };
+  const items = panel["items"];
+  let at = -1;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it !== undefined && it["id"] === videoId) at = i;
+  }
+  const fresh = items.slice(at + 1);
+  const page: WireFeedPage = {
+    "sections": [{ "layout": "list", "items": fresh }],
+    "pageHeader": header,
+  };
+  const last = fresh[fresh.length - 1];
+  if (last !== undefined)
+    page["continuation"] = mixToken(index + fresh.length, playlistId, last["id"]);
+  return { root, page };
+}
 
 // Search autocomplete — the classic suggest service, not youtubei. client=firefox returns a bare
 // JSON array ["q", [suggestions…]]; a JSONP wrapper (other clients) is stripped defensively.

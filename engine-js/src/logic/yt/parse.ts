@@ -1072,6 +1072,9 @@ export function collectPage(
     if (title !== undefined) header["title"] = title;
     const ownerName = textOf(panel["ownerName"]) ?? textOf(panel["shortBylineText"]);
     if (ownerName !== undefined) header["subtitleLine1"] = ownerName;
+    const total = panel["totalVideos"];
+    if (panel["isInfinite"] !== true && typeof total === "number" && total > 0)
+      header["itemCount"] = total;
     panelHeader = header;
     const panelItems = collectItems(panel["contents"]);
     sections.push({ "layout": "list", "items": panelItems });
