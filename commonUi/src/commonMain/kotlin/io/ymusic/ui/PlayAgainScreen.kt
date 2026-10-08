@@ -228,9 +228,9 @@ private fun QueueStrip(session: PlayAgainSession, modifier: Modifier) {
                         .size(StripTileSize)
                         .alpha(if (index < session.queueIndex) 0.35f else 1f)
                         .then(
-                            if (index == session.queueIndex) Modifier.border(2.dp, DesignColors.Accent, tileShape) else Modifier,
+                            if (index == session.queueIndex) Modifier.border(1.dp, DesignColors.Accent, tileShape) else Modifier,
                         )
-                        .padding(if (index == session.queueIndex) 2.dp else 0.dp)
+                        .padding(if (index == session.queueIndex) 1.5.dp else 0.dp)
                         .clip(tileShape),
                     contentAlignment = Alignment.Center,
                 ) {
