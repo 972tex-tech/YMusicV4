@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
@@ -122,6 +123,8 @@ fun PlayAgainScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             coordinator.playAgain(session, fromBeginning)
         }
 
+    val gridState = rememberLazyGridState()
+    TrackScroll { gridState.canScrollBackward }
     val code = errorCode
     val list = sessions
     when {
@@ -130,7 +133,8 @@ fun PlayAgainScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         list.isEmpty() -> EmptyState(stringResource(Res.string.play_again_empty), onReload = { reloads++ })
         else -> LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = PlayAgainCardMinWidth),
-            modifier = Modifier.fillMaxSize().background(DesignColors.SurfaceDim),
+            modifier = Modifier.fillMaxSize(),
+            state = gridState,
             contentPadding = PaddingValues(DesignSpacing.Space16),
             horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
             verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
