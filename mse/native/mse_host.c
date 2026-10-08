@@ -9,9 +9,15 @@
 #include <time.h>
 #include <unistd.h>
 
-#ifdef __APPLE__
+#if defined(__APPLE__)
 #include <AudioToolbox/AudioToolbox.h>
 #include <dispatch/dispatch.h>
+#define MSE_AQ 1
+#elif defined(__linux__) && !defined(__ANDROID__)
+#include "aq_pulse.h"
+#define MSE_AQ 1
+#endif
+#ifdef __APPLE__
 #include <mach/mach_time.h>
 #include <os/log.h>
 #include <sys/sysctl.h>
@@ -25,7 +31,7 @@
 static void blit_window(ANativeWindow *win, int w, int h, const uint8_t *bgra);
 #endif
 
-#if defined(__APPLE__) || defined(__ANDROID__)
+#if defined(MSE_AQ) || defined(__ANDROID__)
 #define MSE_DAC 1
 #endif
 
@@ -92,7 +98,7 @@ struct MseHost {
     int flushing;
     double dac_tick_ns;
 #endif
-#ifdef __APPLE__
+#ifdef MSE_AQ
     AudioQueueRef aq;
     /* Pending fade-out pause (see aq_fade_fire). */
     struct AqFadeJob *aq_fade;
@@ -350,7 +356,7 @@ static int ring_read(MseHost *h, uint8_t *p, int n)
     return got;
 }
 
-#ifdef __APPLE__
+#ifdef MSE_AQ
 static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
 {
     MseHost *h = (MseHost *)user;
@@ -861,7 +867,7 @@ static void *dec_loop(void *arg)
         double pts = 0;
 #ifdef MSE_DAC
         int filled;
-#ifdef __APPLE__
+#ifdef MSE_AQ
         AudioQueueRef start_q = NULL;
 #endif
 #ifdef __ANDROID__
@@ -906,7 +912,7 @@ static void *dec_loop(void *arg)
             {
                 int nbytes = frames * ch * (int)sizeof(int16_t);
                         pthread_mutex_lock(&h->mu);
-#ifdef __APPLE__
+#ifdef MSE_AQ
                 if (h->aq && (h->rate != rate || h->ch != ch)) {
                     AudioQueueRef old = h->aq;
                     AqFadeJob *fade = aq_fade_take(h);
@@ -942,7 +948,7 @@ static void *dec_loop(void *arg)
                     h->aq_started = 1;
                     h->samples_played = 0;
                     h->dac_tick_ns = 0;
-#ifdef __APPLE__
+#ifdef MSE_AQ
                     start_q = h->aq;
 #endif
 #ifdef __ANDROID__
@@ -954,7 +960,7 @@ static void *dec_loop(void *arg)
             pcm = NULL;
             filled++;
         }
-#ifdef __APPLE__
+#ifdef MSE_AQ
         if (start_q)
             aq_start_faded(start_q, 0);
 #endif
@@ -1020,7 +1026,7 @@ MseHost *mse_host_create(void)
 }
 
 #ifdef MSE_DAC
-#ifdef __APPLE__
+#ifdef MSE_AQ
 /* video.src swap: Pause+Flush left in-flight callbacks free to Enqueue old PCM. */
 static void aq_kill(MseHost *h)
 {
@@ -1054,7 +1060,7 @@ static void aq_kill(MseHost *h)
 
 static void aq_pause_flush(MseHost *h)
 {
-#ifdef __APPLE__
+#ifdef MSE_AQ
     AudioQueueRef aq;
     AqFadeJob *fade;
 #endif
@@ -1070,7 +1076,7 @@ static void aq_pause_flush(MseHost *h)
     h->ring_r = h->ring_w = h->ring_n = 0;
     h->ring_gen++;
     pthread_cond_broadcast(&h->cv);
-#ifdef __APPLE__
+#ifdef MSE_AQ
     aq = h->aq;
     fade = aq_fade_take(h);
 #endif
@@ -1082,7 +1088,7 @@ static void aq_pause_flush(MseHost *h)
     buf_bytes = h->aq_buf_bytes;
 #endif
     pthread_mutex_unlock(&h->mu);
-#ifdef __APPLE__
+#ifdef MSE_AQ
     aq_fade_cancel(fade);
     if (aq) {
         AudioQueuePause(aq);
@@ -1133,6 +1139,8 @@ void mse_host_destroy(MseHost *h)
 #ifdef __APPLE__
     if (g_ios_host == h)
         g_ios_host = NULL;
+#endif
+#ifdef MSE_AQ
     pthread_mutex_lock(&h->mu);
     {
         AqFadeJob *fade = aq_fade_take(h);
@@ -1271,7 +1279,7 @@ static void ensure_thread(MseHost *h)
 void mse_host_play(MseHost *h)
 {
     double dur, clock;
-#ifdef __APPLE__
+#ifdef MSE_AQ
     AudioQueueRef aq = NULL;
     AqFadeJob *fade;
     int started;
@@ -1309,7 +1317,7 @@ void mse_host_play(MseHost *h)
     }
     ensure_thread(h);
     pthread_cond_broadcast(&h->cv);
-#ifdef __APPLE__
+#ifdef MSE_AQ
     aq = h->aq;
     started = h->aq_started;
     fade = aq_fade_take(h);
@@ -1318,7 +1326,7 @@ void mse_host_play(MseHost *h)
     started = h->aq_started;
 #endif
     pthread_mutex_unlock(&h->mu);
-#ifdef __APPLE__
+#ifdef MSE_AQ
     /* A pause still fading out never stopped the queue: just ramp back up from where it is. */
     aq_fade_cancel(fade);
     if (aq && started)
@@ -1333,7 +1341,7 @@ void mse_host_play(MseHost *h)
 void mse_host_pause(MseHost *h)
 {
     double t;
-#ifdef __APPLE__
+#ifdef MSE_AQ
     AudioQueueRef aq;
 #endif
     if (!h)
@@ -1341,7 +1349,7 @@ void mse_host_pause(MseHost *h)
     t = host_clock(h);
     /* Stop the device before clearing playing: a callback that sees playing == 0 while the device still
      * runs enqueues silence, which then plays ahead of the music on resume (an audible gap). */
-#ifdef __APPLE__
+#ifdef MSE_AQ
     {
         AqFadeJob *prev, *job = NULL;
         pthread_mutex_lock(&h->mu);
@@ -1394,7 +1402,7 @@ static void seek_common(MseHost *h, double seconds)
     /* Far seek: Pause+Flush leaves the same AudioQueue; in-flight buffers
        are the previous playhead (~0.5s smash after a few jumps). */
     if (seconds > prev + 1.0 || prev > seconds + 1.0) {
-#ifdef __APPLE__
+#ifdef MSE_AQ
         aq_kill(h);
 #endif
 #ifdef __ANDROID__
@@ -1443,7 +1451,7 @@ void mse_host_reset(MseHost *h)
     if (!h)
         return;
 #ifdef MSE_DAC
-#ifdef __APPLE__
+#ifdef MSE_AQ
     aq_kill(h);
 #endif
 #ifdef __ANDROID__

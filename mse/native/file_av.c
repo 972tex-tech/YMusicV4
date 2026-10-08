@@ -23,8 +23,14 @@
 #include <string.h>
 #include <time.h>
 
-#ifdef __APPLE__
+#if defined(__APPLE__)
 #include <AudioToolbox/AudioToolbox.h>
+#define FILE_AV_AQ 1
+#elif defined(__linux__) && !defined(__ANDROID__)
+#include "aq_pulse.h"
+#define FILE_AV_AQ 1
+#endif
+#ifdef __APPLE__
 #include <mach/mach_time.h>
 #include "mse_vt_blit.h"
 #include "mse_vt_present.h"
@@ -61,7 +67,7 @@ struct FileAv {
     pthread_cond_t cv;
     pthread_t th;
     int th_on;
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     pthread_t ath;
     int ath_on;
     int a_busy;
@@ -133,6 +139,8 @@ struct FileAv {
 #ifdef __APPLE__
     MseVtBlit vt_blit;
     void *vt_layer;
+#endif
+#ifdef FILE_AV_AQ
     /* AudioQueue DAC. samples_played is the gold clock (same as leftover MSE). */
     AudioQueueRef dac;
     uint8_t *ring;
@@ -354,7 +362,7 @@ static double frame_pts(AVStream *st, AVFrame *fr, double fallback)
 static double media_time_locked(FileAv *p)
 {
     double t = p->hold < 0 ? 0 : p->hold;
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     /* Gold: AudioQueue samples_played, interpolated between callbacks.
        Counting only at 2048-frame (~42ms) callbacks jumped the clock past
        V_STALE and dropped every other 60fps picture. */
@@ -1134,7 +1142,7 @@ static int present_video(FileAv *p, AVFrame *fr)
     return 0;
 }
 
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
 static int ring_fb(const FileAv *p)
 {
     return p->out_ch > 0 ? p->out_ch * 2 : OUT_CH * 2;
@@ -1712,7 +1720,7 @@ int file_av_step(FileAv *p)
     clock = media_time_locked(p);
     if (need_video(p))
         pump_video(p, clock);
-#ifndef __APPLE__
+#ifndef FILE_AV_AQ
     if (p->adec)
         pump_audio(p, media_time_locked(p));
 #endif
@@ -1728,7 +1736,7 @@ int file_av_step(FileAv *p)
         pthread_mutex_lock(&p->mu);
     }
     emit_captions(p);
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     a_empty = !p->adec || ((p->aq.rd >= p->aq.n) && p->ring_n == 0 && !p->a_busy);
 #else
     a_empty = !p->adec || (p->aq.rd >= p->aq.n);
@@ -1773,7 +1781,7 @@ FileAv *file_av_create(void)
     p->subtitle_index = -1;
     p->afr = av_frame_alloc();
     p->vfr = av_frame_alloc();
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     p->volume = 1.f;
     p->out_rate = OUT_RATE;
     p->out_ch = OUT_CH;
@@ -1787,7 +1795,7 @@ FileAv *file_av_create(void)
         return NULL;
     }
     p->th_on = 1;
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     if (pthread_create(&p->ath, NULL, a_loop, p) != 0) {
         file_av_destroy(p);
         return NULL;
@@ -1812,7 +1820,7 @@ void file_av_destroy(FileAv *p)
         pthread_join(p->th, NULL);
         p->th_on = 0;
     }
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     if (p->ath_on) {
         pthread_join(p->ath, NULL);
         p->ath_on = 0;
@@ -1850,7 +1858,7 @@ int file_av_open(FileAv *p, const char *path)
     p->ended = 0;
     p->hold = 0;
     p->origin_ns = 0;
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     p->seek_base = 0;
     p->samples_played = 0;
     p->dac_started = 0;
@@ -1902,7 +1910,7 @@ void file_av_close(FileAv *p)
     pthread_cond_broadcast(&p->cv);
     while (p->dec_busy)
         pthread_cond_wait(&p->cv, &p->mu);
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     while (p->a_busy)
         pthread_cond_wait(&p->cv, &p->mu);
     pthread_mutex_unlock(&p->mu);
@@ -1930,7 +1938,7 @@ void file_av_close(FileAv *p)
 
 void file_av_play(FileAv *p)
 {
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     AudioQueueRef aq = NULL;
     int started = 0;
 #endif
@@ -1942,7 +1950,7 @@ void file_av_play(FileAv *p)
         p->ended = 0;
         /* Video-only: clock starts on first present. Audio: AudioQueue samples_played. */
         p->origin_ns = 0;
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
         if (!p->dac_started)
             p->seek_base = p->hold;
         else
@@ -1953,7 +1961,7 @@ void file_av_play(FileAv *p)
         pthread_cond_broadcast(&p->cv);
     }
     pthread_mutex_unlock(&p->mu);
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     if (aq && started)
         AudioQueueStart(aq, NULL);
 #endif
@@ -1961,7 +1969,7 @@ void file_av_play(FileAv *p)
 
 void file_av_pause(FileAv *p)
 {
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     AudioQueueRef aq = NULL;
 #endif
     if (!p)
@@ -1971,14 +1979,14 @@ void file_av_pause(FileAv *p)
         p->hold = media_time_locked(p);
         p->playing = 0;
         p->origin_ns = 0;
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
         p->dac_tick_ns = 0;
         aq = p->dac;
 #endif
         pthread_cond_broadcast(&p->cv);
     }
     pthread_mutex_unlock(&p->mu);
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     if (aq)
         AudioQueuePause(aq);
 #endif
@@ -1989,7 +1997,7 @@ void file_av_seek(FileAv *p, double seconds)
     int64_t ts;
     if (!p)
         return;
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     aq_pause_flush(p);
 #endif
     pthread_mutex_lock(&p->mu);
@@ -2008,7 +2016,7 @@ void file_av_seek(FileAv *p, double seconds)
     pthread_cond_broadcast(&p->cv);
     while (p->dec_busy)
         pthread_cond_wait(&p->cv, &p->mu);
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     while (p->a_busy)
         pthread_cond_wait(&p->cv, &p->mu);
 #endif
@@ -2029,7 +2037,7 @@ void file_av_seek(FileAv *p, double seconds)
     p->ended = 0;
     p->last_vpts = -1;
     p->origin_ns = 0;
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     p->seek_base = seconds;
     p->samples_played = 0;
     p->dac_started = 0;
@@ -2050,7 +2058,7 @@ void file_av_set_speed(FileAv *p, double speed)
     p->speed = speed > 0.05 ? speed : 0.05;
     if (p->fx)
         audio_fx_set_speed(p->fx, (float)p->speed);
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     p->seek_base = p->hold;
     p->samples_played = 0;
     p->origin_ns = 0;
@@ -2214,7 +2222,7 @@ void file_av_set_video_layer(FileAv *p, void *layer)
 
 void file_av_set_volume(FileAv *p, double vol)
 {
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     AudioQueueRef aq;
 #endif
     if (!p)
@@ -2224,14 +2232,14 @@ void file_av_set_volume(FileAv *p, double vol)
     if (vol > 1)
         vol = 1;
     pthread_mutex_lock(&p->mu);
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     p->volume = (float)vol;
     aq = p->dac;
 #endif
     if (p->fx)
         audio_fx_set_volume(p->fx, (float)vol);
     pthread_mutex_unlock(&p->mu);
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     if (aq)
         AudioQueueSetParameter(aq, kAudioQueueParam_Volume, (Float32)vol);
 #endif
@@ -2265,7 +2273,7 @@ void file_av_set_bass(FileAv *p, float db)
 static int vis_delay_frames(FileAv *p)
 {
     int delay = 0;
-#ifdef __APPLE__
+#ifdef FILE_AV_AQ
     pthread_mutex_lock(&p->mu);
     if (p->dac && p->out_rate > 0 && p->dac_buf_bytes > 0) {
         int one = p->dac_buf_bytes / ring_fb(p);
