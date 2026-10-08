@@ -41,7 +41,8 @@ import androidx.compose.ui.zIndex
  * [androidx.compose.foundation.ScrollState]) as [canScrollBackward]/[canScrollForward] so the shadows
  * follow it. [buttons] fills the bottom bar (right-aligned). [maxWidth] widens it past the 560dp
  * picker width for a dialog with more to lay out (the download options). [titleAction] sits at the
- * title bar's end (the equalizer's preset menu).
+ * title bar's end (the equalizer's preset menu). [dismissOnClickOutside] false keeps it open on a
+ * stray tap outside (a dialog holding a draft).
  */
 @Composable
 fun ElevatedBarDialog(
@@ -52,6 +53,7 @@ fun ElevatedBarDialog(
     buttons: @Composable RowScope.() -> Unit,
     maxWidth: Dp = 560.dp,
     titleAction: (@Composable () -> Unit)? = null,
+    dismissOnClickOutside: Boolean = true,
     body: @Composable () -> Unit,
 ) {
     // The title/button bars sit a step above the body. On dark, the full SurfaceElevated lift (0x12 →
@@ -60,7 +62,7 @@ fun ElevatedBarDialog(
     val barColor = if (DesignColors.isDark) DesignColors.SurfaceDim else DesignColors.SurfaceElevated
     val wide = maxWidth > 560.dp
     // Dialog, not BasicAlertDialog: that one clamps its content to 560dp whatever the properties.
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = !wide)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = !wide, dismissOnClickOutside = dismissOnClickOutside)) {
         // Measured inside the Dialog: its constraints are the window. Outside, a caller in a scrolling
         // column has no height bound at all.
         BoxWithConstraints {

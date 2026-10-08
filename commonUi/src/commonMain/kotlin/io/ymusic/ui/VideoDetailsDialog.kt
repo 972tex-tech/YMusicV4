@@ -296,6 +296,7 @@ internal fun VideoDetailsDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cd_close), color = DesignColors.Accent) }
         },
         maxWidth = 720.dp,
+        dismissOnClickOutside = false,
     ) {
         VideoDetailsContent(state, listState, onOpenChannel, Modifier.fillMaxWidth())
     }
