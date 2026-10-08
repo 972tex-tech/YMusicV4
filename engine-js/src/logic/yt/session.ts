@@ -35,8 +35,8 @@ const CACHE_KEY = "web";
 // reads differently from consumed, so no re-scrape gets spent on it.
 const HOMEPAGE_KEY = "homepage";
 const PLAYER_CONFIG_KEY = "player-config";
-// Stamped on every cached record: a homepage served from m.youtube.com (PREF app=m) yields a mobile
-// session and a BotGuard program the desktop player can't mint with — unstamped records are refused.
+// A homepage served from m.youtube.com (PREF app=m) is a mobile session with a BotGuard program the
+// desktop player can't mint with — never parse or keep one.
 const WWW_HOST = "www.youtube.com";
 /** Default maxAge for feed/API calls: re-scrape when the held session is older than 6h. */
 export const SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
@@ -360,7 +360,6 @@ function toRecord(s: YtSession): Record<string, unknown> {
     "clientVersion": s.clientVersion,
     "visitorData": s.visitorData,
     "fetchedAt": s.fetchedAt,
-    "host": WWW_HOST,
   };
   if (s.apiKey != null) r["apiKey"] = s.apiKey;
   if (s.signatureTimestamp != null) r["signatureTimestamp"] = s.signatureTimestamp;
@@ -376,12 +375,7 @@ function fromRecord(o: unknown): YtSession | undefined {
   const clientVersion = asString(get(o, "clientVersion"));
   const visitorData = asString(get(o, "visitorData"));
   const fetchedAt = get(o, "fetchedAt");
-  if (
-    clientVersion == null ||
-    visitorData == null ||
-    typeof fetchedAt !== "number" ||
-    get(o, "host") !== WWW_HOST
-  ) {
+  if (clientVersion == null || visitorData == null || typeof fetchedAt !== "number") {
     return undefined;
   }
   return {
@@ -439,7 +433,6 @@ async function storePlayerConfig(html: string): Promise<void> {
     console.info("yt session: homepage has no player config");
     return;
   }
-  cfg["host"] = WWW_HOST;
   inMemoryPlayer = cfg;
   try {
     await Cache.setJson(CACHE_SCOPE, PLAYER_CONFIG_KEY, cfg);
@@ -457,11 +450,7 @@ export async function peekPlayerConfig(): Promise<Record<string, unknown> | unde
     const raw = await Cache.getJson(CACHE_SCOPE, PLAYER_CONFIG_KEY);
     if (raw != null && typeof raw === "object") {
       const rec = raw as Record<string, unknown>;
-      if (
-        typeof rec["jsUrl"] === "string" &&
-        rec["bgChallenge"] != null &&
-        rec["host"] === WWW_HOST
-      ) {
+      if (typeof rec["jsUrl"] === "string" && rec["bgChallenge"] != null) {
         inMemoryPlayer = rec;
         return rec;
       }
