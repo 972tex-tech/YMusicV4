@@ -127,6 +127,7 @@ fun PlayAgainScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             items(list, key = { it.queueId }) { session ->
                 PlayAgainCard(
                     session,
+                    modifier = Modifier.animateItem(),
                     onPlay = { restore(session, fromBeginning = false) },
                     onPlayFromBeginning = { restore(session, fromBeginning = true) },
                     onRemove = {
@@ -151,6 +152,7 @@ private val StripMoreLabelWidth = 32.dp
 @Composable
 private fun PlayAgainCard(
     session: PlayAgainSession,
+    modifier: Modifier,
     onPlay: () -> Unit,
     onPlayFromBeginning: () -> Unit,
     onRemove: () -> Unit,
@@ -159,7 +161,7 @@ private fun PlayAgainCard(
     val remove = stringResource(Res.string.menu_remove)
     val cardShape = RoundedCornerShape(16.dp)
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             .background(DesignColors.SettingsCard, cardShape)
             .border(1.dp, DesignColors.Divider, cardShape)
