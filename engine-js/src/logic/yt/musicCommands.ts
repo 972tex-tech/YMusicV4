@@ -6,6 +6,7 @@
 import { onAccept } from "../../transport";
 import { JsEngineErrorImpl, commandHandler } from "../../protocol/command";
 import { musicJson } from "./ytmusic";
+import { getSession } from "./session";
 import { hostLogger } from "../../protocol/logger";
 import type { JsLogger } from "../../protocol/logger";
 import { collectMusicPage, parseMusicChipToken, parseMusicLibraryChipToken } from "./musicParse";
@@ -74,6 +75,8 @@ onAccept(
   "ytmusic/home",
   commandHandler(async (src, out) => {
     const args = await src.readJsonObject();
+    // A user reload: re-scrape the session before browsing.
+    if (args["refresh"] === true && args["continuation"] == null) await getSession(0);
     await writePage(
       out,
       await musicBrowsePage(

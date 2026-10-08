@@ -104,7 +104,16 @@ onAccept(
     const fields: Record<string, unknown> = {};
     if (!putIfString(fields, args, "continuation")) {
       fields["browseId"] = "FEwhat_to_watch";
-      if (!homeBootstrapUsed) {
+      if (args["refresh"] === true) {
+        // A user reload: re-scrape the homepage, whose own feed payload serves this page.
+        homeBootstrapUsed = true;
+        await getSession(0);
+        const home = await consumeScrapedHomeData();
+        if (home.data != null) {
+          await writePage(out, collectPage(home.data));
+          return;
+        }
+      } else if (!homeBootstrapUsed) {
         homeBootstrapUsed = true;
         const page = await bootstrapHomePage();
         if (page !== undefined) {

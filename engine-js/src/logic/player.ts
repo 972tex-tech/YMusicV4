@@ -8,6 +8,7 @@ import { onAccept } from "../transport";
 import { commandHandler, JsEngineErrorImpl } from "../protocol/command";
 import {
   initPlayer,
+  requireFreshPlayerConfig,
   loadPlayer,
   mintPlayerPo,
   preloadPlayer,
@@ -32,6 +33,7 @@ onAccept(
   commandHandler(async (src, out) => {
     const a = await src.readJsonObject();
     applyViewport(a["width"], a["height"]);
+    requireFreshPlayerConfig(a["freshConfig"] === true);
     const result = await initPlayer();
     const p = out.writeObjectAsJson(result);
     if (p) await p;

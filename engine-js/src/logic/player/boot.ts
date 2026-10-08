@@ -635,9 +635,16 @@ function patchFlags(s: string, patches: Record<string, string>): string {
   return joinQueryMap(map);
 }
 
+let freshPlayerConfig = false;
+
+/** A user reload: this session's config comes from a new homepage scrape, not the held session. */
+export function requireFreshPlayerConfig(fresh: boolean): void {
+  freshPlayerConfig = fresh;
+}
+
 async function fetchPlayerConfig(): Promise<Record<string, unknown>> {
   return callMain("get_player_config", async (pipe) => {
-    const w = pipe.sink.writeObjectAsJson({});
+    const w = pipe.sink.writeObjectAsJson(freshPlayerConfig ? { "maxAge": 0 } : {});
     if (w) await w;
     const c = pipe.sink.close();
     if (c) await c;
