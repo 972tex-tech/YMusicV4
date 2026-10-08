@@ -267,8 +267,9 @@ internal fun PlayAllBar(onPlayAll: () -> Unit, onShuffleAll: () -> Unit) {
     }
 }
 
+/** A pill action, filled (primary) or outlined. */
 @Composable
-private fun PlayPill(icon: ImageVector, label: String, filled: Boolean, onClick: () -> Unit) {
+internal fun PlayPill(icon: ImageVector, label: String, filled: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(999.dp)
     val content = if (filled) DesignColors.OnInk else DesignColors.Ink
     Row(
