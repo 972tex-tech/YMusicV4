@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -237,10 +238,7 @@ private fun DownloadCard(
     ) {
         Column(Modifier.padding(CardPadding), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
             Row(horizontalArrangement = Arrangement.spacedBy(CardGap)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
-                    LibraryThumb(icon = Icons.Outlined.FileDownload, badge = null, artUrl = task.thumbnailUrl, corner = CardCorner)
-                    FormatBadge(task.format)
-                }
+                LibraryThumb(icon = Icons.Outlined.FileDownload, badge = null, artUrl = task.thumbnailUrl, corner = CardCorner)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
                     Text(
                         task.title,
@@ -261,28 +259,35 @@ private fun DownloadCard(
             if (task.showsBar()) {
                 Box(Modifier.fillMaxWidth().padding(start = ContentIndent)) { DownloadBar(task, c) }
             }
-            task.byteLine()?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall, color = c.inkMuted, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = ContentIndent))
-            }
-            if (task.state == DownloadState.COMPLETED) {
-                Row(Modifier.padding(start = ContentIndent), horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-                    Text(humanSize(task.totalBytes), style = MaterialTheme.typography.labelSmall, color = c.inkMuted, fontFamily = FontFamily.Monospace)
-                    Text(formatDownloadDate(task.updatedAt), style = MaterialTheme.typography.labelSmall, color = c.inkMuted)
-                }
-            }
-            if (failed) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(CardGap)) {
+                Box(Modifier.width(ThumbSize), contentAlignment = Alignment.Center) { FormatBadge(task.format) }
                 Row(
-                    Modifier.fillMaxWidth().padding(start = ContentIndent),
+                    Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
                 ) {
-                    Text(task.errorMessage ?: "Download failed", style = MaterialTheme.typography.bodySmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    Button(
-                        onClick = { service.retry(task.id) },
-                        shape = RoundedCornerShape(percent = 50),
-                        colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
-                        contentPadding = PaddingValues(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space4),
-                    ) { Text("Retry", style = MaterialTheme.typography.labelMedium) }
+                    when (task.state) {
+                        DownloadState.DOWNLOADING, DownloadState.PAUSED -> Text(
+                            "${humanSize(task.downloadedBytes)} / ${humanSize(task.totalBytes)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = c.inkMuted,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        DownloadState.COMPLETED -> {
+                            Text(humanSize(task.totalBytes), style = MaterialTheme.typography.labelSmall, color = c.inkMuted, fontFamily = FontFamily.Monospace)
+                            Text(formatDownloadDate(task.updatedAt), style = MaterialTheme.typography.labelSmall, color = c.inkMuted)
+                        }
+                        DownloadState.FAILED -> {
+                            Text(task.errorMessage ?: "Download failed", style = MaterialTheme.typography.bodySmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Button(
+                                onClick = { service.retry(task.id) },
+                                shape = RoundedCornerShape(percent = 50),
+                                colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
+                                contentPadding = PaddingValues(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space4),
+                            ) { Text("Retry", style = MaterialTheme.typography.labelMedium) }
+                        }
+                        else -> {}
+                    }
                 }
             }
         }
@@ -410,13 +415,6 @@ private fun DownloadFormat.badgeColor(): Color = when (this) {
     DownloadFormat.VIDEO_WEBM -> Color(0xFFB23C17) // rust
 }
 
-/** The byte-count line under the text: "used / total" while downloading/paused. Completed cards show
- *  size + finished date on their own row instead. */
-private fun DownloadTask.byteLine(): String? = when (state) {
-    DownloadState.DOWNLOADING, DownloadState.PAUSED -> "${humanSize(downloadedBytes)} / ${humanSize(totalBytes)}"
-    else -> null
-}
-
 /** `updatedAt` (a completed task's finish time) as e.g. "Jul 31, 2026", in the device's time zone. */
 private fun formatDownloadDate(epochMs: Long): String {
     val dt = Instant.fromEpochMilliseconds(epochMs).toLocalDateTime(TimeZone.currentSystemDefault())
@@ -480,6 +478,7 @@ private val BadgeCorner = 3.dp
 private val CardCorner = 6.dp // match the video thumbnail radius (RectThumb)
 private val CardPadding = 14.dp
 private val CardGap = 12.dp // thumb ↔ text
-private val ContentIndent = 68.dp // ThumbSize (56) + CardGap (12): aligns the bar/bytes under the text
+private val ThumbSize = 56.dp // LibraryThumb's size
+private val ContentIndent = ThumbSize + CardGap // aligns the bar under the text
 private val DownloadCardMinWidth = 340.dp // adaptive grid: 1 column on a phone, more as width allows
 private val FabClearance = 88.dp // bottom inset so the FAB doesn't cover the last card
