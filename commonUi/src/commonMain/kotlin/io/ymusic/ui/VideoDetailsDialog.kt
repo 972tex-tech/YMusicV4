@@ -39,7 +39,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -608,7 +607,7 @@ private fun LazyListScope.commentsSection(
 private fun SortChips(sort: List<YtChip>, onSelect: (YtChip) -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
         sort.forEach { chip ->
-            FilterChip(selected = chip.selected, onClick = { if (!chip.selected) onSelect(chip) }, label = { Text(chip.title) })
+            FeedChip(chip.title, selected = chip.selected) { if (!chip.selected) onSelect(chip) }
         }
     }
 }
