@@ -91,11 +91,13 @@ import org.jetbrains.compose.resources.stringResource
  *  [fetchTimeoutMs] is the watchdog for a wedged engine (seen live: Android CookieManager deadlocking
  *  against WebView browser-process startup) — a Failed page with Retry instead of an eternal spinner.
  *  It must outlast the HTTP execute timeout (10s), so a plain network stall fails first as the
- *  network error, and [TIMEOUT_CODE] means the engine itself hung. */
+ *  network error, and [TIMEOUT_CODE] means the engine itself hung. [reloadFetch] serves a user
+ *  [reload] when the surface must bypass the engine's held session (null = [fetch]). */
 class Pager(
     private val scope: CoroutineScope,
     private val fetchTimeoutMs: Long = 15_000,
     private val logger: Logger? = null,
+    private val reloadFetch: (suspend (continuation: String?) -> io.ymusic.dynamicengine.yt.YtFeedPage)? = null,
     private val fetch: suspend (continuation: String?) -> io.ymusic.dynamicengine.yt.YtFeedPage,
 ) {
     sealed interface State {
@@ -137,7 +139,12 @@ class Pager(
     private var job: Job? = null
 
     /** (Re)load from the top; [chipToken] re-requests the feed filtered by that chip. */
-    fun refresh(chipToken: String? = null) {
+    fun refresh(chipToken: String? = null) = load(chipToken, fetch)
+
+    private fun load(
+        chipToken: String?,
+        source: suspend (continuation: String?) -> io.ymusic.dynamicengine.yt.YtFeedPage,
+    ) {
         job?.cancel()
         // A CHIP-CLICKED page often carries no chip row/filters of its own — keep the ones we came
         // from. A plain refresh is a new surface (a channel tab switch): stale chips must NOT leak
@@ -151,7 +158,7 @@ class Pager(
         _state.value = State.Loading
         job = scope.launch {
             _state.value = try {
-                val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
+                val page = withTimeout(fetchTimeoutMs) { source(chipToken) }
                 readyFrom(page, chipToken, previousChips, previousSort, previousWrap, previousFilters)
             } catch (e: TimeoutCancellationException) {
                 logger?.log(Logger.Level.WARN, "fetch timed out after ${fetchTimeoutMs}ms", e)
@@ -171,7 +178,8 @@ class Pager(
      *  instead of dropping the user onto a full-screen error page. [chipToken] filters by that chip;
      *  null reloads the surface's default top-of-feed. */
     fun reload(chipToken: String? = null) {
-        val current = _state.value as? State.Ready ?: return refresh(chipToken)
+        val source = reloadFetch ?: fetch
+        val current = _state.value as? State.Ready ?: return load(chipToken, source)
         if (current.refreshing) return
         job?.cancel()
         val carryOver = chipToken != null
@@ -182,7 +190,7 @@ class Pager(
         _state.value = current.copy(refreshing = true)
         job = scope.launch {
             _state.value = try {
-                val page = withTimeout(fetchTimeoutMs) { fetch(chipToken) }
+                val page = withTimeout(fetchTimeoutMs) { source(chipToken) }
                 readyFrom(page, chipToken, previousChips, previousSort, previousWrap, previousFilters)
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
@@ -286,9 +294,10 @@ class Pager(
 class FeedSession(
     scope: CoroutineScope,
     logger: Logger? = null,
+    reloadFetch: (suspend (continuation: String?) -> io.ymusic.dynamicengine.yt.YtFeedPage)? = null,
     fetch: suspend (continuation: String?) -> io.ymusic.dynamicengine.yt.YtFeedPage,
 ) {
-    val pager = Pager(scope, logger = logger, fetch = fetch)
+    val pager = Pager(scope, logger = logger, reloadFetch = reloadFetch, fetch = fetch)
     val listState = LazyListState()
 
     fun close() {

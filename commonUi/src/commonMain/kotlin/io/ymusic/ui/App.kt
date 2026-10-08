@@ -1075,16 +1075,21 @@ private fun DiscoverFeed(
             } else {
                 sessions.getOrPut(tab.name) {
                     val log = graph.logger?.fork(tab.name)
-                    FeedSession(scope, log) { continuation ->
+                    val home: suspend (String?, Boolean) -> YtFeedPage = { continuation, refresh ->
+                        val page = graph.engines.extractHomeFeed(continuation = continuation, logger = log, refresh = refresh)
+                        // Home is a music app's front door: music first (per section —
+                        // reordering across sections would tear headers off their items).
+                        page.copy(sections = page.sections.map { it.copy(items = rankMusicFirst(it.items)) })
+                    }
+                    FeedSession(
+                        scope,
+                        log,
+                        reloadFetch = if (tab == DiscoverTab.Music) null else { continuation -> home(continuation, true) },
+                    ) { continuation ->
                         when (tab) {
                             // The region's music charts — one page, no continuation ever arrives.
                             DiscoverTab.Music -> graph.engines.extractTrendingMusicFeed(logger = log)
-                            else -> {
-                                val page = graph.engines.extractHomeFeed(continuation = continuation, logger = log)
-                                // Home is a music app's front door: music first (per section —
-                                // reordering across sections would tear headers off their items).
-                                page.copy(sections = page.sections.map { it.copy(items = rankMusicFirst(it.items)) })
-                            }
+                            else -> home(continuation, false)
                         }
                     }.also { it.pager.refresh() }
                 }

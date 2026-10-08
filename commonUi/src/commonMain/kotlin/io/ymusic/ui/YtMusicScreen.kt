@@ -123,7 +123,15 @@ fun YtMusicScreen(
                 val session = remember(current, localeEpoch) {
                     sessions.getOrPut(current) {
                         val log = graph.logger?.fork("YtMusic" + current.name)
-                        FeedSession(scope, log) { continuation ->
+                        FeedSession(
+                            scope,
+                            log,
+                            reloadFetch = if (current == YtMusicTab.Home) {
+                                { continuation -> graph.engines.extractMusicHome(continuation, log, refresh = true) }
+                            } else {
+                                null
+                            },
+                        ) { continuation ->
                             when (current) {
                                 YtMusicTab.Explore -> graph.engines.extractMusicExplore(continuation, log)
                                 YtMusicTab.NewReleases -> graph.engines.extractMusicNewReleases(continuation, log)
