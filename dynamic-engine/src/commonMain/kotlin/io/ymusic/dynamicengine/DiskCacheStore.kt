@@ -20,6 +20,7 @@ import okio.FileSystem
 import okio.Path
 import okio.buffer
 import okio.use
+import kotlin.random.Random
 
 /**
  * A [CacheStore] whose **metadata index lives in SQLite** (via SqlDelight) while the **value blobs stay
@@ -40,8 +41,9 @@ import okio.use
  *
  * okio + SQLite calls are blocking, so they run on [ioDispatcher] (`Dispatchers.IO` on the JVM; the
  * caller passes it since `IO` is not a common API). [now] supplies epoch-millis stamps (injectable for
- * tests). Blob writes ([put]/[delete]) serialize on a [Mutex] (shared `.tmp` path); the DB serializes
- * its own writes, and reads ([get]'s `touch` + `list`) need no app lock. Eviction is the JS's job.
+ * tests). Each [put] streams into its own tmp unlocked; only the reveal (move + row) and [delete]
+ * serialize on a [Mutex]. The DB serializes its own writes, and reads ([get]'s `touch` + `list`) need no
+ * app lock. Eviction is the JS's job.
  */
 class DiskCacheStore(
     driver: SqlDriver,
@@ -81,35 +83,40 @@ class DiskCacheStore(
         key: String,
         custom: Map<String, String>,
         body: AsyncSource,
-    ): CacheStore.Meta = writeLock.withLock {
-        withContext(ioDispatcher) {
+    ): CacheStore.Meta {
+        val tmp = tmpPath(scope, key)
+        val blob = blobPath(scope, key)
+        val customJson = json.encodeToString(custom)
+        // The body streams from a JS pipe that can stall indefinitely: stage it to a per-put tmp
+        // OUTSIDE [writeLock], which every put/delete on this store queues behind.
+        val size = withContext(ioDispatcher) {
             fileSystem.createDirectories(directory)
-            val customJson = json.encodeToString(custom)
-            val tmp = tmpPath(scope, key)
-            val blob = blobPath(scope, key)
-
-            // 1. Stream to a temp file. A failure here (e.g. the caller cancels mid-put) removes the
-            //    tmp and leaves any existing entry untouched — nothing half-written enters the cache.
-            val size = try {
+            try {
                 fileSystem.sink(tmp).buffer().use { sink -> sink.writeAll(body) }
             } catch (e: Throwable) {
                 fileSystem.delete(tmp, mustExist = false)
                 throw e
             }
-
-            // 2. Reveal the blob, then 3. write the row LAST. If the row write fails the just-revealed
-            //    blob would be an orphan (a file with no meta row) — delete it, so no zombie survives.
-            //    (A hard crash in the tiny gap between the move and the upsert can still orphan an
-            //    insert's blob; the deterministic path reclaims it on the next put of the same key.)
-            fileSystem.atomicMove(tmp, blob)
-            val ts = now()
-            try {
-                queries.upsert(scope, key, size, ts, ts, customJson)
-            } catch (e: Throwable) {
-                fileSystem.delete(blob, mustExist = false)
-                throw e
+        }
+        try {
+            return writeLock.withLock {
+                withContext(ioDispatcher) {
+                    // Reveal the blob, then write the row LAST; a failed row write deletes the
+                    // just-revealed blob so no zombie survives.
+                    fileSystem.atomicMove(tmp, blob)
+                    val ts = now()
+                    try {
+                        queries.upsert(scope, key, size, ts, ts, customJson)
+                    } catch (e: Throwable) {
+                        fileSystem.delete(blob, mustExist = false)
+                        throw e
+                    }
+                    CacheStore.Meta(key, size, updatedAt = ts, lastUsed = ts, custom = custom)
+                }
             }
-            CacheStore.Meta(key, size, updatedAt = ts, lastUsed = ts, custom = custom)
+        } catch (e: Throwable) {
+            fileSystem.delete(tmp, mustExist = false)
+            throw e
         }
     }
 
@@ -137,7 +144,8 @@ class DiskCacheStore(
     }
 
     private fun blobPath(scope: String, key: String) = directory / "${stem(scope, key)}$BLOB_EXT"
-    private fun tmpPath(scope: String, key: String) = directory / "${stem(scope, key)}$BLOB_EXT.tmp"
+    private fun tmpPath(scope: String, key: String) =
+        directory / "${stem(scope, key)}.${Random.nextLong().toULong().toString(16)}$BLOB_EXT.tmp"
 
     // Length-prefix the scope so (scope, key) hashes injectively — no separator ambiguity.
     private fun stem(scope: String, key: String) = "${scope.length}:$scope:$key".encodeUtf8().sha256().hex()
