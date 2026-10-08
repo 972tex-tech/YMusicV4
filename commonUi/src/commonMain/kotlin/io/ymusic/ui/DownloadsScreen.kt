@@ -48,6 +48,12 @@ import io.ymusic.download.DownloadState
 import io.ymusic.download.DownloadTask
 import io.ymusic.download.DownloadTasksAggregator
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.downloads_empty_all
+import io.ymusic.ui.resources.downloads_empty_completed
+import io.ymusic.ui.resources.downloads_empty_error
+import io.ymusic.ui.resources.downloads_empty_paused
+import io.ymusic.ui.resources.downloads_empty_running
+import io.ymusic.ui.resources.downloads_empty_waiting
 import io.ymusic.ui.resources.downloads_filter_all
 import io.ymusic.ui.resources.downloads_filter_completed
 import io.ymusic.ui.resources.downloads_filter_error
@@ -168,6 +174,16 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 }
             }
 
+            if (shown.isEmpty()) {
+                CenteredBox(Modifier.fillMaxSize()) {
+                    Text(
+                        stringResource(filter.empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
             if (running || paused) {
                 ExtendedFloatingActionButton(
                     onClick = { if (running) service.pauseAll() else service.resumeAll() },
@@ -181,13 +197,13 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
 }
 
 /** The filter chips, in display order. CANCELED matches none (it's filtered out of the screen). */
-private enum class DownloadFilter(val label: StringResource) {
-    ALL(Res.string.downloads_filter_all),
-    RUNNING(Res.string.downloads_filter_running),
-    WAITING(Res.string.downloads_filter_waiting),
-    PAUSED(Res.string.downloads_filter_paused),
-    COMPLETED(Res.string.downloads_filter_completed),
-    ERROR(Res.string.downloads_filter_error),
+private enum class DownloadFilter(val label: StringResource, val empty: StringResource) {
+    ALL(Res.string.downloads_filter_all, Res.string.downloads_empty_all),
+    RUNNING(Res.string.downloads_filter_running, Res.string.downloads_empty_running),
+    WAITING(Res.string.downloads_filter_waiting, Res.string.downloads_empty_waiting),
+    PAUSED(Res.string.downloads_filter_paused, Res.string.downloads_empty_paused),
+    COMPLETED(Res.string.downloads_filter_completed, Res.string.downloads_empty_completed),
+    ERROR(Res.string.downloads_filter_error, Res.string.downloads_empty_error),
     ;
 
     fun matches(state: DownloadState): Boolean = when (this) {

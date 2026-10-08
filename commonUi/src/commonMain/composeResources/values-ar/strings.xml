@@ -10,6 +10,12 @@
     <string name="downloads_filter_paused">متوقف مؤقتًا</string>
     <string name="downloads_filter_completed">مكتمل</string>
     <string name="downloads_filter_error">خطأ</string>
+    <string name="downloads_empty_all">لا توجد تنزيلات</string>
+    <string name="downloads_empty_running">لا شيء قيد التنزيل الآن</string>
+    <string name="downloads_empty_waiting">لا شيء في قائمة الانتظار</string>
+    <string name="downloads_empty_paused">لا توجد تنزيلات متوقفة مؤقتًا</string>
+    <string name="downloads_empty_completed">لا توجد تنزيلات مكتملة بعد</string>
+    <string name="downloads_empty_error">لا توجد تنزيلات فاشلة</string>
     <string name="section_settings">الإعدادات</string>
     <string name="section_donate">تبرّع</string>
     <string name="section_facebook">أعجبنا على فيسبوك</string>

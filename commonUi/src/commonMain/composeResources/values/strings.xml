@@ -15,6 +15,12 @@
     <string name="downloads_filter_paused">Paused</string>
     <string name="downloads_filter_completed">Completed</string>
     <string name="downloads_filter_error">Error</string>
+    <string name="downloads_empty_all">No downloads</string>
+    <string name="downloads_empty_running">Nothing downloading right now</string>
+    <string name="downloads_empty_waiting">Nothing waiting in the queue</string>
+    <string name="downloads_empty_paused">No paused downloads</string>
+    <string name="downloads_empty_completed">No completed downloads yet</string>
+    <string name="downloads_empty_error">No failed downloads</string>
     <string name="section_settings">Settings</string>
     <string name="section_catalogue">UI catalogue</string>
     <string name="section_donate">Donate</string>

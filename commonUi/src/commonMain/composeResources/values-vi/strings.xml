@@ -10,6 +10,12 @@
     <string name="downloads_filter_paused">Tạm dừng</string>
     <string name="downloads_filter_completed">Hoàn tất</string>
     <string name="downloads_filter_error">Lỗi</string>
+    <string name="downloads_empty_all">Không có bản tải xuống</string>
+    <string name="downloads_empty_running">Hiện không có gì đang tải</string>
+    <string name="downloads_empty_waiting">Không có gì trong hàng chờ</string>
+    <string name="downloads_empty_paused">Không có bản tải xuống tạm dừng</string>
+    <string name="downloads_empty_completed">Chưa có bản tải xuống hoàn tất</string>
+    <string name="downloads_empty_error">Không có bản tải xuống bị lỗi</string>
     <string name="section_settings">Cài đặt</string>
     <string name="section_donate">Ủng hộ</string>
     <string name="section_facebook">Thích chúng tôi trên Facebook</string>
