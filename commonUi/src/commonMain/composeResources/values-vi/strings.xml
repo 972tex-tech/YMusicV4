@@ -355,8 +355,4 @@
     <string name="play_again_resume">Nghe tiếp</string>
     <string name="play_again_resume_at">Nghe tiếp từ %1$s</string>
     <string name="play_again_track_of">%1$d/%2$d</string>
-    <string name="play_again_yesterday">Hôm qua</string>
-    <plurals name="play_again_days_ago">
-        <item quantity="other">%1$d ngày trước</item>
-    </plurals>
 </resources>

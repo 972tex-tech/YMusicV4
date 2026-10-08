@@ -28,8 +28,7 @@ import kotlin.time.ExperimentalTime
  * One saved queue in "Play again" (legacy Rewind playlist): where it was left — the item at
  * [queueIndex] of [queueSize], [positionMs] into it — keyed by the queue's [io.ymusic.player.QueueState.queueId].
  * [stripThumbs] is the art of the queue window starting at [stripStart] (around the current item);
- * [sourceToken] is the queue's [io.ymusic.player.QueueSource.resumeToken] (where its playlist continues);
- * [updatedAt] is stamped by the store, ignored on write.
+ * [sourceToken] is the queue's [io.ymusic.player.QueueSource.resumeToken] (where its playlist continues).
  */
 data class PlayAgainSession(
     val queueId: String,
@@ -43,7 +42,6 @@ data class PlayAgainSession(
     val stripStart: Int,
     val stripThumbs: List<String?>,
     val sourceToken: String? = null,
-    val updatedAt: Long = 0L,
 ) {
     /** Resuming mid-item only pays off for long content; anything with under [RESUME_MIN_REMAINING] left
      *  (every ordinary song) restarts. */
@@ -163,7 +161,7 @@ class PlayAgainStore(
             "SELECT $SESSION_COLUMNS, items FROM play_again WHERE queue_id = ?",
             { cursor ->
                 QueryResult.Value(
-                    if (cursor.next().value) cursor.toSession() to decodeItems(cursor.getString(12)!!) else null,
+                    if (cursor.next().value) cursor.toSession() to decodeItems(cursor.getString(11)!!) else null,
                 )
             },
             1,
@@ -184,7 +182,7 @@ class PlayAgainStore(
         const val MAX_SESSIONS = 50
         private const val SESSION_COLUMNS =
             "queue_id, title, subtitle, thumbnail_url, queue_index, queue_size, position_ms, duration_ms, " +
-                "strip_start, strip_thumbs, updated_at, source_token"
+                "strip_start, strip_thumbs, source_token"
     }
 }
 
@@ -199,8 +197,7 @@ private fun SqlCursor.toSession() = PlayAgainSession(
     durationMs = getLong(7)!!,
     stripStart = getLong(8)!!.toInt(),
     stripThumbs = decodeThumbs(getString(9)!!),
-    updatedAt = getLong(10)!!,
-    sourceToken = getString(11),
+    sourceToken = getString(10),
 )
 
 private fun encodeThumbs(thumbs: List<String?>): String = buildJsonArray { thumbs.forEach { add(JsonPrimitive(it)) } }.toString()

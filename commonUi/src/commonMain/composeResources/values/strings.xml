@@ -445,9 +445,4 @@
     <string name="play_again_resume">Resume</string>
     <string name="play_again_resume_at">Resume at %1$s</string>
     <string name="play_again_track_of">%1$d of %2$d</string>
-    <string name="play_again_yesterday">Yesterday</string>
-    <plurals name="play_again_days_ago">
-        <item quantity="one">%1$d day ago</item>
-        <item quantity="other">%1$d days ago</item>
-    </plurals>
 </resources>

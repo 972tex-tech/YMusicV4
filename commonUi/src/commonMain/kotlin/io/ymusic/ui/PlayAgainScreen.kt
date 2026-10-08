@@ -42,25 +42,16 @@ import io.ymusic.ui.playhistory.PlayAgainSession
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.menu_play_from_beginning
 import io.ymusic.ui.resources.menu_remove
-import io.ymusic.ui.resources.play_again_days_ago
 import io.ymusic.ui.resources.play_again_empty
 import io.ymusic.ui.resources.play_again_resume
 import io.ymusic.ui.resources.play_again_resume_at
 import io.ymusic.ui.resources.play_again_track_of
-import io.ymusic.ui.resources.play_again_yesterday
 import kmpcommon.error.TechnicalException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.daysUntil
-import kotlinx.datetime.toLocalDateTime
-import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
-import kotlin.time.Instant
 
 /** "Play again" (legacy Rewind playlist): the queues played lately, newest first; a tap resumes one. */
 @Composable
@@ -249,7 +240,7 @@ private fun QueueStrip(session: PlayAgainSession, modifier: Modifier) {
     }
 }
 
-/** "artist · 7 of 32 · 6:05 PM" — or "Resume at 1:12:40" for long content left mid-item. */
+/** "artist · 7 of 32" — or "artist · Resume at 1:12:40" for long content left mid-item. */
 @Composable
 private fun sessionLine(session: PlayAgainSession): String {
     // Under a second the clock reads 0:00 — that is the track's start, not a resume point.
@@ -258,20 +249,5 @@ private fun sessionLine(session: PlayAgainSession): String {
     } else {
         stringResource(Res.string.play_again_track_of, session.queueIndex + 1, session.queueSize)
     }
-    return listOfNotNull(session.subtitle, position, playedWhen(session.updatedAt)).joinToString(" · ")
-}
-
-/** Today → the time ("18:05"), then "Yesterday", then "N days ago". */
-@OptIn(ExperimentalTime::class)
-@Composable
-private fun playedWhen(epochMs: Long): String? {
-    if (epochMs <= 0L) return null
-    val zone = TimeZone.currentSystemDefault()
-    val played = Instant.fromEpochMilliseconds(epochMs).toLocalDateTime(zone)
-    val today = Clock.System.now().toLocalDateTime(zone).date
-    return when (val days = played.date.daysUntil(today)) {
-        in Int.MIN_VALUE..0 -> "${played.hour}:${played.minute.toString().padStart(2, '0')}"
-        1 -> stringResource(Res.string.play_again_yesterday)
-        else -> pluralStringResource(Res.plurals.play_again_days_ago, days, days)
-    }
+    return listOfNotNull(session.subtitle, position).joinToString(" · ")
 }
