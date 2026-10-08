@@ -9,6 +9,7 @@ import io.ymusic.player.PlaybackConfig
 import io.ymusic.player.PlaybackState
 import io.ymusic.player.PlaybackStatus
 import io.ymusic.player.Player
+import io.ymusic.ui.playhistory.PlayAgainSession
 import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
 import kmpcommon.log.info
@@ -178,6 +179,24 @@ class PlaybackCoordinator(
         mediaStore?.findItemByUri(Uri.parse(uri))?.let { return playLocalSingle(it) }
         val art = if (mediaStore != null) youtubeArtUrl(videoId) else youtubeThumbUrl(videoId)
         player.setQueue(listOf(PlayableItem.LocalMedia(uri = uri, title = title, artist = artist, thumbnailUrl = art)))
+    }
+
+    /**
+     * Resume a "Play again" queue as the same queue (its session keeps updating). Mid-item only for
+     * long content ([PlayAgainSession.resumesMidItem]) unless [fromBeginning]. False when the session
+     * is gone.
+     */
+    suspend fun playAgain(session: PlayAgainSession, fromBeginning: Boolean = false): Boolean {
+        val store = playHistory?.playAgain ?: return false
+        val (saved, items) = store.load(session.queueId) ?: return false
+        if (items.isEmpty()) return false
+        player.setQueue(
+            items,
+            playIndex = saved.queueIndex.coerceIn(0, items.lastIndex),
+            startPositionMs = if (fromBeginning || !saved.resumesMidItem) 0L else saved.positionMs,
+            queueId = saved.queueId,
+        )
+        return true
     }
 
     /** Queue [song] right after the current item. */

@@ -7,10 +7,11 @@ import app.cash.sqldelight.db.SqlSchema
 
 /**
  * Watch-time tables are accumulators; [yt_video_metadata] is a display snapshot for the YouTube
- * chart (legacy split: YtPlayHistoryDb vs YtVideoMetadataDb).
+ * chart (legacy split: YtPlayHistoryDb vs YtVideoMetadataDb). [play_again] holds whole saved queues
+ * ([PlayAgainStore]).
  */
 object PlayHistorySchema : SqlSchema<QueryResult.Value<Unit>> {
-    override val version: Long get() = 2
+    override val version: Long get() = 3
 
     override fun create(driver: SqlDriver): QueryResult.Value<Unit> {
         driver.exec(
@@ -26,6 +27,7 @@ object PlayHistorySchema : SqlSchema<QueryResult.Value<Unit>> {
         driver.exec("CREATE INDEX local_play_history_tracked_at ON local_play_history(tracked_at)")
         createYtHistory(driver)
         createYtMetadata(driver)
+        createPlayAgain(driver)
         return QueryResult.Unit
     }
 
@@ -67,6 +69,9 @@ object PlayHistorySchema : SqlSchema<QueryResult.Value<Unit>> {
             driver.exec("CREATE INDEX yt_play_history_watch_time ON yt_play_history(watch_time)")
             driver.exec("CREATE INDEX yt_play_history_tracked_at ON yt_play_history(tracked_at)")
         }
+        if (oldVersion < 3) {
+            createPlayAgain(driver)
+        }
         return QueryResult.Unit
     }
 
@@ -99,6 +104,25 @@ object PlayHistorySchema : SqlSchema<QueryResult.Value<Unit>> {
             """.trimIndent(),
         )
         driver.exec("CREATE INDEX yt_video_metadata_last_updated ON yt_video_metadata(last_updated)")
+    }
+
+    private fun createPlayAgain(driver: SqlDriver) {
+        driver.exec(
+            """
+            CREATE TABLE play_again (
+                queue_id TEXT PRIMARY KEY NOT NULL,
+                title TEXT NOT NULL,
+                thumbnail_url TEXT,
+                queue_index INTEGER NOT NULL,
+                queue_size INTEGER NOT NULL,
+                position_ms INTEGER NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                items TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        driver.exec("CREATE INDEX play_again_updated_at ON play_again(updated_at)")
     }
 }
 

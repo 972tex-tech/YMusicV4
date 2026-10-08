@@ -26,6 +26,10 @@ class PlayHistoryStore(
     private val metadataQuota: Int = METADATA_QUOTA,
 ) {
     private val io = playHistoryDispatcher()
+
+    /** "Play again" saved queues — same database file. */
+    val playAgain = PlayAgainStore(driver)
+
     private var historyCleaned = false
     private var metadataSaves = 0
 

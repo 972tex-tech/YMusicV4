@@ -14,12 +14,16 @@ import io.ymusic.settings.SettingsStore
 import io.ymusic.settings.flow
 import io.ymusic.settings.mapState
 import io.ymusic.settings.put
+import io.ymusic.ui.playhistory.PlayAgainRecorder
 import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.sponsorblock.InMemorySponsorBlockStore
 import io.ymusic.ui.sponsorblock.MockSponsorBlockApi
 import io.ymusic.ui.sponsorblock.SponsorBlockApi
 import io.ymusic.ui.sponsorblock.SponsorBlockService
 import io.ymusic.ui.sponsorblock.SponsorBlockStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,8 +57,8 @@ typealias RescanAction = suspend (folderUri: String?, onProgress: (scanned: Int)
  * into it and owns that surface's visibility, so the UI never needs to know which engine is active.
  *
  * [mediaStore] backs the Library screen; a shell without one (no local library yet) leaves it null.
- * [playHistory] is watch-time ranking (Library Recent play / Top tracks, Discover Top tracks);
- * null skips recording.
+ * [playHistory] is watch-time ranking (Library Recent play / Top tracks, Discover Top tracks) and the
+ * "Play again" saved queues; null skips recording both.
  * [scanLibraryFolder] is the shell's directory-pick + scan action (desktop's FileDialog + media
  * scanner): it returns a user-facing summary line, or null when the pick was canceled.
  */
@@ -187,6 +191,14 @@ class AppGraph(
      * LIVES in the engine — the app only hears "it changed" and throws locale-shaped caches away.
      */
     val pip = PipCoordinator(player, settings)
+
+    init {
+        // Process-lifetime like the graph itself: every queue is recorded, whatever screen is up.
+        playHistory?.let {
+            PlayAgainRecorder(player, it.playAgain, logger?.fork("play-again"))
+                .start(CoroutineScope(SupervisorJob() + Dispatchers.Default))
+        }
+    }
 
     /** Fullscreen only: stretch the picture to the hole. Mini / Now Playing always fit. */
     val videoFillScreen = mutableStateOf(false)
