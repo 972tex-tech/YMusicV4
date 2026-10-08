@@ -135,9 +135,12 @@ class MsePlayer internal constructor(
     private var hasPendingVideoSurface = false
     private var viewportW: Int = 640
     private var viewportH: Int = 360
+    private var freshConfigNext = false
 
-    /** [io.ymusic.player.PlayerImpl] owns reset-on-next and calls [reset] before the next load. */
-    override fun refreshOnNext() = Unit
+    /** The next session takes its player config from a new homepage scrape ([PlayerImpl] resets). */
+    override fun refreshOnNext() {
+        freshConfigNext = true
+    }
 
     override fun init() {
         requireMainThread()
@@ -355,7 +358,9 @@ class MsePlayer internal constructor(
                 enginePlayer = withContext(engineThread + NonCancellable) { buildPlayer(engineThread) }
                 newSession.player = enginePlayer
                 if (hasPendingVideoSurface) enginePlayer.setVideoSurface(pendingVideoSurface)
-                enginePlayer.init(log, viewportW, viewportH)
+                val freshConfig = freshConfigNext
+                freshConfigNext = false
+                enginePlayer.init(log, viewportW, viewportH, freshConfig)
                 listen(newSession, enginePlayer)
                 _status.update {
                     if (it.state is PlaybackState.Uninitialized) it.copy(state = PlaybackState.Idle) else it

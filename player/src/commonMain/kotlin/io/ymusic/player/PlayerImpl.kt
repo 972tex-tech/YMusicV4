@@ -390,6 +390,7 @@ internal class PlayerImpl(
         if (released) return
         if (controller.state.currentItem == null) return
         val resumeMs = _progress.value.positionMs
+        if (_currentEngine.value === ytEngine) ytEngine?.refreshOnNext()
         _currentEngine.value?.reset()
         loadCurrent(resumeMs)
     }
