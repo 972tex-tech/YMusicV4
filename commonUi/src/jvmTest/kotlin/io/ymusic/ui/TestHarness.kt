@@ -134,10 +134,13 @@ internal class StubPlayer : Player {
         startPositionMs: Long,
         playWhenReady: Boolean,
         queueId: String?,
+        source: io.ymusic.player.QueueSource?,
     ) {
         lastQueue = items
         lastPlayIndex = playIndex
     }
+
+    override fun loadMore() {}
 
     override fun add(items: List<PlayableItem>, at: Int?) {}
 

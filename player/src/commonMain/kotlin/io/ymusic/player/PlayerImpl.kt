@@ -1,5 +1,6 @@
 package io.ymusic.player
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -23,7 +24,7 @@ import kotlin.uuid.Uuid
 internal class PlayerImpl(
     private val engines: PlayerEngines,
     mainDispatcher: CoroutineDispatcher,
-    random: Random,
+    private val random: Random,
 ) : Player {
     private val scope = CoroutineScope(SupervisorJob() + mainDispatcher)
     private val controller = QueueController(random)
@@ -48,6 +49,13 @@ internal class PlayerImpl(
     /** Next queue index ([QueueController.peekNext]); [prepareNextArmed] once preload (or skip) ran. */
     private var prepareNextIndex: Int? = null
     private var prepareNextArmed = false
+
+    /** [prepareNextIndex] came from a freshly loaded page — a user skip honors it too. */
+    private var nextFromPage = false
+    private var rolledGeneration = -1
+    private var source: QueueSource? = null
+    private var more: QueueMore? = null
+    private var sourceJob: Job? = null
 
     private val engineJobs = mutableListOf<Job>()
     private var sleepJob: Job? = null
@@ -111,8 +119,10 @@ internal class PlayerImpl(
         startPositionMs: Long,
         playWhenReady: Boolean,
         queueId: String?,
+        source: QueueSource?,
     ) {
         if (released) return
+        attachSource(source.takeIf { items.isNotEmpty() })
         controller.setQueue(items, playIndex, queueId ?: Uuid.random().toString())
         setPlayWhenReadyIntent(playWhenReady)
         if (items.isEmpty()) {
@@ -178,6 +188,7 @@ internal class PlayerImpl(
 
     override fun clearQueue() {
         if (released) return
+        attachSource(null)
         controller.clear()
         publishQueue()
         stopActive()
@@ -249,7 +260,8 @@ internal class PlayerImpl(
 
     override fun skipNext() {
         if (released) return
-        val next = controller.advance(userInitiated = true)
+        val pagePick = prepareNextIndex.takeIf { nextFromPage }
+        val next = if (pagePick != null) pagePick.also { controller.commitNext(it) } else controller.advance(userInitiated = true)
         if (next != null) {
             publishQueue(refreshNext = false)
             loadCurrent(0L)
@@ -408,14 +420,101 @@ internal class PlayerImpl(
     }
 
     private fun publishQueue(refreshNext: Boolean = true) {
-        _queue.value = controller.state
+        _queue.value = controller.state.copy(more = more)
         if (refreshNext) refreshPrepareNext()
+        maybeLoadAhead()
     }
 
     private fun refreshPrepareNext() {
         prepareNextIndex = controller.peekNext(userInitiated = false)
         prepareNextArmed = false
+        nextFromPage = false
+        if (rolledGeneration != loadGeneration) {
+            rolledGeneration = loadGeneration
+            // A failed page is retried once per track, not in a loop.
+            more = more?.copy(error = null)
+            if (shufflePickLandsUnloaded()) startLoad(pickNext = true)
+        }
         maybePreloadNext()
+    }
+
+    private fun attachSource(newSource: QueueSource?) {
+        sourceJob?.cancel()
+        sourceJob = null
+        source = newSource
+        more = newSource?.let { QueueMore(totalCount = it.totalCount) }
+    }
+
+    override fun loadMore() {
+        if (released) return
+        more = more?.copy(error = null)
+        startLoad(pickNext = false)
+    }
+
+    /** Known-length shuffle: the pick lands on the unloaded part with probability unloaded / (unplayed +
+     *  unloaded). It then plays from the ONE next page — later pages are under-weighted; accepted. */
+    private fun shufflePickLandsUnloaded(): Boolean {
+        val state = more ?: return false
+        val total = state.totalCount ?: return false
+        if (!controller.state.shuffle || !state.hasMore || state.loading || state.error != null) return false
+        val unloaded = total - controller.state.items.size
+        if (unloaded <= 0) return false
+        return random.nextInt(controller.unplayedCount() + unloaded) < unloaded
+    }
+
+    /** In order: keep [LOAD_AHEAD] items queued past the current one. Shuffle over an unknown length:
+     *  keep that many unplayed. A known-length shuffle loads only through its pick roll. */
+    private fun maybeLoadAhead() {
+        val state = more ?: return
+        if (!state.hasMore || state.loading || state.error != null) return
+        val queue = controller.state
+        if (queue.currentIndex < 0) return
+        val ahead = when {
+            !queue.shuffle -> queue.items.lastIndex - queue.currentIndex
+            state.totalCount == null -> controller.unplayedCount()
+            else -> return
+        }
+        if (ahead < LOAD_AHEAD) startLoad(pickNext = false)
+    }
+
+    private fun startLoad(pickNext: Boolean) {
+        val src = source ?: return
+        val state = more ?: return
+        if (!state.hasMore || state.loading) return
+        more = state.copy(loading = true, error = null)
+        publishQueue(refreshNext = false)
+        sourceJob = scope.launch {
+            val page = try {
+                src.loadMore()
+            } catch (c: CancellationException) {
+                throw c
+            } catch (e: Exception) {
+                if (source === src) {
+                    more = more?.copy(loading = false, error = e)
+                    publishQueue(refreshNext = false)
+                }
+                return@launch
+            }
+            if (released || source !== src) return@launch
+            val firstNew = controller.state.items.size
+            controller.add(page.items)
+            more = more?.let { current ->
+                current.copy(
+                    loading = false,
+                    hasMore = page.hasMore,
+                    totalCount = if (page.hasMore) current.totalCount else controller.state.items.size,
+                )
+            }
+            if (pickNext && page.items.isNotEmpty() && controller.state.shuffle) {
+                prepareNextIndex = firstNew + random.nextInt(page.items.size)
+                prepareNextArmed = false
+                nextFromPage = true
+                publishQueue(refreshNext = false)
+                maybePreloadNext()
+            } else {
+                publishQueue()
+            }
+        }
     }
 
     private fun engineFor(item: PlayableItem, create: Boolean): MediaEngine<*>? = when (item) {
@@ -724,6 +823,9 @@ internal class PlayerImpl(
     private companion object {
         /** Played longer than this, "previous" restarts the current track instead. */
         const val SMART_PREV_THRESHOLD_MS = 3_000L
+
+        /** Keep this many items queued past the current one — legacy PlayerPlaylistMaintainer. */
+        const val LOAD_AHEAD = 10
 
         /** Cue the next item this close to the end — legacy UniPlayer. */
         const val PRELOAD_LEAD_MS = 10_000L

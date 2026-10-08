@@ -50,14 +50,19 @@ interface Player {
     val skipSegments: StateFlow<List<SkipSegment>>
 
     /** Replace the queue and load [playIndex]. An empty [items] clears and stops. [queueId] becomes
-     *  [QueueState.queueId] — pass a saved queue's id to resume it as the same queue; null mints one. */
+     *  [QueueState.queueId] — pass a saved queue's id to resume it as the same queue; null mints one.
+     *  [source] grows the queue past [items] (see [QueueSource]). */
     fun setQueue(
         items: List<PlayableItem>,
         playIndex: Int = 0,
         startPositionMs: Long = 0L,
         playWhenReady: Boolean = true,
         queueId: String? = null,
+        source: QueueSource? = null,
     )
+
+    /** Fetch the queue source's next page now (the queue's "Load more" / retry). No-op without one. */
+    fun loadMore()
 
     /** Append (or insert at [at]) without interrupting playback. */
     fun add(items: List<PlayableItem>, at: Int? = null)

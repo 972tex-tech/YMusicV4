@@ -16,7 +16,8 @@ enum class LoopMode {
 /**
  * The play queue as observed on [Player.queue]. [currentIndex] is `-1` when nothing is queued.
  * [queueId] names the queue the last [Player.setQueue] made: it survives add/move/remove and
- * changes only on the next setQueue; null when nothing is queued.
+ * changes only on the next setQueue; null when nothing is queued. [more] is set when the queue
+ * has a [QueueSource] to grow from.
  */
 data class QueueState(
     val items: List<PlayableItem> = emptyList(),
@@ -24,9 +25,34 @@ data class QueueState(
     val loopMode: LoopMode = LoopMode.None,
     val shuffle: Boolean = false,
     val queueId: String? = null,
+    val more: QueueMore? = null,
 ) {
     val currentItem: PlayableItem? get() = items.getOrNull(currentIndex)
 }
+
+/**
+ * Where a queue's further items come from — a playlist's next pages. The player asks for a page
+ * when the queue runs low (in order), when a shuffle pick lands on the not-yet-loaded part, and on
+ * [Player.loadMore]. Calls never overlap.
+ */
+interface QueueSource {
+    /** The whole list's length, loaded or not, when the source knows it; weighs shuffle picks. */
+    val totalCount: Int?
+
+    /** The next page. Throws on failure; the player keeps the error in [QueueMore.error]. */
+    suspend fun loadMore(): Page
+
+    /** [items] may be empty (a page of duplicates) while [hasMore] is still true. */
+    class Page(val items: List<PlayableItem>, val hasMore: Boolean)
+}
+
+/** The [QueueSource] side of [QueueState]: [totalCount] becomes the loaded size once it ends. */
+data class QueueMore(
+    val totalCount: Int? = null,
+    val hasMore: Boolean = true,
+    val loading: Boolean = false,
+    val error: Throwable? = null,
+)
 
 /**
  * Pure queue/shuffle/loop logic — no coroutines, no engines. The facade calls a mutation, reads the
@@ -58,6 +84,9 @@ internal class QueueController(private val random: Random = Random.Default) {
         played.clear()
         if (state.currentIndex >= 0) played += state.currentIndex
     }
+
+    /** Items not yet played in the current shuffle cycle. */
+    fun unplayedCount(): Int = (state.items.indices - played.toSet()).size
 
     /** Jump to [index]. False if out of bounds. */
     fun moveTo(index: Int): Boolean {

@@ -30,6 +30,12 @@ The cross-platform playback layer.
   start then seeks to the end (ranges under 1 s are dropped). "Previous" restarts after a 0s intro
   skip when one is armed.
 
+- **Queue growth** — `setQueue(…, source = QueueSource)` lets a queue grow past its first items (a playlist's next
+  pages); `QueueState.more` carries total/loading/error/end for the UI, `Player.loadMore()` is its button/retry.
+  In order, the facade keeps 10 items queued ahead. Known-length shuffle rolls once per track: with
+  probability unloaded / (unplayed + unloaded) it loads ONE page and plays the next track from it (later pages
+  are under-weighted — accepted for simplicity). A failed page is retried once per track or by `loadMore`.
+
 - **PlayableItem** — the sealed source type (`LocalUri` | `YtVideoId`; the router picks an engine by variant).
 
 - **LocalPlayer** — today the one implementation is **`LocalPlayer : MediaEngine`** — the native-local engine that
