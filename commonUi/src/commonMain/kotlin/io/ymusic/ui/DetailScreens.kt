@@ -68,10 +68,9 @@ class PlaylistSession(
     parentLog: Logger?,
 ) {
     internal val log = parentLog?.fork("PlaylistDetail", mapOf("url" to url))
-    internal val fetch: suspend (String?) -> YtFeedPage = { continuation ->
+    val feed = FeedSession(scope, log) { continuation ->
         graph.engines.extractPlaylistDetail(url, continuation = continuation, logger = log)
     }
-    val feed = FeedSession(scope, log, fetch)
 
     init {
         feed.pager.refresh()
@@ -110,7 +109,7 @@ fun PlaylistDetailScreen(
                 coordinator.playAll(
                     videos,
                     startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0),
-                    source = ready.queueSource(videos, s.log, s.fetch),
+                    source = ready.queueSource(coordinator.graph.engines, PlaylistQueueSource.Kind.Playlist, s.url, videos, s.log),
                 )
             },
             topContent = {
@@ -123,7 +122,7 @@ fun PlaylistDetailScreen(
                             videos,
                             startIndex = videos.indices.random(),
                             shuffle = true,
-                            source = ready.queueSource(videos, s.log, s.fetch),
+                            source = ready.queueSource(coordinator.graph.engines, PlaylistQueueSource.Kind.Playlist, s.url, videos, s.log),
                         )
                     },
                     onDownload = onDownload?.let { open -> { open(title, s.feed.pager) } },

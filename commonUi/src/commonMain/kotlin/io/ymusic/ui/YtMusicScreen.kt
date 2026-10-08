@@ -36,7 +36,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtFeedItem
-import io.ymusic.dynamicengine.yt.YtFeedPage
 import io.ymusic.dynamicengine.yt.extractMusicBrowse
 import io.ymusic.dynamicengine.yt.extractMusicCharts
 import io.ymusic.dynamicengine.yt.extractMusicExplore
@@ -176,10 +175,9 @@ class MusicBrowseSession(
     parentLog: Logger?,
 ) {
     internal val log = parentLog?.fork("MusicBrowse", mapOf("url" to url))
-    internal val fetch: suspend (String?) -> YtFeedPage = { continuation ->
+    val feed = FeedSession(scope, log) { continuation ->
         graph.engines.extractMusicBrowse(url, continuation = continuation, logger = log)
     }
-    val feed = FeedSession(scope, log, fetch)
 
     init {
         feed.pager.refresh()
@@ -231,7 +229,7 @@ fun MusicDetailScreen(
                     coordinator.playAll(
                         videos,
                         startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0),
-                        source = ready.queueSource(videos, session.log, session.fetch),
+                        source = ready.queueSource(coordinator.graph.engines, PlaylistQueueSource.Kind.MusicBrowse, session.url, videos, session.log),
                     )
                 }
             },
@@ -257,7 +255,7 @@ fun MusicDetailScreen(
                                 videos,
                                 startIndex = videos.indices.random(),
                                 shuffle = true,
-                                source = ready.queueSource(videos, session.log, session.fetch),
+                                source = ready.queueSource(coordinator.graph.engines, PlaylistQueueSource.Kind.MusicBrowse, session.url, videos, session.log),
                             )
                         },
                         onDownload = onDownload?.let { open -> { open(title, session.feed.pager) } },
