@@ -367,4 +367,16 @@
     <string name="play_again_resume">Nghe tiếp</string>
     <string name="play_again_resume_at">Nghe tiếp từ %1$s</string>
     <string name="play_again_track_of">%1$d/%2$d</string>
+    <string name="video_details">Chi tiết video và bình luận</string>
+    <string name="video_details_description">Mô tả</string>
+    <string name="video_details_comments">Bình luận</string>
+    <string name="video_details_comments_off">Bình luận đã bị tắt</string>
+    <string name="video_details_no_comments">Chưa có bình luận nào</string>
+    <string name="video_details_replies">%1$s phản hồi</string>
+    <string name="video_details_hide_replies">Ẩn phản hồi</string>
+    <string name="video_details_more_replies">Hiện thêm phản hồi</string>
+    <string name="video_details_comment_hint">Viết bình luận…</string>
+    <string name="video_details_sign_in_to_comment">Đăng nhập để bình luận</string>
+    <string name="video_details_post">Đăng</string>
+    <string name="video_details_posted">Đã đăng bình luận</string>
 </resources>

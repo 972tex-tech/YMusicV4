@@ -155,6 +155,7 @@ import io.ymusic.ui.resources.sound_speed
 import io.ymusic.ui.resources.sponsor_block_excluded
 import io.ymusic.ui.resources.sponsor_block_included
 import io.ymusic.ui.resources.up_next
+import io.ymusic.ui.resources.video_details
 import io.ymusic.ui.resources.video_quality_auto
 import io.ymusic.ui.sponsorblock.SponsorBlockState
 import kmpcommon.error.errorCode
@@ -1039,11 +1040,19 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     var open by remember { mutableStateOf(false) }
     var playbackOpen by remember { mutableStateOf(false) }
     var eqOpen by remember { mutableStateOf(false) }
-    HoldVideoOverlay(open || playbackOpen || eqOpen)
+    var detailsOpen by remember { mutableStateOf(false) }
+    val video = player.queue.collectAsState().value.currentItem as? PlayableItem.YtMedia
+    HoldVideoOverlay(open || playbackOpen || eqOpen || detailsOpen)
 
     Box {
         ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (video != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.video_details)) },
+                    onClick = { detailsOpen = true; open = false },
+                )
+            }
             DropdownMenuItem(
                 text = { Text(stringResource(Res.string.sound_speed)) },
                 onClick = { playbackOpen = true; open = false },
@@ -1070,6 +1079,15 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     }
     if (playbackOpen) {
         PlaybackFxSheet(player, onDismiss = { playbackOpen = false })
+    }
+    if (detailsOpen && video != null) {
+        val openChannel = LocalOpenChannel.current
+        VideoDetailsSheet(
+            coordinator.graph,
+            video.videoId,
+            onOpenChannel = { url, title -> detailsOpen = false; openChannel(url, title) },
+            onDismiss = { detailsOpen = false },
+        )
     }
     if (eqOpen) {
         EqualizerFxSheet(player, onDismiss = { eqOpen = false })

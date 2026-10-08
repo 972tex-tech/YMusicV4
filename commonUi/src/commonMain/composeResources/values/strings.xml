@@ -457,4 +457,16 @@
     <string name="play_again_resume">Resume</string>
     <string name="play_again_resume_at">Resume at %1$s</string>
     <string name="play_again_track_of">%1$d of %2$d</string>
+    <string name="video_details">Video details and comments</string>
+    <string name="video_details_description">Description</string>
+    <string name="video_details_comments">Comments</string>
+    <string name="video_details_comments_off">Comments are turned off</string>
+    <string name="video_details_no_comments">No comments yet</string>
+    <string name="video_details_replies">%1$s replies</string>
+    <string name="video_details_hide_replies">Hide replies</string>
+    <string name="video_details_more_replies">Show more replies</string>
+    <string name="video_details_comment_hint">Add a comment…</string>
+    <string name="video_details_sign_in_to_comment">Sign in to add a comment</string>
+    <string name="video_details_post">Post</string>
+    <string name="video_details_posted">Comment posted</string>
 </resources>
