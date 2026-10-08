@@ -49,6 +49,7 @@ E20089 - listen/player/status busy (engine-js logic/player/push.ts)
 E20090 - listen/player/catalog busy (engine-js logic/player/push.ts)
 E20091 - player/preload missing videoId (engine-js logic/player.ts)
 E20092 - player/preload API missing or threw (engine-js logic/player/boot.ts)
+E20093 - yt/comment/create answered without the posted comment (engine-js logic/yt/videoDetails.ts)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 

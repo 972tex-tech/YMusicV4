@@ -230,3 +230,62 @@ export interface WireLocales {
   languages?: WireLocaleOption[];
   regions?: WireLocaleOption[];
 }
+
+/** One headline stat under a video's title, rendered as value over label ("19M" / "Likes"). */
+export interface WireFactoid {
+  value: string;
+  label: string;
+}
+
+/** The watch page minus the player (yt/video-details): metadata, description, comments entry. */
+export interface WireVideoDetails {
+  title?: string;
+  channelTitle?: string;
+  channelUrl?: string;
+  channelThumbs?: WireThumb[];
+  /** "4.55M subscribers". */
+  subscribers?: string;
+  factoids?: WireFactoid[];
+  /** Plain text; links and timestamps stay inline as their visible text. */
+  description?: string;
+  /** "2.4M" — the comment total, absent when comments are off. */
+  commentsCount?: string;
+  /** The first comments page's token for yt/comments; absent = comments are off. */
+  commentsContinuation?: string;
+}
+
+export interface WireComment {
+  id: string;
+  text: string;
+  author?: string;
+  authorThumbs?: WireThumb[];
+  authorChannelUrl?: string;
+  /** "1 year ago" (YouTube appends "(edited)" itself). */
+  published?: string;
+  likes?: string;
+  /** "962" — absent on a reply and on a thread with none. */
+  replyCount?: string;
+  /** yt/comments token for this thread's replies. */
+  repliesContinuation?: string;
+  /** "Pinned by @RickAstleyYT". */
+  pinned?: string;
+  /** The video's creator hearted it. */
+  hearted?: boolean;
+  /** Written by the video's own channel. */
+  byCreator?: boolean;
+  verified?: boolean;
+}
+
+/** A page of comments or of one thread's replies (yt/comments). The header fields ride only the
+ *  first page of top-level comments. */
+export interface WireCommentPage {
+  /** "2,458,438 Comments". */
+  countText?: string;
+  /** Top / Newest — each token reloads the list in that order. */
+  sort?: WireChip[];
+  composerPlaceholder?: string;
+  /** Engine-private token for yt/comment/create; absent = this viewer cannot comment. */
+  createToken?: string;
+  comments: WireComment[];
+  continuation?: string;
+}
