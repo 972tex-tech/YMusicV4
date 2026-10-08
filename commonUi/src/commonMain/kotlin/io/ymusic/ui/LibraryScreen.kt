@@ -832,7 +832,7 @@ private data class SmartEntry(
     val icon: ImageVector,
 ) : PlaylistEntry
 
-private data class UserEntry(val playlist: Playlist, val count: Int) : PlaylistEntry {
+private data class UserEntry(val playlist: Playlist, val count: Int, val artUrl: String?) : PlaylistEntry {
     override val id get() = playlist.id
 }
 
@@ -854,6 +854,8 @@ private fun PlaylistsTab(
     // are the system playlists; the name is the resolved display title.
     var selected by rememberSaveable(stateSaver = OpenPlaylistSaver) { mutableStateOf<Pair<Long, String>?>(null) }
     var userLists by remember { mutableStateOf<List<Pair<Playlist, Int>>?>(null) }
+    // Each user playlist's thumbnail: the art of its most recently added song that has artwork.
+    var userArt by remember { mutableStateOf<Map<Long, String?>>(emptyMap()) }
     // A system playlist's songs (intrinsic order, no sort); a user playlist's ordered membership,
     // kept as PlaylistItemDetail so it can be sorted by addedAt as well as by title.
     var systemSongs by remember { mutableStateOf<List<MediaStoreItem>?>(null) }
@@ -870,7 +872,11 @@ private fun PlaylistsTab(
     val gridState = rememberLazyGridState()
 
     LaunchedEffect(content, refreshTick) {
-        userLists = store.playlists().map { it to store.playlistItemDetails(it.id).size }
+        val loaded = store.playlists().map { it to store.playlistItemDetails(it.id) }
+        userArt = loaded.associate { (playlist, details) ->
+            playlist.id to details.sortedByDescending { it.addedAt }.firstNotNullOfOrNull { localArtUrl(it.mediaItem) }
+        }
+        userLists = loaded.map { (playlist, details) -> playlist to details.size }
     }
     // The opened playlist's songs. System lists are one-shot queries (re-run when the library changes);
     // a user playlist reads its live membership so add/remove/reorder reflect at once. We DON'T clear
@@ -958,7 +964,7 @@ private fun PlaylistsTab(
         if (open != null) {
             emptyList()
         } else {
-            smartPlaylists + (userLists?.let { sort.sort(it, playlistSortOptions).map { p -> UserEntry(p.first, p.second) } } ?: emptyList())
+            smartPlaylists + (userLists?.let { sort.sort(it, playlistSortOptions).map { p -> UserEntry(p.first, p.second, userArt[p.first.id]) } } ?: emptyList())
         }
     val songs: List<MediaStoreItem> = when {
         open == null -> emptyList()
@@ -1050,7 +1056,7 @@ private fun PlaylistRow(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        LibraryThumb(icon, badge = (entry as? UserEntry)?.count?.toString())
+        LibraryThumb(icon, badge = (entry as? UserEntry)?.count?.toString(), artUrl = (entry as? UserEntry)?.artUrl)
         Column(Modifier.weight(1f)) {
             Text(title, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(sub, style = ListSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
@@ -1071,7 +1077,7 @@ private fun PlaylistCard(
     val actions = (entry as? UserEntry)?.let {
         playlistActions(it.playlist, onRename = { onRename(it.playlist) }, onDelete = { onDelete(it.playlist) })
     }?.takeIf { it.entries.isNotEmpty() }
-    LibraryGridCard(icon = icon, artUrl = null, title = title, subtitle = sub, menu = actions) { onOpen(entry.id to title) }
+    LibraryGridCard(icon = icon, artUrl = (entry as? UserEntry)?.artUrl, title = title, subtitle = sub, menu = actions) { onOpen(entry.id to title) }
 }
 
 /** A playlist row's (title, subtitle, icon): a system playlist shows its description, a user playlist
