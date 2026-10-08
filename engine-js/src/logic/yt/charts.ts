@@ -14,7 +14,7 @@ import { jsLogger } from "../../protocol/logger";
 import type { JsLogger } from "../../protocol/logger";
 import { HttpRequest } from "../../protocol/http";
 import { executeWithCookies } from "./cookies";
-import { setDurationBadge } from "./parse";
+import { channelUrl, setDurationBadge } from "./parse";
 import { DESKTOP_UA, effectiveLocale } from "./session";
 import { asString, get, isObj, walk } from "./scan";
 import type { WireFeedItem, WireFeedPage, WireSection, WireSectionHeader } from "./wire";
@@ -132,7 +132,10 @@ function chartItem(entry: unknown): WireFeedItem | null {
   ];
   setDurationBadge(item, durationText(entry["videoDuration"]));
   const channelId = asString(entry["externalChannelId"]);
-  if (channelId !== undefined) item["channelId"] = channelId;
+  if (channelId !== undefined) {
+    item["channelId"] = channelId;
+    item["channelUrl"] = channelUrl(channelId);
+  }
   const byline = artistNames(entry["artists"]) ?? asString(entry["channelName"]);
   if (byline !== undefined) {
     item["subtitleLine1"] = byline;

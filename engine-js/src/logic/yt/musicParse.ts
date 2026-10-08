@@ -82,24 +82,35 @@ function musicThumbs(node: unknown): WireFeedItem["thumbs"] {
 // ---- Leaf items --------------------------------------------------------------------------------
 
 /** The " • " segment of a text's runs holding its first channel (artist) link, verbatim — so
- *  "Artist A & Artist B" stays one credit. */
-function artistOf(text: unknown): string | undefined {
+ *  "Artist A & Artist B" stays one credit — and that first artist's browseId. */
+function artistOf(text: unknown): { name: string; browseId: string } | undefined {
   const runs = get(text, "runs");
   if (!Array.isArray(runs)) return undefined;
   let segment = "";
-  let linked = false;
+  let linked: string | undefined;
   for (const run of runs) {
     const t = asString(get(run, "text")) ?? "";
     if (t.trim() === "•") {
-      if (linked) break;
+      if (linked !== undefined) break;
       segment = "";
       continue;
     }
     segment += t;
     const browseId = asString(get(run, "navigationEndpoint", "browseEndpoint", "browseId"));
-    if (browseId !== undefined && browseId.indexOf("UC") === 0) linked = true;
+    if (linked === undefined && browseId !== undefined && browseId.indexOf("UC") === 0) {
+      linked = browseId;
+    }
   }
-  return linked && segment !== "" ? segment : undefined;
+  return linked !== undefined && segment !== "" ? { name: segment, browseId: linked } : undefined;
+}
+
+function setArtist(item: WireFeedItem, text: unknown): boolean {
+  const artist = artistOf(text);
+  if (artist === undefined) return false;
+  item["channelTitle"] = artist.name;
+  item["channelId"] = artist.browseId;
+  item["channelUrl"] = musicBrowseUrl(artist.browseId);
+  return true;
 }
 
 /**
@@ -119,8 +130,7 @@ function twoRowItem(r: Record<string, unknown>): WireFeedItem | null {
     if (thumbs !== undefined) item["thumbs"] = thumbs;
     const sub = textOf(r["subtitle"]);
     if (sub !== undefined) item["subtitleLine1"] = sub;
-    const artist = artistOf(r["subtitle"]);
-    if (artist !== undefined) item["channelTitle"] = artist;
+    setArtist(item, r["subtitle"]);
     item["musicVideo"] = true;
     return item;
   }
@@ -223,11 +233,9 @@ function responsiveItem(r: Record<string, unknown>): WireFeedItem | null {
     if (texts[2] !== undefined) item["subtitleLine2"] = texts[2];
     const cols = r["flexColumns"];
     if (Array.isArray(cols)) {
-      for (let col = 1; col < cols.length && item["channelTitle"] === undefined; col++) {
-        const artist = artistOf(
-          get(cols[col], "musicResponsiveListItemFlexColumnRenderer", "text"),
-        );
-        if (artist !== undefined) item["channelTitle"] = artist;
+      for (let col = 1; col < cols.length; col++) {
+        if (setArtist(item, get(cols[col], "musicResponsiveListItemFlexColumnRenderer", "text")))
+          break;
       }
     }
     item["musicVideo"] = true;
@@ -600,8 +608,7 @@ export function collectMusicPage(root: Record<string, unknown>): WireFeedPage {
           };
           if (thumbs !== undefined) item["thumbs"] = thumbs;
           if (sub !== undefined) item["subtitleLine1"] = sub;
-          const artist = artistOf(value["subtitle"]);
-          if (artist !== undefined) item["channelTitle"] = artist;
+          setArtist(item, value["subtitle"]);
           items.push(item);
         } else {
           const nav = get(tap, "runs", 0, "navigationEndpoint") ?? value["onTap"];

@@ -55,7 +55,10 @@ function videoItem(r: Record<string, unknown>): WireFeedItem | null {
     asString(
       get(r["shortBylineText"], "runs", 0, "navigationEndpoint", "browseEndpoint", "browseId"),
     );
-  if (channelId !== undefined) item["channelId"] = channelId;
+  if (channelId !== undefined) {
+    item["channelId"] = channelId;
+    item["channelUrl"] = channelUrl(channelId);
+  }
   if (byline !== undefined) item["channelTitle"] = byline;
   const thumbs = thumbsOf(r["thumbnail"]);
   if (thumbs !== undefined) item["thumbs"] = thumbs;
@@ -444,7 +447,10 @@ function lockupItem(lv: Record<string, unknown>): WireFeedItem | null {
     if (kind === "video") {
       const badge = lockupOwnerBadge(rows);
       if (badge !== undefined) item["ownerBadge"] = badge;
-      if (channelId !== undefined) item["channelId"] = channelId;
+      if (channelId !== undefined) {
+        item["channelId"] = channelId;
+        item["channelUrl"] = channelUrl(channelId);
+      }
       // A collab byline links a channel-picker dialog, not a channel — row 0 of a two-row video
       // lockup is the byline regardless.
       const owner = channelTitle ?? (rows.length >= 2 && line2 !== undefined ? byline : undefined);

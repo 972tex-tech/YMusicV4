@@ -35,6 +35,8 @@ data class YtFeedItem(
     /** A video's owner channel / credited artists — the player's artist line (mini player, Now
      *  Playing, media session), independent of the subtitle lines. */
     val channelTitle: String? = null,
+    /** The engine-composed app link opening [channelTitle]'s page. */
+    val channelUrl: String? = null,
     /** The app-internal link opening this item's detail surface ("/playlist?…" / "/channel/…").
      *  Engine-composed and round-tripped back VERBATIM ([extractPlaylistDetail] /
      *  [extractChannelDetail]) — the query may carry engine-private state the app must not
