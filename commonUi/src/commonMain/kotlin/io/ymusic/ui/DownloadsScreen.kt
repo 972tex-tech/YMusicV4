@@ -1,6 +1,7 @@
 package io.ymusic.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -236,7 +237,10 @@ private fun DownloadCard(
     ) {
         Column(Modifier.padding(CardPadding), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
             Row(horizontalArrangement = Arrangement.spacedBy(CardGap)) {
-                LibraryThumb(icon = Icons.Outlined.FileDownload, badge = task.format.badge(), artUrl = task.thumbnailUrl, corner = CardCorner, badgeColor = task.format.badgeColor())
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
+                    LibraryThumb(icon = Icons.Outlined.FileDownload, badge = null, artUrl = task.thumbnailUrl, corner = CardCorner)
+                    FormatBadge(task.format)
+                }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
                     Text(
                         task.title,
@@ -377,6 +381,18 @@ private fun actionsFor(
     return ItemActions(entries)
 }
 
+@Composable
+private fun FormatBadge(format: DownloadFormat) {
+    Text(
+        format.badge(),
+        style = MaterialTheme.typography.labelSmall,
+        color = Color.White,
+        modifier = Modifier
+            .background(format.badgeColor(), RoundedCornerShape(BadgeCorner))
+            .padding(horizontal = DesignSpacing.Space4, vertical = DesignSpacing.Space2),
+    )
+}
+
 private fun DownloadFormat.badge(): String = when (this) {
     DownloadFormat.MP3 -> "MP3"
     DownloadFormat.M4A -> "M4A"
@@ -460,6 +476,7 @@ private fun downloadColors(): DownloadColors {
 }
 
 // --- layout tokens (match the mockup's media-card metrics) ---------------------------------------
+private val BadgeCorner = 3.dp
 private val CardCorner = 6.dp // match the video thumbnail radius (RectThumb)
 private val CardPadding = 14.dp
 private val CardGap = 12.dp // thumb ↔ text
