@@ -8,15 +8,12 @@ import { DESKTOP_UA } from "../yt/session";
 
 const SCOPE = "yt.bg.session";
 const KEEP = 4;
-// No StreamProtectionStatus verdict by then (nothing played): close with what was recorded.
-const DUMP_MAX_OPEN_MS = 5 * 60_000;
 let dump: Pipe | null = null;
 let writeChain: Promise<void> = Promise.resolve();
 let sessionKey = "";
 let loggedSps = 0;
 let dumpFinished = false;
 let lastSabrUrl = "";
-let deadline: ReturnType<typeof setTimeout> | null = null;
 let lastSabrBody: Uint8Array | null = null;
 
 function utcStamp(): string {
@@ -43,18 +40,10 @@ function warn(e: unknown, what: string): void {
   console.warn("bg dump " + what + " skipped: " + (e instanceof Error ? e.message : String(e)));
 }
 
-function clearDeadline(): void {
-  if (deadline !== null) clearTimeout(deadline);
-  deadline = null;
-}
-
 /** A failed write leaves a torn record: RESET so the host drops the staged value. */
 function abandon(pipe: Pipe, e: unknown, what: string): void {
   warn(e, what);
-  if (dump === pipe) {
-    dump = null;
-    clearDeadline();
-  }
+  if (dump === pipe) dump = null;
   try {
     pipe.sink.close("bg dump " + what + " failed");
     pipe.source.close();
@@ -71,19 +60,14 @@ function ensureDump(): Pipe | null {
     return null;
   }
   const pipe = dump;
-  deadline = setTimeout(function () {
-    deadline = null;
-    dumpFinished = true;
-    finishDump();
-  }, DUMP_MAX_OPEN_MS);
   writeChain = Promise.resolve(
     wait(
       pipe.sink.writeObjectAsJson({
         "scope": SCOPE,
         "key": sessionKey,
         "meta": {},
-        // Bursty by design; DUMP_MAX_OPEN_MS closes it first — this only catches a wedged writer.
-        "idleTimeoutMs": 2 * DUMP_MAX_OPEN_MS,
+        // Open until the first SABR verdict, however long before the first play.
+        "idleTimeoutMs": 0,
       }),
     ),
   ).then(
@@ -119,7 +103,6 @@ function writeJsonLine(prefix: string, value: unknown): void {
 function finishDump(after?: () => void): void {
   const pipe = dump;
   dump = null;
-  clearDeadline();
   if (!pipe) {
     if (after) after();
     return;
