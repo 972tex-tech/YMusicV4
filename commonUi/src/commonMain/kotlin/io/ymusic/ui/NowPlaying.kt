@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.FitScreen
@@ -51,6 +52,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
@@ -106,7 +108,10 @@ import io.ymusic.player.LoopMode
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackState
 import io.ymusic.player.PlaybackStatus
+import io.ymusic.player.Player
 import io.ymusic.player.Progress
+import io.ymusic.player.QueueMore
+import io.ymusic.player.QueueState
 import io.ymusic.player.VideoQualityOption
 import io.ymusic.player.VideoQualityState
 import io.ymusic.settings.AppSettings
@@ -135,6 +140,10 @@ import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.cd_sleep_timer
 import io.ymusic.ui.resources.ic_sponsor_block
 import io.ymusic.ui.resources.playback_failed
+import io.ymusic.ui.resources.queue_end
+import io.ymusic.ui.resources.queue_load_failed
+import io.ymusic.ui.resources.queue_load_more
+import io.ymusic.ui.resources.queue_loading_more
 import io.ymusic.ui.resources.remove_from_queue
 import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.sleep_minutes
@@ -146,6 +155,7 @@ import io.ymusic.ui.resources.sponsor_block_included
 import io.ymusic.ui.resources.up_next
 import io.ymusic.ui.resources.video_quality_auto
 import io.ymusic.ui.sponsorblock.SponsorBlockState
+import kmpcommon.error.errorCode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -507,13 +517,14 @@ private fun PortraitNowPlaying(
                         else Modifier,
                     ),
                 ) {
-                    QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
+                    QueueHeader(coordinator, queue.currentIndex, queue.displayTotal, queue.shuffle, queue.loopMode)
                     HorizontalDivider(color = DesignColors.Divider)
                 }
             }
             itemsIndexed(queue.items) { index, item ->
                 QueueRow(coordinator, index, item, current = index == queue.currentIndex, dragState)
             }
+            queue.more?.let { more -> item { QueueMoreRow(player, more) } }
         }
     }
 }
@@ -565,7 +576,7 @@ private fun LandscapeNowPlaying(
             status.error?.let {
                 Box(Modifier.padding(horizontal = 16.dp)) { PlaybackErrorRow(player, it) }
             }
-            QueueHeader(coordinator, queue.currentIndex, queue.items.size, queue.shuffle, queue.loopMode)
+            QueueHeader(coordinator, queue.currentIndex, queue.displayTotal, queue.shuffle, queue.loopMode)
             HorizontalDivider(color = DesignColors.Divider)
             val queueListState = rememberLazyListState()
             val dragState = rememberQueueDragState(queueListState, indexOffset = 0, player)
@@ -573,6 +584,7 @@ private fun LandscapeNowPlaying(
                 itemsIndexed(queue.items) { index, item ->
                     QueueRow(coordinator, index, item, current = index == queue.currentIndex, dragState)
                 }
+                queue.more?.let { more -> item { QueueMoreRow(player, more) } }
             }
         }
     }
@@ -1186,6 +1198,52 @@ private fun TransportRow(
 }
 
 /** "Up next" · "n / total" · [right:] repeat · shuffle. */
+/** The playlist's length while its queue is still loading, else the queue's own size. */
+private val QueueState.displayTotal: Int
+    get() = more?.totalCount?.coerceAtLeast(items.size) ?: items.size
+
+/** The end of a growing queue: Load more, its progress, a failure with Retry, or the list's end. */
+@Composable
+private fun QueueMoreRow(player: Player, more: QueueMore) {
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space16),
+        contentAlignment = Alignment.Center,
+    ) {
+        val noteStyle = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary)
+        val error = more.error
+        when {
+            more.loading -> Row(
+                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text(stringResource(Res.string.queue_loading_more), style = noteStyle)
+            }
+            error != null -> Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
+            ) {
+                Text(stringResource(Res.string.queue_load_failed), style = noteStyle)
+                Text(
+                    errorMessage(error.errorCode() ?: "E60063"),
+                    style = TextStyle(fontSize = 12.sp, color = DesignColors.InkFaint),
+                    textAlign = TextAlign.Center,
+                )
+                Box(Modifier.padding(top = DesignSpacing.Space4)) {
+                    PlayPill(Icons.Default.Refresh, stringResource(Res.string.retry), filled = false, onClick = player::loadMore)
+                }
+            }
+            more.hasMore -> PlayPill(
+                Icons.Default.ExpandMore,
+                stringResource(Res.string.queue_load_more),
+                filled = false,
+                onClick = player::loadMore,
+            )
+            else -> Text(stringResource(Res.string.queue_end), style = noteStyle)
+        }
+    }
+}
+
 @Composable
 private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, total: Int, shuffle: Boolean, loopMode: LoopMode) {
     val player = coordinator.player

@@ -155,6 +155,10 @@
     <string name="captions_off">CC off</string>
     <string name="captions_auto_translate">Auto-translate</string>
     <string name="up_next">Up next</string>
+    <string name="queue_load_more">Load more</string>
+    <string name="queue_loading_more">Loading more…</string>
+    <string name="queue_load_failed">Couldn’t load more</string>
+    <string name="queue_end">End of playlist</string>
     <string name="remove_from_queue">Remove from queue</string>
     <string name="sleep_off_remaining">Off (%1$s left)</string>
     <string name="sleep_minutes">%1$d min</string>
