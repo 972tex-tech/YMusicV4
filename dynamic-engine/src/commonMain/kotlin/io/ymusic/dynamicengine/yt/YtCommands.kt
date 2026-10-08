@@ -32,12 +32,15 @@ import kotlinx.coroutines.withContext
  * The Discover home feed (first page or a page's [YtFeedPage.continuation]). The engine serves the
  * FIRST fresh load after start from its session bootstrap's own youtube.com homepage (the page's
  * inline data is the same browse answer) — one fetch bootstraps both — and browses normally after.
+ * [refresh] (a user reload) re-scrapes the homepage and serves the first page from it.
  */
 suspend fun DynamicEngineManager.extractHomeFeed(
     continuation: String? = null,
     logger: Logger? = null,
+    refresh: Boolean = false,
 ): YtFeedPage = feedCommand("yt/home", logger.cmd("extractHomeFeed", "continuation" to continuation.crumbToken())) { w ->
     w.optionalField("continuation", continuation)
+    if (refresh) w.name("refresh").value(true)
 }
 
 /**

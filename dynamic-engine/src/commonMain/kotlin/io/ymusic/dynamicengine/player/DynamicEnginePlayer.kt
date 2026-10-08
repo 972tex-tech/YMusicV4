@@ -41,16 +41,19 @@ class DynamicEnginePlayer private constructor(
     private val nativeMse: NativeMseHost?,
     private val jsEventBridge: (String) -> Unit,
 ) {
+    /** [freshConfig]: take the player config from a new homepage scrape, not the held session. */
     suspend fun init(
         logger: Logger? = null,
         width: Int? = null,
         height: Int? = null,
+        freshConfig: Boolean = false,
     ): JsonObject {
         return engine.jsonCommand(
             "player/init",
             { w ->
                 if (width != null) w.name("width").value(width)
                 if (height != null) w.name("height").value(height)
+                if (freshConfig) w.name("freshConfig").value(true)
             },
             logger,
         ) { it.readObject() }

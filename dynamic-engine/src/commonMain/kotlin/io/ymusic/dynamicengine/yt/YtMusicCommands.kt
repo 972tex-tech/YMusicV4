@@ -17,8 +17,11 @@ import kmpcommon.log.Logger
 suspend fun DynamicEngineManager.extractMusicHome(
     continuation: String? = null,
     logger: Logger? = null,
+    /** A user reload: re-scrape the session first. */
+    refresh: Boolean = false,
 ): YtFeedPage = feedCommand("ytmusic/home", logger.cmd("extractMusicHome", "continuation" to continuation.crumbToken())) { w ->
     w.optionalField("continuation", continuation)
+    if (refresh) w.name("refresh").value(true)
 }
 
 /** The Music Explore feed (FEmusic_explore — new releases, moods & genres, charts entry points). */
