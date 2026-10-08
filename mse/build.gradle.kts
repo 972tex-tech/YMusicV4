@@ -181,12 +181,18 @@ val javaHomeForJni: String = run {
     candidates.firstOrNull { File(it, "include/jni.h").exists() } ?: ""
 }
 val ffmpegDesktopPrefix: File? = FfmpegRelease.hostPrefix(project)
-val mseCmakeConfigure by tasks.registering(Exec::class) {
-    onlyIf {
-        javaHomeForJni.isNotEmpty() &&
-            mseNativeSrc.resolve("CMakeLists.txt").exists() &&
-            ffmpegDesktopPrefix != null
+fun canBuildMseJni(log: org.gradle.api.logging.Logger): Boolean {
+    val missing = when {
+        javaHomeForJni.isEmpty() -> "no JDK with include/jni.h (set JAVA_HOME)"
+        !mseNativeSrc.resolve("CMakeLists.txt").exists() -> "no mse/native/CMakeLists.txt"
+        ffmpegDesktopPrefix == null -> "no ffmpeg dev prefix: build ../ffmpeg-build (scripts/build-desktop.sh)"
+        else -> return true
     }
+    log.warn("w: skipping the desktop MSE JNI build, $missing; desktop playback will not load")
+    return false
+}
+val mseCmakeConfigure by tasks.registering(Exec::class) {
+    onlyIf { canBuildMseJni(logger) }
     val out = mseJniDir.get().asFile
     doFirst { out.mkdirs() }
     inputs.dir(mseNativeSrc)
@@ -204,11 +210,7 @@ val mseCmakeConfigure by tasks.registering(Exec::class) {
 }
 val mseCmakeBuild by tasks.registering(Exec::class) {
     dependsOn(mseCmakeConfigure)
-    onlyIf {
-        javaHomeForJni.isNotEmpty() &&
-            mseNativeSrc.resolve("CMakeLists.txt").exists() &&
-            ffmpegDesktopPrefix != null
-    }
+    onlyIf { canBuildMseJni(logger) }
     inputs.dir(mseNativeSrc)
     outputs.dir(mseJniDir)
     commandLine("cmake", "--build", mseJniDir.get().asFile.absolutePath, "-j", "4")
