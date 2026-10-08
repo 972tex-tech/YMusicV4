@@ -10,8 +10,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.put
 import projectcommon.json.bool
@@ -25,15 +27,21 @@ import kotlin.time.ExperimentalTime
 /**
  * One saved queue in "Play again" (legacy Rewind playlist): where it was left — the item at
  * [queueIndex] of [queueSize], [positionMs] into it — keyed by the queue's [io.ymusic.player.QueueState.queueId].
+ * [stripThumbs] is the art of the queue window starting at [stripStart] (around the current item);
+ * [updatedAt] is stamped by the store, ignored on write.
  */
 data class PlayAgainSession(
     val queueId: String,
     val title: String,
+    val subtitle: String?,
     val thumbnailUrl: String?,
     val queueIndex: Int,
     val queueSize: Int,
     val positionMs: Long,
     val durationMs: Long,
+    val stripStart: Int,
+    val stripThumbs: List<String?>,
+    val updatedAt: Long = 0L,
 ) {
     /** Resuming mid-item only pays off for long content; anything with under [RESUME_MIN_REMAINING] left
      *  (every ordinary song) restarts. */
@@ -42,6 +50,11 @@ data class PlayAgainSession(
 
     companion object {
         val RESUME_MIN_REMAINING = 5.minutes
+        const val STRIP_BEFORE = 2
+        const val STRIP_SIZE = 6
+
+        /** First index of the [STRIP_SIZE] window shown for the item at [index] of [size]. */
+        fun stripStart(index: Int, size: Int): Int = (index - STRIP_BEFORE).coerceIn(0, (size - STRIP_SIZE).coerceAtLeast(0))
     }
 }
 
@@ -64,20 +77,24 @@ class PlayAgainStore(
                 null,
                 """
                 INSERT OR REPLACE INTO play_again(
-                    queue_id, title, thumbnail_url, queue_index, queue_size, position_ms, duration_ms, items, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    queue_id, title, subtitle, thumbnail_url, queue_index, queue_size, position_ms, duration_ms,
+                    strip_start, strip_thumbs, items, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.trimIndent(),
-                9,
+                12,
             ) {
                 bindString(0, session.queueId)
                 bindString(1, session.title)
-                bindString(2, session.thumbnailUrl)
-                bindLong(3, session.queueIndex.toLong())
-                bindLong(4, session.queueSize.toLong())
-                bindLong(5, session.positionMs)
-                bindLong(6, session.durationMs)
-                bindString(7, itemsJson)
-                bindLong(8, now())
+                bindString(2, session.subtitle)
+                bindString(3, session.thumbnailUrl)
+                bindLong(4, session.queueIndex.toLong())
+                bindLong(5, session.queueSize.toLong())
+                bindLong(6, session.positionMs)
+                bindLong(7, session.durationMs)
+                bindLong(8, session.stripStart.toLong())
+                bindString(9, encodeThumbs(session.stripThumbs))
+                bindString(10, itemsJson)
+                bindLong(11, now())
             }
             driver.execute(
                 null,
@@ -99,18 +116,22 @@ class PlayAgainStore(
                 null,
                 """
                 UPDATE play_again SET
-                    title = ?, thumbnail_url = ?, queue_index = ?, position_ms = ?, duration_ms = ?, updated_at = ?
+                    title = ?, subtitle = ?, thumbnail_url = ?, queue_index = ?, position_ms = ?, duration_ms = ?,
+                    strip_start = ?, strip_thumbs = ?, updated_at = ?
                 WHERE queue_id = ?
                 """.trimIndent(),
-                7,
+                10,
             ) {
                 bindString(0, session.title)
-                bindString(1, session.thumbnailUrl)
-                bindLong(2, session.queueIndex.toLong())
-                bindLong(3, session.positionMs)
-                bindLong(4, session.durationMs)
-                bindLong(5, now())
-                bindString(6, session.queueId)
+                bindString(1, session.subtitle)
+                bindString(2, session.thumbnailUrl)
+                bindLong(3, session.queueIndex.toLong())
+                bindLong(4, session.positionMs)
+                bindLong(5, session.durationMs)
+                bindLong(6, session.stripStart.toLong())
+                bindString(7, encodeThumbs(session.stripThumbs))
+                bindLong(8, now())
+                bindString(9, session.queueId)
             }.value
         }
         if (updated == 0L) return false
@@ -138,7 +159,7 @@ class PlayAgainStore(
             "SELECT $SESSION_COLUMNS, items FROM play_again WHERE queue_id = ?",
             { cursor ->
                 QueryResult.Value(
-                    if (cursor.next().value) cursor.toSession() to decodeItems(cursor.getString(7)!!) else null,
+                    if (cursor.next().value) cursor.toSession() to decodeItems(cursor.getString(11)!!) else null,
                 )
             },
             1,
@@ -158,19 +179,30 @@ class PlayAgainStore(
     companion object {
         const val MAX_SESSIONS = 50
         private const val SESSION_COLUMNS =
-            "queue_id, title, thumbnail_url, queue_index, queue_size, position_ms, duration_ms"
+            "queue_id, title, subtitle, thumbnail_url, queue_index, queue_size, position_ms, duration_ms, " +
+                "strip_start, strip_thumbs, updated_at"
     }
 }
 
 private fun SqlCursor.toSession() = PlayAgainSession(
     queueId = getString(0)!!,
     title = getString(1)!!,
-    thumbnailUrl = getString(2),
-    queueIndex = getLong(3)!!.toInt(),
-    queueSize = getLong(4)!!.toInt(),
-    positionMs = getLong(5)!!,
-    durationMs = getLong(6)!!,
+    subtitle = getString(2),
+    thumbnailUrl = getString(3),
+    queueIndex = getLong(4)!!.toInt(),
+    queueSize = getLong(5)!!.toInt(),
+    positionMs = getLong(6)!!,
+    durationMs = getLong(7)!!,
+    stripStart = getLong(8)!!.toInt(),
+    stripThumbs = decodeThumbs(getString(9)!!),
+    updatedAt = getLong(10)!!,
 )
+
+private fun encodeThumbs(thumbs: List<String?>): String = buildJsonArray { thumbs.forEach { add(JsonPrimitive(it)) } }.toString()
+
+/** A row saved before the strip existed holds an empty string: no tiles. */
+private fun decodeThumbs(json: String): List<String?> =
+    if (json.isEmpty()) emptyList() else Json.parseToJsonElement(json).jsonArray.map { (it as? JsonPrimitive)?.contentOrNull }
 
 private const val TYPE_LOCAL = "local"
 private const val TYPE_YT = "yt"

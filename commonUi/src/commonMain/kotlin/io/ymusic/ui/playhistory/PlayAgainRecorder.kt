@@ -40,16 +40,22 @@ class PlayAgainRecorder(
                 combine(player.queue, player.progress, player.status) { queue, progress, status ->
                     val item = queue.currentItem ?: return@combine null
                     val live = progress.isLive || (item as? PlayableItem.YtMedia)?.live == true
+                    val stripStart = PlayAgainSession.stripStart(queue.currentIndex, queue.items.size)
                     Snapshot(
                         queue,
                         PlayAgainSession(
                             queueId = queue.queueId ?: return@combine null,
                             title = item.displayTitle,
+                            subtitle = item.displaySubtitle,
                             thumbnailUrl = item.displayThumbnailUrl,
                             queueIndex = queue.currentIndex,
                             queueSize = queue.items.size,
                             positionMs = if (live) 0L else progress.positionMs.coerceAtLeast(0L),
                             durationMs = if (live) 0L else progress.durationMs.takeIf { it > 0 } ?: item.durationMs ?: 0L,
+                            stripStart = stripStart,
+                            stripThumbs = queue.items
+                                .subList(stripStart, (stripStart + PlayAgainSession.STRIP_SIZE).coerceAtMost(queue.items.size))
+                                .map { it.displayThumbnailUrl },
                         ),
                         isPlaying(status, queue),
                     )
