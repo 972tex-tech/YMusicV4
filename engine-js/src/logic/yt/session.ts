@@ -35,6 +35,9 @@ const CACHE_KEY = "web";
 // reads differently from consumed, so no re-scrape gets spent on it.
 const HOMEPAGE_KEY = "homepage";
 const PLAYER_CONFIG_KEY = "player-config";
+// Stamped on every cached record: a homepage served from m.youtube.com (PREF app=m) yields a mobile
+// session and a BotGuard program the desktop player can't mint with — unstamped records are refused.
+const WWW_HOST = "www.youtube.com";
 /** Default maxAge for feed/API calls: re-scrape when the held session is older than 6h. */
 export const SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
@@ -274,6 +277,11 @@ async function scrapeSession(): Promise<YtSession> {
     res.close();
     throw JsEngineErrorImpl.network("yt session HTTP " + res.status);
   }
+  const host = hostOf(res.url);
+  if (host !== WWW_HOST) {
+    res.close();
+    throw JsEngineErrorImpl.parse("yt session: homepage redirected to " + host);
+  }
   const html = await res.text();
   if (html.indexOf("INNERTUBE_") === -1)
     throw JsEngineErrorImpl.parse("yt session: no ytcfg in homepage");
@@ -352,6 +360,7 @@ function toRecord(s: YtSession): Record<string, unknown> {
     "clientVersion": s.clientVersion,
     "visitorData": s.visitorData,
     "fetchedAt": s.fetchedAt,
+    "host": WWW_HOST,
   };
   if (s.apiKey != null) r["apiKey"] = s.apiKey;
   if (s.signatureTimestamp != null) r["signatureTimestamp"] = s.signatureTimestamp;
@@ -367,7 +376,12 @@ function fromRecord(o: unknown): YtSession | undefined {
   const clientVersion = asString(get(o, "clientVersion"));
   const visitorData = asString(get(o, "visitorData"));
   const fetchedAt = get(o, "fetchedAt");
-  if (clientVersion == null || visitorData == null || typeof fetchedAt !== "number") {
+  if (
+    clientVersion == null ||
+    visitorData == null ||
+    typeof fetchedAt !== "number" ||
+    get(o, "host") !== WWW_HOST
+  ) {
     return undefined;
   }
   return {
@@ -408,6 +422,13 @@ async function writeCache(s: YtSession): Promise<void> {
   }
 }
 
+function hostOf(url: string): string {
+  const start = url.indexOf("//");
+  const rest = start < 0 ? url : url.slice(start + 2);
+  const end = rest.search(/[/?#]/);
+  return end < 0 ? rest : rest.slice(0, end);
+}
+
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -418,6 +439,7 @@ async function storePlayerConfig(html: string): Promise<void> {
     console.info("yt session: homepage has no player config");
     return;
   }
+  cfg["host"] = WWW_HOST;
   inMemoryPlayer = cfg;
   try {
     await Cache.setJson(CACHE_SCOPE, PLAYER_CONFIG_KEY, cfg);
@@ -435,7 +457,11 @@ export async function peekPlayerConfig(): Promise<Record<string, unknown> | unde
     const raw = await Cache.getJson(CACHE_SCOPE, PLAYER_CONFIG_KEY);
     if (raw != null && typeof raw === "object") {
       const rec = raw as Record<string, unknown>;
-      if (typeof rec["jsUrl"] === "string" && rec["bgChallenge"] != null) {
+      if (
+        typeof rec["jsUrl"] === "string" &&
+        rec["bgChallenge"] != null &&
+        rec["host"] === WWW_HOST
+      ) {
         inMemoryPlayer = rec;
         return rec;
       }
