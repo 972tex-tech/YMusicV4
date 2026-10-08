@@ -198,7 +198,7 @@ class PlaybackCoordinator(
             playIndex = saved.queueIndex.coerceIn(0, items.lastIndex),
             startPositionMs = if (fromBeginning || !saved.resumesMidItem) 0L else saved.positionMs,
             queueId = saved.queueId,
-            source = saved.sourceToken?.let { PlaylistQueueSource.resume(it, graph.engines, items, log?.fork("queue-source")) },
+            source = saved.sourceToken?.let { NextQueueSource.resume(it, graph.engines, items, log?.fork("queue-source")) },
         )
         return true
     }

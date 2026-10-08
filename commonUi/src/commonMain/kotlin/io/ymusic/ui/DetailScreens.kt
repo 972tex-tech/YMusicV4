@@ -109,7 +109,7 @@ fun PlaylistDetailScreen(
                 coordinator.playAll(
                     videos,
                     startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0),
-                    source = ready.queueSource(coordinator.graph.engines, PlaylistQueueSource.Kind.Playlist, s.url, videos, s.log),
+                    source = ready.queueSource(coordinator.graph.engines, s.url, videos, s.log),
                 )
             },
             topContent = {
@@ -122,7 +122,7 @@ fun PlaylistDetailScreen(
                             videos,
                             startIndex = videos.indices.random(),
                             shuffle = true,
-                            source = ready.queueSource(coordinator.graph.engines, PlaylistQueueSource.Kind.Playlist, s.url, videos, s.log),
+                            source = ready.queueSource(coordinator.graph.engines, s.url, videos, s.log),
                         )
                     },
                     onDownload = onDownload?.let { open -> { open(title, s.feed.pager) } },
