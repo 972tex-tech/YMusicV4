@@ -117,6 +117,7 @@ class PlaybackCoordinator(
             id = it.videoId,
             title = it.title ?: it.videoId,
             subtitleLine1 = it.artist,
+            channelTitle = it.artist,
             duration = it.duration,
             thumbs = it.thumbnailUrl?.let { url -> listOf(YtThumb(url)) } ?: emptyList(),
         )
@@ -285,7 +286,7 @@ fun MediaStoreItem.toLocalMedia() = PlayableItem.LocalMedia(
 fun YtFeedItem.toYtMedia() = PlayableItem.YtMedia(
     videoId = id,
     title = title,
-    artist = subtitleLine1,
+    artist = channelTitle,
     thumbnailUrl = thumbs.firstOrNull()?.url,
     duration = duration,
     durationMs = durationMs,

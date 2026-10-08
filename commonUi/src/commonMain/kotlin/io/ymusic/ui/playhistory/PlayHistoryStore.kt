@@ -190,6 +190,7 @@ class PlayHistoryStore(
                         id = videoId,
                         title = cursor.getString(1)!!,
                         subtitleLine1 = cursor.getString(2),
+                        channelTitle = cursor.getString(2),
                         thumbs = listOf(YtThumb(thumb ?: youtubeThumbUrl(videoId))),
                         duration = cursor.getString(4),
                         durationMs = cursor.getLong(5),

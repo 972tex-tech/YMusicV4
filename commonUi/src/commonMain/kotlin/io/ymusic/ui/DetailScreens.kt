@@ -250,7 +250,24 @@ class ChannelSession(
 
     /** The last non-empty tab row — survives a tab-switch reload (Loading has no page yet). */
     var tabs by mutableStateOf(listOf<YtPageTab>())
-    val feed = FeedSession(scope, log) { continuation -> fetch(url, continuation, log) }
+    // A channel tab's own videos carry no byline; they are this channel's, so they take its name as
+    // the player's artist line. A deeplink seed's title is a shelf header, not the channel name.
+    private var channelName: String? = item.title.takeIf { item.channelId == item.id }
+
+    val feed = FeedSession(scope, log) { continuation ->
+        val page = fetch(url, continuation, log)
+        page.pageHeader?.title?.let { channelName = it }
+        val name = channelName ?: return@FeedSession page
+        page.copy(
+            sections = page.sections.map { section ->
+                section.copy(
+                    items = section.items.map {
+                        if (it.kind == YtFeedItem.KIND_VIDEO && it.channelTitle == null) it.copy(channelTitle = name) else it
+                    },
+                )
+            },
+        )
+    }
 
     init {
         feed.pager.refresh()

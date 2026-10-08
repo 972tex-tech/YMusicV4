@@ -232,7 +232,7 @@ class MediaBrowseTree(private val context: Context, private val graph: AppGraph)
     private fun YtFeedItem.toMediaItem(groupTitle: String?): MediaItem {
         val metadata = MediaMetadata.Builder()
             .setTitle(title)
-            .setArtist(subtitleLine1)
+            .setArtist(channelTitle)
             .setIsBrowsable(false)
             .setIsPlayable(true)
             .setExtras(styleExtras(group = groupTitle, style = null))

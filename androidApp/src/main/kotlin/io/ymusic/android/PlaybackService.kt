@@ -147,6 +147,7 @@ class PlaybackService : MediaLibraryService() {
                     id = videoId,
                     title = chosen.mediaMetadata.title?.toString() ?: videoId,
                     subtitleLine1 = chosen.mediaMetadata.artist?.toString(),
+                    channelTitle = chosen.mediaMetadata.artist?.toString(),
                 )
                 coordinator.playNow(video)
             }
