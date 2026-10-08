@@ -13,12 +13,17 @@ enum class LoopMode {
     All,
 }
 
-/** The play queue as observed on [Player.queue]. [currentIndex] is `-1` when nothing is queued. */
+/**
+ * The play queue as observed on [Player.queue]. [currentIndex] is `-1` when nothing is queued.
+ * [queueId] names the queue the last [Player.setQueue] made: it survives add/move/remove and
+ * changes only on the next setQueue; null when nothing is queued.
+ */
 data class QueueState(
     val items: List<PlayableItem> = emptyList(),
     val currentIndex: Int = -1,
     val loopMode: LoopMode = LoopMode.None,
     val shuffle: Boolean = false,
+    val queueId: String? = null,
 ) {
     val currentItem: PlayableItem? get() = items.getOrNull(currentIndex)
 }
@@ -36,9 +41,9 @@ internal class QueueController(private val random: Random = Random.Default) {
     /** Indices into [QueueState.items] in the order they played; last element is the current item. */
     private val played = mutableListOf<Int>()
 
-    fun setQueue(items: List<PlayableItem>, playIndex: Int) {
+    fun setQueue(items: List<PlayableItem>, playIndex: Int, queueId: String? = null) {
         val index = if (items.isEmpty()) -1 else playIndex.coerceIn(0, items.lastIndex)
-        state = state.copy(items = items, currentIndex = index)
+        state = state.copy(items = items, currentIndex = index, queueId = queueId.takeIf { index >= 0 })
         played.clear()
         if (index >= 0) played += index
     }
@@ -197,7 +202,7 @@ internal class QueueController(private val random: Random = Random.Default) {
     }
 
     fun clear() {
-        state = state.copy(items = emptyList(), currentIndex = -1)
+        state = state.copy(items = emptyList(), currentIndex = -1, queueId = null)
         played.clear()
     }
 

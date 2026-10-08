@@ -49,12 +49,14 @@ interface Player {
     /** SponsorBlock ranges for the current item; empty when none are armed. */
     val skipSegments: StateFlow<List<SkipSegment>>
 
-    /** Replace the queue and load [playIndex]. An empty [items] clears and stops. */
+    /** Replace the queue and load [playIndex]. An empty [items] clears and stops. [queueId] becomes
+     *  [QueueState.queueId] — pass a saved queue's id to resume it as the same queue; null mints one. */
     fun setQueue(
         items: List<PlayableItem>,
         playIndex: Int = 0,
         startPositionMs: Long = 0L,
         playWhenReady: Boolean = true,
+        queueId: String? = null,
     )
 
     /** Append (or insert at [at]) without interrupting playback. */

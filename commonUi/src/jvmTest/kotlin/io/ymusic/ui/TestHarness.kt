@@ -128,7 +128,13 @@ internal class StubPlayer : Player {
         private set
     val moves = mutableListOf<Pair<Int, Int>>()
 
-    override fun setQueue(items: List<PlayableItem>, playIndex: Int, startPositionMs: Long, playWhenReady: Boolean) {
+    override fun setQueue(
+        items: List<PlayableItem>,
+        playIndex: Int,
+        startPositionMs: Long,
+        playWhenReady: Boolean,
+        queueId: String?,
+    ) {
         lastQueue = items
         lastPlayIndex = playIndex
     }

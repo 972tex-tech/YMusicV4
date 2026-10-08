@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.random.Random
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 internal class PlayerImpl(
     private val engines: PlayerEngines,
@@ -102,9 +104,16 @@ internal class PlayerImpl(
     private val _sleepTimerMs = MutableStateFlow<Long?>(null)
     override val sleepTimerMs: StateFlow<Long?> = _sleepTimerMs.asStateFlow()
 
-    override fun setQueue(items: List<PlayableItem>, playIndex: Int, startPositionMs: Long, playWhenReady: Boolean) {
+    @OptIn(ExperimentalUuidApi::class)
+    override fun setQueue(
+        items: List<PlayableItem>,
+        playIndex: Int,
+        startPositionMs: Long,
+        playWhenReady: Boolean,
+        queueId: String?,
+    ) {
         if (released) return
-        controller.setQueue(items, playIndex)
+        controller.setQueue(items, playIndex, queueId ?: Uuid.random().toString())
         setPlayWhenReadyIntent(playWhenReady)
         if (items.isEmpty()) {
             publishQueue()
