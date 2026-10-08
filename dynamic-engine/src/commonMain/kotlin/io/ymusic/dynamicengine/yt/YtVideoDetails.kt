@@ -47,9 +47,16 @@ data class YtComment(
     /** [likes] once the viewer's own like is in. */
     val likesLiked: String? = null,
     val liked: Boolean = false,
-    /** Engine-private [commentAction] tokens; null when the viewer cannot like (signed out). */
+    val disliked: Boolean = false,
+    /** Engine-private [commentAction] tokens; null when the viewer cannot rate (signed out). */
     val likeToken: String? = null,
     val unlikeToken: String? = null,
+    val dislikeToken: String? = null,
+    val undislikeToken: String? = null,
+    /** Engine-private tokens on the viewer's own comments only: [commentAction] deletes it,
+     *  [editComment] replaces its text. */
+    val deleteToken: String? = null,
+    val editToken: String? = null,
     /** Engine-private [replyToComment] token; null when the viewer cannot reply. */
     val replyToken: String? = null,
     val replyPlaceholder: String? = null,
@@ -125,7 +132,7 @@ suspend fun DynamicEngineManager.createComment(createToken: String, text: String
         ) { readComment(it) }
     }
 
-/** Run a comment's [YtComment.likeToken] / [YtComment.unlikeToken]. */
+/** Run one of a comment's like / unlike / dislike / undislike / delete tokens. */
 suspend fun DynamicEngineManager.commentAction(token: String, logger: Logger? = null) {
     use { engine ->
         engine.jsonCommand(
@@ -148,3 +155,17 @@ suspend fun DynamicEngineManager.replyToComment(replyToken: String, text: String
             logger.cmd("replyToComment"),
         ) { readComment(it) }
     }
+
+/** Replace the text of the viewer's own comment through its [YtComment.editToken]. */
+suspend fun DynamicEngineManager.editComment(editToken: String, text: String, logger: Logger? = null) {
+    use { engine ->
+        engine.jsonCommand(
+            "yt/comment/edit",
+            { w ->
+                w.name("token").value(editToken)
+                w.name("text").value(text)
+            },
+            logger.cmd("editComment"),
+        ) { it.skipValue() }
+    }
+}

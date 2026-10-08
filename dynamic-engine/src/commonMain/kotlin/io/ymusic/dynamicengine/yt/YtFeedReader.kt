@@ -501,8 +501,13 @@ internal suspend fun readComment(r: JsonReader): YtComment {
     var likes: String? = null
     var likesLiked: String? = null
     var liked = false
+    var disliked = false
     var likeToken: String? = null
     var unlikeToken: String? = null
+    var dislikeToken: String? = null
+    var undislikeToken: String? = null
+    var deleteToken: String? = null
+    var editToken: String? = null
     var replyToken: String? = null
     var replyPlaceholder: String? = null
     var replyCount: String? = null
@@ -525,6 +530,11 @@ internal suspend fun readComment(r: JsonReader): YtComment {
             "liked" -> liked = r.boolean()
             "likeToken" -> likeToken = r.stringOrNull()
             "unlikeToken" -> unlikeToken = r.stringOrNull()
+            "disliked" -> disliked = r.boolean()
+            "dislikeToken" -> dislikeToken = r.stringOrNull()
+            "undislikeToken" -> undislikeToken = r.stringOrNull()
+            "deleteToken" -> deleteToken = r.stringOrNull()
+            "editToken" -> editToken = r.stringOrNull()
             "replyToken" -> replyToken = r.stringOrNull()
             "replyPlaceholder" -> replyPlaceholder = r.stringOrNull()
             "replyCount" -> replyCount = r.stringOrNull()
@@ -538,8 +548,8 @@ internal suspend fun readComment(r: JsonReader): YtComment {
     }
     r.endObject()
     return YtComment(
-        id, text, author, authorThumbs, authorChannelUrl, published, likes, likesLiked, liked, likeToken,
-        unlikeToken, replyToken, replyPlaceholder, replyCount, repliesContinuation,
+        id, text, author, authorThumbs, authorChannelUrl, published, likes, likesLiked, liked, disliked,
+        likeToken, unlikeToken, dislikeToken, undislikeToken, deleteToken, editToken, replyToken, replyPlaceholder, replyCount, repliesContinuation,
         pinned, hearted, byCreator, verified,
     )
 }
