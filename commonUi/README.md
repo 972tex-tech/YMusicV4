@@ -22,7 +22,9 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
   + `confirmDeviceOwner`) so the phone can confirm a matching code, unlock, encrypt the jar, and POST it to that
   inbox. The desktop deletes the inbox as soon as it receives the payload.
 
-- **PlaybackCoordinator** — play-now-with-watch-next-autoplay + display metadata for queue items.
+- **PlaybackCoordinator** — play actions + display metadata for queue items. Play-now starts the video's
+  radio and a playlist page's Play continues past the loaded page, both as a `NextQueueSource` (the engine's
+  `yt/queue` = /next playlist panel; a video with no radio gets its related videos and stops).
   Watch-time ranking (Library Recent play / Top tracks, Discover Top tracks) lives in
   `PlayHistoryStore` (its own SQLite file), not `:media-store`.
 

@@ -2,7 +2,6 @@ package io.ymusic.ui
 
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtThumb
-import io.ymusic.dynamicengine.yt.watchNext
 import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackConfig
@@ -29,8 +28,8 @@ import kotlin.time.TimeSource
  * [PlayableItem.LocalMedia] / [PlayableItem.YtMedia] carries its own id + display metadata — so the
  * coordinator holds NO side map: Now Playing reads the item's `display*` accessors straight off the
  * item. Watch-time ranking (when [AppGraph.playHistory] is set) credits elapsed play while Prepared.
- * Implements "play now" as YouTube-style autoplay — load the tapped video, then append its watch-next
- * as the rest of the queue.
+ * Queues that keep growing (a video's radio, a playlist past its loaded page) carry a
+ * [NextQueueSource].
  */
 class PlaybackCoordinator(
     internal val graph: AppGraph,
@@ -123,29 +122,16 @@ class PlaybackCoordinator(
         )
     }
 
-    /** Play [video] now; its watch-next related videos become the rest of the queue (autoplay). */
+    /** Play [video] now with its radio (a YouTube Mix) as the rest of the queue, loading as it plays;
+     *  its related videos when YouTube has no radio for it. */
     fun playNow(video: YtFeedItem) {
-        player.setQueue(listOf(video.toYtMedia()))
-        scope.launch {
-            try {
-                val next = graph.engines.watchNext(videoId = video.id)
-                val related = next.sections.flatMap { it.items }
-                    .filter { it.kind == YtFeedItem.KIND_VIDEO && it.id != video.id }
-                // The queue may have changed while we fetched — only extend our own load.
-                val current = player.queue.value
-                if ((current.currentItem as? PlayableItem.YtMedia)?.videoId == video.id && current.items.size == 1) {
-                    player.add(related.map { it.toYtMedia() })
-                }
-            } catch (c: kotlinx.coroutines.CancellationException) {
-                throw c
-            } catch (e: Exception) {
-                // Autoplay fill is an enhancement, not the task — the tapped video still plays.
-                log?.log(Logger.Level.WARN, "watch-next fill failed", e)
-            }
-        }
+        player.setQueue(
+            listOf(video.toYtMedia()),
+            source = NextQueueSource.radio(graph.engines, video.id, log?.fork("queue-source")),
+        )
     }
 
-    /** Play [video] alone — no watch-next radio. */
+    /** Play [video] alone — no radio. */
     fun playSingle(video: YtFeedItem) {
         player.setQueue(listOf(video.toYtMedia()))
     }
