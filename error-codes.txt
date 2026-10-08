@@ -55,8 +55,10 @@ E20094 - video details load failed with an uncoded error (commonUi VideoDetailsD
 E20095 - comments page load failed with an uncoded error (commonUi VideoDetailsDialog.kt)
 E20096 - posting a comment failed with an uncoded error (commonUi VideoDetailsDialog.kt)
 E20097 - rating a video failed with an uncoded error (commonUi VideoDetailsDialog.kt)
-E20099 - liking a comment failed with an uncoded error (commonUi VideoDetailsDialog.kt)
+E20099 - rating a comment failed with an uncoded error (commonUi VideoDetailsDialog.kt)
 E20100 - replying to a comment failed with an uncoded error (commonUi VideoDetailsDialog.kt)
+E20101 - deleting a comment failed with an uncoded error (commonUi VideoDetailsDialog.kt)
+E20102 - editing a comment failed with an uncoded error (commonUi VideoDetailsDialog.kt)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 

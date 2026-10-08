@@ -393,4 +393,10 @@
     <string name="video_details_sign_in_to_rate">سجّل الدخول لتقييم هذا الفيديو</string>
     <string name="video_details_reply">رد</string>
     <string name="video_details_reply_posted">تم نشر الرد</string>
+    <string name="video_details_edit">تعديل</string>
+    <string name="video_details_edited">تم تحديث التعليق</string>
+    <string name="video_details_delete">حذف</string>
+    <string name="video_details_delete_title">حذف التعليق</string>
+    <string name="video_details_delete_message">هل تريد حذف تعليقك وجميع الردود عليه نهائيًا؟</string>
+    <string name="video_details_deleted">تم حذف التعليق</string>
 </resources>

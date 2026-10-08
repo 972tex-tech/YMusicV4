@@ -24,14 +24,21 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -62,12 +69,15 @@ import io.ymusic.dynamicengine.yt.YtCommentPage
 import io.ymusic.dynamicengine.yt.YtVideoDetails
 import io.ymusic.dynamicengine.yt.commentAction
 import io.ymusic.dynamicengine.yt.createComment
+import io.ymusic.dynamicengine.yt.editComment
 import io.ymusic.dynamicengine.yt.extractComments
 import io.ymusic.dynamicengine.yt.extractVideoDetails
 import io.ymusic.dynamicengine.yt.rateVideo
 import io.ymusic.dynamicengine.yt.replyToComment
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_close
+import io.ymusic.ui.resources.cd_more
+import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.show_less
 import io.ymusic.ui.resources.show_more
@@ -75,7 +85,13 @@ import io.ymusic.ui.resources.video_details
 import io.ymusic.ui.resources.video_details_comment_hint
 import io.ymusic.ui.resources.video_details_comments
 import io.ymusic.ui.resources.video_details_comments_off
+import io.ymusic.ui.resources.video_details_delete
+import io.ymusic.ui.resources.video_details_delete_message
+import io.ymusic.ui.resources.video_details_delete_title
+import io.ymusic.ui.resources.video_details_deleted
 import io.ymusic.ui.resources.video_details_dislike
+import io.ymusic.ui.resources.video_details_edit
+import io.ymusic.ui.resources.video_details_edited
 import io.ymusic.ui.resources.video_details_hide_replies
 import io.ymusic.ui.resources.video_details_like
 import io.ymusic.ui.resources.video_details_more_replies
@@ -122,11 +138,20 @@ internal class VideoDetailsState(
     var postErrorCode by mutableStateOf<String?>(null)
     var likeStatus by mutableStateOf(YtVideoDetails.INDIFFERENT)
 
-    /** A failed rate / comment-like, for the UI to surface once. */
+    /** A failed rate / comment rating / delete, for the UI to surface once. */
     var actionErrorCode by mutableStateOf<String?>(null)
 
-    /** The viewer's comment likes made in this dialog, over each comment's served state. */
-    val commentLiked = mutableStateMapOf<String, Boolean>()
+    /** The viewer's comment ratings made in this dialog, over each comment's served state. */
+    val commentRating = mutableStateMapOf<String, String>()
+
+    /** New text of the viewer's comments edited in this dialog. */
+    val editedText = mutableStateMapOf<String, String>()
+    var editingId by mutableStateOf<String?>(null)
+    var editPosting by mutableStateOf(false)
+    var editErrorCode by mutableStateOf<String?>(null)
+
+    /** The comment awaiting delete confirmation. */
+    var pendingDelete by mutableStateOf<YtComment?>(null)
 
     /** The comment whose reply box is open. */
     var replyingTo by mutableStateOf<String?>(null)
@@ -205,21 +230,79 @@ internal class VideoDetailsState(
         }
     }
 
-    fun isLiked(comment: YtComment): Boolean = commentLiked[comment.id] ?: comment.liked
+    fun ratingOf(comment: YtComment): String = commentRating[comment.id] ?: when {
+        comment.liked -> YtVideoDetails.LIKE
+        comment.disliked -> YtVideoDetails.DISLIKE
+        else -> YtVideoDetails.INDIFFERENT
+    }
 
-    fun toggleCommentLike(comment: YtComment) {
-        val liked = isLiked(comment)
-        val token = (if (liked) comment.unlikeToken else comment.likeToken) ?: return
-        commentLiked[comment.id] = !liked
+    /** Toggle [target] (LIKE / DISLIKE) on [comment] optimistically; a failure restores the rating. */
+    fun rateComment(comment: YtComment, target: String) {
+        val current = ratingOf(comment)
+        val undo = current == target
+        val token = when {
+            undo && target == YtVideoDetails.LIKE -> comment.unlikeToken
+            undo -> comment.undislikeToken
+            target == YtVideoDetails.LIKE -> comment.likeToken
+            else -> comment.dislikeToken
+        } ?: return
+        commentRating[comment.id] = if (undo) YtVideoDetails.INDIFFERENT else target
         scope.launch {
             try {
                 graph.engines.commentAction(token, log)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                log?.log(Logger.Level.WARN, "comment like failed", error)
-                commentLiked[comment.id] = liked
+                log?.log(Logger.Level.WARN, "comment rating failed", error)
+                commentRating[comment.id] = current
                 actionErrorCode = (error as? CodedError)?.code ?: "E20099"
+            }
+        }
+    }
+
+    fun textOf(comment: YtComment): String = editedText[comment.id] ?: comment.text
+
+    fun startEdit(comment: YtComment) {
+        editingId = comment.id
+        editErrorCode = null
+    }
+
+    fun saveEdit(comment: YtComment, text: String, onSaved: () -> Unit) {
+        val token = comment.editToken ?: return
+        if (editPosting) return
+        editPosting = true
+        editErrorCode = null
+        scope.launch {
+            try {
+                graph.engines.editComment(token, text, log)
+                editedText[comment.id] = text
+                editingId = null
+                onSaved()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "edit comment failed", error)
+                editErrorCode = (error as? CodedError)?.code ?: "E20102"
+            } finally {
+                editPosting = false
+            }
+        }
+    }
+
+    fun delete(comment: YtComment, onDeleted: () -> Unit) {
+        val token = comment.deleteToken ?: return
+        scope.launch {
+            try {
+                graph.engines.commentAction(token, log)
+                comments.comments.removeAll { it.id == comment.id }
+                replies.values.forEach { list -> list.comments.removeAll { it.id == comment.id } }
+                replies.remove(comment.id)
+                onDeleted()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "delete comment failed", error)
+                actionErrorCode = (error as? CodedError)?.code ?: "E20101"
             }
         }
     }
@@ -318,6 +401,7 @@ private fun VideoDetailsContent(
             state.actionErrorCode = null
         }
     }
+    DeleteCommentConfirm(state)
     val nearEnd by remember {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -565,9 +649,11 @@ private fun CommentField(
     posting: Boolean,
     errorCode: String?,
     autoFocus: Boolean = false,
+    initial: String = "",
+    onCancel: (() -> Unit)? = null,
     onSend: (text: String, clear: () -> Unit) -> Unit,
 ) {
-    var draft by remember { mutableStateOf("") }
+    var draft by remember { mutableStateOf(initial) }
     val send = {
         val text = draft.trim()
         if (text.isNotEmpty()) onSend(text) { draft = "" }
@@ -588,7 +674,12 @@ private fun CommentField(
         if (posting) {
             CircularProgressIndicator(Modifier.padding(DesignSpacing.Space8).size(24.dp), strokeWidth = 2.dp)
         } else {
-            IconButton(onClick = send, enabled = draft.isNotBlank()) {
+            onCancel?.let {
+                IconButton(onClick = it) {
+                    Icon(Icons.Default.Close, stringResource(Res.string.dialog_cancel), tint = DesignColors.InkSecondary)
+                }
+            }
+            IconButton(onClick = send, enabled = draft.isNotBlank() && draft.trim() != initial) {
                 Icon(Icons.AutoMirrored.Filled.Send, stringResource(Res.string.video_details_post), tint = DesignColors.Accent)
             }
         }
@@ -633,41 +724,122 @@ private fun CommentRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = openAuthor,
             )
-            SelectionContainer {
-                Text(comment.text, style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = DesignColors.Ink))
+            if (state.editingId == comment.id) {
+                val snackbar = LocalSnackbar.current
+                val saved = stringResource(Res.string.video_details_edited)
+                CommentField(
+                    placeholder = stringResource(Res.string.video_details_comment_hint),
+                    posting = state.editPosting,
+                    errorCode = state.editErrorCode,
+                    autoFocus = true,
+                    initial = state.textOf(comment),
+                    onCancel = { state.editingId = null },
+                ) { text, _ -> state.saveEdit(comment, text) { snackbar(saved) } }
+            } else {
+                SelectionContainer {
+                    Text(state.textOf(comment), style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = DesignColors.Ink))
+                }
+                CommentActions(state, comment, canReply = !indent)
             }
-            CommentActions(state, comment, canReply = !indent)
+        }
+        if (comment.editToken != null || comment.deleteToken != null) OwnCommentMenu(state, comment)
+    }
+}
+
+/** ⋮ on the viewer's own comments: Edit / Delete. */
+@Composable
+private fun OwnCommentMenu(state: VideoDetailsState, comment: YtComment) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), Modifier.size(18.dp), tint = DesignColors.InkSecondary)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (comment.editToken != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.video_details_edit)) },
+                    leadingIcon = { Icon(Icons.Outlined.Edit, null) },
+                    onClick = { open = false; state.startEdit(comment) },
+                )
+            }
+            if (comment.deleteToken != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.video_details_delete)) },
+                    leadingIcon = { Icon(Icons.Outlined.Delete, null) },
+                    onClick = { open = false; state.pendingDelete = comment },
+                )
+            }
         }
     }
 }
 
-/** Like (a toggle when signed in, else just the count) · creator heart · Reply (signed in, top level). */
+@Composable
+private fun DeleteCommentConfirm(state: VideoDetailsState) {
+    val comment = state.pendingDelete ?: return
+    val snackbar = LocalSnackbar.current
+    val deleted = stringResource(Res.string.video_details_deleted)
+    AlertDialog(
+        onDismissRequest = { state.pendingDelete = null },
+        title = { Text(stringResource(Res.string.video_details_delete_title)) },
+        text = { Text(stringResource(Res.string.video_details_delete_message)) },
+        confirmButton = {
+            TextButton(onClick = {
+                state.pendingDelete = null
+                state.delete(comment) { snackbar(deleted) }
+            }) { Text(stringResource(Res.string.video_details_delete), color = DesignColors.Accent) }
+        },
+        dismissButton = { DialogSecondaryButton(stringResource(Res.string.dialog_cancel)) { state.pendingDelete = null } },
+    )
+}
+
+/** Like (count) · dislike — toggles when signed in, else just the count — · creator heart · Reply
+ *  (signed in, top level). */
 @Composable
 private fun CommentActions(state: VideoDetailsState, comment: YtComment, canReply: Boolean) {
-    val liked = state.isLiked(comment)
+    val rating = state.ratingOf(comment)
+    val liked = rating == YtVideoDetails.LIKE
+    val disliked = rating == YtVideoDetails.DISLIKE
     val canLike = comment.likeToken != null && comment.unlikeToken != null
+    val canDislike = comment.dislikeToken != null && comment.undislikeToken != null
     val count = if (liked) comment.likesLiked ?: comment.likes else comment.likes
     val replyable = canReply && comment.replyToken != null
-    if (!canLike && count == null && !comment.hearted && !replyable) return
+    if (!canLike && !canDislike && count == null && !comment.hearted && !replyable) return
     val muted = DesignColors.InkSecondary
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-        Row(
-            Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .then(if (canLike) Modifier.clickable { state.toggleCommentLike(comment) } else Modifier)
-                .padding(vertical = DesignSpacing.Space4, horizontal = if (canLike) DesignSpacing.Space4 else 0.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
-        ) {
-            Icon(
-                if (liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
-                stringResource(Res.string.video_details_like),
-                Modifier.size(14.dp),
-                tint = if (liked) DesignColors.Ink else muted,
-            )
-            count?.let { Text(it, style = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = muted)) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
+        if (canLike || count != null) {
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .then(if (canLike) Modifier.clickable { state.rateComment(comment, YtVideoDetails.LIKE) } else Modifier)
+                    .padding(vertical = DesignSpacing.Space4, horizontal = if (canLike) DesignSpacing.Space4 else 0.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
+            ) {
+                Icon(
+                    if (liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                    stringResource(Res.string.video_details_like),
+                    Modifier.size(14.dp),
+                    tint = if (liked) DesignColors.Ink else muted,
+                )
+                count?.let { Text(it, style = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = muted)) }
+            }
         }
-        if (comment.hearted) Icon(Icons.Filled.Favorite, null, Modifier.size(14.dp), tint = DesignColors.Accent)
+        if (canDislike) {
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .clickable { state.rateComment(comment, YtVideoDetails.DISLIKE) }
+                    .padding(DesignSpacing.Space4),
+            ) {
+                Icon(
+                    if (disliked) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
+                    stringResource(Res.string.video_details_dislike),
+                    Modifier.size(14.dp),
+                    tint = if (disliked) DesignColors.Ink else muted,
+                )
+            }
+        }
+        if (comment.hearted) Icon(Icons.Filled.Favorite, null, Modifier.padding(horizontal = DesignSpacing.Space4).size(14.dp), tint = DesignColors.Accent)
         if (replyable) {
             Text(
                 stringResource(Res.string.video_details_reply),

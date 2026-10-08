@@ -474,4 +474,10 @@
     <string name="video_details_sign_in_to_rate">Sign in to rate this video</string>
     <string name="video_details_reply">Reply</string>
     <string name="video_details_reply_posted">Reply posted</string>
+    <string name="video_details_edit">Edit</string>
+    <string name="video_details_edited">Comment updated</string>
+    <string name="video_details_delete">Delete</string>
+    <string name="video_details_delete_title">Delete comment</string>
+    <string name="video_details_delete_message">Delete your comment and all of its replies permanently?</string>
+    <string name="video_details_deleted">Comment deleted</string>
 </resources>

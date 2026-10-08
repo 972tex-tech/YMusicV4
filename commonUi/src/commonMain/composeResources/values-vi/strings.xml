@@ -384,4 +384,10 @@
     <string name="video_details_sign_in_to_rate">Đăng nhập để đánh giá video này</string>
     <string name="video_details_reply">Phản hồi</string>
     <string name="video_details_reply_posted">Đã đăng phản hồi</string>
+    <string name="video_details_edit">Chỉnh sửa</string>
+    <string name="video_details_edited">Đã cập nhật bình luận</string>
+    <string name="video_details_delete">Xóa</string>
+    <string name="video_details_delete_title">Xóa bình luận</string>
+    <string name="video_details_delete_message">Xóa vĩnh viễn bình luận của bạn và tất cả phản hồi?</string>
+    <string name="video_details_deleted">Đã xóa bình luận</string>
 </resources>
