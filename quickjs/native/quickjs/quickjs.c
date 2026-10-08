@@ -31,6 +31,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <fenv.h>
+#include <limits.h>
 #include <math.h>
 #if defined(__APPLE__)
 #include <malloc/malloc.h>
