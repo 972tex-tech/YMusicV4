@@ -5,6 +5,7 @@ import { callHost } from "../../protocol/command";
 import { keepCount, scopedCache } from "../../protocol/cache";
 import { open } from "../../transport";
 import { DESKTOP_UA } from "../yt/session";
+import { onShutdown } from "../../lifecycle";
 
 const SCOPE = "yt.bg.session";
 const KEEP = 4;
@@ -131,6 +132,13 @@ function finishDump(after?: () => void): void {
       },
     );
 }
+
+// Player engine teardown: save what the session recorded instead of losing it to the hard close.
+onShutdown(function () {
+  return new Promise<void>(function (resolve) {
+    finishDump(resolve);
+  });
+});
 
 function captureReject(sps: number): void {
   const key = sessionKey;
