@@ -56,6 +56,7 @@ class PlayAgainRecorder(
                             stripThumbs = queue.items
                                 .subList(stripStart, (stripStart + PlayAgainSession.STRIP_SIZE).coerceAtMost(queue.items.size))
                                 .map { it.displayThumbnailUrl },
+                            sourceToken = queue.more?.resumeToken,
                         ),
                         isPlaying(status, queue),
                     )

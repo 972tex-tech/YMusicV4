@@ -32,6 +32,8 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
   when its items or current item change, on pause, every 30s while playing, and when it is replaced.
   `PlayAgainScreen` shows each session as a card (current item, a strip of the queue around it, Resume). A tap calls `PlaybackCoordinator.playAgain`, which restores the queue
   under the same id. Like legacy, it resumes mid-item only when ≥5 min remain; otherwise the item restarts.
+  A playlist queue's `QueueSource.resumeToken` (url + next continuation, `PlaylistQueueSource`) is saved with the
+  session, so a resumed playlist keeps loading from where it had reached.
 
 - **Thumbnails** — render through `:image-loader` (`LocalImageLoader` provided from `AppGraph.imageLoader`; null
   keeps placeholder boxes).

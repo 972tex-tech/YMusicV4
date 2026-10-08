@@ -28,6 +28,7 @@ import kotlin.time.ExperimentalTime
  * One saved queue in "Play again" (legacy Rewind playlist): where it was left — the item at
  * [queueIndex] of [queueSize], [positionMs] into it — keyed by the queue's [io.ymusic.player.QueueState.queueId].
  * [stripThumbs] is the art of the queue window starting at [stripStart] (around the current item);
+ * [sourceToken] is the queue's [io.ymusic.player.QueueSource.resumeToken] (where its playlist continues);
  * [updatedAt] is stamped by the store, ignored on write.
  */
 data class PlayAgainSession(
@@ -41,6 +42,7 @@ data class PlayAgainSession(
     val durationMs: Long,
     val stripStart: Int,
     val stripThumbs: List<String?>,
+    val sourceToken: String? = null,
     val updatedAt: Long = 0L,
 ) {
     /** Resuming mid-item only pays off for long content; anything with under [RESUME_MIN_REMAINING] left
@@ -78,10 +80,10 @@ class PlayAgainStore(
                 """
                 INSERT OR REPLACE INTO play_again(
                     queue_id, title, subtitle, thumbnail_url, queue_index, queue_size, position_ms, duration_ms,
-                    strip_start, strip_thumbs, items, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    strip_start, strip_thumbs, source_token, items, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.trimIndent(),
-                12,
+                13,
             ) {
                 bindString(0, session.queueId)
                 bindString(1, session.title)
@@ -93,8 +95,9 @@ class PlayAgainStore(
                 bindLong(7, session.durationMs)
                 bindLong(8, session.stripStart.toLong())
                 bindString(9, encodeThumbs(session.stripThumbs))
-                bindString(10, itemsJson)
-                bindLong(11, now())
+                bindString(10, session.sourceToken)
+                bindString(11, itemsJson)
+                bindLong(12, now())
             }
             driver.execute(
                 null,
@@ -117,10 +120,10 @@ class PlayAgainStore(
                 """
                 UPDATE play_again SET
                     title = ?, subtitle = ?, thumbnail_url = ?, queue_index = ?, position_ms = ?, duration_ms = ?,
-                    strip_start = ?, strip_thumbs = ?, updated_at = ?
+                    strip_start = ?, strip_thumbs = ?, source_token = ?, updated_at = ?
                 WHERE queue_id = ?
                 """.trimIndent(),
-                10,
+                11,
             ) {
                 bindString(0, session.title)
                 bindString(1, session.subtitle)
@@ -130,8 +133,9 @@ class PlayAgainStore(
                 bindLong(5, session.durationMs)
                 bindLong(6, session.stripStart.toLong())
                 bindString(7, encodeThumbs(session.stripThumbs))
-                bindLong(8, now())
-                bindString(9, session.queueId)
+                bindString(8, session.sourceToken)
+                bindLong(9, now())
+                bindString(10, session.queueId)
             }.value
         }
         if (updated == 0L) return false
@@ -159,7 +163,7 @@ class PlayAgainStore(
             "SELECT $SESSION_COLUMNS, items FROM play_again WHERE queue_id = ?",
             { cursor ->
                 QueryResult.Value(
-                    if (cursor.next().value) cursor.toSession() to decodeItems(cursor.getString(11)!!) else null,
+                    if (cursor.next().value) cursor.toSession() to decodeItems(cursor.getString(12)!!) else null,
                 )
             },
             1,
@@ -180,7 +184,7 @@ class PlayAgainStore(
         const val MAX_SESSIONS = 50
         private const val SESSION_COLUMNS =
             "queue_id, title, subtitle, thumbnail_url, queue_index, queue_size, position_ms, duration_ms, " +
-                "strip_start, strip_thumbs, updated_at"
+                "strip_start, strip_thumbs, updated_at, source_token"
     }
 }
 
@@ -196,6 +200,7 @@ private fun SqlCursor.toSession() = PlayAgainSession(
     stripStart = getLong(8)!!.toInt(),
     stripThumbs = decodeThumbs(getString(9)!!),
     updatedAt = getLong(10)!!,
+    sourceToken = getString(11),
 )
 
 private fun encodeThumbs(thumbs: List<String?>): String = buildJsonArray { thumbs.forEach { add(JsonPrimitive(it)) } }.toString()

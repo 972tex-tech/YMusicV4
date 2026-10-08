@@ -185,9 +185,9 @@ class PlaybackCoordinator(
     }
 
     /**
-     * Resume a "Play again" queue as the same queue (its session keeps updating). Mid-item only for
-     * long content ([PlayAgainSession.resumesMidItem]) unless [fromBeginning]. False when the session
-     * is gone.
+     * Resume a "Play again" queue as the same queue (its session keeps updating), its playlist
+     * continuing from where the queue had loaded to. Mid-item only for long content
+     * ([PlayAgainSession.resumesMidItem]) unless [fromBeginning]. False when the session is gone.
      */
     suspend fun playAgain(session: PlayAgainSession, fromBeginning: Boolean = false): Boolean {
         val store = playHistory?.playAgain ?: return false
@@ -198,6 +198,7 @@ class PlaybackCoordinator(
             playIndex = saved.queueIndex.coerceIn(0, items.lastIndex),
             startPositionMs = if (fromBeginning || !saved.resumesMidItem) 0L else saved.positionMs,
             queueId = saved.queueId,
+            source = saved.sourceToken?.let { PlaylistQueueSource.resume(it, graph.engines, items, log?.fork("queue-source")) },
         )
         return true
     }

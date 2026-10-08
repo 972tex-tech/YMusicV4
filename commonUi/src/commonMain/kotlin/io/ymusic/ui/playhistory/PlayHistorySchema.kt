@@ -11,7 +11,7 @@ import app.cash.sqldelight.db.SqlSchema
  * ([PlayAgainStore]).
  */
 object PlayHistorySchema : SqlSchema<QueryResult.Value<Unit>> {
-    override val version: Long get() = 4
+    override val version: Long get() = 5
 
     override fun create(driver: SqlDriver): QueryResult.Value<Unit> {
         driver.exec(
@@ -29,6 +29,7 @@ object PlayHistorySchema : SqlSchema<QueryResult.Value<Unit>> {
         createYtMetadata(driver)
         createPlayAgain(driver)
         addPlayAgainStrip(driver)
+        addPlayAgainSource(driver)
         return QueryResult.Unit
     }
 
@@ -75,6 +76,9 @@ object PlayHistorySchema : SqlSchema<QueryResult.Value<Unit>> {
         }
         if (oldVersion < 4) {
             addPlayAgainStrip(driver)
+        }
+        if (oldVersion < 5) {
+            addPlayAgainSource(driver)
         }
         return QueryResult.Unit
     }
@@ -133,6 +137,10 @@ object PlayHistorySchema : SqlSchema<QueryResult.Value<Unit>> {
         driver.exec("ALTER TABLE play_again ADD COLUMN subtitle TEXT")
         driver.exec("ALTER TABLE play_again ADD COLUMN strip_start INTEGER NOT NULL DEFAULT 0")
         driver.exec("ALTER TABLE play_again ADD COLUMN strip_thumbs TEXT NOT NULL DEFAULT ''")
+    }
+
+    private fun addPlayAgainSource(driver: SqlDriver) {
+        driver.exec("ALTER TABLE play_again ADD COLUMN source_token TEXT")
     }
 }
 
