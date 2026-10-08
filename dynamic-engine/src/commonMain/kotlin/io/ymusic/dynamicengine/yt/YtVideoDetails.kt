@@ -12,11 +12,25 @@ data class YtVideoDetails(
     val channelThumbs: List<YtThumb> = emptyList(),
     val subscribers: String? = null,
     val factoids: List<YtFactoid> = emptyList(),
+    /** The like button's count, and its count once the viewer's own like is in. */
+    val likeCount: String? = null,
+    val likeCountLiked: String? = null,
+    /** The viewer's rating, one of [LIKE] / [DISLIKE] / [INDIFFERENT]. */
+    val likeStatus: String = INDIFFERENT,
+    /** Engine-private [rateVideo] tokens keyed by the new status; empty = the viewer cannot rate
+     *  (signed out). */
+    val rateTokens: Map<String, String> = emptyMap(),
     val description: String? = null,
     val commentsCount: String? = null,
     /** The first [extractComments] token; null = comments are off. */
     val commentsContinuation: String? = null,
-)
+) {
+    companion object {
+        const val LIKE = "LIKE"
+        const val DISLIKE = "DISLIKE"
+        const val INDIFFERENT = "INDIFFERENT"
+    }
+}
 
 /** A headline stat rendered as [value] over [label] ("19M" / "Likes"). */
 data class YtFactoid(val value: String, val label: String)
@@ -30,6 +44,15 @@ data class YtComment(
     val authorChannelUrl: String? = null,
     val published: String? = null,
     val likes: String? = null,
+    /** [likes] once the viewer's own like is in. */
+    val likesLiked: String? = null,
+    val liked: Boolean = false,
+    /** Engine-private [commentAction] tokens; null when the viewer cannot like (signed out). */
+    val likeToken: String? = null,
+    val unlikeToken: String? = null,
+    /** Engine-private [replyToComment] token; null when the viewer cannot reply. */
+    val replyToken: String? = null,
+    val replyPlaceholder: String? = null,
     val replyCount: String? = null,
     /** The [extractComments] token for this thread's replies. */
     val repliesContinuation: String? = null,
@@ -73,6 +96,22 @@ suspend fun DynamicEngineManager.extractComments(continuation: String, logger: L
         ) { readCommentPage(it) }
     }
 
+/** Set the viewer's rating of [videoId] to [status] ([YtVideoDetails.LIKE] / DISLIKE / INDIFFERENT)
+ *  with the details' [YtVideoDetails.rateTokens] entry for it. */
+suspend fun DynamicEngineManager.rateVideo(videoId: String, status: String, token: String, logger: Logger? = null) {
+    use { engine ->
+        engine.jsonCommand(
+            "yt/video/rate",
+            { w ->
+                w.name("videoId").value(videoId)
+                w.name("status").value(status)
+                w.name("token").value(token)
+            },
+            logger.cmd("rateVideo", "videoId" to videoId, "status" to status),
+        ) { it.skipValue() }
+    }
+}
+
 /** Post [text] as a comment through a page's [YtCommentPage.createToken]; returns the posted comment. */
 suspend fun DynamicEngineManager.createComment(createToken: String, text: String, logger: Logger? = null): YtComment =
     use { engine ->
@@ -83,5 +122,29 @@ suspend fun DynamicEngineManager.createComment(createToken: String, text: String
                 w.name("text").value(text)
             },
             logger.cmd("createComment"),
+        ) { readComment(it) }
+    }
+
+/** Run a comment's [YtComment.likeToken] / [YtComment.unlikeToken]. */
+suspend fun DynamicEngineManager.commentAction(token: String, logger: Logger? = null) {
+    use { engine ->
+        engine.jsonCommand(
+            "yt/comment/action",
+            { w -> w.name("token").value(token) },
+            logger.cmd("commentAction"),
+        ) { it.skipValue() }
+    }
+}
+
+/** Reply [text] to a comment through its [YtComment.replyToken]; returns the posted reply. */
+suspend fun DynamicEngineManager.replyToComment(replyToken: String, text: String, logger: Logger? = null): YtComment =
+    use { engine ->
+        engine.jsonCommand(
+            "yt/comment/reply",
+            { w ->
+                w.name("token").value(replyToken)
+                w.name("text").value(text)
+            },
+            logger.cmd("replyToComment"),
         ) { readComment(it) }
     }

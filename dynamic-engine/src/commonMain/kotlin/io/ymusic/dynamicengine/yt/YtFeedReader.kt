@@ -407,6 +407,10 @@ internal suspend fun readVideoDetails(r: JsonReader): YtVideoDetails {
     var channelThumbs: List<YtThumb> = emptyList()
     var subscribers: String? = null
     var factoids: List<YtFactoid> = emptyList()
+    var likeCount: String? = null
+    var likeCountLiked: String? = null
+    var likeStatus = YtVideoDetails.INDIFFERENT
+    var rateTokens: Map<String, String> = emptyMap()
     var description: String? = null
     var commentsCount: String? = null
     var commentsContinuation: String? = null
@@ -419,6 +423,10 @@ internal suspend fun readVideoDetails(r: JsonReader): YtVideoDetails {
             "channelThumbs" -> channelThumbs = r.readArrayOf { readThumb(it) }
             "subscribers" -> subscribers = r.stringOrNull()
             "factoids" -> factoids = r.readArrayOf { readFactoid(it) }
+            "likeCount" -> likeCount = r.stringOrNull()
+            "likeCountLiked" -> likeCountLiked = r.stringOrNull()
+            "likeStatus" -> likeStatus = r.stringOrNull() ?: YtVideoDetails.INDIFFERENT
+            "rateTokens" -> rateTokens = r.readStringMap()
             "description" -> description = r.stringOrNull()
             "commentsCount" -> commentsCount = r.stringOrNull()
             "commentsContinuation" -> commentsContinuation = r.stringOrNull()
@@ -427,9 +435,20 @@ internal suspend fun readVideoDetails(r: JsonReader): YtVideoDetails {
     }
     r.endObject()
     return YtVideoDetails(
-        title, channelTitle, channelUrl, channelThumbs, subscribers, factoids, description, commentsCount,
-        commentsContinuation,
+        title, channelTitle, channelUrl, channelThumbs, subscribers, factoids, likeCount, likeCountLiked, likeStatus,
+        rateTokens, description, commentsCount, commentsContinuation,
     )
+}
+
+private suspend fun JsonReader.readStringMap(): Map<String, String> {
+    val out = mutableMapOf<String, String>()
+    beginObject()
+    while (hasNextObjectKey()) {
+        val key = nextKey()
+        stringOrNull()?.let { out[key] = it }
+    }
+    endObject()
+    return out
 }
 
 private suspend fun readFactoid(r: JsonReader): YtFactoid {
@@ -480,6 +499,12 @@ internal suspend fun readComment(r: JsonReader): YtComment {
     var authorChannelUrl: String? = null
     var published: String? = null
     var likes: String? = null
+    var likesLiked: String? = null
+    var liked = false
+    var likeToken: String? = null
+    var unlikeToken: String? = null
+    var replyToken: String? = null
+    var replyPlaceholder: String? = null
     var replyCount: String? = null
     var repliesContinuation: String? = null
     var pinned: String? = null
@@ -496,6 +521,12 @@ internal suspend fun readComment(r: JsonReader): YtComment {
             "authorChannelUrl" -> authorChannelUrl = r.stringOrNull()
             "published" -> published = r.stringOrNull()
             "likes" -> likes = r.stringOrNull()
+            "likesLiked" -> likesLiked = r.stringOrNull()
+            "liked" -> liked = r.boolean()
+            "likeToken" -> likeToken = r.stringOrNull()
+            "unlikeToken" -> unlikeToken = r.stringOrNull()
+            "replyToken" -> replyToken = r.stringOrNull()
+            "replyPlaceholder" -> replyPlaceholder = r.stringOrNull()
             "replyCount" -> replyCount = r.stringOrNull()
             "repliesContinuation" -> repliesContinuation = r.stringOrNull()
             "pinned" -> pinned = r.stringOrNull()
@@ -507,7 +538,8 @@ internal suspend fun readComment(r: JsonReader): YtComment {
     }
     r.endObject()
     return YtComment(
-        id, text, author, authorThumbs, authorChannelUrl, published, likes, replyCount, repliesContinuation,
+        id, text, author, authorThumbs, authorChannelUrl, published, likes, likesLiked, liked, likeToken,
+        unlikeToken, replyToken, replyPlaceholder, replyCount, repliesContinuation,
         pinned, hearted, byCreator, verified,
     )
 }
