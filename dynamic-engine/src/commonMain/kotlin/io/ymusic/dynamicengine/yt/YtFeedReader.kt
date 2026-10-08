@@ -398,3 +398,116 @@ internal suspend fun readEmbedHtml(r: JsonReader): String {
     r.endObject()
     return html
 }
+
+/** The `yt/video-details` result. */
+internal suspend fun readVideoDetails(r: JsonReader): YtVideoDetails {
+    var title: String? = null
+    var channelTitle: String? = null
+    var channelUrl: String? = null
+    var channelThumbs: List<YtThumb> = emptyList()
+    var subscribers: String? = null
+    var factoids: List<YtFactoid> = emptyList()
+    var description: String? = null
+    var commentsCount: String? = null
+    var commentsContinuation: String? = null
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "title" -> title = r.stringOrNull()
+            "channelTitle" -> channelTitle = r.stringOrNull()
+            "channelUrl" -> channelUrl = r.stringOrNull()
+            "channelThumbs" -> channelThumbs = r.readArrayOf { readThumb(it) }
+            "subscribers" -> subscribers = r.stringOrNull()
+            "factoids" -> factoids = r.readArrayOf { readFactoid(it) }
+            "description" -> description = r.stringOrNull()
+            "commentsCount" -> commentsCount = r.stringOrNull()
+            "commentsContinuation" -> commentsContinuation = r.stringOrNull()
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtVideoDetails(
+        title, channelTitle, channelUrl, channelThumbs, subscribers, factoids, description, commentsCount,
+        commentsContinuation,
+    )
+}
+
+private suspend fun readFactoid(r: JsonReader): YtFactoid {
+    var value = ""
+    var label = ""
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "value" -> value = r.stringOrNull() ?: ""
+            "label" -> label = r.stringOrNull() ?: ""
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtFactoid(value, label)
+}
+
+/** The `yt/comments` result. */
+internal suspend fun readCommentPage(r: JsonReader): YtCommentPage {
+    var countText: String? = null
+    var sort: List<YtChip> = emptyList()
+    var composerPlaceholder: String? = null
+    var createToken: String? = null
+    var comments: List<YtComment> = emptyList()
+    var continuation: String? = null
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "countText" -> countText = r.stringOrNull()
+            "sort" -> sort = r.readArrayOf { readChip(it) }
+            "composerPlaceholder" -> composerPlaceholder = r.stringOrNull()
+            "createToken" -> createToken = r.stringOrNull()
+            "comments" -> comments = r.readArrayOf { readComment(it) }
+            "continuation" -> continuation = r.stringOrNull()
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtCommentPage(countText, sort, composerPlaceholder, createToken, comments, continuation)
+}
+
+/** One `WireComment` — a `yt/comments` entry, or the whole `yt/comment/create` result. */
+internal suspend fun readComment(r: JsonReader): YtComment {
+    var id = ""
+    var text = ""
+    var author: String? = null
+    var authorThumbs: List<YtThumb> = emptyList()
+    var authorChannelUrl: String? = null
+    var published: String? = null
+    var likes: String? = null
+    var replyCount: String? = null
+    var repliesContinuation: String? = null
+    var pinned: String? = null
+    var hearted = false
+    var byCreator = false
+    var verified = false
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "id" -> id = r.stringOrNull() ?: ""
+            "text" -> text = r.stringOrNull() ?: ""
+            "author" -> author = r.stringOrNull()
+            "authorThumbs" -> authorThumbs = r.readArrayOf { readThumb(it) }
+            "authorChannelUrl" -> authorChannelUrl = r.stringOrNull()
+            "published" -> published = r.stringOrNull()
+            "likes" -> likes = r.stringOrNull()
+            "replyCount" -> replyCount = r.stringOrNull()
+            "repliesContinuation" -> repliesContinuation = r.stringOrNull()
+            "pinned" -> pinned = r.stringOrNull()
+            "hearted" -> hearted = r.boolean()
+            "byCreator" -> byCreator = r.boolean()
+            "verified" -> verified = r.boolean()
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtComment(
+        id, text, author, authorThumbs, authorChannelUrl, published, likes, replyCount, repliesContinuation,
+        pinned, hearted, byCreator, verified,
+    )
+}
