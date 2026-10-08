@@ -133,14 +133,13 @@ internal class NextQueueSource private constructor(
     }
 }
 
-/** The queue source continuing this playlist page's list past [loaded]; null when the page holds it all. */
+/**
+ * The queue source continuing this playlist page's list past [loaded]. Always given, whatever the
+ * page's own paging reports: /next answers an empty page at the list's end.
+ */
 internal fun Pager.State.Ready?.queueSource(
     engines: DynamicEngineManager,
     url: String,
     loaded: List<YtFeedItem>,
     log: Logger?,
-): QueueSource? {
-    val ready = this ?: return null
-    if (ready.continuation == null) return null
-    return NextQueueSource.playlist(engines, url, loaded, ready.pageHeader?.itemCount, log?.fork("queue-source"))
-}
+): QueueSource? = NextQueueSource.playlist(engines, url, loaded, this?.pageHeader?.itemCount, log?.fork("queue-source"))
