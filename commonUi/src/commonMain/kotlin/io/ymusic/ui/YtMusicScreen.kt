@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtFeedItem
+import io.ymusic.dynamicengine.yt.YtFeedPage
 import io.ymusic.dynamicengine.yt.extractMusicBrowse
 import io.ymusic.dynamicengine.yt.extractMusicCharts
 import io.ymusic.dynamicengine.yt.extractMusicExplore
@@ -175,9 +176,10 @@ class MusicBrowseSession(
     parentLog: Logger?,
 ) {
     internal val log = parentLog?.fork("MusicBrowse", mapOf("url" to url))
-    val feed = FeedSession(scope, log) { continuation ->
+    internal val fetch: suspend (String?) -> YtFeedPage = { continuation ->
         graph.engines.extractMusicBrowse(url, continuation = continuation, logger = log)
     }
+    val feed = FeedSession(scope, log, fetch)
 
     init {
         feed.pager.refresh()
@@ -225,7 +227,13 @@ fun MusicDetailScreen(
             onPlayItem = if (isFeed) {
                 null
             } else {
-                { tapped -> coordinator.playAll(videos, startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0)) }
+                { tapped ->
+                    coordinator.playAll(
+                        videos,
+                        startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0),
+                        source = ready.queueSource(videos, session.log, session.fetch),
+                    )
+                }
             },
             topContent = if (isFeed) {
                 if (videos.isEmpty()) {
@@ -244,7 +252,14 @@ fun MusicDetailScreen(
                     PlaylistHeader(
                         title = title,
                         meta = ready?.pageHeader?.subtitleLine1 ?: session.item.subtitleLine1,
-                        onShuffle = { coordinator.playAll(videos, shuffle = true) },
+                        onShuffle = {
+                            coordinator.playAll(
+                                videos,
+                                startIndex = videos.indices.random(),
+                                shuffle = true,
+                                source = ready.queueSource(videos, session.log, session.fetch),
+                            )
+                        },
                         onDownload = onDownload?.let { open -> { open(title, session.feed.pager) } },
                     )
                 }

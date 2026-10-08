@@ -9,6 +9,7 @@ import io.ymusic.player.PlaybackConfig
 import io.ymusic.player.PlaybackState
 import io.ymusic.player.PlaybackStatus
 import io.ymusic.player.Player
+import io.ymusic.player.QueueSource
 import io.ymusic.ui.playhistory.PlayAgainSession
 import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
@@ -149,14 +150,16 @@ class PlaybackCoordinator(
         player.setQueue(listOf(video.toYtMedia()))
     }
 
-    /** Play [videos] as the whole queue (a playlist page), starting at [startIndex]. */
-    fun playAll(videos: List<YtFeedItem>, startIndex: Int = 0, shuffle: Boolean = false) {
+    /** Play [videos] as the queue (a playlist page), starting at [startIndex]; [source] loads the rest of
+     *  the list as the queue goes. */
+    fun playAll(videos: List<YtFeedItem>, startIndex: Int = 0, shuffle: Boolean = false, source: QueueSource? = null) {
         val playable = videos.filter { it.kind == YtFeedItem.KIND_VIDEO }
         if (playable.isEmpty()) return
         player.setShuffle(shuffle)
         player.setQueue(
             playable.map { it.toYtMedia() },
             playIndex = startIndex.coerceIn(0, playable.size - 1),
+            source = source,
         )
     }
 
