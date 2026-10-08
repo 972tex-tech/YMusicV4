@@ -95,6 +95,14 @@ data class PlayerError(
     val needReset: Boolean = false,
 ) : CodedError
 
+/** A YouTube video's owner channel, as its player response reports it. [channelUrl] is an
+ *  engine-composed app link. */
+data class MediaDetails(
+    val videoId: String,
+    val channelTitle: String? = null,
+    val channelUrl: String? = null,
+)
+
 /** Natural pixel dimensions of the current video track. */
 data class VideoSize(val width: Int, val height: Int) {
     val aspectRatio: Float get() = if (height > 0) width.toFloat() / height else 0f
@@ -217,6 +225,8 @@ data class PlaybackStatus(
     val live: Boolean = false,
     /** User play intent. Independent of [state] so a load gap still counts as playing. */
     val playWhenReady: Boolean = (state as? PlaybackState.Prepared)?.playWhenReady == true,
+    /** What the engine learned about the loaded video beyond the queue item; null until known. */
+    val details: MediaDetails? = null,
 ) {
     val error: PlayerError? get() = (state as? PlaybackState.Error)?.error
 }

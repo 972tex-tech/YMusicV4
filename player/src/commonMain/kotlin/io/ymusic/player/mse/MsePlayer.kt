@@ -8,6 +8,7 @@ import io.ymusic.player.AudioTrackState
 import io.ymusic.player.CaptionLine
 import io.ymusic.player.CaptionState
 import io.ymusic.player.CaptionTrack
+import io.ymusic.player.MediaDetails
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackConfig
 import io.ymusic.player.PlaybackState
@@ -172,6 +173,7 @@ class MsePlayer internal constructor(
         activeSession.live = source.live
         loadingVideoId = source.videoId
         _progress.value = Progress(positionMs = startPositionMs)
+        _status.update { it.copy(details = null) }
         applySurfaceAudio(previous, config)
         val width = viewportW
         val height = viewportH
@@ -249,7 +251,7 @@ class MsePlayer internal constructor(
         loadTimeoutJob?.cancel()
         loadTimeoutJob = null
         send { it.stop(log) }
-        _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
+        _status.update { it.copy(state = PlaybackState.Idle, videoSize = null, details = null) }
         _progress.value = Progress()
     }
 
@@ -520,6 +522,14 @@ class MsePlayer internal constructor(
         json.objectOrNull("progress")?.let { applyProgress(it) }
         json.objectOrNull("state")?.let { applyState(it) }
         json.objectOrNull("picture")?.let { applyPicture(it) }
+        json.objectOrNull("details")?.let { applyDetails(it) }
+    }
+
+    private fun applyDetails(json: JsonObject) {
+        val videoId = json.stringOrNull("videoId") ?: return
+        if (videoId != (loadingVideoId ?: loadedVideoId)) return
+        val details = MediaDetails(videoId, json.stringOrNull("channelTitle"), json.stringOrNull("channelUrl"))
+        _status.update { it.copy(details = details) }
     }
 
     private fun applyProgress(json: JsonObject) {

@@ -56,6 +56,8 @@ sealed interface PlayableItem {
         val duration: String? = null,
         override val durationMs: Long? = null,
         val live: Boolean = false,
+        /** The engine-composed app link to the owner channel's page, when the source knew it. */
+        val channelUrl: String? = null,
     ) : PlayableItem {
         override val displayTitle: String get() = title ?: videoId
         override val displaySubtitle: String? get() = artist
