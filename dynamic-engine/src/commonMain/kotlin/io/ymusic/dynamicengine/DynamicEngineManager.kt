@@ -22,7 +22,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import okio.Buffer
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -363,17 +362,7 @@ class DynamicEngineManager(
      *  drain deadline and close() are the real backstop, so a failure here is deliberately only
      *  logged-by-outcome, never propagated). */
     private suspend fun signalShutdown(engine: DynamicEngine) {
-        runCatching {
-            val pipe = engine.openPipe("shutdown")
-            try {
-                pipe.sink.close()
-                val buf = Buffer()
-                while (pipe.source.receive(buf, 4096L) != -1L) { /* EOF = the quiesced ack */
-                }
-            } finally {
-                pipe.source.close()
-            }
-        }
+        runCatching { engine.signalShutdown() }
     }
 
     private companion object {

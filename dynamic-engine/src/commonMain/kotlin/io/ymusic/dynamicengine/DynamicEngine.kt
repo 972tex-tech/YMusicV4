@@ -19,6 +19,7 @@ import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.Buffer
 
 /**
  * A [QuickJsRuntime] pre-wired with the host capabilities a downloadable scraping engine needs. The
@@ -101,6 +102,19 @@ class DynamicEngine internal constructor(
 
     /** Open a pipe to the engine JS addressed to [command] (its `ymix.onAccept` handler serves it). */
     internal suspend fun openPipe(command: String): Pipe = runtime.openPipe(command)
+
+    /** Run the bundle's `onShutdown` cleanup (engine-js lifecycle.ts); returns on its ack (EOF). */
+    internal suspend fun signalShutdown() {
+        val pipe = openPipe("shutdown")
+        try {
+            pipe.sink.close()
+            val buf = Buffer()
+            while (pipe.source.receive(buf, 4096L) != -1L) { /* EOF = the quiesced ack */
+            }
+        } finally {
+            pipe.source.close()
+        }
+    }
 
     /** Suspend until nothing is in flight in either direction (see [QuickJsRuntime.awaitIdle]). */
     internal suspend fun awaitIdle() = runtime.awaitIdle()

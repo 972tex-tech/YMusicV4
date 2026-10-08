@@ -24,6 +24,9 @@ import kmphttp.json.JsonReader
 import kmphttp.json.JsonSyntaxException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import projectcommon.json.intOrNull
 import projectcommon.json.objects
@@ -283,6 +286,11 @@ class DynamicEnginePlayer private constructor(
         MseHostNative.copyFrame(handle, afterGen)
 
     suspend fun close() {
+        // Best-effort, like the manager's retire: a refused or slow shutdown is backstopped by the
+        // hard close below. Wall-clock bound (Dispatchers.Default) so test virtual time can't skip it.
+        withContext(Dispatchers.Default) {
+            withTimeoutOrNull(SHUTDOWN_GRACE_MS) { runCatching { engine.signalShutdown() } }
+        }
         MseJsEventBridge.clear(jsEventBridge)
         /* Stop JS (__mse*) before freeing the C host. */
         engine.close()
@@ -290,6 +298,9 @@ class DynamicEnginePlayer private constructor(
     }
 
     companion object {
+        /** How long the player JS gets to release what it holds (e.g. bg_dump's open put). */
+        private const val SHUTDOWN_GRACE_MS = 1_500L
+
         fun create(
             client: KmpHttpClient,
             appVersion: Int,
