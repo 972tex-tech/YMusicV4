@@ -1082,7 +1082,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     }
     if (detailsOpen && video != null) {
         val openChannel = LocalOpenChannel.current
-        VideoDetailsSheet(
+        VideoDetailsDialog(
             coordinator.graph,
             video.videoId,
             onOpenChannel = { url, title -> detailsOpen = false; openChannel(url, title) },

@@ -7,17 +7,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -33,16 +29,12 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -56,16 +48,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.toSize
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.ymusic.dynamicengine.yt.YtChip
 import io.ymusic.dynamicengine.yt.YtComment
 import io.ymusic.dynamicengine.yt.YtCommentPage
@@ -74,9 +61,11 @@ import io.ymusic.dynamicengine.yt.createComment
 import io.ymusic.dynamicengine.yt.extractComments
 import io.ymusic.dynamicengine.yt.extractVideoDetails
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.cd_close
 import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.show_less
 import io.ymusic.ui.resources.show_more
+import io.ymusic.ui.resources.video_details
 import io.ymusic.ui.resources.video_details_comment_hint
 import io.ymusic.ui.resources.video_details_comments
 import io.ymusic.ui.resources.video_details_comments_off
@@ -93,9 +82,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-
-private val DIALOG_MIN_WINDOW_WIDTH = 750.dp
-private val DIALOG_MIN_WINDOW_HEIGHT = 600.dp
 
 /** One comments list — a video's top-level comments, or one thread's replies. */
 internal class CommentList {
@@ -198,10 +184,9 @@ internal class VideoDetailsState(
     }
 }
 
-/** Video details + comments: a bottom sheet on touch-sized windows, a dialog on large ones. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Video details + comments in the app's [ElevatedBarDialog] chrome. */
 @Composable
-internal fun VideoDetailsSheet(
+internal fun VideoDetailsDialog(
     graph: AppGraph,
     videoId: String,
     onOpenChannel: (url: String, title: String) -> Unit,
@@ -210,36 +195,29 @@ internal fun VideoDetailsSheet(
     val scope = rememberCoroutineScope()
     val state = remember(videoId) { VideoDetailsState(graph, scope, videoId, graph.logger) }
     LaunchedEffect(state) { state.load() }
-    val window = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.toSize().toDpSize() }
-    if (window.width < DIALOG_MIN_WINDOW_WIDTH || window.height < DIALOG_MIN_WINDOW_HEIGHT) {
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = DesignColors.Surface,
-        ) {
-            VideoDetailsContent(state, onOpenChannel, Modifier.fillMaxWidth().navigationBarsPadding().imePadding())
-        }
-    } else {
-        Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = DesignColors.Surface,
-                modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth(0.9f).fillMaxHeight(0.85f),
-            ) {
-                VideoDetailsContent(state, onOpenChannel, Modifier.fillMaxSize())
-            }
-        }
+    val listState = rememberLazyListState()
+    ElevatedBarDialog(
+        title = stringResource(Res.string.video_details),
+        onDismiss = onDismiss,
+        canScrollBackward = listState.canScrollBackward,
+        canScrollForward = listState.canScrollForward,
+        buttons = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cd_close), color = DesignColors.Accent) }
+        },
+        maxWidth = 720.dp,
+    ) {
+        VideoDetailsContent(state, listState, onOpenChannel, Modifier.fillMaxWidth())
     }
 }
 
 @Composable
 private fun VideoDetailsContent(
     state: VideoDetailsState,
+    listState: LazyListState,
     onOpenChannel: (url: String, title: String) -> Unit,
     modifier: Modifier,
 ) {
     val details = state.details
-    val listState = rememberLazyListState()
     val nearEnd by remember {
         derivedStateOf {
             val info = listState.layoutInfo
