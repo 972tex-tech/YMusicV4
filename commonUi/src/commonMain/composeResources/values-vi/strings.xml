@@ -2,7 +2,7 @@
     <string name="section_discover">Khám phá</string>
     <string name="section_yt_music">YT Music (Beta)</string>
     <string name="section_library">Thư viện</string>
-    <string name="section_rewind">Danh sách phát Rewind</string>
+    <string name="section_play_again">Phát lại</string>
     <string name="section_downloads">Trình quản lý tải xuống</string>
     <string name="section_settings">Cài đặt</string>
     <string name="section_donate">Ủng hộ</string>
@@ -344,4 +344,9 @@
     <string name="sound_bass">Bass</string>
     <string name="sound_virtualizer_title">Virtualizer</string>
     <string name="sound_eq_hint">Kéo thanh trượt để chỉnh âm thanh</string>
+
+    <!-- Play again -->
+    <string name="play_again_empty">Các danh sách bạn đã phát sẽ hiện ở đây để bạn nghe tiếp từ chỗ đã dừng.</string>
+    <string name="play_again_continue_at">Nghe tiếp từ %1$s</string>
+    <string name="menu_play_from_beginning">Phát từ đầu</string>
 </resources>

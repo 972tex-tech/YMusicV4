@@ -25,9 +25,9 @@ import androidx.compose.material.icons.filled.Facebook
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.StarBorder
-import androidx.compose.material.icons.outlined.FastRewind
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.MusicNote
@@ -109,7 +109,7 @@ import io.ymusic.ui.resources.section_downloads
 import io.ymusic.ui.resources.section_facebook
 import io.ymusic.ui.resources.section_feedback
 import io.ymusic.ui.resources.section_library
-import io.ymusic.ui.resources.section_rewind
+import io.ymusic.ui.resources.section_play_again
 import io.ymusic.ui.resources.section_settings
 import io.ymusic.ui.resources.section_yt_music
 import io.ymusic.ui.resources.tab_account_library
@@ -134,7 +134,7 @@ enum class AppSection(val label: StringResource, val icon: ImageVector, val grou
     Discover(Res.string.section_discover, Icons.Outlined.OndemandVideo, 0),
     YtMusic(Res.string.section_yt_music, Icons.Default.PlayCircleOutline, 0),
     Library(Res.string.section_library, Icons.Outlined.LibraryMusic, 0),
-    Rewind(Res.string.section_rewind, Icons.Outlined.FastRewind, 1),
+    PlayAgain(Res.string.section_play_again, Icons.Outlined.History, 1),
     Downloads(Res.string.section_downloads, Icons.Outlined.FileDownload, 1),
     Settings(Res.string.section_settings, Icons.Outlined.Settings, 1),
     Catalogue(Res.string.section_catalogue, Icons.Outlined.Palette, 1),
@@ -842,6 +842,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                     onDeeplink = openDeeplink,
                                                 )
                                                 AppSection.Library -> LibraryScreen(graph, coordinator)
+                                                AppSection.PlayAgain -> PlayAgainScreen(graph, coordinator)
                                                 AppSection.Downloads -> DownloadsScreen(graph, coordinator)
                                                 AppSection.Settings -> SettingsScreen(
                                                     graph,

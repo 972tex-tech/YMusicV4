@@ -63,6 +63,9 @@ E60034 - MsePlayer download request (playerResponse/PO token) while the engine i
 E60050 - queue item needs the YouTube engine but none is configured (player facade)
 E60051 - MsePlayer load timed out waiting for progress of the requested videoId
 E60052 - PlayerImpl tryMakePlayerReady timed out waiting for readyToLoad
+E60060 - "Play again" session list failed to load (commonUi PlayAgainScreen)
+E60061 - "Play again" saved queue failed to load/decode on restore (commonUi PlayAgainScreen)
+E60062 - "Play again" session failed to delete (commonUi PlayAgainScreen)
 
 E70001 - unclassified download failure (download DownloadService.execute fallback)
 E70010 - no SABR stream; progressive download not yet supported (download YtStreamDownloader)

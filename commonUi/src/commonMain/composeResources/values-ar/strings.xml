@@ -2,7 +2,7 @@
     <string name="section_discover">استكشاف</string>
     <string name="section_yt_music">YT Music (تجريبي)</string>
     <string name="section_library">المكتبة</string>
-    <string name="section_rewind">قائمة تشغيل الاسترجاع</string>
+    <string name="section_play_again">تشغيل مرة أخرى</string>
     <string name="section_downloads">مدير التنزيلات</string>
     <string name="section_settings">الإعدادات</string>
     <string name="section_donate">تبرّع</string>
@@ -353,4 +353,9 @@
     <string name="sound_bass">Bass</string>
     <string name="sound_virtualizer_title">Virtualizer</string>
     <string name="sound_eq_hint">اسحب منزلقًا لضبط الصوت</string>
+
+    <!-- Play again -->
+    <string name="play_again_empty">تظهر هنا قوائم التشغيل التي شغّلتها لتتابع الاستماع من حيث توقفت.</string>
+    <string name="play_again_continue_at">متابعة الاستماع من %1$s</string>
+    <string name="menu_play_from_beginning">التشغيل من البداية</string>
 </resources>

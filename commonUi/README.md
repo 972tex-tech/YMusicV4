@@ -26,6 +26,13 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
   Watch-time ranking (Library Recent play / Top tracks, Discover Top tracks) lives in
   `PlayHistoryStore` (its own SQLite file), not `:media-store`.
 
+- **Play again** (legacy "Rewind playlist") — every queue a `Player.setQueue` makes is a session keyed by
+  `QueueState.queueId`. `PlayAgainRecorder` (one per `AppGraph`, started when `playHistory` is set)
+  writes it to `PlayAgainStore` (the `play_again` table in the play-history DB, newest 50) when it starts,
+  when its items or current item change, on pause, every 30s while playing, and when it is replaced.
+  `PlayAgainScreen` lists the sessions. A tap calls `PlaybackCoordinator.playAgain`, which restores the queue
+  under the same id. Like legacy, it resumes mid-item only when ≥5 min remain; otherwise the item restarts.
+
 - **Thumbnails** — render through `:image-loader` (`LocalImageLoader` provided from `AppGraph.imageLoader`; null
   keeps placeholder boxes).
 
