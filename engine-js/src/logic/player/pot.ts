@@ -7,6 +7,7 @@ import { DESKTOP_UA } from "../yt/session";
 import { HttpRequest } from "../../protocol/http";
 import { freezeYtAccessCounts, installYtcfg, ytEventIdGets, ytWindowGets } from "./env";
 import {
+  finishBotguardDump,
   recordBotguardEntropy,
   recordBotguardInit,
   recordBotguardMint,
@@ -97,6 +98,18 @@ async function waaJson(url: string, body: string): Promise<{ status: number; jso
 
 /** Content-PO minter from main's `get_player_config` payload. HttpRequest only — never fetch. */
 export async function minterFromConfig(
+  cfg: Record<string, unknown>,
+  out: Record<string, unknown>,
+): Promise<(id: Uint8Array) => unknown> {
+  try {
+    return await buildMinter(cfg, out);
+  } catch (e) {
+    finishBotguardDump();
+    throw e;
+  }
+}
+
+async function buildMinter(
   cfg: Record<string, unknown>,
   out: Record<string, unknown>,
 ): Promise<(id: Uint8Array) => unknown> {

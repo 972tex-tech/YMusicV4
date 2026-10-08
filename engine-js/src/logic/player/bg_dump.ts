@@ -8,12 +8,15 @@ import { DESKTOP_UA } from "../yt/session";
 
 const SCOPE = "yt.bg.session";
 const KEEP = 4;
+// No StreamProtectionStatus verdict by then (nothing played): close with what was recorded.
+const DUMP_MAX_OPEN_MS = 5 * 60_000;
 let dump: Pipe | null = null;
 let writeChain: Promise<void> = Promise.resolve();
 let sessionKey = "";
 let loggedSps = 0;
 let dumpFinished = false;
 let lastSabrUrl = "";
+let deadline: ReturnType<typeof setTimeout> | null = null;
 let lastSabrBody: Uint8Array | null = null;
 
 function utcStamp(): string {
@@ -40,6 +43,24 @@ function warn(e: unknown, what: string): void {
   console.warn("bg dump " + what + " skipped: " + (e instanceof Error ? e.message : String(e)));
 }
 
+function clearDeadline(): void {
+  if (deadline !== null) clearTimeout(deadline);
+  deadline = null;
+}
+
+/** A failed write leaves a torn record: RESET so the host drops the staged value. */
+function abandon(pipe: Pipe, e: unknown, what: string): void {
+  warn(e, what);
+  if (dump === pipe) {
+    dump = null;
+    clearDeadline();
+  }
+  try {
+    pipe.sink.close("bg dump " + what + " failed");
+    pipe.source.close();
+  } catch (_e) {}
+}
+
 function ensureDump(): Pipe | null {
   if (dump) return dump;
   sessionKey = utcStamp();
@@ -50,21 +71,25 @@ function ensureDump(): Pipe | null {
     return null;
   }
   const pipe = dump;
+  deadline = setTimeout(function () {
+    deadline = null;
+    dumpFinished = true;
+    finishDump();
+  }, DUMP_MAX_OPEN_MS);
   writeChain = Promise.resolve(
     wait(
       pipe.sink.writeObjectAsJson({
         "scope": SCOPE,
         "key": sessionKey,
         "meta": {},
-        // Open for the whole player session, written in bursts.
-        "idleTimeoutMs": 0,
+        // Bursty by design; DUMP_MAX_OPEN_MS closes it first — this only catches a wedged writer.
+        "idleTimeoutMs": 2 * DUMP_MAX_OPEN_MS,
       }),
     ),
   ).then(
     function () {},
     function (e) {
-      warn(e, "head");
-      dump = null;
+      abandon(pipe, e, "head");
     },
   );
   return dump;
@@ -86,8 +111,7 @@ function writeJsonLine(prefix: string, value: unknown): void {
     .then(
       function () {},
       function (e) {
-        warn(e, "write");
-        dump = null;
+        abandon(pipe, e, "write");
       },
     );
 }
@@ -95,6 +119,7 @@ function writeJsonLine(prefix: string, value: unknown): void {
 function finishDump(after?: () => void): void {
   const pipe = dump;
   dump = null;
+  clearDeadline();
   if (!pipe) {
     if (after) after();
     return;
@@ -171,16 +196,21 @@ export function recordBotguardEntropy(): void {
     .then(
       function () {},
       function (e) {
-        warn(e, "entropy");
-        dump = null;
+        abandon(pipe, e, "entropy");
       },
     );
 }
 
+/** The mint failed: no verdict will come, so close the session's dump now. */
+export function finishBotguardDump(): void {
+  dumpFinished = true;
+  finishDump();
+}
+
 export function recordBotguardInit(p: Record<string, unknown>): void {
+  finishDump();
   loggedSps = 0;
   dumpFinished = false;
-  dump = null;
   writeChain = Promise.resolve();
   lastSabrUrl = "";
   lastSabrBody = null;
@@ -233,8 +263,7 @@ export function recordBotguardMint(id: Uint8Array, token: unknown): void {
     .then(
       function () {},
       function (e) {
-        warn(e, "mint");
-        dump = null;
+        abandon(pipe, e, "mint");
       },
     );
 }
@@ -279,8 +308,7 @@ export function noteSps(sps: number): void {
         .then(
           function () {},
           function (e) {
-            warn(e, "sabr");
-            dump = null;
+            abandon(pipe, e, "sabr");
           },
         );
     }
