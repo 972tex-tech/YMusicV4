@@ -127,6 +127,7 @@ class SharedServices(
     val playerJs: JsSourceProvider,
     val imageLoader: ImageLoader,
     val stats: StatUsage,
+    val updates: AndroidAppUpdates,
 )
 
 class YMusicApplication : Application() {
@@ -328,7 +329,18 @@ class YMusicApplication : Application() {
             logger = rootLogger,
             ioDispatcher = Dispatchers.IO,
         )
-        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, webViewJs, playerJs, imageLoader, stats)
+        // In-app updates from the config's appUpdate. The autoDownload read is synchronous, mid-offer.
+        val updates = AndroidAppUpdates(
+            context = this,
+            client = http.engine,
+            currentVersionCode = BuildConfig.VERSION_CODE,
+            scope = scope,
+            logger = rootLogger,
+            autoDownload = { settings.flow(AppSettings.autoDownloadUpdates).value },
+        )
+        updates.pruneDownloads()
+        scope.launch { remoteConfig.config.collect { updates.offer(it.appUpdate) } }
+        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, webViewJs, playerJs, imageLoader, stats, updates)
     }
 
     private suspend fun buildGraph(): AppGraph {
@@ -526,6 +538,7 @@ class YMusicApplication : Application() {
             logger = rootLogger,
             playerCache = playerCache,
             stats = shared.stats,
+            updates = shared.updates,
             mediaStore = shared.mediaStore,
             playHistory = PlayHistoryStore(playHistoryAndroidDriver(this)),
             sponsorBlockStore = SqliteSponsorBlockStore(sponsorBlockAndroidDriver(this)),

@@ -3,8 +3,8 @@ package io.ymusic.ui
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * The shell's updater, as the shared UI sees it. Desktop implements this; the mobile shells leave
- * it null (their stores own updating) and the UI then shows nothing at all.
+ * The shell's updater, as the shared UI sees it. Desktop and Android implement this; iOS leaves it
+ * null (the App Store owns updating) and the UI then shows nothing at all.
  */
 interface AppUpdates {
     val status: StateFlow<AppUpdateStatus>

@@ -118,3 +118,6 @@ E91001 - desktop update entry's signature does not match the pinned update key (
 E91002 - desktop update installer's size/sha256 differs from the signed entry (UpdateService.download)
 E91003 - desktop update installer download failed (UpdateService.download)
 E91004 - desktop update installer failed to run (UpdateService.install)
+E91011 - android update APK's size/sha256 differs from the config entry (AndroidAppUpdates.download)
+E91012 - android update APK download failed (AndroidAppUpdates.download)
+E91013 - android update APK could not be handed to PackageInstaller (AndroidAppUpdates.installAndRestart)
