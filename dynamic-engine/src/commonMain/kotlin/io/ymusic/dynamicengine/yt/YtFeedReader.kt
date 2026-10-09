@@ -76,6 +76,8 @@ private suspend fun readPageHeader(r: JsonReader): YtPageHeader {
     var itemCount: Int? = null
     var channelId: String? = null
     var subscribed: Boolean? = null
+    var savePlaylistId: String? = null
+    var saved: Boolean? = null
     r.beginObject()
     while (r.hasNextObjectKey()) {
         when (r.nextKey()) {
@@ -87,11 +89,13 @@ private suspend fun readPageHeader(r: JsonReader): YtPageHeader {
             "itemCount" -> itemCount = r.intOrNull()
             "channelId" -> channelId = r.stringOrNull()
             "subscribed" -> subscribed = r.boolean()
+            "savePlaylistId" -> savePlaylistId = r.stringOrNull()
+            "saved" -> saved = r.boolean()
             else -> r.skipValue()
         }
     }
     r.endObject()
-    return YtPageHeader(title, subtitleLine1, subtitleLine2, thumbs, banner, itemCount, channelId, subscribed)
+    return YtPageHeader(title, subtitleLine1, subtitleLine2, thumbs, banner, itemCount, channelId, subscribed, savePlaylistId, saved)
 }
 
 private suspend fun readPageTab(r: JsonReader): YtPageTab {

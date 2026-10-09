@@ -131,6 +131,20 @@ suspend fun DynamicEngineManager.subscribeChannel(channelId: String, subscribed:
     }
 }
 
+/** Add [playlistId] ([YtPageHeader.savePlaylistId]) to the signed-in viewer's library, or remove it when [saved] is false. */
+suspend fun DynamicEngineManager.savePlaylist(playlistId: String, saved: Boolean, logger: Logger? = null) {
+    use { engine ->
+        engine.jsonCommand(
+            "yt/playlist/save",
+            log = logger.cmd("savePlaylist", "playlistId" to playlistId, "saved" to saved),
+            writeFields = { w ->
+                w.name("playlistId").value(playlistId)
+                w.name("saved").value(saved)
+            },
+        ) { it.skipValue() }
+    }
+}
+
 suspend fun DynamicEngineManager.search(
     query: String? = null,
     params: String? = null,

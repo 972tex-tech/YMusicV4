@@ -118,6 +118,10 @@ data class YtPageHeader(
     val channelId: String? = null,
     /** The viewer's subscription to [channelId]; null when signed out (YouTube offers only sign-in). */
     val subscribed: Boolean? = null,
+    /** The [savePlaylist] target; null when the page offers no save (own playlists, Mixes). */
+    val savePlaylistId: String? = null,
+    /** Whether [savePlaylistId] is in the viewer's library; null when signed out. */
+    val saved: Boolean? = null,
 )
 
 /** One browse tab of a channel page (Home / Videos / …). [url] is the app link fetching the channel
