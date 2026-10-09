@@ -178,6 +178,9 @@ import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
 import java.io.File
+import java.nio.file.Files
+import javax.crypto.KeyGenerator
+import javax.crypto.spec.SecretKeySpec
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import kotlin.math.ceil
@@ -492,7 +495,7 @@ private suspend fun buildGraph(settings: FileSettingsStore): AppGraph {
     val dataDir = ymusicDataDir().apply { mkdirs() }
     // File-backed jar for YouTube (engine cookie/get|set + player + proxy) and the YMusic API.
     // Desktop has no WebView cookie store: sign-in imports cookies from a phone QR or a browser paste.
-    val cookies = PersistentCookieJar(File(dataDir, "api-cookies.json").absolutePath.toPath(), FileSystem.SYSTEM)
+    val cookies = cookieJar(File(dataDir, "api-cookies.json"))
     // One client stack, one disk cache. The engine HTTP client stays jar-less — JS cooks Cookie
     // headers against [cookies] — while the API client / media proxy use the jar directly.
     val http = AppHttpClients(File(dataDir, "http-cache").absolutePath.toPath(), logger = rootLogger)
@@ -1320,6 +1323,31 @@ private suspend fun pickFolder(): File? = withContext(Dispatchers.Main) {
  */
 internal var remoteConfig: RemoteConfig? = null
     private set
+
+/**
+ * On macOS the jar's file is sealed under a per-app key kept in the login keychain. If the keychain
+ * refuses, this launch keeps its cookies in a temp file under a throwaway key: the sealed file is
+ * left for the next launch, and nothing is written in the clear.
+ */
+private suspend fun cookieJar(file: File): PersistentCookieJar {
+    if (desktopOsKey() != "macos") return PersistentCookieJar(file.absolutePath.toPath(), FileSystem.SYSTEM)
+    val secret = withContext(Dispatchers.IO) {
+        runCatching { MacKeychain.getOrCreateSecret(KEYCHAIN_SERVICE, KEYCHAIN_COOKIE_KEY, 32) }
+    }
+    secret.getOrNull()?.let { bytes ->
+        return PersistentCookieJar(file.absolutePath.toPath(), EncryptedFileSystem(FileSystem.SYSTEM, SecretKeySpec(bytes, "AES")))
+    }
+    rootLogger.fork("cookie-key").log(Logger.Level.WARN, "keychain unavailable, cookies kept for this launch only", secret.exceptionOrNull())
+    val scratch = withContext(Dispatchers.IO) {
+        Files.createTempDirectory("ymusic-cookies").toFile().apply { deleteOnExit() }
+    }
+    val scratchFile = File(scratch, file.name).apply { deleteOnExit() }
+    val throwaway = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+    return PersistentCookieJar(scratchFile.absolutePath.toPath(), EncryptedFileSystem(FileSystem.SYSTEM, throwaway))
+}
+
+private const val KEYCHAIN_SERVICE = "io.ymusic.desktop"
+private const val KEYCHAIN_COOKIE_KEY = "cookie-key"
 
 /** The coarse platform name the config service keys releases by. */
 private fun desktopOsKey(): String {
