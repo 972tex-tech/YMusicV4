@@ -57,6 +57,9 @@ export interface WireFeedItem {
   ownerBadge?: string;
   /** A tag's accent colour, 8-hex `AARRGGBB` (YouTube Music's per-mood/genre stripe colour). */
   accent?: string;
+  /** Opaque yt/playlist/remove token: present when YouTube offers removing this video from the
+   *  playlist being shown (the viewer's own). */
+  removeToken?: string;
 }
 
 export interface WireChip {

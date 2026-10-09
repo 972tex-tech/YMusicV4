@@ -6,6 +6,7 @@ import { onAccept } from "../../transport";
 import { JsEngineErrorImpl, commandHandler } from "../../protocol/command";
 import { hostLogger } from "../../protocol/logger";
 import { innertubeJson } from "./innertube";
+import { REMOVE_TOKEN_PREFIX } from "./parse";
 import { asString, get, isObj, textOf, walk } from "./scan";
 import type { WirePlaylistTarget } from "./wire";
 
@@ -86,6 +87,31 @@ onAccept(
       hostLogger(args, "yt/playlist/add"),
     );
     requireSucceeded(root, "edit_playlist", "E20105");
+    await writeJson(out, {});
+  }),
+);
+
+// {"token"} -> {}. `token` is a video item's removeToken.
+onAccept(
+  "yt/playlist/remove",
+  commandHandler(async (src, out) => {
+    const args = await src.readJsonObject();
+    const token = requiredString(args, "token", "yt/playlist/remove");
+    const body =
+      token.indexOf(REMOVE_TOKEN_PREFIX) === 0 ? token.slice(REMOVE_TOKEN_PREFIX.length) : "";
+    const cut = body.indexOf(":");
+    if (cut <= 0 || cut === body.length - 1) {
+      throw JsEngineErrorImpl.parse("yt/playlist/remove bad token " + token);
+    }
+    const root = await innertubeJson(
+      "browse/edit_playlist",
+      {
+        "playlistId": body.slice(0, cut),
+        "actions": [{ "action": "ACTION_REMOVE_VIDEO", "setVideoId": body.slice(cut + 1) }],
+      },
+      hostLogger(args, "yt/playlist/remove"),
+    );
+    requireSucceeded(root, "edit_playlist", "E20111");
     await writeJson(out, {});
   }),
 );

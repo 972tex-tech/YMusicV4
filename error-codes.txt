@@ -69,6 +69,7 @@ E20107 - playlist/create answered without a playlistId (engine-js logic/yt/playl
 E20108 - loading the add-to-playlist picker failed with an uncoded error (commonUi YtPlaylistDialogs.kt)
 E20109 - adding a video to a playlist failed with an uncoded error (commonUi YtPlaylistDialogs.kt)
 E20110 - creating a playlist failed with an uncoded error (commonUi YtPlaylistDialogs.kt)
+E20111 - edit_playlist (remove a video from a playlist) answered a failure status (engine-js logic/yt/playlistEdit.ts)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 

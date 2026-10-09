@@ -829,7 +829,7 @@ function leafItem(key: string, value: unknown, shorts?: boolean): WireFeedItem |
     // The embedded player's end screen (verified live 2026-07-25): same inline fields as
     // videoRenderer — it reaches us through the WebView's watch-next payload, never a browse.
     case "endScreenVideoRenderer":
-      return videoItem(value);
+      return withRemoveToken(videoItem(value), value);
     case "playlistRenderer":
     case "gridPlaylistRenderer":
     case "compactPlaylistRenderer":
@@ -841,9 +841,39 @@ function leafItem(key: string, value: unknown, shorts?: boolean): WireFeedItem |
     case "gridChannelRenderer":
       return channelItem(value);
     case "lockupViewModel":
-      return lockupItem(value);
+      return withRemoveToken(lockupItem(value), value);
   }
   return null;
+}
+
+/** Engine-private prefix of a yt/playlist/remove token: `<prefix><playlistId>:<setVideoId>`. */
+export const REMOVE_TOKEN_PREFIX = "yplrm1:";
+
+/**
+ * Tags a video with a removeToken when its menu carries the owner's "Remove from playlist" — a
+ * playlistEditEndpoint with ACTION_REMOVE_VIDEO by setVideoId (the membership, not the video:
+ * Watch-later toggles remove BY_VIDEO_ID and never match).
+ */
+function withRemoveToken(
+  item: WireFeedItem | null,
+  node: Record<string, unknown>,
+): WireFeedItem | null {
+  if (item === null || item["kind"] !== "video") return item;
+  walk(node, (k, v) => {
+    if (item["removeToken"] !== undefined) return true;
+    if (k !== "playlistEditEndpoint" || !isObj(v)) return;
+    const playlistId = asString(v["playlistId"]);
+    const actions = v["actions"];
+    if (playlistId === undefined || !Array.isArray(actions)) return true;
+    for (const a of actions) {
+      const setVideoId = asString(get(a, "setVideoId"));
+      if (get(a, "action") === "ACTION_REMOVE_VIDEO" && setVideoId !== undefined) {
+        item["removeToken"] = REMOVE_TOKEN_PREFIX + playlistId + ":" + setVideoId;
+      }
+    }
+    return true;
+  });
+  return item;
 }
 
 // Not feed content: ads, Shorts (both the legacy reel shelf and the current lockup/reel item
