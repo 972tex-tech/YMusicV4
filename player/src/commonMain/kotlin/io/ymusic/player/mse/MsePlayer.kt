@@ -1,7 +1,10 @@
 package io.ymusic.player.mse
 
+import io.ymusic.dynamicengine.BundleSignatureException
 import io.ymusic.dynamicengine.CacheStore
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.JsSourceProvider
+import io.ymusic.dynamicengine.embeddedPlayerJsSource
 import io.ymusic.dynamicengine.player.DynamicEnginePlayer
 import io.ymusic.mse.MseVideoSurface
 import io.ymusic.player.AudioTrackState
@@ -69,13 +72,18 @@ import projectcommon.json.stringOrNull
  * starts a [Session] (the legacy embed page): its own [newEngineThread] (single-threaded), one
  * [DynamicEnginePlayer] built on it, `player/init`, then a FIFO command queue. Control is
  * main-thread; commands run in call order.
+ *
+ * player.js upgrades only between sessions: each session boots the newest verified bundle of
+ * [playerJs] (cached remote, else embedded), and a newer published one is downloaded in the
+ * background for the NEXT session — a running player is never swapped under playback.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class MsePlayer internal constructor(
     private val newEngineThread: () -> CloseableCoroutineDispatcher,
     val videoSurface: MseVideoSurface,
     private val log: Logger?,
-    private val buildPlayer: (engineThread: CoroutineDispatcher) -> DynamicEnginePlayer,
+    private val playerJs: JsSourceProvider,
+    private val buildPlayer: (engineThread: CoroutineDispatcher, playerJs: String) -> DynamicEnginePlayer,
 ) : YtEngine {
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -341,6 +349,21 @@ class MsePlayer internal constructor(
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
+    /** Downloads a newer signed player.js for the next session; at most one check per interval. */
+    private suspend fun prefetchPlayerJs(runningVersion: Long) {
+        try {
+            if (now() - playerJs.lastFetch() < PLAYER_JS_CHECK_INTERVAL_MS) return
+            val fetched = playerJs.fetchIfAny(runningVersion) { _, version -> version }
+            if (fetched != null) log?.log(Logger.Level.INFO, "player.js v$fetched staged for the next session")
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: BundleSignatureException) {
+            log?.captureError(error, "player.js update rejected")
+        } catch (error: Throwable) {
+            log?.log(Logger.Level.WARN, "player.js update check failed", error)
+        }
+    }
+
     private fun startSession() {
         check(session == null) { "mse session already running" }
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true), videoSize = null) }
@@ -354,8 +377,19 @@ class MsePlayer internal constructor(
             val engineThread = newEngineThread()
             var enginePlayer: DynamicEnginePlayer? = null
             try {
+                val bundle = playerJs.getCached()
+                val (source, version) = bundle ?: playerJs.getEmbed()
                 // Boot is a blocking eval on the engine thread; a built engine must reach the finally.
-                enginePlayer = withContext(engineThread + NonCancellable) { buildPlayer(engineThread) }
+                enginePlayer = try {
+                    withContext(engineThread + NonCancellable) { buildPlayer(engineThread, source) }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    if (bundle == null) throw error
+                    // A signed remote bundle that will not boot must not take playback down with it.
+                    log?.captureError(error, "player.js v$version failed to boot, using the embedded one")
+                    withContext(engineThread + NonCancellable) { buildPlayer(engineThread, playerJs.getEmbed().first) }
+                }
                 newSession.player = enginePlayer
                 if (hasPendingVideoSurface) enginePlayer.setVideoSurface(pendingVideoSurface)
                 val freshConfig = freshConfigNext
@@ -365,6 +399,7 @@ class MsePlayer internal constructor(
                 _status.update {
                     if (it.state is PlaybackState.Uninitialized) it.copy(state = PlaybackState.Idle) else it
                 }
+                cleanupScope.launch { prefetchPlayerJs(version) }
                 for (command in newSession.commands) {
                     try {
                         command(enginePlayer)
@@ -648,6 +683,10 @@ class MsePlayer internal constructor(
 
     companion object {
         private const val LOAD_TIMEOUT_MS = 5_000L
+        private const val PLAYER_JS_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
+
+        @OptIn(kotlin.time.ExperimentalTime::class)
+        private fun now(): Long = kotlin.time.Clock.System.now().toEpochMilliseconds()
         private const val ENGINE_CLOSE_TIMEOUT_MS = 3_000L
 
         fun create(
@@ -660,11 +699,13 @@ class MsePlayer internal constructor(
             videoSurface: MseVideoSurface,
             main: DynamicEngineManager,
             mediaProxy: LocalMediaProxy? = null,
+            playerJs: JsSourceProvider = embeddedPlayerJsSource(),
         ): MsePlayer {
             val engineClient = SabrProxyHttpClient(client, mediaProxy)
-            return MsePlayer({ QuickJsRuntime.newDispatcher() }, videoSurface, logger) { engineThread ->
+            return MsePlayer({ QuickJsRuntime.newDispatcher() }, videoSurface, logger, playerJs) { engineThread, source ->
                 DynamicEnginePlayer.create(
                     engineClient, appVersion, engineThread, logger,
+                    engineJs = source,
                     cacheStore = cacheStore,
                     cookieJar = cookieJar,
                     settings = settings,

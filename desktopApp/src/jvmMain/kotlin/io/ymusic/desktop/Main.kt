@@ -78,6 +78,7 @@ import io.ymusic.dynamicengine.ENGINE_BUNDLE
 import io.ymusic.dynamicengine.SignedBundleRef
 import io.ymusic.dynamicengine.desktopEngineCacheStore
 import io.ymusic.dynamicengine.player.bindMseNativeLogs
+import io.ymusic.dynamicengine.playerJsSource
 import io.ymusic.dynamicengine.yt.ytLoginStatus
 import io.ymusic.imageloader.DiskScaledImageCache
 import io.ymusic.imageloader.DiskVariantIndex
@@ -675,6 +676,16 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
                         videoSurface = mseSurface,
                         main = engines,
                         mediaProxy = mediaProxy,
+                        playerJs = playerJsSource(
+                            client = http.engine,
+                            config = { remoteConfig?.getConfig()?.playerJs?.let { SignedBundleRef(it.version, it.url, it.signature) } },
+                            publicKey = BUNDLE_PUBLIC_KEY,
+                            fileSystem = FileSystem.SYSTEM,
+                            directory = File(dataDir, "player-js").absolutePath.toPath(),
+                            now = { System.currentTimeMillis() },
+                            logger = rootLogger,
+                            ioDispatcher = Dispatchers.IO,
+                        ),
                     ).also { ytEngine = it }
                 },
             ),

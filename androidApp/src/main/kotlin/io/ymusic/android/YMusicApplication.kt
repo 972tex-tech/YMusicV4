@@ -21,9 +21,11 @@ import io.ymusic.dynamicengine.CacheStore
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.ENGINE_BUNDLE
+import io.ymusic.dynamicengine.JsSourceProvider
 import io.ymusic.dynamicengine.SignedBundleRef
 import io.ymusic.dynamicengine.androidEngineCacheStore
 import io.ymusic.dynamicengine.player.bindMseNativeLogs
+import io.ymusic.dynamicengine.playerJsSource
 import io.ymusic.imageloader.DiskScaledImageCache
 import io.ymusic.imageloader.DiskVariantIndex
 import io.ymusic.imageloader.ImageLoader
@@ -121,6 +123,8 @@ class SharedServices(
     val mediaStore: BetterMediaStore,
     /** Bundled `webview_ymusic.js` (player-cache gate). Null disables [LocalMediaProxy]. */
     val webViewJs: String?,
+    /** The MSE player bundle, upgraded between player sessions. */
+    val playerJs: JsSourceProvider,
     val imageLoader: ImageLoader,
     val stats: StatUsage,
 )
@@ -314,7 +318,17 @@ class YMusicApplication : Application() {
             builtImageLoader = it
         }
 
-        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, webViewJs, imageLoader, stats)
+        val playerJs = playerJsSource(
+            client = http.engine,
+            config = { remoteConfig.getConfig().playerJs?.let { SignedBundleRef(it.version, it.url, it.signature) } },
+            publicKey = BuildConfig.BUNDLE_PUBLIC_KEY,
+            fileSystem = FileSystem.SYSTEM,
+            directory = File(filesDir, "player-js").toOkioPath(),
+            now = { System.currentTimeMillis() },
+            logger = rootLogger,
+            ioDispatcher = Dispatchers.IO,
+        )
+        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, webViewJs, playerJs, imageLoader, stats)
     }
 
     private suspend fun buildGraph(): AppGraph {
@@ -437,6 +451,7 @@ class YMusicApplication : Application() {
                         videoSurface = MseVideoSurface(),
                         main = shared.engines,
                         mediaProxy = mediaProxy,
+                        playerJs = shared.playerJs,
                     ).also {
                         ytEngine = it
                         msePlayer = it
