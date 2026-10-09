@@ -480,17 +480,20 @@ private fun LanguageRow(current: String, onSelect: (String) -> Unit) {
             style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
             modifier = Modifier.weight(1f),
         )
-        // Anchored to the value text — see ThemeRow.
-        Box {
-            Text(
-                UiLanguages.firstOrNull { it.tag == current }?.nativeName ?: current,
-                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
-            )
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                UiLanguages.forEach { lang ->
-                    DropdownMenuItem(text = { Text(lang.nativeName) }, onClick = { onSelect(lang.tag); open = false })
-                }
-            }
-        }
+        Text(
+            UiLanguages.firstOrNull { it.tag == current }?.nativeName ?: current,
+            style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+        )
+    }
+    if (open) {
+        val entries = remember { UiLanguages.map { YtLocaleOption(it.tag, it.nativeName) } }
+        LocalePickerDialog(
+            title = stringResource(Res.string.settings_language),
+            entries = entries,
+            current = current,
+            loading = false,
+            onSelect = { tag -> onSelect(tag); open = false },
+            onDismiss = { open = false },
+        )
     }
 }
