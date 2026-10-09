@@ -74,6 +74,8 @@ import io.ymusic.desktop.update.DesktopAppUpdates
 import io.ymusic.desktop.update.UpdateService
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.ENGINE_BUNDLE
+import io.ymusic.dynamicengine.SignedBundleRef
 import io.ymusic.dynamicengine.desktopEngineCacheStore
 import io.ymusic.dynamicengine.player.bindMseNativeLogs
 import io.ymusic.dynamicengine.yt.ytLoginStatus
@@ -563,7 +565,9 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
     // cached-or-embed and runs the periodic update check itself.
     val engineSource = DefaultJsSourceProvider(
         client = http.engine,
-        config = { remoteConfig?.getConfig()?.engineJs?.let { it.url to it.version } },
+        config = { remoteConfig?.getConfig()?.engineJs?.let { SignedBundleRef(it.version, it.url, it.signature) } },
+        name = ENGINE_BUNDLE,
+        publicKey = BUNDLE_PUBLIC_KEY,
         embedVersion = ENGINE_JS_VERSION,
         embedSource = { readAppResource("engine_ymusic.js") },
         fileSystem = FileSystem.SYSTEM,

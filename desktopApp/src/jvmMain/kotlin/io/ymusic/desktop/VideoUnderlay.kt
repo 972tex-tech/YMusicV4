@@ -60,6 +60,13 @@ internal class VideoUnderlay {
             return
         }
         if (!frame.isDisplayable || !front.isDisplayable) return
+        if (!isMac) {
+            if (!frame.isVisible) return
+            // AWT has no relative restack: raise the pair in order. The frame is unfocusable, so focus stays on front.
+            frame.toFront()
+            front.toFront()
+            return
+        }
         try {
             FileAvNative.orderWindowBelow(frame, front)
         } catch (_: Throwable) {
@@ -71,3 +78,5 @@ internal class VideoUnderlay {
         frame.dispose()
     }
 }
+
+private val isMac = "mac" in System.getProperty("os.name").orEmpty().lowercase()

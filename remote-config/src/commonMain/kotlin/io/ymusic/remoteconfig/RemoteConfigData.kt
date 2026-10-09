@@ -11,22 +11,29 @@ import projectcommon.json.longOrNull
 import projectcommon.json.objectOrNull
 import projectcommon.json.string
 
-/** A JS bundle the service publishes. [version] is compared against the revision already on disk. */
-data class BundleVersion(val version: Long, val url: String) {
+/**
+ * A JS bundle the service publishes. [version] is compared against the revision already on disk;
+ * [signature] authenticates the file at [url] for that version (`verifyBundleSignature`) — this
+ * document arrives unsigned and is cached on disk, so it is never trusted on its own.
+ */
+data class BundleVersion(val version: Long, val url: String, val signature: String) {
     companion object {
         private const val KEY_VERSION = "version"
         private const val KEY_URL = "url"
+        private const val KEY_SIGNATURE = "signature"
 
         /** Strict, like [AppUpdate.from]: half an entry is a publishing bug, not a value to guess at. */
         fun from(json: JsonObject): BundleVersion = BundleVersion(
             version = json.long(KEY_VERSION),
             url = json.string(KEY_URL),
+            signature = json.string(KEY_SIGNATURE),
         )
 
         fun JsonWriter.value(data: BundleVersion): JsonWriter {
             beginObject()
             name(KEY_VERSION).value(data.version)
             name(KEY_URL).value(data.url)
+            name(KEY_SIGNATURE).value(data.signature)
             endObject()
             return this
         }
@@ -79,8 +86,8 @@ data class RemoteConfigData(
     val variableA: Int = 0,
     val featureX: Boolean = false,
     val newVersion: AppUpdate? = null,
-    val wvJs: BundleVersion? = null,
     val engineJs: BundleVersion? = null,
+    val playerJs: BundleVersion? = null,
     // client populated timestamp at time data parsed from server
     val updatedAt: Long,
 ) {
@@ -90,8 +97,8 @@ data class RemoteConfigData(
         private const val KEY_VARIABLE_A = "variableA"
         private const val KEY_FEATURE_X = "featureX"
         private const val KEY_NEW_VERSION = "newVersion"
-        private const val KEY_WV_JS = "wvJs"
         private const val KEY_ENGINE_JS = "engineJs"
+        private const val KEY_PLAYER_JS = "playerJs"
         private const val KEY_UPDATED_AT = "updatedAt"
 
         /**
@@ -106,8 +113,8 @@ data class RemoteConfigData(
             variableA = root.intOrNull(KEY_VARIABLE_A) ?: DEFAULTS.variableA,
             featureX = root.boolOrNull(KEY_FEATURE_X) ?: DEFAULTS.featureX,
             newVersion = root.objectOrNull(KEY_NEW_VERSION)?.let(AppUpdate::from),
-            wvJs = root.objectOrNull(KEY_WV_JS)?.let(BundleVersion::from),
             engineJs = root.objectOrNull(KEY_ENGINE_JS)?.let(BundleVersion::from),
+            playerJs = root.objectOrNull(KEY_PLAYER_JS)?.let(BundleVersion::from),
             updatedAt = root.longOrNull(KEY_UPDATED_AT) ?: now(),
         )
 
@@ -116,8 +123,8 @@ data class RemoteConfigData(
             name(KEY_VARIABLE_A).value(data.variableA)
             name(KEY_FEATURE_X).value(data.featureX)
             data.newVersion?.let { name(KEY_NEW_VERSION).value(it) }
-            data.wvJs?.let { name(KEY_WV_JS).value(it) }
             data.engineJs?.let { name(KEY_ENGINE_JS).value(it) }
+            data.playerJs?.let { name(KEY_PLAYER_JS).value(it) }
             // Persisted so a restart knows how old this is, rather than refetching on every launch.
             name(KEY_UPDATED_AT).value(data.updatedAt)
             endObject()

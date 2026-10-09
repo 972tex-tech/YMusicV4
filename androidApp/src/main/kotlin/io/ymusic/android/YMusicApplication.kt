@@ -20,6 +20,8 @@ import io.ymusic.download.DownloadChange
 import io.ymusic.dynamicengine.CacheStore
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.ENGINE_BUNDLE
+import io.ymusic.dynamicengine.SignedBundleRef
 import io.ymusic.dynamicengine.androidEngineCacheStore
 import io.ymusic.dynamicengine.player.bindMseNativeLogs
 import io.ymusic.imageloader.DiskScaledImageCache
@@ -89,7 +91,6 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -244,7 +245,9 @@ class YMusicApplication : Application() {
         // check itself.
         val engineSource = DefaultJsSourceProvider(
             client = http.engine,
-            config = { remoteConfig.getConfig().engineJs?.let { it.url to it.version } },
+            config = { remoteConfig.getConfig().engineJs?.let { SignedBundleRef(it.version, it.url, it.signature) } },
+            name = ENGINE_BUNDLE,
+            publicKey = BuildConfig.BUNDLE_PUBLIC_KEY,
             embedVersion = BuildConfig.ENGINE_JS_VERSION,
             embedSource = { assets.open("engine_ymusic.js").readBytes().decodeToString() },
             fileSystem = FileSystem.SYSTEM,
@@ -271,40 +274,11 @@ class YMusicApplication : Application() {
 
         val mediaStore = BetterMediaStore.create(mediaStoreAndroidDriver(this))
 
-        // Player-cache script through the same provider seam — a cached remote copy applies at
-        // the next process start. No version constant yet (embed = 0); the config service will
-        // define the numbering when it exists.
-        val webViewSource = DefaultJsSourceProvider(
-            client = http.engine,
-            config = { remoteConfig.getConfig().wvJs?.let { it.url to it.version } },
-            embedVersion = 0L,
-            embedSource = { assets.open("webview_ymusic.js").readBytes().decodeToString() },
-            fileSystem = FileSystem.SYSTEM,
-            directory = File(filesDir, "webview-js").toOkioPath(),
-            now = { System.currentTimeMillis() },
-            logger = rootLogger,
-            ioDispatcher = Dispatchers.IO,
-        )
-        // A missing/corrupt bundle silently disables the whole player-cache path — that's a
-        // packaging bug, not a soft feature toggle.
-        val loadedWebView = runCatching {
-            webViewSource.getCached() ?: webViewSource.getEmbed()
-        }.onFailure { rootLogger.fork("boot").captureError(it, "webview_ymusic.js asset unreadable — player cache disabled") }
+        // The player-cache script ships in the APK and is not remotely updated. A missing asset
+        // silently disables the whole player-cache path — a packaging bug, not a soft toggle.
+        val webViewJs = runCatching { assets.open("webview_ymusic.js").readBytes().decodeToString() }
+            .onFailure { rootLogger.fork("boot").captureError(it, "webview_ymusic.js asset unreadable — player cache disabled") }
             .getOrNull()
-        val webViewJs = loadedWebView?.first
-        scope.launch {
-            while (true) {
-                kotlinx.coroutines.delay(WEBVIEW_UPDATE_CHECK_MS)
-                try {
-                    // Validation is a sanity floor only — the real gate is the next boot's load.
-                    webViewSource.fetchIfAny(loadedWebView?.second ?: 0L) { js, _ -> check(js.isNotBlank()) }
-                } catch (c: kotlinx.coroutines.CancellationException) {
-                    throw c
-                } catch (e: Exception) {
-                    rootLogger.fork("webview-js").log(Logger.Level.WARN, "update check failed", e)
-                }
-            }
-        }
 
         // Thumbnails: everything is a fetcher — http on a cache-less client (originals stream to
         // the fetcher's disk cache, decode from file) + local files + art:// embedded covers via
@@ -688,7 +662,6 @@ class YMusicApplication : Application() {
 }
 
 /** Cadence of the webview-js remote-update check (a saved copy applies at the next boot). */
-private const val WEBVIEW_UPDATE_CHECK_MS = 6 * 60 * 60 * 1000L
 
 /**
  * Hands the TextureView window to [MsePlayer]. MiniPlayer ↔ Now Playing re-parents the same

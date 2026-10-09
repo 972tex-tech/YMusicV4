@@ -34,8 +34,8 @@ private const val BODY = """
   "variableA": 7,
   "featureX": true,
   "newVersion": {"url":"https://x/y.exe","changelog":"https://x/c.md","size":12,"checksum":"ab"},
-  "wvJs": {"version": 123, "url": "https://x/wv.js"},
-  "engineJs": {"version": 11, "url": "https://x/engine.js"}
+  "playerJs": {"version": 123, "url": "https://x/player.js", "signature": "sig-player"},
+  "engineJs": {"version": 11, "url": "https://x/engine.js", "signature": "sig-engine"}
 }
 """
 
@@ -106,7 +106,7 @@ class HttpApiServiceTest {
 
         assertEquals(7, data.variableA)
         assertTrue(data.featureX)
-        assertEquals(123L, data.wvJs?.version)
+        assertEquals(123L, data.playerJs?.version)
         assertEquals(11L, data.engineJs?.version)
         assertEquals("https://x/y.exe", data.newVersion?.url)
         assertEquals(12L, data.newVersion?.size)
@@ -215,7 +215,7 @@ class HttpApiServiceTest {
         assertEquals(0, data.variableA)
         assertFalse(data.featureX)
         assertNull(data.newVersion)
-        assertNull(data.wvJs)
+        assertNull(data.playerJs)
     }
 
     @Test

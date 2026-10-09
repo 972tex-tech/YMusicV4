@@ -11,6 +11,24 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
+/** A test-only P-256 key: its private half signed the two fixtures below and was then discarded. */
+private const val TEST_KEY =
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELb+QZFQDWvbVdnmvTsLJfYvl7ixBqxU7iPZxXhLUu9DBGjjUQG/+BA+E59X8N0Gcc4dXupri/9F1QINooLZnQQ=="
+
+/** "remote-js-v21" as engine v21. */
+private val SIGNED_V21 = SignedBundleRef(
+    21L,
+    "https://cdn/x.js",
+    "MEUCICmR0fIeZ+dTszYFjkfXm8fPVugBHv0w/n+8Sp26ttRgAiEAqsGjrr7oIrl+w75op92pU70EiBqtPoWeL3aCLNPVLY8=",
+)
+
+/** "old-remote" as engine v3. */
+private val SIGNED_V3 = SignedBundleRef(
+    3L,
+    "https://cdn/x.js",
+    "MEUCIQCz9Ma53/XGR408+xm7P1hCkHuvhSLT0fx2i2M6yIcD+QIgbMjnPWu3lkvdTlREaRwKxKy4yWKzevwlRQz5pexSeUM=",
+)
+
 class JsSourceProviderTest {
 
     private val dir: Path = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "ymusic-js-source-test"
@@ -30,6 +48,8 @@ class JsSourceProviderTest {
     ) = DefaultJsSourceProvider(
         client = client,
         config = config,
+        name = ENGINE_BUNDLE,
+        publicKey = TEST_KEY,
         embedVersion = embedVersion,
         embedSource = embedSource,
         fileSystem = FileSystem.SYSTEM,
@@ -51,7 +71,7 @@ class JsSourceProviderTest {
     @Test
     fun fetch_downloads_validates_and_caches() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("remote-js-v21"))
-        val p = provider(config = { "https://cdn/x.js" to 21L }, client = client)
+        val p = provider(config = { SIGNED_V21 }, client = client)
         clock = 7_777L
         val consumed = p.fetchIfAny(20L) { source, version -> "$source@$version" }
         assertEquals("remote-js-v21@21", consumed)
@@ -61,8 +81,8 @@ class JsSourceProviderTest {
 
     @Test
     fun a_rejected_bundle_caches_nothing_but_the_check_still_counts() = runTest {
-        val client = FakeHttpClient(CannedResponse.ofText("broken-js"))
-        val p = provider(config = { "https://cdn/x.js" to 21L }, client = client)
+        val client = FakeHttpClient(CannedResponse.ofText("remote-js-v21"))
+        val p = provider(config = { SIGNED_V21 }, client = client)
         clock = 3_333L
         assertFailsWith<IllegalStateException> {
             p.fetchIfAny(20L) { _, _ -> error("rejected by the boot gate") }
@@ -74,7 +94,7 @@ class JsSourceProviderTest {
     @Test
     fun nothing_newer_downloads_nothing() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("unused"))
-        val p = provider(config = { "https://cdn/x.js" to 20L }, client = client)
+        val p = provider(config = { SIGNED_V21.copy(version = 20L) }, client = client)
         assertNull(p.fetchIfAny(20L) { _, _ -> fail() })
         assertEquals(0, client.requestCount)
     }
@@ -91,7 +111,7 @@ class JsSourceProviderTest {
     fun a_cache_older_than_the_embed_is_superseded() = runTest {
         val client = FakeHttpClient(CannedResponse.ofText("old-remote"))
         // Cache version 3 with an embed at version 2 — cached wins…
-        val p3 = provider(config = { "https://cdn/x.js" to 3L }, embedVersion = 2L, client = client)
+        val p3 = provider(config = { SIGNED_V3 }, embedVersion = 2L, client = client)
         p3.fetchIfAny(2L) { _, _ -> }
         assertEquals("old-remote" to 3L, p3.getCached())
         // …then the app updates and ships embed version 5: the stale cache reads as absent.

@@ -47,6 +47,8 @@ android {
         buildConfigField("String", "GIT_COMMIT", "\"${gitCommit()}\"")
         // Base url of the remote config service. Empty = no request, compiled-in defaults.
         buildConfigField("String", "REMOTE_CONFIG_URL", "\"${remoteConfigUrl()}\"")
+        // The key remote engine/player bundles must be signed with. Empty = shipped bundles only.
+        buildConfigField("String", "BUNDLE_PUBLIC_KEY", "\"${bundleSigningPublicKey()}\"")
         // The shipped engine_ymusic.js asset's revision (Versions.engineJsBackendVersion).
         buildConfigField("long", "ENGINE_JS_VERSION", "${Versions.engineJsBackendVersion}L")
     }

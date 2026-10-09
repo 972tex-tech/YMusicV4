@@ -54,6 +54,10 @@ val updateUrl: String = providers.gradleProperty("ymusic.updateManifestUrl").orN
 val updatePublicKeyValue: String = providers.gradleProperty("ymusic.updatePublicKey").orNull
     ?: updatePublicKey()
 
+// The key remote JS bundles must be signed with. Empty: only the shipped bundles ever run.
+val bundlePublicKeyValue: String = providers.gradleProperty("ymusic.bundlePublicKey").orNull
+    ?: bundleSigningPublicKey()
+
 // Base url of the remote config service. Empty leaves the app on its compiled-in defaults.
 val remoteConfigBaseUrl: String = providers.gradleProperty("ymusic.remoteConfigUrl").orNull
     ?: remoteConfigUrl()
@@ -105,6 +109,7 @@ val generateBuildConfig by tasks.registering {
     inputs.property("updateUrl", updateUrl)
     inputs.property("updatePublicKey", updatePublicKeyValue)
     inputs.property("remoteConfigBaseUrl", remoteConfigBaseUrl)
+    inputs.property("bundlePublicKey", bundlePublicKeyValue)
     outputs.dir(outDir)
     doLast {
         val file = outDir.get().asFile.resolve("BuildConfig.kt")
@@ -131,6 +136,9 @@ val generateBuildConfig by tasks.registering {
 
             // Base url of the remote config service. Empty = no request, compiled-in defaults.
             internal const val REMOTE_CONFIG_URL = "$remoteConfigBaseUrl"
+
+            // The key remote engine/player bundles must be signed with. Empty = shipped bundles only.
+            internal const val BUNDLE_PUBLIC_KEY = "$bundlePublicKeyValue"
             """.trimIndent() + "\n",
         )
     }

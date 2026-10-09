@@ -53,6 +53,15 @@ fun Project.macTeamId(): String =
 fun Project.updateManifestUrl(): String =
     System.getenv("YMUSIC_UPDATE_MANIFEST_URL") ?: localProp("update.manifest.url") ?: ""
 
+/**
+ * The ECDSA P-256 PUBLIC key that authenticates remote JS bundles (engineJs / playerJs), base64
+ * SubjectPublicKeyInfo, from YMUSIC_BUNDLE_PUBLIC_KEY or `bundle.signing.public.key`. Its private
+ * half signs bundles offline and never reaches a build or the config server. Empty: the app trusts
+ * no remote bundle and runs only on the ones it ships with.
+ */
+fun Project.bundleSigningPublicKey(): String =
+    System.getenv("YMUSIC_BUNDLE_PUBLIC_KEY") ?: localProp("bundle.signing.public.key") ?: ""
+
 /** Base url of the remote config service (`remote.config.url`), e.g. https://cfg.ymusic.io. Empty
  *  leaves the app on its compiled-in defaults and makes no request. */
 fun Project.remoteConfigUrl(): String =

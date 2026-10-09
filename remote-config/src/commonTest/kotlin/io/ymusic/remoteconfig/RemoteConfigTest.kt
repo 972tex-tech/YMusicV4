@@ -15,8 +15,8 @@ private val SERVER = RemoteConfigData(
     variableA = 7,
     featureX = true,
     newVersion = AppUpdate(url = "https://x/y.exe", changelog = "https://x/c.md", size = 12, checksum = "ab"),
-    wvJs = BundleVersion(version = 123, url = "https://x/wv.js"),
-    engineJs = BundleVersion(version = 11, url = "https://x/engine.js"),
+    playerJs = BundleVersion(version = 123, url = "https://x/player.js", signature = "sig-player"),
+    engineJs = BundleVersion(version = 11, url = "https://x/engine.js", signature = "sig-engine"),
     updatedAt = 0L, // stamped by the fake at fetch time, the way the real service does
 )
 
@@ -66,7 +66,7 @@ class RemoteConfigTest {
 
         assertEquals(7, data.variableA)
         assertEquals(true, data.featureX)
-        assertEquals(123L, data.wvJs?.version)
+        assertEquals(123L, data.playerJs?.version)
         assertEquals(11L, data.engineJs?.version)
         assertEquals("https://x/y.exe", data.newVersion?.url)
         assertEquals(clock, data.updatedAt)
@@ -107,7 +107,7 @@ class RemoteConfigTest {
         val data = config(nextApi, this, fs, cachePath).getConfig()
 
         assertEquals(7, data.variableA)
-        assertEquals(123L, data.wvJs?.version)
+        assertEquals(123L, data.playerJs?.version)
         assertEquals("https://x/y.exe", data.newVersion?.url)
         assertEquals(clock, data.updatedAt, "the age survives the restart, so a launch need not refetch")
         assertEquals(0, nextApi.calls, "served from the cache, not the service")
