@@ -5,11 +5,13 @@ import io.ymusic.remoteconfig.BundleVersion.Companion.value
 import kmphttp.json.JsonWriter
 import kotlinx.serialization.json.JsonObject
 import projectcommon.json.boolOrNull
+import projectcommon.json.int
 import projectcommon.json.intOrNull
 import projectcommon.json.long
 import projectcommon.json.longOrNull
 import projectcommon.json.objectOrNull
 import projectcommon.json.string
+import projectcommon.json.stringOrNull
 
 /**
  * A JS bundle the service publishes. [version] is compared against the revision already on disk;
@@ -22,7 +24,7 @@ data class BundleVersion(val version: Long, val url: String, val signature: Stri
         private const val KEY_URL = "url"
         private const val KEY_SIGNATURE = "signature"
 
-        /** Strict, like [AppUpdate.from]: half an entry is a publishing bug, not a value to guess at. */
+        /** Strict: half an entry is a publishing bug, not a value to guess at. */
         fun from(json: JsonObject): BundleVersion = BundleVersion(
             version = json.long(KEY_VERSION),
             url = json.string(KEY_URL),
@@ -40,34 +42,49 @@ data class BundleVersion(val version: Long, val url: String, val signature: Stri
     }
 }
 
-/** A newer app build, when one exists for this platform. [checksum] is sha256 of the bytes at [url]. */
+/**
+ * A newer app build for this platform. [sha256] is of the installer at [url] (an APK, DMG, MSI or
+ * DEB). [signature] authenticates it: ECDSA P-256 over `app-<platform>:<versionCode>:<sha256>`
+ * with the update signing key — desktop refuses an installer without a valid one; Android leaves
+ * that to the OS, which only installs an APK signed with the installed app's certificate.
+ */
 data class AppUpdate(
+    val versionCode: Int,
+    val versionName: String,
+    val notes: String,
     val url: String,
-    val changelog: String,
     val size: Long,
-    val checksum: String,
+    val sha256: String,
+    val signature: String,
 ) {
     companion object {
+        private const val KEY_VERSION_CODE = "versionCode"
+        private const val KEY_VERSION_NAME = "versionName"
+        private const val KEY_NOTES = "notes"
         private const val KEY_URL = "url"
-        private const val KEY_CHANGELOG = "changelog"
         private const val KEY_SIZE = "size"
-        private const val KEY_CHECKSUM = "checksum"
+        private const val KEY_SHA256 = "sha256"
+        private const val KEY_SIGNATURE = "signature"
 
-        fun from(json: JsonObject): AppUpdate {
-            return AppUpdate(
-                url = json.string(KEY_URL),
-                changelog = json.string(KEY_CHANGELOG),
-                size = json.long(KEY_SIZE),
-                checksum = json.string(KEY_CHECKSUM),
-            )
-        }
+        fun from(json: JsonObject): AppUpdate = AppUpdate(
+            versionCode = json.int(KEY_VERSION_CODE),
+            versionName = json.string(KEY_VERSION_NAME),
+            notes = json.stringOrNull(KEY_NOTES).orEmpty(),
+            url = json.string(KEY_URL),
+            size = json.long(KEY_SIZE),
+            sha256 = json.string(KEY_SHA256).lowercase(),
+            signature = json.stringOrNull(KEY_SIGNATURE).orEmpty(),
+        )
 
         fun JsonWriter.value(data: AppUpdate): JsonWriter {
             beginObject()
+            name(KEY_VERSION_CODE).value(data.versionCode)
+            name(KEY_VERSION_NAME).value(data.versionName)
+            name(KEY_NOTES).value(data.notes)
             name(KEY_URL).value(data.url)
-            name(KEY_CHANGELOG).value(data.changelog)
             name(KEY_SIZE).value(data.size)
-            name(KEY_CHECKSUM).value(data.checksum)
+            name(KEY_SHA256).value(data.sha256)
+            name(KEY_SIGNATURE).value(data.signature)
             endObject()
             return this
         }
@@ -85,7 +102,7 @@ data class AppUpdate(
 data class RemoteConfigData(
     val variableA: Int = 0,
     val featureX: Boolean = false,
-    val newVersion: AppUpdate? = null,
+    val appUpdate: AppUpdate? = null,
     val engineJs: BundleVersion? = null,
     val playerJs: BundleVersion? = null,
     // client populated timestamp at time data parsed from server
@@ -96,7 +113,7 @@ data class RemoteConfigData(
         val DEFAULTS = RemoteConfigData(updatedAt = 0L)
         private const val KEY_VARIABLE_A = "variableA"
         private const val KEY_FEATURE_X = "featureX"
-        private const val KEY_NEW_VERSION = "newVersion"
+        private const val KEY_APP_UPDATE = "appUpdate"
         private const val KEY_ENGINE_JS = "engineJs"
         private const val KEY_PLAYER_JS = "playerJs"
         private const val KEY_UPDATED_AT = "updatedAt"
@@ -112,7 +129,7 @@ data class RemoteConfigData(
         fun from(root: JsonObject, now: () -> Long): RemoteConfigData = RemoteConfigData(
             variableA = root.intOrNull(KEY_VARIABLE_A) ?: DEFAULTS.variableA,
             featureX = root.boolOrNull(KEY_FEATURE_X) ?: DEFAULTS.featureX,
-            newVersion = root.objectOrNull(KEY_NEW_VERSION)?.let(AppUpdate::from),
+            appUpdate = root.objectOrNull(KEY_APP_UPDATE)?.let(AppUpdate::from),
             engineJs = root.objectOrNull(KEY_ENGINE_JS)?.let(BundleVersion::from),
             playerJs = root.objectOrNull(KEY_PLAYER_JS)?.let(BundleVersion::from),
             updatedAt = root.longOrNull(KEY_UPDATED_AT) ?: now(),
@@ -122,7 +139,7 @@ data class RemoteConfigData(
             beginObject()
             name(KEY_VARIABLE_A).value(data.variableA)
             name(KEY_FEATURE_X).value(data.featureX)
-            data.newVersion?.let { name(KEY_NEW_VERSION).value(it) }
+            data.appUpdate?.let { name(KEY_APP_UPDATE).value(it) }
             data.engineJs?.let { name(KEY_ENGINE_JS).value(it) }
             data.playerJs?.let { name(KEY_PLAYER_JS).value(it) }
             // Persisted so a restart knows how old this is, rather than refetching on every launch.

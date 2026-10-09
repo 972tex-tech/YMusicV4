@@ -14,7 +14,7 @@ import kotlin.test.assertEquals
 private val SERVER = RemoteConfigData(
     variableA = 7,
     featureX = true,
-    newVersion = AppUpdate(url = "https://x/y.exe", changelog = "https://x/c.md", size = 12, checksum = "ab"),
+    appUpdate = AppUpdate(1300, "4.1.0", "notes", "https://x/y.msi", 12, "ab", "sig-app"),
     playerJs = BundleVersion(version = 123, url = "https://x/player.js", signature = "sig-player"),
     engineJs = BundleVersion(version = 11, url = "https://x/engine.js", signature = "sig-engine"),
     updatedAt = 0L, // stamped by the fake at fetch time, the way the real service does
@@ -68,7 +68,7 @@ class RemoteConfigTest {
         assertEquals(true, data.featureX)
         assertEquals(123L, data.playerJs?.version)
         assertEquals(11L, data.engineJs?.version)
-        assertEquals("https://x/y.exe", data.newVersion?.url)
+        assertEquals("https://x/y.msi", data.appUpdate?.url)
         assertEquals(clock, data.updatedAt)
     }
 
@@ -108,7 +108,7 @@ class RemoteConfigTest {
 
         assertEquals(7, data.variableA)
         assertEquals(123L, data.playerJs?.version)
-        assertEquals("https://x/y.exe", data.newVersion?.url)
+        assertEquals("https://x/y.msi", data.appUpdate?.url)
         assertEquals(clock, data.updatedAt, "the age survives the restart, so a launch need not refetch")
         assertEquals(0, nextApi.calls, "served from the cache, not the service")
     }

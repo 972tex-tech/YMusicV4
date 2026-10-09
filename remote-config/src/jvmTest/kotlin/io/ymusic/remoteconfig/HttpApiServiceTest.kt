@@ -33,7 +33,7 @@ private const val BODY = """
 {
   "variableA": 7,
   "featureX": true,
-  "newVersion": {"url":"https://x/y.exe","changelog":"https://x/c.md","size":12,"checksum":"ab"},
+  "appUpdate": {"versionCode":1300,"versionName":"4.1.0","notes":"n","url":"https://x/y.msi","size":12,"sha256":"AB","signature":"sig"},
   "playerJs": {"version": 123, "url": "https://x/player.js", "signature": "sig-player"},
   "engineJs": {"version": 11, "url": "https://x/engine.js", "signature": "sig-engine"}
 }
@@ -108,8 +108,10 @@ class HttpApiServiceTest {
         assertTrue(data.featureX)
         assertEquals(123L, data.playerJs?.version)
         assertEquals(11L, data.engineJs?.version)
-        assertEquals("https://x/y.exe", data.newVersion?.url)
-        assertEquals(12L, data.newVersion?.size)
+        assertEquals("https://x/y.msi", data.appUpdate?.url)
+        assertEquals(12L, data.appUpdate?.size)
+        assertEquals(1300, data.appUpdate?.versionCode)
+        assertEquals("ab", data.appUpdate?.sha256)
         assertEquals(clock, data.updatedAt, "stamped from our clock, not read off the wire")
     }
 
@@ -214,7 +216,7 @@ class HttpApiServiceTest {
 
         assertEquals(0, data.variableA)
         assertFalse(data.featureX)
-        assertNull(data.newVersion)
+        assertNull(data.appUpdate)
         assertNull(data.playerJs)
     }
 

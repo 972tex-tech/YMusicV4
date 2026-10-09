@@ -17,7 +17,7 @@ import okio.use
 
 /**
  * The real [ApiService], over [KmpHttpClient]. Holds everything request-shaped: the base url and
- * what every call carries — os, app version, the anonymous device uuid and the api key, all as
+ * what every call carries — os, arch, app version, the anonymous device uuid and the api key, all as
  * headers — so a caller gets a typed answer or a thrown failure, never a url or a status code to
  * interpret.
  *
@@ -36,6 +36,8 @@ class HttpApiService(
     private val baseUrl: String,
     private val now: () -> Long,
     private val apiKey: String? = null,
+    /** CPU architecture (x64, arm64) where one OS ships a build per architecture: desktop. */
+    private val arch: String? = null,
 ) : ApiService {
 
     override suspend fun getConfig(): RemoteConfigData {
@@ -77,6 +79,7 @@ class HttpApiService(
             .header(HEADER_OS_VER, osVersion)
             .header(HEADER_APP_VER, appVersionCode.toString())
             .header(HEADER_DEVICE_ID, deviceId)
+        arch?.let { request.header(HEADER_ARCH, it) }
         apiKey?.let { request.header(HEADER_API_KEY, it) }
         return request
     }
@@ -86,6 +89,7 @@ class HttpApiService(
         const val HEADER_OS_VER = "x-os-ver"
         const val HEADER_APP_VER = "x-app-ver"
         const val HEADER_DEVICE_ID = "x-device-id"
+        const val HEADER_ARCH = "x-arch"
         const val HEADER_API_KEY = "x-api-key"
     }
 }
