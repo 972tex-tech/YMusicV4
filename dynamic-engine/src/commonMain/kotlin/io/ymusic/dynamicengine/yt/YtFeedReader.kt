@@ -561,3 +561,48 @@ internal suspend fun readComment(r: JsonReader): YtComment {
         pinned, hearted, byCreator, verified,
     )
 }
+
+internal suspend fun readPlaylistTargets(r: JsonReader): List<YtPlaylistTarget> {
+    var playlists: List<YtPlaylistTarget> = emptyList()
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "playlists" -> playlists = r.readArrayOf { readPlaylistTarget(it) }
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return playlists
+}
+
+private suspend fun readPlaylistTarget(r: JsonReader): YtPlaylistTarget {
+    var playlistId = ""
+    var title = ""
+    var privacy: String? = null
+    var containsVideo = false
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "playlistId" -> playlistId = r.stringOrNull().orEmpty()
+            "title" -> title = r.stringOrNull().orEmpty()
+            "privacy" -> privacy = r.stringOrNull()
+            "containsVideo" -> containsVideo = r.boolean()
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtPlaylistTarget(playlistId, title, privacy, containsVideo)
+}
+
+internal suspend fun readCreatedPlaylistId(r: JsonReader): String {
+    var playlistId = ""
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "playlistId" -> playlistId = r.stringOrNull().orEmpty()
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return playlistId
+}
