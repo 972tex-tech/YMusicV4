@@ -276,7 +276,9 @@ fun main() {
                     }
                 }
         }
-        LaunchedEffect(windowVisible) { videoUnderlay.shown = windowVisible }
+        LaunchedEffect(windowVisible, windowState.isMinimized) {
+            videoUnderlay.shown = windowVisible && !windowState.isMinimized
+        }
         Window(
             // Held back until the graph is ready: an empty window that then repaints is a flash of
             // whatever the toolkit felt like showing. Composed all along, so paintWindowGround has
