@@ -93,6 +93,8 @@ import org.jetbrains.compose.resources.stringResource
 fun DesktopCookieSignIn(
     importCookies: suspend (List<SessionCookie>) -> Unit,
     loginStatus: suspend () -> Boolean,
+    /** Offers the "protect with a password" step after a successful sign-in; null skips it. */
+    protectWithPassword: (suspend (CharArray) -> Unit)?,
     logger: Logger?,
     onComplete: () -> Unit,
     onBack: () -> Unit,
@@ -111,6 +113,7 @@ fun DesktopCookieSignIn(
     var noCookieDialog by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var finished by remember { mutableStateOf(false) }
+    var protecting by remember { mutableStateOf(false) }
 
     suspend fun finish(cookies: List<SessionCookie>) {
         lock.withLock {
@@ -128,7 +131,7 @@ fun DesktopCookieSignIn(
                     return
                 }
                 finished = true
-                onComplete()
+                if (protectWithPassword != null) protecting = true else onComplete()
             } catch (c: CancellationException) {
                 throw c
             } catch (t: Throwable) {
@@ -159,6 +162,11 @@ fun DesktopCookieSignIn(
             if (!finished) qrEnded = true
             minted?.let { deleteDeviceLinkToken(client, it.tokenId) }
         }
+    }
+
+    if (protecting && protectWithPassword != null) {
+        CookieProtectStep(protect = protectWithPassword, logger = logger?.fork("cookies"), onDone = onComplete)
+        return
     }
 
     Column(Modifier.fillMaxSize().background(DesignColors.Surface)) {
@@ -376,7 +384,7 @@ fun DesktopCookieSignIn(
 }
 
 @Composable
-private fun AccentButton(text: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun AccentButton(text: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()

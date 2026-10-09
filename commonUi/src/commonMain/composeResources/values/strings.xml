@@ -499,4 +499,20 @@
     <string name="video_details_delete_title">Delete comment</string>
     <string name="video_details_delete_message">Delete your comment and all of its replies permanently?</string>
     <string name="video_details_deleted">Comment deleted</string>
+    <string name="cookie_protect_title">Protect your sign-in with a password?</string>
+    <string name="cookie_protect_body">Your YouTube sign-in is saved in a file on this computer. It’s encrypted, so a copy taken elsewhere can’t be read — but any app you run here can still unlock it. With a password, only you can, and YMusic asks for it each time it starts.</string>
+    <string name="cookie_password">Password</string>
+    <string name="cookie_protect_confirm">Confirm password</string>
+    <string name="cookie_protect_mismatch">The passwords don’t match.</string>
+    <string name="cookie_protect_submit">Protect</string>
+    <string name="cookie_protect_skip">Never mind</string>
+    <string name="cookie_unlock_title">Unlock your sign-in</string>
+    <string name="cookie_unlock_body">Your YouTube sign-in is protected with a password.</string>
+    <string name="cookie_unlock_submit">Unlock</string>
+    <string name="cookie_unlock_wrong">Wrong password.</string>
+    <string name="cookie_unlock_guest">Use as guest</string>
+    <string name="cookie_unlock_guest_hint">Starts signed out. Nothing from a guest session is kept.</string>
+    <string name="cookie_unlock_sign_out">Sign out</string>
+    <string name="cookie_unlock_sign_out_title">Sign out?</string>
+    <string name="cookie_unlock_sign_out_body">This removes the saved sign-in from this computer. To sign in again, scan the QR code with the YMusic app.</string>
 </resources>

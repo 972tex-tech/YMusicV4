@@ -1,0 +1,110 @@
+package io.ymusic.desktop
+
+import io.ymusic.remoteconfig.PersistentCookieJar
+import kmpcommon.log.Logger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okio.FileSystem
+import okio.Path
+import okio.Path.Companion.toOkioPath
+import java.io.File
+import java.nio.file.Files
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+
+/**
+ * What one launch runs on: the cookie jar, and the caches that go with whoever owns it. A guest's
+ * caches are its own and die with the process, so a guest and the signed-in user never read each
+ * other's cached responses.
+ */
+internal class CookieSession(
+    val jar: PersistentCookieJar,
+    /** Null for a guest: nothing of it is kept, so nothing to protect. */
+    private val vault: CookieVault?,
+    private val jarPath: Path,
+    /** Root of the session's HTTP and engine caches. */
+    val cacheRoot: File,
+) {
+    /**
+     * The "protect with a password" step is offered where the default key is one every app of
+     * this user can recover — not on macOS, whose keychain item is bound to this app's signature.
+     */
+    val canProtect: Boolean get() = vault != null && !vault.isPasswordProtected && desktopOsKey() != "macos"
+
+    suspend fun protect(password: CharArray) {
+        val vault = checkNotNull(vault) { "a guest jar is not kept" }
+        val seal = withContext(Dispatchers.Default) { CookieVault.newPasswordSeal(password) }
+        withContext(Dispatchers.IO) { vault.protect(jarPath, seal) }
+    }
+}
+
+/** How the cookie store opened at launch. */
+internal sealed interface CookieStoreOpen {
+    class Ready(val session: CookieSession) : CookieStoreOpen
+
+    /** Password-sealed: the launch waits for [unlock], [asGuest] or [signOut]. */
+    class Locked internal constructor(
+        private val vault: CookieVault,
+        private val dataDir: File,
+        private val userKey: SecretKey?,
+    ) : CookieStoreOpen {
+        private val file = File(dataDir, COOKIE_FILE)
+
+        /** Null when [password] is wrong. */
+        suspend fun unlock(password: CharArray): CookieSession? = withContext(Dispatchers.IO) {
+            if (!vault.unlock(file.toOkioPath(), password)) return@withContext null
+            CookieSession(PersistentCookieJar(file.toOkioPath(), vault), vault, file.toOkioPath(), dataDir)
+        }
+
+        suspend fun asGuest(): CookieSession = withContext(Dispatchers.IO) { guestSession() }
+
+        /** Forgets the sealed sign-in and the caches made under it, then starts signed out. */
+        suspend fun signOut(): CookieSession = withContext(Dispatchers.IO) {
+            FileSystem.SYSTEM.delete(file.toOkioPath(), mustExist = false)
+            sessionCacheDirs(dataDir).forEach { it.deleteRecursively() }
+            if (userKey == null) guestSession() else userSession(dataDir, userKey)
+        }
+    }
+}
+
+internal const val COOKIE_FILE = "api-cookies.json"
+internal const val HTTP_CACHE_DIR = "http-cache"
+internal const val ENGINE_CACHE_DIR = "engine-cache"
+
+private fun sessionCacheDirs(root: File) = listOf(File(root, HTTP_CACHE_DIR), File(root, ENGINE_CACHE_DIR))
+
+/**
+ * If the OS key is out of reach, the launch runs as a guest: signing in still works, but nothing
+ * is written that a later launch could read — never the jar in the clear.
+ */
+internal suspend fun openCookieStore(dataDir: File, log: Logger?): CookieStoreOpen = withContext(Dispatchers.IO) {
+    val userKey = try {
+        userScopeCookieKey(dataDir, log)
+    } catch (error: Throwable) {
+        log?.log(Logger.Level.WARN, "OS cookie key unavailable, this launch runs as a guest", error)
+        null
+    }
+    val file = File(dataDir, COOKIE_FILE)
+    when {
+        // A password-sealed jar never needs the OS key: every write after unlock is password-sealed.
+        CookieVault.isPasswordSealed(FileSystem.SYSTEM, file.toOkioPath()) ->
+            CookieStoreOpen.Locked(CookieVault(FileSystem.SYSTEM, userKey ?: throwawayKey()), dataDir, userKey)
+        userKey == null -> CookieStoreOpen.Ready(guestSession())
+        else -> CookieStoreOpen.Ready(userSession(dataDir, userKey))
+    }
+}
+
+private fun userSession(dataDir: File, userKey: SecretKey): CookieSession {
+    val vault = CookieVault(FileSystem.SYSTEM, userKey)
+    val path = File(dataDir, COOKIE_FILE).toOkioPath()
+    return CookieSession(PersistentCookieJar(path, vault), vault, path, dataDir)
+}
+
+private fun guestSession(): CookieSession {
+    val root = Files.createTempDirectory("ymusic-guest").toFile()
+    Runtime.getRuntime().addShutdownHook(Thread { root.deleteRecursively() })
+    val path = File(root, COOKIE_FILE).toOkioPath()
+    return CookieSession(PersistentCookieJar(path, CookieVault(FileSystem.SYSTEM, throwawayKey())), null, path, root)
+}
+
+private fun throwawayKey(): SecretKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
