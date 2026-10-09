@@ -289,73 +289,76 @@ tasks.matching {
 // but GROWS the DMG 72.2→76.1MiB: the DMG's zlib squeezes the raw jimage better than jlink's
 // per-resource zip, which is opaque to it. Download size is the goal → runtime stays uncompressed.
 
-// sqlite-jdbc and JNA carry natives for every OS/arch; a package is per-OS, so the rest is dead
-// weight. Stripped from the ProGuard output, which is what jpackage consumes. zip exit 12 =
-// "nothing matched", which is fine.
+// A package is built on, and for, one OS and CPU: the host's. sqlite-jdbc, JNA, skiko and our own
+// jni/ jars carry natives for others, which are dead weight there. They are dropped from the
+// ProGuard output — what jpackage consumes — in the same pass that normalizes entry timestamps.
+val hostOs = org.gradle.internal.os.OperatingSystem.current().let {
+    if (it.isMacOsX) "macos" else if (it.isWindows) "windows" else "linux"
+}
+val hostArm64 = System.getProperty("os.arch").lowercase() in setOf("aarch64", "arm64")
+
+/** `macos-x64`, `windows-x64`, …: the update service's platform key, and the installer's suffix. */
+val hostPlatform = "$hostOs-${if (hostArm64) "arm64" else "x64"}"
+
 tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
     val proguardOut = layout.buildDirectory.dir("compose/tmp/main-release/proguard")
     // The plugin never clears this dir, so a jar whose name changes (a dependency version bump)
     // would leave its predecessor behind to be packaged alongside the new one.
     doFirst { proguardOut.get().asFile.deleteRecursively() }
     doLast {
-        val os = org.gradle.internal.os.OperatingSystem.current()
-        val sqliteKeep = if (os.isMacOsX) "Mac" else if (os.isLinux) "Linux" else "Windows"
-        val jnaKeep = if (os.isMacOsX) "darwin" else if (os.isLinux) "linux" else "win32"
-        // Dash-suffixed on purpose: com/sun/jna/win32/ (no dash) is a CLASS package, not natives.
-        val jnaOses = listOf("aix", "darwin", "dragonflybsd", "freebsd", "linux", "openbsd", "sunos", "win32")
-        fun strip(jar: java.io.File, patterns: List<String>) {
-            val p = ProcessBuilder(listOf("zip", "-q", "-d", jar.absolutePath) + patterns)
-                .redirectErrorStream(true).start()
-            val out = p.inputStream.readBytes().decodeToString()
-            check(p.waitFor() in setOf(0, 12)) { "zip -d ${jar.name} failed: $out" }
-        }
-        // ProGuard stamps the CURRENT TIME into every entry it writes, so a jar with identical
-        // content hashes differently on each build. Content-addressed updates would then refetch
-        // every unchanged library (measured: 36MB of a 124MB app). Normalize to a fixed instant.
-        fun normalizeTimestamps(jar: File) {
-            val entries = LinkedHashMap<String, ByteArray>()
-            ZipFile(jar).use { zip ->
-                for (e in zip.entries()) {
-                    if (!e.isDirectory) entries[e.name] = zip.getInputStream(e).readBytes()
-                }
-            }
-            val tmp = File(jar.absolutePath + ".norm")
-            ZipOutputStream(tmp.outputStream().buffered()).use { out ->
-                for ((name, bytes) in entries) {
-                    // 1980-01-01, the earliest a zip entry can express.
-                    out.putNextEntry(ZipEntry(name).apply { time = 315_532_800_000L })
-                    out.write(bytes)
-                    out.closeEntry()
-                }
-            }
-            check(tmp.renameTo(jar)) { "could not replace ${jar.name} with its normalized copy" }
+        val sqliteKeep = "org/sqlite/native/" +
+            mapOf("macos" to "Mac", "windows" to "Windows", "linux" to "Linux").getValue(hostOs) + "/" +
+            (if (hostArm64) "aarch64" else "x86_64") + "/"
+        val jnaKeep = "com/sun/jna/" + mapOf("macos" to "darwin", "windows" to "win32", "linux" to "linux").getValue(hostOs) +
+            "-" + (if (hostArm64) "aarch64" else "x86-64") + "/"
+        // Native dirs are `<os>-<arch>/`; com/sun/jna/win32/ (no dash) is a CLASS package.
+        val jnaNativeDir = Regex("^com/sun/jna/[a-z0-9]+-[a-z0-9-]+/")
+        val skikoKeep = "libskiko-$hostOs-" + (if (hostArm64) "arm64" else "x64")
+        val jniKeep = "jni/${hostOs}_" + (if (hostArm64) "aarch64" else "x64") + "/"
+        fun isForeignNative(entry: String): Boolean = when {
+            entry.startsWith("org/sqlite/native/") -> !entry.startsWith(sqliteKeep)
+            jnaNativeDir.containsMatchIn(entry) -> !entry.startsWith(jnaKeep)
+            entry.startsWith("libskiko-") -> !entry.startsWith(skikoKeep)
+            entry.startsWith("jni/") -> !entry.startsWith(jniKeep)
+            else -> false
         }
 
-        proguardOut.get().asFile.listFiles().orEmpty().forEach { jar ->
-            when {
-                jar.name.startsWith("sqlite-jdbc") -> strip(
-                    jar,
-                    listOf("FreeBSD", "Linux", "Mac", "Windows").filter { it != sqliteKeep }
-                        .map { "org/sqlite/native/$it/*" },
-                )
-                // JetBrains ship BOTH macOS dylibs in each per-arch skiko runtime jar, so an
-                // Intel package carries 21MB of arm64 native it can never load.
-                jar.name.startsWith("skiko-awt-runtime") -> strip(
-                    jar,
-                    listOf("macos-arm64", "macos-x64", "linux-x64", "linux-arm64", "windows-x64")
-                        .filter { !jar.name.contains(it) }
-                        .flatMap { listOf("libskiko-$it.dylib", "libskiko-$it.dylib.sha256") },
-                )
-                jar.name.matches(Regex("jna(-jpms)?-[0-9].*\\.jar")) -> strip(
-                    jar,
-                    jnaOses.filter { it != jnaKeep }.map { "com/sun/jna/$it-*" },
-                )
+        // ProGuard stamps the CURRENT TIME into every entry it writes, so a jar with identical
+        // content would hash differently on each build. Normalize to a fixed instant, so an
+        // unchanged release builds byte-identical.
+        fun rewrite(jar: File) {
+            val tmp = File(jar.absolutePath + ".norm")
+            ZipFile(jar).use { zip ->
+                ZipOutputStream(tmp.outputStream().buffered()).use { out ->
+                    for (entry in zip.entries()) {
+                        if (entry.isDirectory || isForeignNative(entry.name)) continue
+                        // 1980-01-01, the earliest a zip entry can express.
+                        out.putNextEntry(ZipEntry(entry.name).apply { time = 315_532_800_000L })
+                        zip.getInputStream(entry).use { it.copyTo(out) }
+                        out.closeEntry()
+                    }
+                }
             }
+            check(jar.delete() && tmp.renameTo(jar)) { "could not replace ${jar.name} with its rewritten copy" }
         }
+
         proguardOut.get().asFile.listFiles().orEmpty()
             .filter { it.isFile && it.extension == "jar" }
-            .forEach(::normalizeTimestamps)
+            .forEach(::rewrite)
     }
+}
+
+// The host's installer under a name that says what it is for, ready for sign-app-update.mjs:
+//   ./gradlew :desktopApp:releaseInstaller   →   build/release/YMusic-<version>-<platform>.<dmg|msi|deb>
+tasks.register<Copy>("releaseInstaller") {
+    group = "distribution"
+    description = "Package the release installer for this OS/arch and name it YMusic-<version>-<platform>."
+    val format = mapOf("macos" to "Dmg", "windows" to "Msi", "linux" to "Deb").getValue(hostOs)
+    dependsOn("packageRelease$format")
+    from(layout.buildDirectory.dir("compose/binaries/main-release/${format.lowercase()}"))
+    include("*.${format.lowercase()}")
+    rename { "YMusic-$desktopVersion-$hostPlatform.${format.lowercase()}" }
+    into(layout.buildDirectory.dir("release"))
 }
 
 kotlin.sourceSets.getByName("jvmMain").resources.srcDir(files(layout.buildDirectory.dir("engineJsResources")).builtBy(stageEngineJs))
