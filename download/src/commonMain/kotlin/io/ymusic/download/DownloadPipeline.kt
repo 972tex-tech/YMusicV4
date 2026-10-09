@@ -128,7 +128,12 @@ class DownloadPipeline(
             convert(cover.path)
         } catch (e: TechnicalException) {
             logger?.log(Logger.Level.WARN, "ffmpeg failed with cover art; retrying without it", e)
-            convert(null)
+            try {
+                convert(null)
+            } catch (retryError: Throwable) {
+                retryError.addSuppressed(e)
+                throw retryError
+            }
         }
     }
 

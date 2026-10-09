@@ -61,9 +61,14 @@ open class DefaultDownloadStorage(
             // second bare okio throw).
             try {
                 fileSystem.atomicMove(src, dest)
-            } catch (_: IOException) {
-                fileSystem.source(src).use { s -> fileSystem.sink(dest).buffer().use { it.writeAll(s) } }
-                fileSystem.delete(src, mustExist = false)
+            } catch (moveError: IOException) {
+                try {
+                    fileSystem.source(src).use { s -> fileSystem.sink(dest).buffer().use { it.writeAll(s) } }
+                    fileSystem.delete(src, mustExist = false)
+                } catch (copyError: Exception) {
+                    copyError.addSuppressed(moveError)
+                    throw copyError
+                }
             }
         } catch (e: TechnicalException) {
             throw e

@@ -3,6 +3,8 @@ package io.ymusic.download
 import kmpcommon.error.TechnicalException
 import kmpffmpeg.KmpProcessBuilder
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import okio.buffer
 
 /** One subtitle track to mux into a video container: its local [path], BCP-47/ISO-639-1 [language]
@@ -117,11 +119,26 @@ class Ffmpeg(
             }
         }
         val code = process.exitCode.await()
-        runCatching { progress?.await() }
+        val progressError = collectorFailure { progress?.await() }
         // The E70021 diagnostic below IS this text — a failed collector must say so, not report "".
-        val log = runCatching { stderr.await() }.getOrElse { "stderr collector failed: $it" }
+        var stderrText = ""
+        val stderrError = collectorFailure { stderrText = stderr.await() }
+        val log = if (stderrError != null) "stderr collector failed: $stderrError" else stderrText
         process.close()
-        if (code != 0) throw TechnicalException("E70021", "ffmpeg exited $code:\n$log")
+        if (code != 0) {
+            val failure = TechnicalException("E70021", "ffmpeg exited $code:\n$log")
+            progressError?.let(failure::addSuppressed)
+            stderrError?.let(failure::addSuppressed)
+            throw failure
+        }
+    }
+
+    private suspend inline fun collectorFailure(block: () -> Unit): Throwable? = try {
+        block()
+        null
+    } catch (error: Throwable) {
+        currentCoroutineContext().ensureActive()
+        error
     }
 }
 

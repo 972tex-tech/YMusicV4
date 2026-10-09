@@ -15,6 +15,7 @@ import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
 import kmphttp.byteString
+import kotlinx.coroutines.CancellationException
 import okio.IOException
 import okio.use
 
@@ -109,7 +110,10 @@ class YtStreamDownloader(
         // Best-effort: a caption that fails to download is logged and skipped — it must not fail the media.
         val captionFiles = captionPicks.mapNotNull { track ->
             runCatching { downloadCaption(task.id, track) }
-                .onFailure { log?.log(Logger.Level.WARN, "caption ${track.languageCode} failed: ${it.message}", it) }
+                .onFailure {
+                    if (it is CancellationException) throw it
+                    log?.log(Logger.Level.WARN, "caption ${track.languageCode} failed: ${it.message}", it)
+                }
                 .getOrNull()
         }
 
@@ -179,7 +183,7 @@ class YtStreamDownloader(
     ) {
         val progress = SabrProgress { aDone, aLen, vDone, vLen -> onProgress(aDone + vDone, aLen + vLen) }
         var current = spec
-        var reAttested = false
+        var expired: SabrPoTokenExpired? = null
         while (true) {
             try {
                 SabrSession(logger = log).download(
@@ -195,10 +199,18 @@ class YtStreamDownloader(
                 )
                 return
             } catch (e: SabrPoTokenExpired) {
-                if (reAttested) throw e
-                reAttested = true
+                expired?.let {
+                    e.addSuppressed(it)
+                    throw e
+                }
+                expired = e
                 log?.log(Logger.Level.WARN, "PO token rejected, re-attesting: ${e.message}")
-                current = reAttest()
+                current = try {
+                    reAttest()
+                } catch (error: Throwable) {
+                    error.addSuppressed(e)
+                    throw error
+                }
             }
         }
     }
