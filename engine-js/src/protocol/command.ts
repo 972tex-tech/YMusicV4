@@ -157,6 +157,11 @@ export async function callHost<T>(command: string, body: (pipe: Pipe) => Promise
   try {
     return await body(pipe);
   } catch (e) {
+    // RESET, not END: a body cut short by a throwing writer must not reach the host as complete.
+    try {
+      const r = pipe.sink.close("aborted: " + (e instanceof Error ? e.message : String(e)));
+      if (r) await r;
+    } catch (_e) {}
     throw hostError(e);
   } finally {
     const w = pipe.sink.close(); // idempotent if `body` already closed it
