@@ -19,13 +19,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -64,6 +67,7 @@ import io.ymusic.ui.resources.device_link_error_generic
 import io.ymusic.ui.resources.device_link_error_network
 import io.ymusic.ui.resources.device_link_error_payload
 import io.ymusic.ui.resources.device_link_error_timeout
+import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.signin_cookies_rejected
 import io.ymusic.ui.resources.signin_or_paste
 import io.ymusic.ui.resources.signin_paste_empty
@@ -100,6 +104,8 @@ fun DesktopCookieSignIn(
     var pasteFlow by remember { mutableStateOf(false) }
     var offer by remember { mutableStateOf<DeviceLinkOffer?>(null) }
     var offerError by remember { mutableStateOf<String?>(null) }
+    var qrAttempt by remember { mutableIntStateOf(0) }
+    var qrEnded by remember { mutableStateOf(false) }
     var paste by remember { mutableStateOf("") }
     var pasteError by remember { mutableStateOf<String?>(null) }
     var noCookieDialog by remember { mutableStateOf(false) }
@@ -134,8 +140,12 @@ fun DesktopCookieSignIn(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(qrAttempt) {
         var minted: DeviceLinkOffer? = null
+        offer = null
+        offerError = null
+        pasteError = null
+        qrEnded = false
         try {
             minted = createDeviceLinkOffer(client)
             offer = minted
@@ -146,6 +156,7 @@ fun DesktopCookieSignIn(
             log?.log(Logger.Level.WARN, "device-link offer/poll failed", t)
             offerError = deviceLinkErrorText(t)
         } finally {
+            if (!finished) qrEnded = true
             minted?.let { deleteDeviceLinkToken(client, it.tokenId) }
         }
     }
@@ -244,7 +255,7 @@ fun DesktopCookieSignIn(
                             contentAlignment = Alignment.Center,
                         ) {
                             val payload = offer?.qrPayload
-                            if (payload != null && !finished) {
+                            if (payload != null && !finished && !qrEnded) {
                                 DeviceLinkQrCode(
                                     payload,
                                     Modifier
@@ -252,11 +263,11 @@ fun DesktopCookieSignIn(
                                         .padding(DesignSpacing.Space8)
                                         .semantics { contentDescription = qrCd },
                                 )
-                            } else if (offerError == null && !finished) {
+                            } else if (!qrEnded && !finished) {
                                 CircularProgressIndicator(Modifier.size(28.dp), color = DesignColors.Accent)
                             }
                         }
-                        val sas = offer?.let { deviceLinkSas(it.key) }
+                        val sas = offer?.takeUnless { qrEnded }?.let { deviceLinkSas(it.key) }
                         Column(
                             Modifier.fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -279,9 +290,9 @@ fun DesktopCookieSignIn(
                                 textAlign = TextAlign.Center,
                             )
                         }
-                        Box(
+                        Column(
                             Modifier.fillMaxWidth().heightIn(min = 20.dp),
-                            contentAlignment = Alignment.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             when {
                                 offerError != null -> Text(
@@ -308,6 +319,21 @@ fun DesktopCookieSignIn(
                                     Text(
                                         stringResource(Res.string.signin_qr_waiting),
                                         style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
+                                    )
+                                }
+                            }
+                            if (qrEnded && !finished && !importing) {
+                                TextButton(onClick = { qrAttempt++ }) {
+                                    Icon(
+                                        Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        tint = DesignColors.Accent,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Text(
+                                        stringResource(Res.string.retry),
+                                        color = DesignColors.Accent,
+                                        modifier = Modifier.padding(start = DesignSpacing.Space8),
                                     )
                                 }
                             }
