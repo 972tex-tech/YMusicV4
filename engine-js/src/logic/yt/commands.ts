@@ -659,6 +659,25 @@ onAccept(
   }),
 );
 
+// {"playlistId","saved"} -> {}. Adds the playlist to (or removes it from) the viewer's library.
+onAccept(
+  "yt/playlist/save",
+  commandHandler(async (src, out) => {
+    const args = await src.readJsonObject();
+    const playlistId = asString(args["playlistId"]);
+    if (playlistId === undefined || playlistId === "") {
+      throw JsEngineErrorImpl.parse("yt/playlist/save needs playlistId");
+    }
+    await innertubeJson(
+      args["saved"] === true ? "like/like" : "like/removelike",
+      { "target": { "playlistId": playlistId } },
+      hostLogger(args, "yt/playlist/save"),
+    );
+    const p = out.writeObjectAsJson({});
+    if (p) await p;
+  }),
+);
+
 async function writeLocales(out: PipeSink, locales: WireLocales): Promise<void> {
   const p = out.writeObjectAsJson(locales);
   if (p) await p;

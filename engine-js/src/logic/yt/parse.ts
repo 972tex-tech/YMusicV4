@@ -1192,7 +1192,64 @@ export function collectPage(
     if (subscribed !== undefined) header["subscribed"] = subscribed;
     page["pageHeader"] = header;
   }
+  const save = saveToggleOf(root);
+  if (save !== undefined && pageHeader != null) {
+    const id =
+      playlistIdOf(save) ?? playlistIdOf(get(root["microformat"], "microformatDataRenderer"));
+    if (id !== undefined) {
+      pageHeader["savePlaylistId"] = id;
+      // Signed out the toggle opens a sign-in dialog instead of saving.
+      let signedOut = false;
+      walk(save, (k) => {
+        if (k === "signInEndpoint") signedOut = true;
+        return signedOut;
+      });
+      if (!signedOut) pageHeader["saved"] = save["isToggled"] === true;
+    }
+  }
   return page;
+}
+
+/**
+ * A playlist page's save toggle: the header's `toggleButtonViewModel` whose default icon is
+ * PLAYLIST_ADD, else the sidebar's legacy `toggleButtonRenderer` (skipped when `isDisabled`).
+ * Pages the viewer can't save (their own playlists, Mixes) carry neither.
+ */
+function saveToggleOf(root: Record<string, unknown>): Record<string, unknown> | undefined {
+  let found: Record<string, unknown> | undefined;
+  walk(root["header"], (k, v) => {
+    if (found !== undefined) return true;
+    if (k !== "toggleButtonViewModel" || !isObj(v)) return;
+    const icon = get(v, "defaultButtonViewModel", "buttonViewModel", "iconName");
+    if (icon === "PLAYLIST_ADD") found = v;
+    return true;
+  });
+  if (found !== undefined) return found;
+  walk(root["sidebar"], (k, v) => {
+    if (found !== undefined) return true;
+    if (k !== "toggleButtonRenderer" || !isObj(v)) return;
+    if (get(v, "defaultIcon", "iconType") === "PLAYLIST_ADD" && v["isDisabled"] !== true) found = v;
+    return true;
+  });
+  return found;
+}
+
+/** The first playlist id under [node]: a `playlistId`, a `VL…` browseId, or a `list=` url param. */
+function playlistIdOf(node: unknown): string | undefined {
+  let id: string | undefined;
+  walk(node, (k, v) => {
+    if (id !== undefined) return true;
+    const s = asString(v);
+    if (s === undefined) return;
+    if (k === "playlistId") id = s;
+    else if (k === "browseId" && s.indexOf("VL") === 0) id = s.slice(2);
+    else {
+      const m = /[?&]list=([\w-]+)/.exec(s);
+      if (m !== null && m[1] !== undefined) id = m[1];
+    }
+    return;
+  });
+  return id;
 }
 
 /**

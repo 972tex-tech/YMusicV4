@@ -103,6 +103,11 @@ export interface WirePageHeader {
   channelId?: string;
   /** The viewer's subscription to [channelId]; absent when the header offers only a sign-in button. */
   subscribed?: boolean;
+  /** The yt/playlist/save target — present only when the page offers a save toggle (not the
+   *  viewer's own playlists, not Mixes). */
+  savePlaylistId?: string;
+  /** Whether [savePlaylistId] is in the viewer's library; absent when signed out. */
+  saved?: boolean;
 }
 
 /** One browse tab of a channel page (Home / Videos / Shorts / …). `url` is the app link fetching
