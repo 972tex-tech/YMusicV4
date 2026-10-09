@@ -4,10 +4,10 @@ import io.ymusic.dynamicengine.yt.jsonCommand
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
 import kmpcommon.log.Logger
-import kmpcommon.log.trailMark
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import okio.IOException
+import projectcommon.log.trailMark
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

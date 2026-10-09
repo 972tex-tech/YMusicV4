@@ -1,6 +1,6 @@
 package io.ymusic.player
 
-import kmpcommon.error.CodedError
+import projectcommon.error.CodedError
 
 /**
  * Engine + media lifecycle, preserving the legacy player contract. [readyToLoad] means an ordinary

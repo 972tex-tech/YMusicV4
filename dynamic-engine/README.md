@@ -25,7 +25,7 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 
 - **Error contract** (implemented) — JS `commandHandler(handler)` (handler gets `(src, out)`)/`JsEngineError` ↔ a
   per-command Kotlin method that `decodeEngineError`s the RESET into a typed `EngineError` (implements
-  `kmpcommon.error.CodedError`) over structured RESET reasons (the typed `WireError` shape) — codes cross all tiers
+  `projectcommon.error.CodedError`) over structured RESET reasons (the typed `WireError` shape) — codes cross all tiers
   unchanged, classified at the origin (HOST_PROTOCOLS "Errors across the boundary").
 
 - **Cookies** (implemented) — the bundle's `Cookies.get(url): Record<string,string>` / `.set(url, setCookie)` (one

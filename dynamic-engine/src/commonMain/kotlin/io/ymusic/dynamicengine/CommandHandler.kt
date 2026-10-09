@@ -4,11 +4,11 @@ import io.ymusic.quickjs.BrokenPipeException
 import io.ymusic.quickjs.Pipe
 import io.ymusic.quickjs.PipeSink
 import io.ymusic.quickjs.PipeSource
-import kmpcommon.error.codedError
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import projectcommon.error.codedError
 
 /**
  * The HOST half of the error contract — the Kotlin twin of the bundle's `commandHandler`
@@ -64,7 +64,7 @@ private const val STACK_CAP = 4096
 
 /**
  * Classify a thrown value into the wire contract — the Kotlin twin of the bundle's `classify()`.
- * A [kmpcommon.error.CodedError] anywhere in the cause chain wins (wrap, never re-mint — the deepest
+ * A [projectcommon.error.CodedError] anywhere in the cause chain wins (wrap, never re-mint — the deepest
  * code is the most specific); else a site code embedded in the message is preserved (host reasons
  * can cross as text); else `E20002`, an uncaught host command-handler error. Domain protocols that
  * want a category (`network`, `parse`) throw a coded error carrying it, or classify in place the way

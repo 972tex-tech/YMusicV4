@@ -1,5 +1,8 @@
-package kmpcommon.log
+package projectcommon.log
 
+import kmpcommon.log.Crumb
+import kmpcommon.log.CrumbLogger
+import kmpcommon.log.Logger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

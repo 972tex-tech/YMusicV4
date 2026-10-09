@@ -68,7 +68,6 @@ import io.ymusic.ui.resources.signin_preface_title
 import io.ymusic.ui.resources.signin_screen_title
 import io.ymusic.ui.resources.signin_unavailable
 import io.ymusic.ui.resources.switch_account_hint
-import kmpcommon.error.runSuspendCatching
 import kmpcommon.log.Logger
 import kmpcommon.log.debug
 import kotlinx.coroutines.CoroutineScope
@@ -79,6 +78,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.runSuspendCatching
 
 /**
  * The observable state of the login browser — the shell's [LoginBrowser] writes it, the login chrome

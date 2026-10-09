@@ -1,8 +1,8 @@
 package io.ymusic.dynamicengine
 
-import kmpcommon.error.CodedError
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
+import projectcommon.error.CodedError
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

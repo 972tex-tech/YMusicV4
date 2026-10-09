@@ -45,8 +45,6 @@ import io.ymusic.ytmedia.cache.SqlDelightCacheStats
 import io.ymusic.ytmedia.cache.SqlDelightSegmentIndex
 import io.ymusic.ytmedia.cache.nativeSegmentDatabaseDriver
 import io.ymusic.ytmedia.proxy.LocalMediaProxy
-import kmpcommon.log.FileLogger
-import kmpcommon.log.LoggingWorker
 import kmpcommon.log.TeeLogger
 import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
@@ -62,6 +60,8 @@ import platform.Foundation.NSUserDomainMask
 import platform.Foundation.timeIntervalSince1970
 import platform.UIKit.UIView
 import platform.UIKit.UIViewController
+import projectcommon.log.FileLogger
+import projectcommon.log.LoggingWorker
 
 /**
  * The iOS entry point — the Swift app hosts `MainViewControllerKt.MainViewController()`. Builds the

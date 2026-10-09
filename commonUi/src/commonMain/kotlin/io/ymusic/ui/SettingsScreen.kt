@@ -77,11 +77,11 @@ import io.ymusic.ui.resources.settings_theme_light
 import io.ymusic.ui.resources.settings_theme_system
 import io.ymusic.ui.resources.sound_eq
 import io.ymusic.ui.resources.sound_speed
-import kmpcommon.error.runSuspendCatching
 import kmpcommon.log.Logger
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.runSuspendCatching
 
 @Composable
 fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Unit = {}) {

@@ -1,8 +1,8 @@
 package io.ymusic.dynamicengine
 
-import kmpcommon.error.CodedError
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import projectcommon.error.CodedError
 
 /**
  * A failure of an engine call, rebuilt from the structured RESET reason the JS `commandHandler`

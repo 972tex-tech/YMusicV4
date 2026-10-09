@@ -21,7 +21,15 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            api(project(":kmpCommon"))
             api(Libs.Kotlinx.serializationJson)
+            implementation(Libs.Kotlinx.coroutinesCore) // LoggingWorker channel + IO writer
+            implementation(Libs.Kotlinx.dateTime) // log line local HH.mm.ss.zzz
+        }
+
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(Libs.Kotlinx.coroutinesTest)
         }
     }
 }

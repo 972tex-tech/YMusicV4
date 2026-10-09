@@ -158,12 +158,12 @@ import io.ymusic.ui.resources.up_next
 import io.ymusic.ui.resources.video_details
 import io.ymusic.ui.resources.video_quality_auto
 import io.ymusic.ui.sponsorblock.SponsorBlockState
-import kmpcommon.error.errorCode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.errorCode
 
 internal fun formatMillis(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)

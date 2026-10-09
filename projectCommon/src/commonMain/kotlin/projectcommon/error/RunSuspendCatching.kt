@@ -1,4 +1,4 @@
-package kmpcommon.error
+package projectcommon.error
 
 import kotlin.coroutines.cancellation.CancellationException
 

@@ -10,7 +10,6 @@ import io.ymusic.player.PlaybackStatus
 import io.ymusic.player.Player
 import io.ymusic.player.QueueSource
 import io.ymusic.ui.playhistory.PlayAgainSession
-import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
 import kmpcommon.log.info
 import kmpcommon.uri.Uri
@@ -21,6 +20,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import projectcommon.error.TechnicalException
 import kotlin.time.TimeSource
 
 /**

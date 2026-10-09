@@ -6,7 +6,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.library_scan_failed
-import kmpcommon.error.errorCode
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +14,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
+import projectcommon.error.errorCode
 
 /**
  * App-level owner of a library scan/rescan, so it outlives the Library screen: a scan started from

@@ -27,6 +27,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":kmpCommon"))
+            implementation(project(":projectCommon"))
             api(Libs.Sentry.kmp)
             implementation(Libs.Kotlinx.coroutinesCore) // bindCrashReporting collects the consent flow
         }

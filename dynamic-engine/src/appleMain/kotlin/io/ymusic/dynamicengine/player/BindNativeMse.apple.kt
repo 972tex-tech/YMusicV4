@@ -3,8 +3,8 @@ package io.ymusic.dynamicengine.player
 import io.ymusic.mse.MseHostNative
 import io.ymusic.mse.MseVideoSurface
 import io.ymusic.quickjs.QuickJsRuntime
-import kmpcommon.error.TechnicalException
 import kotlinx.cinterop.ExperimentalForeignApi
+import projectcommon.error.TechnicalException
 
 @OptIn(ExperimentalForeignApi::class)
 internal actual fun bindNativeMse(runtime: QuickJsRuntime, surface: MseVideoSurface): NativeMseHost {

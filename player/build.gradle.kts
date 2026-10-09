@@ -61,7 +61,7 @@ kotlin {
                 api(project(":kmpCommon"))
                 api(Libs.Kotlinx.coroutinesCore)
                 // JsonElement runtime only (no @Serializable/codegen) — MsePlayer catalog/status JSON.
-                implementation(project(":projectCommon"))
+                api(project(":projectCommon")) // PlayerError implements projectcommon.error.CodedError
                 // `api` so KmpHttpClient (a public param of MsePlayer.create) exports through the
                 // Apple Player.framework.
                 api(project(":kmpHttp:core"))

@@ -9,12 +9,12 @@ import io.ymusic.quickjs.PipeResetException
 import io.ymusic.quickjs.asAsyncSink
 import io.ymusic.quickjs.asBufferedSource
 import kmpcommon.log.Logger
-import kmpcommon.log.markTrail
 import kmphttp.json.JsonReader
 import kmphttp.json.JsonWriter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.withContext
+import projectcommon.log.markTrail
 
 /**
  * The YouTube extraction surface — intent-level twins of the engine bundle's `yt/…` commands

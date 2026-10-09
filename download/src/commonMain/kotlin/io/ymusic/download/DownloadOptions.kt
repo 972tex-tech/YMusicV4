@@ -1,11 +1,11 @@
 package io.ymusic.download
 
 import io.ymusic.ytmedia.sabr.AdaptiveFormat
-import kmpcommon.error.CodedError
-import kmpcommon.error.TechnicalException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import projectcommon.error.CodedError
+import projectcommon.error.TechnicalException
 import projectcommon.json.boolOrNull
 import projectcommon.json.intOrNull
 import projectcommon.json.longOrNull

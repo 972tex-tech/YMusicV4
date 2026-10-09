@@ -1,6 +1,6 @@
 package io.ymusic.player
 
-import kmpcommon.error.TechnicalException
+import projectcommon.error.TechnicalException
 
 /**
  * [videoSurface] is the off-screen frame endpoint the shell renders as a Compose `Image`: libav

@@ -102,12 +102,12 @@ import io.ymusic.ui.resources.video_details_reply
 import io.ymusic.ui.resources.video_details_reply_posted
 import io.ymusic.ui.resources.video_details_sign_in_to_comment
 import io.ymusic.ui.resources.video_details_sign_in_to_rate
-import kmpcommon.error.errorCode
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.errorCode
 
 /** One comments list — a video's top-level comments, or one thread's replies. */
 internal class CommentList {

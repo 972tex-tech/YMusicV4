@@ -4,8 +4,7 @@ plugins {
     kotlin("multiplatform")
 }
 
-// Public so the inline [Logger.debug] can see it. Feature gates use each module's own
-// DEBUG_BUILD (`-Pymusic.debugLogs`). Log-evaluation DCE is `-Pproduction`.
+// Public so the inline [Logger.debug] can see it: `-Pproduction` compiles DEBUG lines out.
 val production = providers.gradleProperty("production").map(String::toBoolean).getOrElse(false)
 val buildFlagsDir = layout.buildDirectory.dir("generated/buildFlags")
 val generateBuildFlags by tasks.registering {
@@ -53,8 +52,6 @@ kotlin {
             kotlin.srcDir(generateBuildFlags)
             dependencies {
                 api(Libs.Okio.core) // kmpcommon.io: AsyncSource/AsyncSink surface okio's Buffer
-                implementation(Libs.Kotlinx.coroutinesCore) // LoggingWorker channel + IO writer
-                implementation(Libs.Kotlinx.dateTime) // log line local HH.mm.ss.zzz
             }
         }
 

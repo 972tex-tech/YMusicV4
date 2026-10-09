@@ -1,10 +1,10 @@
 package io.ymusic.download
 
-import kmpcommon.error.TechnicalException
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.runBlocking
 import okio.FileSystem
 import okio.Path.Companion.toPath
+import projectcommon.error.TechnicalException
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test

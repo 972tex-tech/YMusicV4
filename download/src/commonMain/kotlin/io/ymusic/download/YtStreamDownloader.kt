@@ -10,7 +10,6 @@ import io.ymusic.ytmedia.sabr.SabrProgress
 import io.ymusic.ytmedia.sabr.SabrSession
 import io.ymusic.ytmedia.sabr.SabrStreamSpec
 import io.ymusic.ytmedia.sabr.SabrTrack
-import kmpcommon.error.TechnicalException
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
@@ -18,6 +17,7 @@ import kmphttp.byteString
 import kotlinx.coroutines.CancellationException
 import okio.IOException
 import okio.use
+import projectcommon.error.TechnicalException
 
 /** Caption tracks to fetch: the ones a per-task [choice] names (MP3 takes them as lyrics); else the
  *  track in [preferredLanguage] or, lacking it, the video's default; else none. */

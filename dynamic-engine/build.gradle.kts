@@ -52,9 +52,9 @@ kotlin {
                 // android target — the android target resolves their jvm variants (for :core
                 // that means real OkHttp), the same rule :kmpCommon relies on.
                 api(project(":kmpHttp:core"))
-                // api: EngineError implements kmpcommon.error.CodedError; call() takes a JsonObject
+                // api: call() takes a JsonObject
                 api(project(":kmpCommon"))
-                implementation(project(":projectCommon"))
+                api(project(":projectCommon")) // EngineError implements projectcommon.error.CodedError
                 api(project(":settings"))
                 api(project(":mse"))
                 api(Libs.Kotlinx.serializationJson)

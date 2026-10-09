@@ -119,7 +119,6 @@ import io.ymusic.ui.resources.tab_music
 import io.ymusic.ui.resources.tab_recommended
 import io.ymusic.ui.resources.tab_top_tracks
 import io.ymusic.ui.sponsorblock.SponsorBlockCoordinator
-import kmpcommon.error.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -128,6 +127,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.runSuspendCatching
 import kotlin.math.abs
 import kotlin.math.roundToInt
 

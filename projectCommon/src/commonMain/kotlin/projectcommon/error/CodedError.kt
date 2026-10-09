@@ -1,4 +1,4 @@
-package kmpcommon.error
+package projectcommon.error
 
 /**
  * An error carrying a stable, boundary-crossing **code** (see AGENTS.md "Error Handling"): either a

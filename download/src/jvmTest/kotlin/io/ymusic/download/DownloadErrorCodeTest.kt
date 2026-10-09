@@ -2,10 +2,10 @@ package io.ymusic.download
 
 import io.ymusic.ytmedia.sabr.ClientInfo
 import io.ymusic.ytmedia.sabr.SabrStreamSpec
-import kmpcommon.error.TechnicalException
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import kotlinx.coroutines.runBlocking
+import projectcommon.error.TechnicalException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

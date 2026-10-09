@@ -109,7 +109,7 @@ Carriers, per hop:
 - **Kotlin**: a per-command job method opens the pipe, sends the JSON args head, reads the result,
   and on a `PipeResetException` calls `decodeEngineError(reason)` to rebuild the object as a sealed
   `EngineError` (`Network`/`Parse`/`Oom`/`Technical(E#####)`/`Other(unknown category)`), which
-  implements `kmpcommon.error.CodedError`; `Throwable.errorCode()` walks the cause chain (deepest
+  implements `projectcommon.error.CodedError`; `Throwable.errorCode()` walks the cause chain (deepest
   wins).
 - **Server**: responds `{"ok":false,"error":{…same object…}}`; the JS API wrapper rethrows it as an
   `JsEngineError` carrying the object as-is — a server-minted code + localized `userMessage` reach

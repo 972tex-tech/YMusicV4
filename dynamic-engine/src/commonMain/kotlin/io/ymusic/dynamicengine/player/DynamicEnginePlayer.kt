@@ -15,7 +15,6 @@ import io.ymusic.mse.NativeMseFrame
 import io.ymusic.quickjs.PipeResetException
 import io.ymusic.quickjs.asBufferedSource
 import io.ymusic.settings.SettingsStore
-import kmpcommon.error.CodedError
 import kmpcommon.log.Logger
 import kmpcommon.log.debug
 import kmphttp.CookieJar
@@ -28,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
+import projectcommon.error.CodedError
 import projectcommon.json.intOrNull
 import projectcommon.json.objects
 import projectcommon.json.stringOrNull

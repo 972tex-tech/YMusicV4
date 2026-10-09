@@ -4,12 +4,12 @@ import io.sentry.kotlin.multiplatform.Attachment
 import io.sentry.kotlin.multiplatform.Sentry
 import io.sentry.kotlin.multiplatform.log.SentryLogLevel
 import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
-import kmpcommon.error.codedError
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
-import kmpcommon.log.FileAttachment
 import kmpcommon.log.Logger
-import kmpcommon.log.trailMark
+import projectcommon.error.codedError
+import projectcommon.log.FileAttachment
+import projectcommon.log.trailMark
 
 /**
  * The app's root [Logger] over Sentry: an INFO+ [log] is a Sentry Log (attributes = the crumb-tag

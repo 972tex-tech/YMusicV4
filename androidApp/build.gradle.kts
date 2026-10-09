@@ -110,6 +110,7 @@ dependencies {
     implementation(Libs.AndroidX.activityCompose)
     implementation(Libs.Kotlinx.coroutinesAndroid)
     implementation(project(":kmpHttp:core"))
+    implementation(project(":projectCommon")) // LoggingWorker/FileLogger
     implementation(project(":remote-config"))
     implementation(project(":yt-media")) // the player-cache router (LocalMediaProxy) for the WebView
     implementation(Libs.Media3.session)

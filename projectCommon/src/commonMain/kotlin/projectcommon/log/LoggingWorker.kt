@@ -1,7 +1,10 @@
 @file:OptIn(ExperimentalTime::class)
 
-package kmpcommon.log
+package projectcommon.log
 
+import kmpcommon.log.Crumb
+import kmpcommon.log.CrumbLogger
+import kmpcommon.log.Logger
 import kmpcommon.nowMs
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope

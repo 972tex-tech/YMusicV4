@@ -1,28 +1,22 @@
 package kmpcommon.log
 
 /**
- * One scope hop in a logger's trail. [tag] is a stable, code-location-like name
- * (`fetchHomeFeed`, `http`) — grouping keys are built from tag paths, so a variable tag silently
- * shatters crash grouping. Anything variable (ids, urls, params) goes in [prop], whose values must
- * be JSON primitives (String/Number/Boolean) — they cross the JS wire and Sentry serialization.
+ * One scope hop in a logger's trail. [tag] is a stable, code-location-like name (`fetch`, `http`)
+ * a sink can group by; anything variable (ids, urls, params) goes in [prop], whose values should be
+ * JSON primitives (String/Number/Boolean) so any sink can serialize them.
  */
 data class Crumb(val tag: String, val prop: Map<String, Any>? = null)
 
 /**
- * An immutable scope-trail logger the app wires to its platform sink (logcat / stdout / Sentry /
- * [FileLogger]). Library code logs through it; a `null` `Logger` means logging is off.
+ * An immutable scope-trail logger the host application wires to its sink. Library code logs
+ * through it; a `null` `Logger` means logging is off.
  *
- * [fork] snapshots this trail plus one hop and returns a new logger — the trail is the *logical
- * async stack* (AGENTS.md "Logging context"): each layer forks its own hop and hands the child down,
- * so a birth-site log deep in a host protocol carries the caller's whole story. Forking emits
- * nothing; only [log] does. A job origin should put a natural id in the fork's prop
- * (`fork("task", mapOf("id" to task.id))`) so concurrent jobs' logs stay separable.
+ * [fork] returns a new logger carrying this trail plus one hop — a *logical async stack*: each
+ * layer forks its own hop and hands the child down, so a log deep in the call graph carries the
+ * caller's context. Forking emits nothing; only [log] does.
  *
- * [log] is a breadcrumb: WARN at birth sites with the real [Throwable] (full native fidelity — a
- * stringified error round-tripped across a boundary has lost its stack). [captureError] is the one
- * crash record of a FAILED job — called exactly once, in the frame that declares the job dead; a
- * failure the caller recovers from must never be captured (crash-free rate). Nothing logged here is
- * ever shown to the user — that's the error code's job (AGENTS.md "Error Handling").
+ * [log] records a line, with the real [Throwable] when there is one. [captureError] reports a
+ * failure the caller could not recover from; the default just logs it at ERROR.
  */
 interface Logger {
     /** The scope trail this logger carries (root → leaf). */
@@ -40,16 +34,6 @@ interface Logger {
 
     enum class Level { DEBUG, INFO, WARN, ERROR }
 }
-
-/**
- * A local file [Logger.captureError] should attach by pathname so the blob is never copied onto
- * the heap.
- */
-data class FileAttachment(
-    val path: String,
-    val filename: String,
-    val contentType: String = "text/plain",
-)
 
 @Suppress("NOTHING_TO_INLINE")
 inline fun Logger.info(message: String, error: Throwable? = null) = log(Logger.Level.INFO, message, error)
@@ -69,37 +53,6 @@ abstract class CrumbLogger protected constructor(
         if (crumbs.isEmpty()) this else fork(this.crumbs + crumbs)
 
     protected val path: String by lazy(LazyThreadSafetyMode.NONE) { crumbs.joinToString("/") { it.tag } }
-}
-
-/**
- * A trail riding a throw: the logger holds the story but a [Throwable] unwinds the stack without
- * it, so the frame that lets an exception escape stamps its trail on as a suppressed marker —
- * the value channel (code/message/cause) stays untouched, and [Logger.captureError] implementations
- * prefer the stamped trail over the catch site's shallower one. The message renders the path so
- * the marker stays readable wherever suppressed exceptions surface.
- */
-class TrailMark internal constructor(val trail: List<Crumb>) :
-    Exception(trail.joinToString("/") { it.tag })
-
-/** Stamp [logger]'s trail onto this in-flight throwable. First mark wins — the deepest frame
- *  stamps first as the stack unwinds (the deepest-wins rule, like `Throwable.codedError`). */
-fun Throwable.markTrail(logger: Logger?): Throwable {
-    if (logger != null && suppressedExceptions.none { it is TrailMark }) {
-        addSuppressed(TrailMark(logger.trail))
-    }
-    return this
-}
-
-/** The deepest trail stamped anywhere on this throwable's cause chain, or null. */
-fun Throwable.trailMark(): List<Crumb>? {
-    var deepest: List<Crumb>? = null
-    var t: Throwable? = this
-    var hops = 0
-    while (t != null && hops++ < 100) {
-        for (s in t.suppressedExceptions) if (s is TrailMark) deepest = s.trail
-        t = t.cause
-    }
-    return deepest
 }
 
 /**

@@ -1,6 +1,5 @@
 package io.ymusic.download
 
-import kmpcommon.error.TechnicalException
 import kmpcommon.uri.Uri
 import kmpcommon.uri.fileUri
 import okio.BufferedSink
@@ -11,6 +10,7 @@ import okio.Path.Companion.toPath
 import okio.Source
 import okio.buffer
 import okio.use
+import projectcommon.error.TechnicalException
 
 /**
  * [DownloadStorage] over an okio [FileSystem]. Scratch files live under [scratchDir]; [publish] moves the

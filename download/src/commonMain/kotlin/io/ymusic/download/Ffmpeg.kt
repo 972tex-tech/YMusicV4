@@ -1,11 +1,11 @@
 package io.ymusic.download
 
-import kmpcommon.error.TechnicalException
 import kmpffmpeg.KmpProcessBuilder
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import okio.buffer
+import projectcommon.error.TechnicalException
 
 /** One subtitle track to mux into a video container: its local [path], BCP-47/ISO-639-1 [language]
  *  (e.g. `en`, `pt-BR`) and an optional display [title]. */
