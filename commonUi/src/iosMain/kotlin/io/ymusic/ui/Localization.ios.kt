@@ -11,7 +11,8 @@ internal actual fun applyUiLocale(tag: String?) {
     if (tag == null) {
         defaults.removeObjectForKey("AppleLanguages")
     } else {
-        defaults.setObject(listOf(tag), forKey = "AppleLanguages")
+        // The app's tags are YouTube's hl codes; iOS wants the modern Hebrew code.
+        defaults.setObject(listOf(if (tag == "iw") "he" else tag), forKey = "AppleLanguages")
     }
 }
 
@@ -19,3 +20,6 @@ internal actual fun systemLanguageTag(): String {
     val identifier = NSLocale.currentLocale.localeIdentifier.replace('-', '_')
     return identifier.substringBefore('@').substringBefore('_')
 }
+
+internal actual fun systemLocaleTag(): String =
+    NSLocale.currentLocale.localeIdentifier.substringBefore('@').replace('_', '-')

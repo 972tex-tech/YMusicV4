@@ -9,11 +9,62 @@ import io.ymusic.settings.ensureUiLanguage
  */
 class UiLanguage(val tag: String, val nativeName: String)
 
-/** The locales that actually have a `composeResources/values-*` translation, plus the base. */
+/**
+ * The locales that actually have a `composeResources/values-*` translation, plus the base. [UiLanguage.tag]
+ * doubles as YouTube's hl, so it uses YouTube's codes: Hebrew is `iw` (resolves to values-he or values-iw
+ * — both ship, as JVM/iOS report `he` and Android `iw`), Indonesian `id` (values-id / values-in alike),
+ * Chinese `zh-CN` / `zh-TW`.
+ */
 val UiLanguages: List<UiLanguage> = listOf(
     UiLanguage("en", "English"),
+    UiLanguage("af", "Afrikaans"),
+    UiLanguage("az", "Azərbaycan"),
+    UiLanguage("id", "Bahasa Indonesia"),
+    UiLanguage("ms", "Bahasa Melayu"),
+    UiLanguage("ca", "Català"),
+    UiLanguage("cs", "Čeština"),
+    UiLanguage("de", "Deutsch"),
+    UiLanguage("et", "Eesti"),
+    UiLanguage("es", "Español"),
+    UiLanguage("eu", "Euskara"),
+    UiLanguage("fil", "Filipino"),
+    UiLanguage("fr", "Français"),
+    UiLanguage("hr", "Hrvatski"),
+    UiLanguage("sw", "Kiswahili"),
+    UiLanguage("hu", "Magyar"),
+    UiLanguage("nl", "Nederlands"),
+    UiLanguage("pl", "Polski"),
+    UiLanguage("pt", "Português"),
+    UiLanguage("ro", "Română"),
+    UiLanguage("sk", "Slovenčina"),
+    UiLanguage("so", "Soomaali"),
+    UiLanguage("it", "Italiano"),
     UiLanguage("vi", "Tiếng Việt"),
+    UiLanguage("tr", "Türkçe"),
+    UiLanguage("el", "Ελληνικά"),
+    UiLanguage("bg", "Български"),
+    UiLanguage("mk", "Македонски"),
+    UiLanguage("ru", "Русский"),
+    UiLanguage("sr", "Српски"),
+    UiLanguage("uk", "Українська"),
+    UiLanguage("hy", "Հայերեն"),
+    UiLanguage("iw", "עברית"),
     UiLanguage("ar", "العربية"),
+    UiLanguage("fa", "فارسی"),
+    UiLanguage("ne", "नेपाली"),
+    UiLanguage("mr", "मराठी"),
+    UiLanguage("hi", "हिन्दी"),
+    UiLanguage("bn", "বাংলা"),
+    UiLanguage("gu", "ગુજરાતી"),
+    UiLanguage("ta", "தமிழ்"),
+    UiLanguage("kn", "ಕನ್ನಡ"),
+    UiLanguage("ml", "മലയാളം"),
+    UiLanguage("si", "සිංහල"),
+    UiLanguage("th", "ไทย"),
+    UiLanguage("ko", "한국어"),
+    UiLanguage("ja", "日本語"),
+    UiLanguage("zh-CN", "简体中文"),
+    UiLanguage("zh-TW", "繁體中文"),
 )
 
 /**
@@ -26,16 +77,35 @@ internal expect fun applyUiLocale(tag: String?)
 /** The device's own UI language subtag ("vi"), unaffected by [applyUiLocale] overrides. */
 internal expect fun systemLanguageTag(): String
 
+/** The device's full UI locale as a BCP-47 tag ("zh-Hant-TW"), unaffected by [applyUiLocale] overrides. */
+internal expect fun systemLocaleTag(): String
+
 /**
  * The app language for an unseeded install: the device language when we ship its translation, else
  * English (the base). Resolved and PERSISTED once on first launch — the app language is a concrete
  * tag from then on (it doubles as the content language hl), and later device-language changes are
  * deliberately ignored.
  */
-internal fun defaultUiLanguageTag(): String {
-    val device = systemLanguageTag().substringBefore('-').substringBefore('_').lowercase()
-    return UiLanguages.firstOrNull { it.tag == device }?.tag ?: "en"
+internal fun defaultUiLanguageTag(): String = uiLanguageFor(systemLocaleTag())
+
+/** Maps a device locale tag onto a [UiLanguages] tag: legacy/modern code pairs fold together and
+ *  Chinese splits by script/region (Hant or TW/HK/MO → Traditional). */
+internal fun uiLanguageFor(localeTag: String): String {
+    val parts = localeTag.replace('_', '-').split('-').filter { it.isNotEmpty() }
+    val language = when (val primary = parts.firstOrNull()?.lowercase().orEmpty()) {
+        "he" -> "iw"
+        "in" -> "id"
+        "tl" -> "fil"
+        "zh" -> {
+            val traditional = parts.drop(1).any { it.equals("Hant", ignoreCase = true) || it.uppercase() in TraditionalChineseRegions }
+            if (traditional) "zh-TW" else "zh-CN"
+        }
+        else -> primary
+    }
+    return UiLanguages.firstOrNull { it.tag == language }?.tag ?: "en"
 }
+
+private val TraditionalChineseRegions = setOf("TW", "HK", "MO")
 
 /**
  * Seed the app language if unset (see [defaultUiLanguageTag]) and return the concrete tag. Shells

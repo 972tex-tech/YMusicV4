@@ -12,3 +12,5 @@ internal actual fun applyUiLocale(tag: String?) {
 }
 
 internal actual fun systemLanguageTag(): String = systemDefault.language
+
+internal actual fun systemLocaleTag(): String = systemDefault.toLanguageTag()
