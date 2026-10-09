@@ -1,5 +1,6 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.nio.file.Files
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -71,21 +72,77 @@ if (ffmpegForDev != null) {
         }
 }
 
-// Host ffmpeg pack (CLI + libav DSOs) into compose app-resources. Rpath finds the siblings;
-// do not set LD_LIBRARY_PATH.
+// Host ffmpeg pack (CLI + libav DSOs) plus the MSE JNI that links the same libav, into compose
+// app-resources — the one copy of each library a package carries (:mse's jar copy is stripped
+// below). Each library ships once, under the soname the CLI and libav itself link against: the
+// pack's other names are symlinks, which a copy would turn into full duplicates.
 val ffmpegPackedName = FfmpegRelease.hostCliName()
 val ffmpegAppResources = layout.buildDirectory.dir("ffmpegAppResources")
+val mseJniName: String = System.mapLibraryName("mseffmpegjni")
 val stagePackedFfmpeg by tasks.registering(Copy::class) {
-    dependsOn(rootProject.tasks.named("syncFfmpegHost"))
+    dependsOn(rootProject.tasks.named("syncFfmpegHost"), ":mse:bundleMseJniLib")
+    val stagedDir = ffmpegAppResources.map { it.dir("common") }
+    // A stale stage would keep names this one no longer produces.
+    doFirst { stagedDir.get().asFile.deleteRecursively() }
     if (FfmpegRelease.hostAsset() != null) {
         from(FfmpegRelease.hostDir(project)) {
             exclude(".tars", ".tars/**", "*.tar.gz", "*.part")
+            eachFile {
+                if (Files.isSymbolicLink(file.toPath())) {
+                    exclude()
+                } else {
+                    // libavcodec.63.2.100.dylib → libavcodec.63.dylib; libavcodec.so.63.2.100 → libavcodec.so.63
+                    name = name.replace(Regex("""^(lib\w+)\.(\d+)\.\d+\.\d+\.dylib$"""), "$1.$2.dylib")
+                        .replace(Regex("""^(lib\w+\.so\.\d+)\.\d+\.\d+$"""), "$1")
+                }
+            }
         }
-        into(ffmpegAppResources.map { it.dir("common") })
+        from(project(":mse").layout.buildDirectory.dir("generated/mseJniResources/jni")) {
+            include("*/$mseJniName")
+            eachFile { path = name }
+        }
+        includeEmptyDirs = false
+        into(stagedDir)
         doLast {
-            ffmpegAppResources.get().asFile.resolve("common/$ffmpegPackedName").setExecutable(true)
+            val dir = stagedDir.get().asFile
+            dir.resolve(ffmpegPackedName).setExecutable(true)
+            val jni = dir.resolve(mseJniName)
+            if (org.gradle.internal.os.OperatingSystem.current().isMacOsX && jni.isFile) relinkMacJni(jni)
         }
     }
+}
+
+// jpackage copies app resources without their mode bits, so the bundled CLI arrives unexecutable and
+// the app falls back to whatever ffmpeg is on PATH. Installers are made from this image.
+tasks.matching { it.name == "createDistributable" || it.name == "createReleaseDistributable" }.configureEach {
+    val imageDir = layout.buildDirectory.dir("compose/binaries")
+    doLast {
+        imageDir.get().asFile.walkTopDown()
+            .filter { it.isFile && it.name == ffmpegPackedName && it.parentFile.name == "resources" }
+            .forEach { check(it.setExecutable(true, false)) { "could not mark $it executable" } }
+    }
+}
+
+/**
+ * Point the MSE JNI at the libav sonames staged beside it (it was linked against the full-version
+ * names), and drop absolute rpaths the build machine leaked into it — only @loader_path is valid
+ * in a package. Re-signed ad hoc after: arm64 refuses to load a dylib whose signature is broken.
+ */
+fun relinkMacJni(jni: File) {
+    fun exec(vararg command: String): String {
+        val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+        val output = process.inputStream.readBytes().decodeToString()
+        check(process.waitFor() == 0) { "${command.joinToString(" ")} failed: $output" }
+        return output
+    }
+    val fullVersion = Regex("""@rpath/(lib\w+)\.(\d+)\.\d+\.\d+\.dylib""")
+    val changes = fullVersion.findAll(exec("otool", "-L", jni.path))
+        .flatMap { listOf("-change", it.value, "@rpath/${it.groupValues[1]}.${it.groupValues[2]}.dylib") }
+    val absoluteRpaths = Regex("""(?m)^\s+path (/\S+) \(offset""").findAll(exec("otool", "-l", jni.path))
+        .flatMap { listOf("-delete_rpath", it.groupValues[1]) }
+    val args = (changes + absoluteRpaths).toList()
+    if (args.isNotEmpty()) exec("install_name_tool", *args.toTypedArray(), jni.path)
+    exec("codesign", "--force", "--sign", "-", jni.path)
 }
 
 val generateBuildConfig by tasks.registering {
@@ -315,7 +372,9 @@ tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
         val jnaNativeDir = Regex("^com/sun/jna/[a-z0-9]+-[a-z0-9-]+/")
         val skikoKeep = "libskiko-$hostOs-" + (if (hostArm64) "arm64" else "x64")
         val jniKeep = "jni/${hostOs}_" + (if (hostArm64) "aarch64" else "x64") + "/"
-        fun isForeignNative(entry: String): Boolean = when {
+        fun isForeignNative(jar: String, entry: String): Boolean = when {
+            // Its JNI and libav ship once, in app resources (stagePackedFfmpeg).
+            jar.startsWith("mse-jvm") -> entry.startsWith("jni/")
             entry.startsWith("org/sqlite/native/") -> !entry.startsWith(sqliteKeep)
             jnaNativeDir.containsMatchIn(entry) -> !entry.startsWith(jnaKeep)
             entry.startsWith("libskiko-") -> !entry.startsWith(skikoKeep)
@@ -331,7 +390,7 @@ tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
             ZipFile(jar).use { zip ->
                 ZipOutputStream(tmp.outputStream().buffered()).use { out ->
                     for (entry in zip.entries()) {
-                        if (entry.isDirectory || isForeignNative(entry.name)) continue
+                        if (entry.isDirectory || isForeignNative(jar.name, entry.name)) continue
                         // 1980-01-01, the earliest a zip entry can express.
                         out.putNextEntry(ZipEntry(entry.name).apply { time = 315_532_800_000L })
                         zip.getInputStream(entry).use { it.copyTo(out) }

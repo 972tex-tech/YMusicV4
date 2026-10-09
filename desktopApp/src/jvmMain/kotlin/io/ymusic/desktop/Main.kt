@@ -207,6 +207,7 @@ private val rootLogger: Logger =
 
 fun main() {
     defaultLinuxSoftwareRendering()
+    useBundledMseNatives()
     // Opened before anything else: crash-reporting consent lives here.
     val settings = kotlinx.coroutines.runBlocking {
         val dir = ymusicDataDir().apply { mkdirs() }
@@ -1408,6 +1409,12 @@ internal fun resolveFfmpeg(): String? {
     val dirs = System.getenv("PATH").orEmpty().split(File.pathSeparator) +
         listOf("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin")
     return dirs.asSequence().map { File(it, name) }.firstOrNull { it.canExecute() }?.absolutePath
+}
+
+/** A packaged build ships the MSE JNI beside the libav it links, in app resources, not in its jar. */
+private fun useBundledMseNatives() {
+    val dir = System.getProperty("compose.application.resources.dir") ?: return
+    if (File(dir, System.mapLibraryName("mseffmpegjni")).isFile) System.setProperty("mse.native.dir", dir)
 }
 
 /** The ffmpeg shipped inside a packaged build (`compose.application.resources.dir`). */
