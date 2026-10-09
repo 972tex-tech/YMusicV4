@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Image
@@ -46,14 +47,20 @@ import io.ymusic.dynamicengine.yt.YtPageHeader
 import io.ymusic.dynamicengine.yt.YtPageTab
 import io.ymusic.dynamicengine.yt.extractChannelDetail
 import io.ymusic.dynamicengine.yt.extractPlaylistDetail
+import io.ymusic.dynamicengine.yt.savePlaylist
 import io.ymusic.dynamicengine.yt.subscribeChannel
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_add_to_playlist
 import io.ymusic.ui.resources.cd_download
+import io.ymusic.ui.resources.cd_remove_playlist_from_library
+import io.ymusic.ui.resources.cd_save_playlist
 import io.ymusic.ui.resources.cd_share
 import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.channel_sign_in_to_subscribe
 import io.ymusic.ui.resources.detail_playlist
+import io.ymusic.ui.resources.playlist_removed
+import io.ymusic.ui.resources.playlist_saved
+import io.ymusic.ui.resources.playlist_sign_in_to_save
 import io.ymusic.ui.resources.subscribe
 import io.ymusic.ui.resources.subscribed
 import kmpcommon.log.Logger
@@ -70,19 +77,53 @@ import projectcommon.error.errorCode
  * while the page loads.
  */
 class PlaylistSession(
-    graph: AppGraph,
-    scope: CoroutineScope,
+    private val graph: AppGraph,
+    private val scope: CoroutineScope,
     val url: String,
     val item: YtFeedItem,
     parentLog: Logger?,
 ) {
     internal val log = parentLog?.fork("PlaylistDetail", mapOf("url" to url))
+
+    /** Whether the playlist is in the viewer's library; null while unknown or signed out. Flips once
+     *  the server confirms. */
+    var saved by mutableStateOf<Boolean?>(null)
+        private set
+    var saving by mutableStateOf(false)
+        private set
+
+    /** A finished save/unsave: the new state on success, or the failure's code — for the screen to
+     *  show once and clear. */
+    var saveResult by mutableStateOf<Result<Boolean>?>(null)
+
     val feed = FeedSession(scope, log) { continuation ->
-        graph.engines.extractPlaylistDetail(url, continuation = continuation, logger = log)
+        graph.engines.extractPlaylistDetail(url, continuation = continuation, logger = log).also { page ->
+            page.pageHeader?.takeIf { it.savePlaylistId != null }?.let { saved = it.saved }
+        }
     }
 
     init {
         feed.pager.refresh()
+    }
+
+    fun toggleSaved(playlistId: String) {
+        val current = saved ?: return
+        if (saving) return
+        saving = true
+        scope.launch {
+            try {
+                graph.engines.savePlaylist(playlistId, !current, log)
+                saved = !current
+                saveResult = Result.success(!current)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "save playlist failed", error)
+                saveResult = Result.failure(error)
+            } finally {
+                saving = false
+            }
+        }
     }
 
     fun close() {
@@ -108,6 +149,18 @@ fun PlaylistDetailScreen(
     val state by s.feed.pager.state.collectAsState()
     val ready = state as? Pager.State.Ready
     val videos = ready?.sections.orEmpty().flatMap { it.items }.filter { it.kind == YtFeedItem.KIND_VIDEO }
+    s.saveResult?.let { result ->
+        val snackbar = LocalSnackbar.current
+        val message = when {
+            result.isFailure -> errorMessage(result.exceptionOrNull()?.errorCode() ?: "E20104")
+            result.getOrNull() == true -> stringResource(Res.string.playlist_saved)
+            else -> stringResource(Res.string.playlist_removed)
+        }
+        LaunchedEffect(result, message) {
+            snackbar(message)
+            s.saveResult = null
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         DetailAppBar(stringResource(Res.string.detail_playlist), onBack, onSearch)
@@ -135,6 +188,9 @@ fun PlaylistDetailScreen(
                         )
                     },
                     onDownload = onDownload?.let { open -> { open(title, s.feed.pager) } },
+                    save = ready?.pageHeader?.savePlaylistId?.let { playlistId ->
+                        { SavePlaylistToggle(s.saved, s.saving) { s.toggleSaved(playlistId) } }
+                    },
                 )
             },
             listState = s.feed.listState,
@@ -144,9 +200,15 @@ fun PlaylistDetailScreen(
 
 /** Title + meta, the actions row (design chrome until playlists/share/downloads land) and the
  *  shuffle FAB, closed by the 16dp-inset divider. Shared by the WEB playlist detail and the YT Music
- *  album/playlist detail so both read identically. */
+ *  album/playlist detail so both read identically. [save] takes the add-to-playlist chrome's slot. */
 @Composable
-internal fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit, onDownload: (() -> Unit)? = null) {
+internal fun PlaylistHeader(
+    title: String,
+    meta: String?,
+    onShuffle: () -> Unit,
+    onDownload: (() -> Unit)? = null,
+    save: (@Composable () -> Unit)? = null,
+) {
     Column(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
             Text(
@@ -166,7 +228,11 @@ internal fun PlaylistHeader(title: String, meta: String?, onShuffle: () -> Unit,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ActionIcon(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(Res.string.cd_add_to_playlist), enabled = false, onClick = {})
+            if (save != null) {
+                save()
+            } else {
+                ActionIcon(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(Res.string.cd_add_to_playlist), enabled = false, onClick = {})
+            }
             ActionIcon(Icons.Outlined.Share, stringResource(Res.string.cd_share), enabled = false, onClick = {})
             ActionIcon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), enabled = onDownload != null, onClick = { onDownload?.invoke() })
             Box(Modifier.weight(1f))
@@ -474,4 +540,24 @@ private fun SubscribePill(subscribed: Boolean?, subscribing: Boolean, onToggle: 
             CircularProgressIndicator(Modifier.size(14.dp), color = contentColor, strokeWidth = 2.dp)
         }
     }
+}
+
+/** Save to / remove from the YouTube library: accent check when saved, a spinner while [saving];
+ *  signed out ([saved] null), a tap explains that saving needs sign-in. */
+@Composable
+private fun SavePlaylistToggle(saved: Boolean?, saving: Boolean, onToggle: () -> Unit) {
+    if (saving) {
+        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(18.dp), color = DesignColors.InkMuted, strokeWidth = 2.dp)
+        }
+        return
+    }
+    val snackbar = LocalSnackbar.current
+    val signIn = stringResource(Res.string.playlist_sign_in_to_save)
+    ActionIcon(
+        if (saved == true) Icons.AutoMirrored.Filled.PlaylistAddCheck else Icons.AutoMirrored.Filled.PlaylistAdd,
+        stringResource(if (saved == true) Res.string.cd_remove_playlist_from_library else Res.string.cd_save_playlist),
+        tint = if (saved == true) DesignColors.Accent else DesignColors.InkMuted,
+        onClick = { if (saved == null) snackbar(signIn) else onToggle() },
+    )
 }

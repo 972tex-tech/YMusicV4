@@ -102,6 +102,11 @@
     <string name="subscribe">Subscribe</string>
     <string name="subscribed">Subscribed</string>
     <string name="channel_sign_in_to_subscribe">Sign in to subscribe to this channel</string>
+    <string name="cd_save_playlist">Save playlist</string>
+    <string name="cd_remove_playlist_from_library">Remove from library</string>
+    <string name="playlist_sign_in_to_save">Sign in to save this playlist</string>
+    <string name="playlist_saved">Saved to your library</string>
+    <string name="playlist_removed">Removed from your library</string>
     <string name="cd_add_to_playlist">Add to playlist</string>
     <string name="cd_share">Share</string>
     <string name="cd_music_video">Music</string>

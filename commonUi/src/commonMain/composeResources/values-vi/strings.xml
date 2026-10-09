@@ -80,6 +80,11 @@
     <string name="subscribe">Đăng ký</string>
     <string name="subscribed">Đã đăng ký</string>
     <string name="channel_sign_in_to_subscribe">Đăng nhập để đăng ký kênh này</string>
+    <string name="cd_save_playlist">Lưu danh sách phát</string>
+    <string name="cd_remove_playlist_from_library">Xóa khỏi thư viện</string>
+    <string name="playlist_sign_in_to_save">Đăng nhập để lưu danh sách phát này</string>
+    <string name="playlist_saved">Đã lưu vào thư viện</string>
+    <string name="playlist_removed">Đã xóa khỏi thư viện</string>
     <string name="cd_add_to_playlist">Thêm vào danh sách phát</string>
     <string name="cd_share">Chia sẻ</string>
     <string name="cd_music_video">Âm nhạc</string>

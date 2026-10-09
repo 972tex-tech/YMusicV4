@@ -62,6 +62,7 @@ E20100 - replying to a comment failed with an uncoded error (commonUi VideoDetai
 E20101 - deleting a comment failed with an uncoded error (commonUi VideoDetailsDialog.kt)
 E20102 - editing a comment failed with an uncoded error (commonUi VideoDetailsDialog.kt)
 E20103 - subscribing to a channel failed with an uncoded error (commonUi DetailScreens.kt)
+E20104 - saving a playlist to the library failed with an uncoded error (commonUi DetailScreens.kt)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 

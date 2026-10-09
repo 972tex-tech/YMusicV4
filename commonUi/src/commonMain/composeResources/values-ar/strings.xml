@@ -80,6 +80,11 @@
     <string name="subscribe">اشتراك</string>
     <string name="subscribed">مشترك</string>
     <string name="channel_sign_in_to_subscribe">سجّل الدخول للاشتراك في هذه القناة</string>
+    <string name="cd_save_playlist">حفظ قائمة التشغيل</string>
+    <string name="cd_remove_playlist_from_library">إزالة من المكتبة</string>
+    <string name="playlist_sign_in_to_save">سجّل الدخول لحفظ قائمة التشغيل هذه</string>
+    <string name="playlist_saved">تم الحفظ في مكتبتك</string>
+    <string name="playlist_removed">تمت الإزالة من مكتبتك</string>
     <string name="cd_add_to_playlist">إضافة إلى قائمة التشغيل</string>
     <string name="cd_share">مشاركة</string>
     <string name="cd_music_video">موسيقى</string>
