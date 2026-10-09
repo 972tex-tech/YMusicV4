@@ -254,6 +254,16 @@ fun main() {
                 }
             }.onFailure { rootLogger.fork("dock").log(Logger.Level.WARN, "dock icon set failed", it) }
         }
+        if (isLinux) {
+            val logo = painterResource(io.ymusic.desktop.resources.Res.drawable.ymusic_logo_dock)
+            LaunchedEffect(logo) {
+                val image = logo.rasterize(256)
+                withContext(Dispatchers.IO) {
+                    runCatching { installLinuxDesktopEntry(image) }
+                        .onFailure { rootLogger.fork("desktop-entry").log(Logger.Level.WARN, "desktop entry install failed", it) }
+                }
+            }
+        }
         var graph by remember { mutableStateOf<AppGraph?>(null) }
         // Hoisted out of the window: whether the window may show at all depends on it.
         var bootError by remember { mutableStateOf<String?>(null) }

@@ -262,17 +262,7 @@ fun PlayerTray(icon: Painter, onClick: (screenX: Int) -> Unit) {
                 Size(size.width.toFloat() * scale, size.height.toFloat() * scale),
             )
             val image = if (isLinux) {
-                // X11's tray peer paints transparent pixels in its own (white) background, so the
-                // disc is scaled to cover the whole cell and the corners cropped away.
-                val bleed = kotlin.math.ceil(size.width * kotlin.math.sqrt(2.0)).toInt()
-                val inset = (bleed - size.width) / 2
-                val disc = icon.toAwtImage(density, LayoutDirection.Ltr, Size(bleed.toFloat(), bleed.toFloat()))
-                java.awt.image.BufferedImage(size.width, size.height, java.awt.image.BufferedImage.TYPE_INT_ARGB).apply {
-                    createGraphics().apply {
-                        drawImage(disc, -inset, -inset, null)
-                        dispose()
-                    }
-                }
+                linuxTrayImage(icon, size.width)
             } else {
                 java.awt.image.BaseMultiResolutionImage(render(1), render(2))
             }
@@ -286,11 +276,26 @@ fun PlayerTray(icon: Painter, onClick: (screenX: Int) -> Unit) {
                 it.add(this)
             }
         }
-        onDispose { trayIcon?.let { t -> tray?.remove(t) } }
+        val embed = if (isLinux && trayIcon != null) linuxTrayEmbedFrame() else null
+        val fit = object : java.awt.event.ComponentAdapter() {
+            override fun componentResized(e: java.awt.event.ComponentEvent) {
+                val px = minOf(e.component.width, e.component.height)
+                if (px > 0) trayIcon?.image = linuxTrayImage(icon, px)
+            }
+        }
+        embed?.let { frame ->
+            frame.addComponentListener(fit)
+            fit.componentResized(java.awt.event.ComponentEvent(frame, java.awt.event.ComponentEvent.COMPONENT_RESIZED))
+        }
+        onDispose {
+            embed?.removeComponentListener(fit)
+            trayIcon?.let { t -> tray?.remove(t) }
+        }
     }
 }
 
-private val isLinux = "linux" in System.getProperty("os.name").orEmpty().lowercase()
+/** X11's tray peer paints transparent pixels in its own (white) background: the disc covers the cell. */
+private fun linuxTrayImage(icon: Painter, px: Int) = icon.rasterize(px, scale = kotlin.math.sqrt(2f))
 
 private const val WIDTH_DP = 340
 private const val HEIGHT_DP = 132
