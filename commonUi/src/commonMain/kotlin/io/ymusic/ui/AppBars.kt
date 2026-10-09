@@ -213,12 +213,12 @@ internal fun ElevatedBarColumn(bottomShadow: Boolean = true, content: @Composabl
  * A single indicator reads each tab's (offset, width) via [onGloballyPositioned] and animates, so it
  * glides rather than snapping; [dragProgress] (−1..1 from the content swipe) leans it toward the
  * neighbour in the drag direction. The row scrolls when the tabs overflow. [label] renders one tab's
- * content (text or icon) given its active state. Sit it inside an [ElevatedBarColumn] + a
+ * content (text or icon) given its active state; a null [selected] draws no underline. Sit it inside an [ElevatedBarColumn] + a
  * [HorizontalDivider] so it reads as one continuous surface with the app bar (see Library / YT Music).
  */
 @Composable
-internal fun <T> UnderlineTabRow(
-    selected: T,
+internal fun <T : Any> UnderlineTabRow(
+    selected: T?,
     entries: List<T>,
     dragProgress: Float,
     onSelect: (T) -> Unit,
@@ -252,7 +252,7 @@ internal fun <T> UnderlineTabRow(
             // Interpolate toward the neighbour in the drag direction so the underline follows the swipe;
             // at rest (dragProgress 0) it sits on the selected tab. animateDpAsState smooths the
             // hand-off when the drag releases or commits.
-            val cur = bounds[selected]
+            val cur = selected?.let { bounds[it] }
             val i = entries.indexOf(selected)
             val neighbor = bounds[entries[(i + if (dragProgress > 0f) 1 else -1).coerceIn(0, entries.lastIndex)]]
             val frac = abs(dragProgress) * TabIndicatorDragTravel
@@ -440,41 +440,14 @@ internal fun DetailAppBar(
     bottomContent?.invoke()
 }
 
-/** Uppercase text tabs with the accent underline; scrolls horizontally when they overflow, with an
- *  edge fade + chevron on the cut-off side(s) (click pages the row — desktop mice can't drag it). */
+/** A channel's tabs in the shared [UnderlineTabRow] style. */
 @Composable
 internal fun ChannelTabRow(tabs: List<YtPageTab>, activeUrl: String?, onSelect: (YtPageTab) -> Unit) {
-    val scrollState = rememberScrollState()
     // The page was opened by a link that matches a tab → highlight it; opened by any other link
     // (e.g. a bare channel item) → fall back to the server's selected flag.
-    val anyMatch = tabs.any { it.url != null && it.url == activeUrl }
-    HorizontalOverflowBox(scrollState) {
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(scrollState).padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
-        ) {
-            tabs.forEach { tab ->
-                val active = if (anyMatch) tab.url == activeUrl else tab.selected
-                Column(Modifier.clickable { onSelect(tab) }, horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        tab.title.uppercase(),
-                        style = TextStyle(
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (active) DesignColors.Accent else DesignColors.InkFaint,
-                        ),
-                        maxLines = 1,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .background(if (active) DesignColors.Accent else Color.Transparent, RoundedCornerShape(2.dp)),
-                    )
-                }
-            }
-        }
+    val selected = tabs.firstOrNull { it.url != null && it.url == activeUrl } ?: tabs.firstOrNull { it.selected }
+    UnderlineTabRow(selected, tabs, dragProgress = 0f, onSelect) { tab, active ->
+        TabLabel(tab.title, active)
     }
 }
 

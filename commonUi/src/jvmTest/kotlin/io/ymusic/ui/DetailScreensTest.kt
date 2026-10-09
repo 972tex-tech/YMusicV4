@@ -193,15 +193,15 @@ class DetailScreensTest {
                     }
                 }
 
-                // Header + server tabs (uppercase; the expandable search tab is dropped).
+                // Header + server tabs (the expandable search tab is dropped).
                 waitUntilAtLeastOneExists(hasText("11.8M subscribers · 221 videos"), 20_000)
                 onNodeWithText("Subscribe").assertExists()
-                waitUntilAtLeastOneExists(hasText("HOME"), 5_000)
-                onNodeWithText("RELEASES").assertExists()
-                onNodeWithText("SEARCH").assertDoesNotExist()
+                waitUntilAtLeastOneExists(hasText("Home"), 5_000)
+                onNodeWithText("Releases").assertExists()
+                onNodeWithText("Search").assertDoesNotExist()
 
                 // Switching to Playlists re-browses with the tab params and lists playlists.
-                onNodeWithText("PLAYLISTS").performClick()
+                onNodeWithText("Playlists").performClick()
                 waitUntilAtLeastOneExists(hasText("7 Minute Stage", substring = true), 20_000)
                 assertTrue(bodies.any { it.contains(""""params":""") }, "$bodies")
 
@@ -237,7 +237,7 @@ class DetailScreensTest {
                     }
                 }
 
-                waitUntilAtLeastOneExists(hasText("HOME"), 20_000)
+                waitUntilAtLeastOneExists(hasText("Home"), 20_000)
                 // Overflowing tabs show the end-side hint; the start side has nothing to go back to.
                 onAllNodesWithContentDescription("More tabs").assertCountEquals(1)
 
