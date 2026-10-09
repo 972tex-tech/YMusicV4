@@ -32,6 +32,15 @@ sentry {
     telemetry.set(false)
 }
 
+val appVersionName = "4.0.0"
+
+// Outputs read YMusic-<versionName>-<abi|universal>-release.apk.
+base { archivesName.set("YMusic-$appVersionName") }
+
+// The ABIs every native the app needs — quickjs, mse, ffmpeg — is built for. A device on any other
+// ABI could install an APK carrying only some of them and crash at the first engine call.
+val appAbis = listOf("arm64-v8a", "x86_64")
+
 android {
     namespace = "io.ymusic.android"
     // okhttp-android 5.4 (via :kmpHttp) demands API 36+ for apps; libraries stay on Versions.compileSdk.
@@ -42,7 +51,7 @@ android {
         minSdk = Versions.minSdk
         targetSdk = Versions.targetSdk
         versionCode = 1
-        versionName = "4.0.0"
+        versionName = appVersionName
         buildConfigField("String", "SENTRY_DSN", "\"${sentryDsn()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${gitCommit()}\"")
         // Base url of the remote config service. Empty = no request, compiled-in defaults.
@@ -55,6 +64,17 @@ android {
 
     buildFeatures {
         buildConfig = true
+    }
+
+    // One APK per ABI plus a universal one carrying both. All share the versionCode: they are the
+    // same release, and the updater may move a device from the universal APK to its own split.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include(*appAbis.toTypedArray())
+            isUniversalApk = true
+        }
     }
 
     buildTypes {
@@ -78,7 +98,11 @@ android {
         // libffmpeg.so (CLI) + :mse's libav*.so sit together under lib/<abi>/. Legacy packaging
         // extracts them to nativeLibraryDir so the scanner can exec() the CLI (mmap'd libs can't)
         // and both the CLI and MSE load the same libav via $ORIGIN.
-        jniLibs { useLegacyPackaging = true }
+        jniLibs {
+            useLegacyPackaging = true
+            // quickjs ships armeabi-v7a and ffmpeg x86; without the rest of the natives they are dead weight.
+            excludes += listOf("armeabi-v7a", "x86").map { "lib/$it/**" }
+        }
     }
 
     // Stage the prebuilt ffmpeg pack into a jniLibs source dir (build output, gitignored) so it packs
@@ -90,7 +114,7 @@ android {
 val stageFfmpeg by tasks.registering(Copy::class) {
     dependsOn(rootProject.tasks.named("syncFfmpegAndroid"))
     into(layout.buildDirectory.dir("ffmpegJniLibs").get().asFile)
-    FfmpegRelease.ANDROID_ABIS.forEach { abi ->
+    appAbis.forEach { abi ->
         from(FfmpegRelease.androidPackDir(project, abi)) {
             into(abi)
             exclude(".tars", ".tars/**", "*.tar.gz", "*.part")
