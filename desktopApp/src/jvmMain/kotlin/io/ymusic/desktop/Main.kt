@@ -276,10 +276,7 @@ fun main() {
                     }
                 }
         }
-        DisposableEffect(Unit) {
-            videoUnderlay.frame.isVisible = true
-            onDispose { }
-        }
+        LaunchedEffect(windowVisible) { videoUnderlay.shown = windowVisible }
         Window(
             // Held back until the graph is ready: an empty window that then repaints is a flash of
             // whatever the toolkit felt like showing. Composed all along, so paintWindowGround has

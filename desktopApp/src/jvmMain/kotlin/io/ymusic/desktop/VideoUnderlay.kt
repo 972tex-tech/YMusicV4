@@ -23,6 +23,13 @@ internal class VideoUnderlay {
         setSize(1, 1)
     }
 
+    /** Follows the main window: a separate top-level frame on X11/Windows, it would outlive a hide. */
+    var shown = true
+        set(value) {
+            field = value
+            frame.isVisible = value
+        }
+
     fun attach(panel: JComponent?) {
         frame.removeAll()
         if (panel != null) frame.add(panel, java.awt.BorderLayout.CENTER)
@@ -37,13 +44,13 @@ internal class VideoUnderlay {
         }
         if (w < 1 || h < 1) {
             if (frame.width != 1 || frame.height != 1) frame.setBounds(0, 0, 1, 1)
-            if (!frame.isVisible) frame.isVisible = true
+            if (shown && !frame.isVisible) frame.isVisible = true
             return
         }
         if (frame.x != x || frame.y != y || frame.width != w || frame.height != h) {
             frame.setBounds(x, y, w, h)
         }
-        if (!frame.isVisible) frame.isVisible = true
+        if (shown && !frame.isVisible) frame.isVisible = true
     }
 
     /** Sit immediately under [front] so another app cannot stay in the hole. Not key. */
