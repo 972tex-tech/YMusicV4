@@ -69,7 +69,7 @@ class ImageSourceCache(
             }
             editor.commit()
         } catch (t: Throwable) {
-            editor.abort()
+            editor.abortSuppressing(t)
             throw t
         }
         filePath(key) ?: throw IOException("image source entry vanished after commit: $key")
@@ -92,3 +92,11 @@ class ImageSourceCache(
 
 /** The disk key for a source identity (any string — a url key, or an app's own fingerprint). */
 fun sourceCacheKey(identity: String): String = identity.encodeUtf8().sha256().hex()
+
+internal suspend fun DiskLruCache.Editor.abortSuppressing(primary: Throwable) {
+    try {
+        abort()
+    } catch (abortError: Throwable) {
+        primary.addSuppressed(abortError)
+    }
+}

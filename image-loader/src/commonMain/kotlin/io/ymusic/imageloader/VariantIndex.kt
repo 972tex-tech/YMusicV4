@@ -142,7 +142,7 @@ class DiskVariantIndex(
                 editor.newSink(0).buffer().use { it.writeUtf8(text) }
                 editor.commit()
             } catch (t: Throwable) {
-                editor.abort()
+                editor.abortSuppressing(t)
                 throw t
             }
         }

@@ -74,7 +74,7 @@ class DiskScaledImageCache(
             }
             editor.commit()
         } catch (t: Throwable) {
-            editor.abort()
+            editor.abortSuppressing(t)
             throw t
         }
     }

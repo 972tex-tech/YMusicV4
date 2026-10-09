@@ -239,11 +239,11 @@ class ImageLoader(
     private suspend fun fetchFromSources(request: ImageRequest): DecodedImage {
         val size = requestBucket(request)
         val record = variantIndex.get(request.key)
-        var failure: ImageLoadException? = null
+        val failures = mutableListOf<ImageLoadException>()
         for (source in orderSources(request.sources, size, request.scale, record)) {
             val sourceKey = imageCacheKey(source.url)
             if (sourceKey in record.missing) {
-                if (failure == null) failure = ImageLoadException(ImageLoadException.Reason.NotFound, "known missing: ${source.url}")
+                failures += ImageLoadException(ImageLoadException.Reason.NotFound, "known missing: ${source.url}")
                 continue
             }
             try {
@@ -252,12 +252,16 @@ class ImageLoader(
                 return decoded
             } catch (e: ImageLoadException) {
                 if (e.reason == ImageLoadException.Reason.NotFound) variantIndex.recordMissing(request.key, sourceKey)
-                logger?.log(Logger.Level.DEBUG, "source failed (${e.reason}): ${source.url}")
-                // Keep the most telling failure: anything beats NotFound, which only wins if unanimous.
-                if (failure == null || failure.reason == ImageLoadException.Reason.NotFound) failure = e
+                logger?.log(Logger.Level.DEBUG, "source failed (${e.reason}): ${source.url}", e)
+                failures += e
             }
         }
-        throw failure ?: ImageLoadException(ImageLoadException.Reason.Unsupported, "no sources: ${request.key}")
+        // The most telling failure: anything beats NotFound, which only wins if unanimous.
+        val failure = failures.firstOrNull { it.reason != ImageLoadException.Reason.NotFound }
+            ?: failures.firstOrNull()
+            ?: throw ImageLoadException(ImageLoadException.Reason.Unsupported, "no sources: ${request.key}")
+        failures.forEach { if (it !== failure) failure.addSuppressed(it) }
+        throw failure
     }
 
     private suspend fun fetchSource(source: ImageSource, size: IntSize, scale: ImageScale): DecodedImage {

@@ -14,6 +14,7 @@ import okio.FileSystem
 import okio.IOException
 import okio.Path
 import okio.Path.Companion.toPath
+import okio.use
 
 /**
  * http/https over [client] with the downloaded originals owned on disk (the Coil/Glide model): the
@@ -120,7 +121,7 @@ private suspend fun <T> executeChecked(
     } catch (e: IOException) {
         throw ImageLoadException(ImageLoadException.Reason.Network, "image request failed: $url", e)
     }
-    try {
+    return response.use {
         if (!response.isSuccessful) {
             val reason = if (response.code == 404 || response.code == 410) {
                 ImageLoadException.Reason.NotFound
@@ -136,7 +137,7 @@ private suspend fun <T> executeChecked(
                 "image body $declared bytes exceeds the $maxImageBytes-byte cap: $url",
             )
         }
-        return try {
+        try {
             body(response)
         } catch (e: CancellationException) {
             throw e
@@ -145,8 +146,6 @@ private suspend fun <T> executeChecked(
         } catch (e: IOException) {
             throw ImageLoadException(ImageLoadException.Reason.Network, "image download failed: $url", e)
         }
-    } finally {
-        response.close()
     }
 }
 
