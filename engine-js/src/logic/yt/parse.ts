@@ -439,7 +439,8 @@ function lockupItem(lv: Record<string, unknown>): WireFeedItem | null {
     byline = rowText(rows[0]);
     if (kind === "playlist") {
       const p0 = rowText(rows[1]);
-      if (p0 !== undefined) item["itemCount"] = p0;
+      // Own playlists put "Updated today" here; their count is only on the thumbnail badge.
+      if (p0 !== undefined && itemCountOf(p0) !== undefined) item["itemCount"] = p0;
       line2 = p0;
     } else {
       line2 = rowText(rows[1]);
