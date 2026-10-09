@@ -804,7 +804,8 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         // MSE blit and ffmpeg frames scale; safe to display at art-tile size.
         surfaceScalesDown = true,
         loginBrowser = null,
-        cookieSignIn = { onComplete, onBack ->
+        guest = session.isGuest,
+        cookieSignIn = if (session.isGuest) null else { onComplete, onBack ->
             DesktopCookieSignIn(
                 importCookies = { cookies.importSessionCookies(it) },
                 loginStatus = { engines.ytLoginStatus() },

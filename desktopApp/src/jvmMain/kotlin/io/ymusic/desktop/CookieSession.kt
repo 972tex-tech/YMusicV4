@@ -25,6 +25,8 @@ internal class CookieSession(
     /** Root of the session's HTTP and engine caches. */
     val cacheRoot: File,
 ) {
+    val isGuest: Boolean get() = vault == null
+
     /**
      * The "protect with a password" step is offered where the default key is one every app of
      * this user can recover — not on macOS, whose keychain item is bound to this app's signature.
