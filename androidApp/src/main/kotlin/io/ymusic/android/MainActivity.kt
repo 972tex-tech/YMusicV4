@@ -28,7 +28,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +44,7 @@ import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppSection
 import io.ymusic.ui.FeedbackFile
+import io.ymusic.ui.rememberStartSection
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -292,7 +292,7 @@ class MainActivity : FragmentActivity() {
                 graph == null -> Booting { CircularProgressIndicator() }
                 else -> {
                     LaunchedEffect(graph) { attachPip(graph!!) }
-                    val section = rememberSaveable { mutableStateOf(AppSection.Discover) }
+                    val section = rememberStartSection(graph!!)
                     LaunchedEffect(pendingSection.value) {
                         pendingSection.value?.let {
                             section.value = it

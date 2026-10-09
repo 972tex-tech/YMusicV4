@@ -62,6 +62,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -95,6 +96,7 @@ import io.ymusic.player.PlayableItem
 import io.ymusic.player.VideoQualityState
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
+import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.coming_soon
 import io.ymusic.ui.resources.discover_needs_account
@@ -122,6 +124,7 @@ import io.ymusic.ui.sponsorblock.SponsorBlockCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -132,17 +135,18 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** App-level sections — the drawer's three groups (design/final/drawer.html). */
-enum class AppSection(val label: StringResource, val icon: ImageVector, val group: Int) {
-    Discover(Res.string.section_discover, Icons.Outlined.OndemandVideo, 0),
-    YtMusic(Res.string.section_yt_music, Icons.Default.PlayCircleOutline, 0),
-    Library(Res.string.section_library, Icons.Outlined.LibraryMusic, 0),
-    PlayAgain(Res.string.section_play_again, Icons.Outlined.History, 1),
-    Downloads(Res.string.section_downloads, Icons.Outlined.FileDownload, 1),
-    Settings(Res.string.section_settings, Icons.Outlined.Settings, 1),
-    Catalogue(Res.string.section_catalogue, Icons.Outlined.Palette, 1),
-    Donate(Res.string.section_donate, Icons.Outlined.FavoriteBorder, 2),
-    Facebook(Res.string.section_facebook, Icons.Default.Facebook, 2),
-    Feedback(Res.string.section_feedback, Icons.AutoMirrored.Outlined.Chat, 2),
+/** [id] is persisted (the section a restart resumes): stable, never reused, independent of entry order. */
+enum class AppSection(val id: Int, val label: StringResource, val icon: ImageVector, val group: Int) {
+    Discover(1, Res.string.section_discover, Icons.Outlined.OndemandVideo, 0),
+    YtMusic(2, Res.string.section_yt_music, Icons.Default.PlayCircleOutline, 0),
+    Library(3, Res.string.section_library, Icons.Outlined.LibraryMusic, 0),
+    PlayAgain(4, Res.string.section_play_again, Icons.Outlined.History, 1),
+    Downloads(5, Res.string.section_downloads, Icons.Outlined.FileDownload, 1),
+    Settings(6, Res.string.section_settings, Icons.Outlined.Settings, 1),
+    Catalogue(7, Res.string.section_catalogue, Icons.Outlined.Palette, 1),
+    Donate(8, Res.string.section_donate, Icons.Outlined.FavoriteBorder, 2),
+    Facebook(9, Res.string.section_facebook, Icons.Default.Facebook, 2),
+    Feedback(10, Res.string.section_feedback, Icons.AutoMirrored.Outlined.Chat, 2),
 }
 
 /** Switch the top-level section from within a screen (e.g. Downloads → "Reveal in Library"); no-op
@@ -166,8 +170,17 @@ val LocalLibraryFolderReveal =
  */
 @Composable
 fun App(graph: AppGraph) {
-    val section = rememberSaveable { mutableStateOf(AppSection.Discover) }
-    App(graph, section)
+    App(graph, rememberStartSection(graph))
+}
+
+/** The sections a restart resumes; anything else (Settings, Downloads, …) resumes the last of these. */
+private val ResumableSections = setOf(AppSection.Discover, AppSection.Library, AppSection.YtMusic)
+
+/** The section state a shell hands to [App]: starts on the last resumable section the user had open. */
+@Composable
+fun rememberStartSection(graph: AppGraph): androidx.compose.runtime.MutableState<AppSection> = rememberSaveable {
+    val saved = graph.settings.flow(AppSettings.lastSection).value
+    mutableStateOf(ResumableSections.firstOrNull { it.id == saved } ?: AppSection.Discover)
 }
 
 /** [sectionState] hoisted for tests and for shells that deep-link from platform surfaces (a
@@ -189,6 +202,11 @@ fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<App
         else -> androidx.compose.foundation.isSystemInDarkTheme()
     }
     var section by sectionState
+    LaunchedEffect(graph.settings) {
+        snapshotFlow { sectionState.value }
+            .filter { it in ResumableSections }
+            .collect { graph.settings.put(AppSettings.lastSection, it.id) }
+    }
     LaunchedEffect(graph.playerCache, graph.settings) {
         val cache = graph.playerCache ?: return@LaunchedEffect
         graph.settings.flow(AppSettings.playerCacheMaxMb).collect { mb ->
@@ -329,8 +347,12 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 if (section == AppSection.Catalogue) onSection(AppSection.Discover)
             }
         }
-        // Trending music: the one tab with content on a fresh install — Home stays empty until YouTube has watch history.
-        var discoverTab by rememberSaveable { mutableStateOf(DiscoverTab.Music) }
+        var discoverTab by rememberSaveable {
+            val saved = graph.settings.flow(AppSettings.lastDiscoverTab).value
+            // Trending music on a fresh install — Home stays empty until YouTube has watch history.
+            mutableStateOf(DiscoverTab.entries.firstOrNull { it.id == saved } ?: DiscoverTab.Music)
+        }
+        LaunchedEffect(discoverTab) { graph.settings.put(AppSettings.lastDiscoverTab, discoverTab.id) }
         // Live swipe progress (−1..1) so the Discover underline tracks the drag, not just the commit.
         var discoverDrag by remember { mutableFloatStateOf(0f) }
         val nowPlayingOpen by graph.pip.nowPlayingOpen.collectAsState()
@@ -936,13 +958,14 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
 }
 
 /** Discover's five feed tabs (design §1). Home and Music have anonymous backing feeds;
- *  Recommended and Top tracks are built from local play; Account is the signed-in library. */
-enum class DiscoverTab(val label: StringResource, val icon: ImageVector, val hasFeed: Boolean) {
-    Home(Res.string.tab_home, Icons.Outlined.Home, hasFeed = true),
-    Music(Res.string.tab_music, Icons.Outlined.MusicNote, hasFeed = true),
-    Recommended(Res.string.tab_recommended, Icons.Default.StarBorder, hasFeed = true),
-    TopTracks(Res.string.tab_top_tracks, Icons.AutoMirrored.Outlined.TrendingUp, hasFeed = true),
-    Account(Res.string.tab_account_library, Icons.Outlined.Person, hasFeed = false),
+ *  Recommended and Top tracks are built from local play; Account is the signed-in library. [id] is
+ *  persisted (the tab a restart resumes): stable, never reused, independent of entry order. */
+enum class DiscoverTab(val id: Int, val label: StringResource, val icon: ImageVector, val hasFeed: Boolean) {
+    Home(1, Res.string.tab_home, Icons.Outlined.Home, hasFeed = true),
+    Music(2, Res.string.tab_music, Icons.Outlined.MusicNote, hasFeed = true),
+    Recommended(3, Res.string.tab_recommended, Icons.Default.StarBorder, hasFeed = true),
+    TopTracks(4, Res.string.tab_top_tracks, Icons.AutoMirrored.Outlined.TrendingUp, hasFeed = true),
+    Account(5, Res.string.tab_account_library, Icons.Outlined.Person, hasFeed = false),
 }
 
 /** Icon tabs with the 2dp underline indicator; [inline] is the app-bar form (tighter gap, no leading

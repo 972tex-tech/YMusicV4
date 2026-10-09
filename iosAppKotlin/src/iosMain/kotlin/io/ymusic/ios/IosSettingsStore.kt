@@ -28,6 +28,8 @@ internal class IosSettingsStore(
             "app.gl",
             "theme.accent",
             "app.uiLanguage",
+            "app.lastSection",
+            "app.lastDiscoverTab",
             "download.location",
             "download.quickPreset",
             "playerCache.maxMb",
