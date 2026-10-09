@@ -65,6 +65,7 @@ import io.ymusic.ui.resources.feed_empty
 import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.menu_play_single
 import io.ymusic.ui.resources.menu_remove
+import io.ymusic.ui.resources.menu_remove_from_playlist
 import io.ymusic.ui.resources.menu_start_radio
 import io.ymusic.ui.resources.queue_last
 import io.ymusic.ui.resources.queue_next
@@ -83,6 +84,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.jetbrains.compose.resources.stringResource
@@ -240,6 +242,14 @@ class Pager(
             pageHeader = page.pageHeader,
             pageTabs = page.pageTabs,
         )
+    }
+
+    /** Drop the loaded items matching [predicate] in place (a confirmed server-side removal) — no refetch. */
+    fun removeItems(predicate: (YtFeedItem) -> Boolean) {
+        _state.update { state ->
+            if (state !is State.Ready) return@update state
+            state.copy(sections = state.sections.map { section -> section.copy(items = section.items.filterNot(predicate)) })
+        }
     }
 
     fun loadMore() {
@@ -682,6 +692,9 @@ private fun itemClick(
     else -> null
 }
 
+/** Overflow "Remove from playlist" on the viewer's own playlist (items carrying a removeToken). */
+internal val LocalRemoveFromYtPlaylist = compositionLocalOf<((YtFeedItem) -> Unit)?> { null }
+
 /** Overflow "Remove" on Discover Top tracks. Null everywhere else hides the item. */
 internal val LocalRemoveFromTopTracks = compositionLocalOf<((YtFeedItem) -> Unit)?> { null }
 
@@ -691,6 +704,7 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
     val quickPreset = downloadLauncher?.quickPreset?.collectAsState()?.value
     val removeFromTopTracks = LocalRemoveFromTopTracks.current
     val ytPlaylists = LocalYtPlaylistActions.current
+    val removeFromYtPlaylist = LocalRemoveFromYtPlaylist.current
     return ItemActions(
         if (item.kind == YtFeedItem.KIND_VIDEO) {
             buildList {
@@ -706,6 +720,9 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
                     if (quickPreset != null) {
                         add(stringResource(Res.string.quick_download_menu, quickPreset.label()) to { downloadLauncher.quickLaunch(item) })
                     }
+                }
+                if (removeFromYtPlaylist != null && item.removeToken != null) {
+                    add(stringResource(Res.string.menu_remove_from_playlist) to { removeFromYtPlaylist(item) })
                 }
                 if (removeFromTopTracks != null) {
                     add(stringResource(Res.string.menu_remove) to { removeFromTopTracks(item) })

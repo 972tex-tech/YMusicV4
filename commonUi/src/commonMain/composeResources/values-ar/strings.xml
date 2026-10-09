@@ -95,6 +95,7 @@
     <string name="yt_playlist_from_queue">ستتم إضافة %1$d فيديو من قائمة الانتظار</string>
     <string name="queue_save_as_yt_playlist">حفظ قائمة الانتظار كقائمة تشغيل على YouTube</string>
     <string name="yt_playlist_queue_empty">لا تحتوي قائمة الانتظار على فيديوهات YouTube</string>
+    <string name="yt_playlist_removed_video">تمت إزالة %1$s من قائمة التشغيل</string>
     <string name="cd_add_to_playlist">إضافة إلى قائمة التشغيل</string>
     <string name="cd_share">مشاركة</string>
     <string name="cd_music_video">موسيقى</string>

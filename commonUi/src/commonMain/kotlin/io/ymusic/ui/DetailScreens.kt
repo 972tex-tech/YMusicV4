@@ -27,6 +27,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,10 +48,10 @@ import io.ymusic.dynamicengine.yt.YtPageHeader
 import io.ymusic.dynamicengine.yt.YtPageTab
 import io.ymusic.dynamicengine.yt.extractChannelDetail
 import io.ymusic.dynamicengine.yt.extractPlaylistDetail
+import io.ymusic.dynamicengine.yt.removeFromPlaylist
 import io.ymusic.dynamicengine.yt.savePlaylist
 import io.ymusic.dynamicengine.yt.subscribeChannel
 import io.ymusic.ui.resources.Res
-import io.ymusic.ui.resources.cd_add_to_playlist
 import io.ymusic.ui.resources.cd_download
 import io.ymusic.ui.resources.cd_remove_playlist_from_library
 import io.ymusic.ui.resources.cd_save_playlist
@@ -63,6 +64,7 @@ import io.ymusic.ui.resources.playlist_saved
 import io.ymusic.ui.resources.playlist_sign_in_to_save
 import io.ymusic.ui.resources.subscribe
 import io.ymusic.ui.resources.subscribed
+import io.ymusic.ui.resources.yt_playlist_removed_video
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -104,6 +106,25 @@ class PlaylistSession(
 
     init {
         feed.pager.refresh()
+    }
+
+    /** A finished removal: the removed video on success, or the failure — shown once and cleared. */
+    var removeResult by mutableStateOf<Result<YtFeedItem>?>(null)
+
+    fun removeVideo(item: YtFeedItem) {
+        val token = item.removeToken ?: return
+        scope.launch {
+            removeResult = try {
+                graph.engines.removeFromPlaylist(token, log)
+                feed.pager.removeItems { it.removeToken == token }
+                Result.success(item)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "remove from playlist failed", error)
+                Result.failure(error)
+            }
+        }
     }
 
     fun toggleSaved(playlistId: String) {
@@ -162,45 +183,60 @@ fun PlaylistDetailScreen(
         }
     }
 
+    s.removeResult?.let { result ->
+        val snackbar = LocalSnackbar.current
+        val message = result.fold(
+            onSuccess = { stringResource(Res.string.yt_playlist_removed_video, it.title) },
+            onFailure = { errorMessage(it.errorCode() ?: "E20112") },
+        )
+        LaunchedEffect(result, message) {
+            snackbar(message)
+            s.removeResult = null
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         DetailAppBar(stringResource(Res.string.detail_playlist), onBack, onSearch)
-        FeedList(
-            s.feed.pager,
-            coordinator,
-            onPlayItem = { tapped ->
-                coordinator.playAll(
-                    videos,
-                    startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0),
-                    source = ready.queueSource(coordinator.graph.engines, s.url, videos, s.log),
-                )
-            },
-            topContent = {
-                val title = ready?.pageHeader?.title ?: item.title
-                PlaylistHeader(
-                    title = title,
-                    meta = ready?.pageHeader?.subtitleLine1 ?: item.subtitleLine1,
-                    onShuffle = {
-                        coordinator.playAll(
-                            videos,
-                            startIndex = videos.indices.random(),
-                            shuffle = true,
-                            source = ready.queueSource(coordinator.graph.engines, s.url, videos, s.log),
-                        )
-                    },
-                    onDownload = onDownload?.let { open -> { open(title, s.feed.pager) } },
-                    save = ready?.pageHeader?.savePlaylistId?.let { playlistId ->
-                        { SavePlaylistToggle(s.saved, s.saving) { s.toggleSaved(playlistId) } }
-                    },
-                )
-            },
-            listState = s.feed.listState,
-        )
+        CompositionLocalProvider(LocalRemoveFromYtPlaylist provides { s.removeVideo(it) }) {
+            FeedList(
+                s.feed.pager,
+                coordinator,
+                onPlayItem = { tapped ->
+                    coordinator.playAll(
+                        videos,
+                        startIndex = videos.indexOfFirst { it.id == tapped.id }.coerceAtLeast(0),
+                        source = ready.queueSource(coordinator.graph.engines, s.url, videos, s.log),
+                    )
+                },
+                topContent = {
+                    val title = ready?.pageHeader?.title ?: item.title
+                    PlaylistHeader(
+                        title = title,
+                        meta = ready?.pageHeader?.subtitleLine1 ?: item.subtitleLine1,
+                        onShuffle = {
+                            coordinator.playAll(
+                                videos,
+                                startIndex = videos.indices.random(),
+                                shuffle = true,
+                                source = ready.queueSource(coordinator.graph.engines, s.url, videos, s.log),
+                            )
+                        },
+                        onDownload = onDownload?.let { open -> { open(title, s.feed.pager) } },
+                        save = ready?.pageHeader?.savePlaylistId?.let { playlistId ->
+                            { SavePlaylistToggle(s.saved, s.saving) { s.toggleSaved(playlistId) } }
+                        },
+                    )
+                },
+                listState = s.feed.listState,
+            )
+        }
     }
 }
 
 /** Title + meta, the actions row (design chrome until playlists/share/downloads land) and the
  *  shuffle FAB, closed by the 16dp-inset divider. Shared by the WEB playlist detail and the YT Music
- *  album/playlist detail so both read identically. [save] takes the add-to-playlist chrome's slot. */
+ *  album/playlist detail so both read identically. [save] (the save-to-library toggle) leads the
+ *  row only when the playlist can be saved. */
 @Composable
 internal fun PlaylistHeader(
     title: String,
@@ -228,11 +264,7 @@ internal fun PlaylistHeader(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (save != null) {
-                save()
-            } else {
-                ActionIcon(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(Res.string.cd_add_to_playlist), enabled = false, onClick = {})
-            }
+            save?.invoke()
             ActionIcon(Icons.Outlined.Share, stringResource(Res.string.cd_share), enabled = false, onClick = {})
             ActionIcon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), enabled = onDownload != null, onClick = { onDownload?.invoke() })
             Box(Modifier.weight(1f))

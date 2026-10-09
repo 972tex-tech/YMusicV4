@@ -117,6 +117,7 @@
     <string name="yt_playlist_from_queue">%1$d videos from the queue will be added</string>
     <string name="queue_save_as_yt_playlist">Save queue as YouTube playlist</string>
     <string name="yt_playlist_queue_empty">The queue has no YouTube videos</string>
+    <string name="yt_playlist_removed_video">Removed %1$s from the playlist</string>
     <string name="cd_add_to_playlist">Add to playlist</string>
     <string name="cd_share">Share</string>
     <string name="cd_music_video">Music</string>

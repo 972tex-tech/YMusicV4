@@ -95,6 +95,7 @@
     <string name="yt_playlist_from_queue">%1$d video trong hàng đợi sẽ được thêm</string>
     <string name="queue_save_as_yt_playlist">Lưu hàng đợi thành danh sách phát YouTube</string>
     <string name="yt_playlist_queue_empty">Hàng đợi không có video YouTube nào</string>
+    <string name="yt_playlist_removed_video">Đã xóa %1$s khỏi danh sách phát</string>
     <string name="cd_add_to_playlist">Thêm vào danh sách phát</string>
     <string name="cd_share">Chia sẻ</string>
     <string name="cd_music_video">Âm nhạc</string>
