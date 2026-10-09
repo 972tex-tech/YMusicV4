@@ -98,6 +98,7 @@ fun YtMusicScreen(
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
     var tab by rememberSaveable { mutableStateOf(YtMusicTab.Home) }
+    val tabs = remember(graph) { YtMusicTab.entries.filter { !graph.guest || it != YtMusicTab.Library } }
     // Live swipe progress (−1..1) so the underline tracks the drag, not just the commit — same as
     // Discover / Library.
     var tabDrag by remember { mutableFloatStateOf(0f) }
@@ -106,12 +107,12 @@ fun YtMusicScreen(
         // The tab row is pinned under the app bar and elevates with it (one continuous surface),
         // exactly like Library's — the shell app bar drops its own bottom shadow for this section.
         ElevatedBarColumn {
-            YtMusicTabRow(tab, tabDrag) { tab = it }
+            YtMusicTabRow(tabs, tab, tabDrag) { tab = it }
             HorizontalDivider(color = DesignColors.Divider)
         }
         SwipeTabSwitcher(
             tab,
-            YtMusicTab.entries,
+            tabs,
             onSelect = { tab = it },
             onDragProgress = { tabDrag = it },
             leadingEdgeReserve = NavDrawerEdgeReserve,
@@ -164,8 +165,8 @@ fun YtMusicScreen(
 /** The music tab row — the shared [UnderlineTabRow] (2dp sliding underline) with text labels, the
  *  same treatment as Library's. */
 @Composable
-private fun YtMusicTabRow(selected: YtMusicTab, dragProgress: Float, onSelect: (YtMusicTab) -> Unit) {
-    UnderlineTabRow(selected, YtMusicTab.entries, dragProgress, onSelect) { t, active ->
+private fun YtMusicTabRow(tabs: List<YtMusicTab>, selected: YtMusicTab, dragProgress: Float, onSelect: (YtMusicTab) -> Unit) {
+    UnderlineTabRow(selected, tabs, dragProgress, onSelect) { t, active ->
         TabLabel(stringResource(t.label), active)
     }
 }

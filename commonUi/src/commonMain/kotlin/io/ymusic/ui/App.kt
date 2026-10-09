@@ -348,10 +348,11 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 if (section == AppSection.Catalogue) onSection(AppSection.Discover)
             }
         }
+        val discoverTabs = remember(graph) { discoverTabsFor(graph) }
         var discoverTab by rememberSaveable {
             val saved = graph.settings.flow(AppSettings.lastDiscoverTab).value
             // Trending music on a fresh install — Home stays empty until YouTube has watch history.
-            mutableStateOf(DiscoverTab.entries.firstOrNull { it.id == saved } ?: DiscoverTab.Music)
+            mutableStateOf(discoverTabs.firstOrNull { it.id == saved } ?: DiscoverTab.Music)
         }
         LaunchedEffect(discoverTab) { graph.settings.put(AppSettings.lastDiscoverTab, discoverTab.id) }
         // Live swipe progress (−1..1) so the Discover underline tracks the drag, not just the commit.
@@ -667,6 +668,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                             AppDrawer(
                                 section = section,
                                 appVersion = graph.appVersion,
+                                guest = graph.guest,
                                 onSelect = { s ->
                                     onSection(s)
                                     scope.launch { drawer.close() }
@@ -746,19 +748,19 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                     // reserves the widest tab label — the tabs must not
                                                     // shift when switching tabs re-titles the bar.
                                                     titleReserveWidthOf = if (section == AppSection.Discover && wide) {
-                                                        DiscoverTab.entries.map { stringResource(it.label) }
+                                                        discoverTabs.map { stringResource(it.label) }
                                                     } else {
                                                         emptyList()
                                                     },
                                                     inlineContent = if (section == AppSection.Discover && wide) {
-                                                        { DiscoverTabRow(discoverTab, inline = true, dragProgress = discoverDrag) { discoverTab = it } }
+                                                        { DiscoverTabRow(discoverTab, inline = true, dragProgress = discoverDrag, tabs = discoverTabs) { discoverTab = it } }
                                                     } else {
                                                         null
                                                     },
                                                 )
                                             }
                                             if (section == AppSection.Discover && !wide) {
-                                                DiscoverTabRow(discoverTab, dragProgress = discoverDrag) { discoverTab = it }
+                                                DiscoverTabRow(discoverTab, dragProgress = discoverDrag, tabs = discoverTabs) { discoverTab = it }
                                                 HorizontalDivider(color = DesignColors.Divider)
                                             }
                                         }
@@ -851,7 +853,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                             when (section) {
                                                 AppSection.Discover -> SwipeTabSwitcher(
                                                     discoverTab,
-                                                    DiscoverTab.entries,
+                                                    discoverTabs,
                                                     onSelect = { discoverTab = it },
                                                     onDragProgress = { discoverDrag = it },
                                                     leadingEdgeReserve = NavDrawerEdgeReserve,
@@ -990,6 +992,10 @@ enum class DiscoverTab(val id: Int, val label: StringResource, val icon: ImageVe
     Account(5, Res.string.tab_account_library, Icons.Outlined.Person, hasFeed = false),
 }
 
+/** A guest has no account and keeps no YouTube play history: no Account, no Top tracks. */
+internal fun discoverTabsFor(graph: AppGraph): List<DiscoverTab> =
+    DiscoverTab.entries.filter { !graph.guest || (it != DiscoverTab.Account && it != DiscoverTab.TopTracks) }
+
 /** Icon tabs with the 2dp underline indicator; [inline] is the app-bar form (tighter gap, no leading
  *  inset). A single indicator slides between tabs (and leans toward the neighbour by [dragProgress],
  *  −1..1, from the content swipe) instead of the underline snapping tab-to-tab. */
@@ -998,6 +1004,7 @@ internal fun DiscoverTabRow(
     selected: DiscoverTab,
     inline: Boolean = false,
     dragProgress: Float = 0f,
+    tabs: List<DiscoverTab> = DiscoverTab.entries,
     onSelect: (DiscoverTab) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -1008,7 +1015,7 @@ internal fun DiscoverTabRow(
     // that padding, which keeps the icons drawn exactly where they were.
     Column(Modifier.padding(start = if (inline) 0.dp else 20.dp - TabTouchPadding)) {
         Row(horizontalArrangement = Arrangement.spacedBy((if (inline) 20.dp else 24.dp) - TabTouchPadding * 2)) {
-            DiscoverTab.entries.forEach { t ->
+            tabs.forEach { t ->
                 val active = t == selected
                 Box(
                     Modifier.onGloballyPositioned { c ->
@@ -1029,8 +1036,8 @@ internal fun DiscoverTabRow(
             }
         }
         val cur = centers[selected]
-        val i = DiscoverTab.entries.indexOf(selected)
-        val neighbor = centers[DiscoverTab.entries[(i + if (dragProgress > 0f) 1 else -1).coerceIn(0, DiscoverTab.entries.lastIndex)]]
+        val i = tabs.indexOf(selected)
+        val neighbor = tabs.getOrNull((i + if (dragProgress > 0f) 1 else -1).coerceIn(0, tabs.lastIndex))?.let { centers[it] }
         val frac = abs(dragProgress) * TabIndicatorDragTravel
         val targetCenter = if (cur != null && neighbor != null) lerp(cur, neighbor, frac) else cur ?: 0.dp
         val center by animateDpAsState(targetCenter, label = "discoverIndicator")

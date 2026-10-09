@@ -217,9 +217,10 @@ class PlaybackCoordinator(
                 val row = mediaStore?.findItem(id) ?: return
                 history.trackLocal(row.playlistCode, watchTimeMs)
                 val vid = row.youtubeVid
-                if (vid != null) history.trackYoutube(vid, watchTimeMs)
+                if (vid != null && !graph.guest) history.trackYoutube(vid, watchTimeMs)
             }
             is PlayableItem.YtMedia -> {
+                if (graph.guest) return
                 history.saveYoutubeMetadata(
                     videoId = item.videoId,
                     title = item.title ?: item.videoId,

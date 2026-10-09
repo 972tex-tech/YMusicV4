@@ -67,6 +67,11 @@ class AppGraph(
     val player: Player,
     val mediaStore: BetterMediaStore? = null,
     val playHistory: PlayHistoryStore? = null,
+    /**
+     * A throwaway guest launch: no sign-in, no account, no YouTube play history (Top tracks, Play
+     * again) — nothing of it outlives the process. The local Library works as for anyone.
+     */
+    val guest: Boolean = false,
     val scanLibraryFolder: ScanAction? = null,
     /**
      * Opens the OS folder picker and registers the chosen folder as a Library bucket (a lightweight
@@ -194,7 +199,7 @@ class AppGraph(
 
     init {
         // Process-lifetime like the graph itself: every queue is recorded, whatever screen is up.
-        playHistory?.let {
+        playHistory?.takeUnless { guest }?.let {
             PlayAgainRecorder(player, it.playAgain, logger?.fork("play-again"))
                 .start(CoroutineScope(SupervisorJob() + Dispatchers.Default))
         }

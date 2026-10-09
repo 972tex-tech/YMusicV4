@@ -48,6 +48,7 @@ fun AppDrawer(
     appVersion: String?,
     onSelect: (AppSection) -> Unit,
     showCatalogue: Boolean = DEBUG_BUILD,
+    guest: Boolean = false,
 ) {
     ModalDrawerSheet(
         modifier = Modifier.width(300.dp),
@@ -60,6 +61,7 @@ fun AppDrawer(
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                 AppSection.entries
                     .filter { it != AppSection.Catalogue || showCatalogue }
+                    .filter { it != AppSection.PlayAgain || !guest }
                     .groupBy { it.group }
                     .entries
                     .forEachIndexed { index, (_, sections) ->
