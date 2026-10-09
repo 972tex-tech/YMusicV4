@@ -284,7 +284,7 @@ fun main() {
             // Held back until the graph is ready: an empty window that then repaints is a flash of
             // whatever the toolkit felt like showing. Composed all along, so paintWindowGround has
             // already coloured it by the time it appears.
-            visible = windowVisible && (graph != null || bootError != null),
+            visible = windowVisible && (graph != null || bootError != null || lockedCookies != null),
             onCloseRequest = {
                 // A non-empty queue → the close button minimizes to the system tray and playback
                 // carries on; an empty queue → quit.
