@@ -340,6 +340,11 @@ Structured RESET (§0 boundary contract), classified at the host:
 - `E20051` — the `CacheStore` threw (disk I/O). A `CodedError` from the store keeps its own code.
 - `E20052` — a `cache/put` body sent no bytes for `idleTimeoutMs` (default 30 s; `0` = no limit, for a
   deliberately long-open stream). The staged value is dropped.
+- `E20053` — the put was cancelled by a newer `cache/put` or `cache/delete` of the same scope+key (the
+  last to start wins). The staged value is dropped.
+
+A put commits only on a clean half-close (END). A RESET from the writer, the engine closing, or any
+error above drops the staged value — an incomplete body is never stored.
 
 ---
 

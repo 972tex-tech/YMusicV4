@@ -2,12 +2,19 @@ package io.ymusic.dynamicengine
 
 import app.cash.sqldelight.db.SqlDriver
 import io.ymusic.dynamicengine.db.CacheDatabase
+import kmpcommon.error.CodedError
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.writeAll
 import kmpcommon.log.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -44,10 +51,10 @@ import kotlin.random.Random
  * caller passes it since `IO` is not a common API). [now] supplies epoch-millis stamps (injectable for
  * tests). Eviction is the JS's job.
  *
- * **Concurrent writers: the last to START wins.** [put] and [delete] take a per-key ticket when they
- * begin; a put streams into its own tmp with no lock held (a body can stay open for a whole player
- * session) and reveals it only if no later put/delete of the key began meanwhile — otherwise it drops
- * its tmp, as if written and immediately overwritten. [writeLock] guards only the tickets and the short
+ * **Concurrent writers: the last to START wins.** A put streams into its own tmp with no lock held (a
+ * body can stay open for a whole player session). A [put] or [delete] of a key cancels that key's
+ * in-flight put, which fails `E20053` and drops its tmp; a put already done streaming but overtaken
+ * before its reveal fails the same way. [writeLock] guards only the per-key bookkeeping and the short
  * reveal (move + row) / delete; reads ([get]'s `touch` + `list`) take no app lock.
  */
 class DiskCacheStore(
@@ -65,7 +72,7 @@ class DiskCacheStore(
     private val writeLock = Mutex()
 
     /** Per blob stem; guarded by [writeLock]. Dropped once no put of the key is in flight. */
-    private class KeyTurn(var latest: Long = 0, var inFlight: Int = 0)
+    private class KeyTurn(var latest: Long = 0, var inFlight: Int = 0, var streaming: Job? = null)
     private val turns = HashMap<String, KeyTurn>()
     private var lastTicket = 0L
 
@@ -93,40 +100,44 @@ class DiskCacheStore(
         key: String,
         custom: Map<String, String>,
         body: AsyncSource,
-    ): CacheStore.Meta {
+    ): CacheStore.Meta = coroutineScope {
         val id = stem(scope, key)
         val tmp = tmpPath(scope, key)
         val blob = blobPath(scope, key)
         val customJson = json.encodeToString(custom)
+        val streaming = async(ioDispatcher, start = CoroutineStart.LAZY) {
+            fileSystem.createDirectories(directory)
+            fileSystem.sink(tmp).buffer().use { sink -> sink.writeAll(body) }
+        }
         val ticket = writeLock.withLock {
             val turn = turns.getOrPut(id) { KeyTurn() }
             turn.inFlight++
+            turn.streaming?.cancel(SUPERSEDED)
+            turn.streaming = streaming
             (++lastTicket).also { turn.latest = it }
         }
         try {
             log?.log(Logger.Level.INFO, "DBG put stage $scope/$key #$ticket")
-            val size = withContext(ioDispatcher) {
-                fileSystem.createDirectories(directory)
-                fileSystem.sink(tmp).buffer().use { sink -> sink.writeAll(body) }
+            val size = try {
+                streaming.await()
+            } catch (e: CancellationException) {
+                if (streaming.isCancelled && isActive) throw CachePutSupersededError(scope, key) else throw e
             }
             log?.log(Logger.Level.INFO, "DBG put staged $scope/$key #$ticket wait")
-            return writeLock.withLock {
+            writeLock.withLock {
                 val superseded = turns.getValue(id).latest != ticket
                 log?.log(Logger.Level.INFO, "DBG put LOCKED $scope/$key #$ticket superseded=$superseded")
+                if (superseded) throw CachePutSupersededError(scope, key)
                 withContext(ioDispatcher) {
+                    // Reveal the blob, then write the row LAST; a failed row write deletes the
+                    // just-revealed blob so no zombie survives.
+                    fileSystem.atomicMove(tmp, blob)
                     val ts = now()
-                    if (superseded) {
-                        fileSystem.delete(tmp, mustExist = false)
-                    } else {
-                        // Reveal the blob, then write the row LAST; a failed row write deletes the
-                        // just-revealed blob so no zombie survives.
-                        fileSystem.atomicMove(tmp, blob)
-                        try {
-                            queries.upsert(scope, key, size, ts, ts, customJson)
-                        } catch (e: Throwable) {
-                            fileSystem.delete(blob, mustExist = false)
-                            throw e
-                        }
+                    try {
+                        queries.upsert(scope, key, size, ts, ts, customJson)
+                    } catch (e: Throwable) {
+                        fileSystem.delete(blob, mustExist = false)
+                        throw e
                     }
                     CacheStore.Meta(key, size, updatedAt = ts, lastUsed = ts, custom = custom)
                 }
@@ -138,6 +149,7 @@ class DiskCacheStore(
             withContext(NonCancellable) {
                 writeLock.withLock {
                     val turn = turns.getValue(id)
+                    if (turn.streaming === streaming) turn.streaming = null
                     if (--turn.inFlight == 0) turns.remove(id)
                 }
             }
@@ -146,7 +158,10 @@ class DiskCacheStore(
 
     override suspend fun delete(scope: String, key: String) = writeLock.also { log?.log(Logger.Level.INFO, "DBG delete wait $scope/$key") }.withLock {
         log?.log(Logger.Level.INFO, "DBG delete LOCKED $scope/$key")
-        turns[stem(scope, key)]?.latest = ++lastTicket
+        turns[stem(scope, key)]?.let { turn ->
+            turn.streaming?.cancel(SUPERSEDED)
+            turn.latest = ++lastTicket
+        }
         withContext(ioDispatcher) {
             // Blob first, then row: if this is interrupted the blob never outlives its row (no zombie).
             fileSystem.delete(blobPath(scope, key), mustExist = false)
@@ -176,7 +191,16 @@ class DiskCacheStore(
     // Length-prefix the scope so (scope, key) hashes injectively — no separator ambiguity.
     private fun stem(scope: String, key: String) = "${scope.length}:$scope:$key".encodeUtf8().sha256().hex()
 
+    private class CachePutSupersededError(scope: String, key: String) :
+        Exception("cache put $scope/$key superseded by a newer put/delete"),
+        CodedError {
+        override val code = "E20053"
+        override val userMessage: String? = null
+    }
+
     private companion object {
+        val SUPERSEDED = CancellationException("superseded by a newer put/delete of the key")
+
         const val BLOB_EXT = ".v"
         val json = Json { ignoreUnknownKeys = true }
     }

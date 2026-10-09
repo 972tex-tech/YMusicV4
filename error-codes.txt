@@ -28,6 +28,7 @@ E20041 - cookie jar (KmpHttpClient.cookieJar) get/set threw (dynamic-engine Cook
 E20050 - cache request has a missing/blank scope/key or a malformed head (dynamic-engine CacheProtocol)
 E20051 - cache store get/put/delete/list threw (dynamic-engine CacheProtocol)
 E20052 - cache/put body sent no bytes for its idle timeout (dynamic-engine CacheProtocol)
+E20053 - cache put cancelled by a newer put/delete of the same scope+key (dynamic-engine DiskCacheStore)
 E20060 - settings request has a missing/invalid field or malformed head (dynamic-engine SettingsProtocol)
 E20061 - settings store get/put threw (dynamic-engine SettingsProtocol)
 E20070 - mse-player request has a missing/invalid field or malformed head (dynamic-engine MsePlayerProtocol)
