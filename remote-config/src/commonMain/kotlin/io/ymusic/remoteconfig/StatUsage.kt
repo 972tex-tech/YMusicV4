@@ -103,7 +103,7 @@ class StatUsage(
                 throw cancel
             } catch (error: Throwable) {
                 // Best-effort by design: the queue survives, and stats are never worth an alert.
-                log?.info("Stat flush failed, ${pending.size} queued: $error")
+                log?.info("Stat flush failed, ${pending.size} queued", error)
                 return
             }
             repeat(chunk.size) { pending.removeFirst() }
@@ -162,8 +162,8 @@ class StatUsage(
             }
             while (pending.size > MAX_QUEUE) pending.removeFirst()
         } catch (error: Throwable) {
-            log?.info("Stat queue unreadable, starting over: $error")
-            runCatching { fileSystem.delete(queueFile) }
+            runCatching { fileSystem.delete(queueFile) }.exceptionOrNull()?.let(error::addSuppressed)
+            log?.info("Stat queue unreadable, starting over", error)
             pending.clear()
         }
     }

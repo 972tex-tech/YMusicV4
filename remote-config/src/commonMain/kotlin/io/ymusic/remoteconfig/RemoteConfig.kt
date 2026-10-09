@@ -100,10 +100,10 @@ class RemoteConfig(
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Throwable) {
-                log?.captureError(error, "read config cache failure")
                 // Best effort: a cache that cannot be read is worse than none, but failing to
                 // remove it must not become a second failure on top of the first.
-                runCatching { fileSystem.delete(cacheFile) }
+                runCatching { fileSystem.delete(cacheFile) }.exceptionOrNull()?.let(error::addSuppressed)
+                log?.captureError(error, "read config cache failure")
                 RemoteConfigData.DEFAULTS
             }
             initialized = true
