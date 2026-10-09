@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClosedCaption
@@ -141,11 +142,13 @@ import io.ymusic.ui.resources.cd_rewind10
 import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.cd_sleep_timer
 import io.ymusic.ui.resources.ic_sponsor_block
+import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.playback_failed
 import io.ymusic.ui.resources.queue_end
 import io.ymusic.ui.resources.queue_load_failed
 import io.ymusic.ui.resources.queue_load_more
 import io.ymusic.ui.resources.queue_loading_more
+import io.ymusic.ui.resources.queue_save_as_yt_playlist
 import io.ymusic.ui.resources.remove_from_queue
 import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.sleep_minutes
@@ -157,6 +160,7 @@ import io.ymusic.ui.resources.sponsor_block_included
 import io.ymusic.ui.resources.up_next
 import io.ymusic.ui.resources.video_details
 import io.ymusic.ui.resources.video_quality_auto
+import io.ymusic.ui.resources.yt_playlist_queue_empty
 import io.ymusic.ui.sponsorblock.SponsorBlockState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -1042,6 +1046,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     var eqOpen by remember { mutableStateOf(false) }
     var detailsOpen by remember { mutableStateOf(false) }
     val video = player.queue.collectAsState().value.currentItem as? PlayableItem.YtMedia
+    val ytPlaylists = LocalYtPlaylistActions.current
     HoldVideoOverlay(open || playbackOpen || eqOpen || detailsOpen)
 
     Box {
@@ -1052,6 +1057,12 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
                     text = { Text(stringResource(Res.string.video_details)) },
                     onClick = { detailsOpen = true; open = false },
                 )
+                if (ytPlaylists != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.menu_add_to_playlist)) },
+                        onClick = { ytPlaylists.addToPlaylist(video.videoId); open = false },
+                    )
+                }
             }
             DropdownMenuItem(
                 text = { Text(stringResource(Res.string.sound_speed)) },
@@ -1284,6 +1295,10 @@ private fun QueueMoreRow(player: Player, more: QueueMore) {
 @Composable
 private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, total: Int, shuffle: Boolean, loopMode: LoopMode) {
     val player = coordinator.player
+    val ytPlaylists = LocalYtPlaylistActions.current
+    val snackbar = LocalSnackbar.current
+    val noVideos = stringResource(Res.string.yt_playlist_queue_empty)
+    val scope = rememberCoroutineScope()
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1298,6 +1313,20 @@ private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, tot
             style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkFaint),
         )
         Box(Modifier.weight(1f))
+        if (ytPlaylists != null) {
+            ActionIcon(
+                Icons.AutoMirrored.Filled.PlaylistAdd,
+                stringResource(Res.string.queue_save_as_yt_playlist),
+                iconSize = 20.dp,
+                tint = DesignColors.InkSoft,
+                onClick = {
+                    scope.launch {
+                        val videoIds = queueVideoIds(coordinator.graph, player.queue.value.items)
+                        if (videoIds.isEmpty()) snackbar(noVideos) else ytPlaylists.saveAsPlaylist(videoIds)
+                    }
+                },
+            )
+        }
         ActionIcon(
             if (loopMode == LoopMode.One) Icons.Default.RepeatOne else Icons.Default.Repeat,
             stringResource(Res.string.cd_repeat),
@@ -1321,6 +1350,18 @@ private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, tot
             onClick = { player.setShuffle(!shuffle) },
         )
     }
+}
+
+/** The queue's YouTube video ids in order, deduplicated: YouTube items, plus local files the library
+ *  knows came from a YouTube video (downloads). */
+private suspend fun queueVideoIds(graph: AppGraph, items: List<PlayableItem>): List<String> {
+    val store = graph.mediaStore
+    return items.mapNotNull { item ->
+        when (item) {
+            is PlayableItem.YtMedia -> item.videoId
+            is PlayableItem.LocalMedia -> item.mediaId?.let { store?.findItem(it)?.youtubeVid }
+        }
+    }.distinct()
 }
 
 /**

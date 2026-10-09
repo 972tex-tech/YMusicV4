@@ -85,6 +85,16 @@
     <string name="playlist_sign_in_to_save">سجّل الدخول لحفظ قائمة التشغيل هذه</string>
     <string name="playlist_saved">تم الحفظ في مكتبتك</string>
     <string name="playlist_removed">تمت الإزالة من مكتبتك</string>
+    <string name="menu_add_to_playlist">إضافة إلى قائمة التشغيل</string>
+    <string name="yt_playlist_sign_in">سجّل الدخول لاستخدام قوائم تشغيل YouTube الخاصة بك</string>
+    <string name="yt_playlist_added">تمت الإضافة إلى %1$s</string>
+    <string name="yt_playlist_created">تم إنشاء قائمة التشغيل %1$s</string>
+    <string name="yt_playlist_privacy_public">عامة</string>
+    <string name="yt_playlist_privacy_unlisted">غير مدرجة</string>
+    <string name="yt_playlist_privacy_private">خاصة</string>
+    <string name="yt_playlist_from_queue">ستتم إضافة %1$d فيديو من قائمة الانتظار</string>
+    <string name="queue_save_as_yt_playlist">حفظ قائمة الانتظار كقائمة تشغيل على YouTube</string>
+    <string name="yt_playlist_queue_empty">لا تحتوي قائمة الانتظار على فيديوهات YouTube</string>
     <string name="cd_add_to_playlist">إضافة إلى قائمة التشغيل</string>
     <string name="cd_share">مشاركة</string>
     <string name="cd_music_video">موسيقى</string>

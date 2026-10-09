@@ -62,6 +62,7 @@ import io.ymusic.ui.resources.cd_sort
 import io.ymusic.ui.resources.error_generic
 import io.ymusic.ui.resources.error_network
 import io.ymusic.ui.resources.feed_empty
+import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.menu_play_single
 import io.ymusic.ui.resources.menu_remove
 import io.ymusic.ui.resources.menu_start_radio
@@ -689,6 +690,7 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
     val downloadLauncher = LocalDownloadLauncher.current
     val quickPreset = downloadLauncher?.quickPreset?.collectAsState()?.value
     val removeFromTopTracks = LocalRemoveFromTopTracks.current
+    val ytPlaylists = LocalYtPlaylistActions.current
     return ItemActions(
         if (item.kind == YtFeedItem.KIND_VIDEO) {
             buildList {
@@ -696,6 +698,9 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
                 add(stringResource(Res.string.menu_start_radio) to { coordinator.playNow(item) })
                 add(stringResource(Res.string.queue_next) to { coordinator.playNext(item) })
                 add(stringResource(Res.string.queue_last) to { coordinator.playLater(item) })
+                if (ytPlaylists != null) {
+                    add(stringResource(Res.string.menu_add_to_playlist) to { ytPlaylists.addToPlaylist(item.id) })
+                }
                 if (downloadLauncher != null && !item.live) {
                     add(stringResource(Res.string.cd_download) to { downloadLauncher.launch(item) })
                     if (quickPreset != null) {

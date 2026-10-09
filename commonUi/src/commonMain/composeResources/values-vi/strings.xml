@@ -85,6 +85,16 @@
     <string name="playlist_sign_in_to_save">Đăng nhập để lưu danh sách phát này</string>
     <string name="playlist_saved">Đã lưu vào thư viện</string>
     <string name="playlist_removed">Đã xóa khỏi thư viện</string>
+    <string name="menu_add_to_playlist">Thêm vào danh sách phát</string>
+    <string name="yt_playlist_sign_in">Đăng nhập để dùng danh sách phát YouTube của bạn</string>
+    <string name="yt_playlist_added">Đã thêm vào %1$s</string>
+    <string name="yt_playlist_created">Đã tạo danh sách phát %1$s</string>
+    <string name="yt_playlist_privacy_public">Công khai</string>
+    <string name="yt_playlist_privacy_unlisted">Không công khai</string>
+    <string name="yt_playlist_privacy_private">Riêng tư</string>
+    <string name="yt_playlist_from_queue">%1$d video trong hàng đợi sẽ được thêm</string>
+    <string name="queue_save_as_yt_playlist">Lưu hàng đợi thành danh sách phát YouTube</string>
+    <string name="yt_playlist_queue_empty">Hàng đợi không có video YouTube nào</string>
     <string name="cd_add_to_playlist">Thêm vào danh sách phát</string>
     <string name="cd_share">Chia sẻ</string>
     <string name="cd_music_video">Âm nhạc</string>

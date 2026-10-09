@@ -120,6 +120,7 @@ import io.ymusic.ui.resources.tab_home
 import io.ymusic.ui.resources.tab_music
 import io.ymusic.ui.resources.tab_recommended
 import io.ymusic.ui.resources.tab_top_tracks
+import io.ymusic.ui.resources.yt_playlist_sign_in
 import io.ymusic.ui.sponsorblock.SponsorBlockCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -385,6 +386,24 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             }
         }
         val availableOffline = rememberAvailableOffline(graph)
+        // Add-to-playlist / save-queue entry points (video menus, Now Playing) set this; the host below
+        // shows the dialog. Hoisted to the root for the same reason as the download launcher.
+        var ytPlaylistRequest by remember { mutableStateOf<YtPlaylistRequest?>(null) }
+        val ytPlaylistSignIn = stringResource(Res.string.yt_playlist_sign_in)
+        val ytPlaylistActions = remember(signedIn, ytPlaylistSignIn) {
+            YtPlaylistActions(
+                addToPlaylist = { videoId ->
+                    if (signedIn) ytPlaylistRequest = YtPlaylistRequest.Add(videoId) else showSnackbar(ytPlaylistSignIn)
+                },
+                saveAsPlaylist = { videoIds ->
+                    if (signedIn) {
+                        ytPlaylistRequest = YtPlaylistRequest.Create(videoIds, fromQueue = true)
+                    } else {
+                        showSnackbar(ytPlaylistSignIn)
+                    }
+                },
+            )
+        }
         // Scan results are notification-class: shown on whatever screen is open — collected at the root,
         // since the shell (and anything inside it) is torn down while desktop Now Playing covers it.
         LaunchedEffect(scanController) {
@@ -684,6 +703,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                             LocalScanController provides scanController,
                             LocalOpenNavDrawer provides { scope.launch { drawer.open() } },
                             LocalDownloadLauncher provides downloadLauncher,
+                            LocalYtPlaylistActions provides ytPlaylistActions,
                             LocalAvailableOffline provides availableOffline,
                             LocalNavigateToSection provides { onSection(it) },
                             LocalLibraryFolderReveal provides libraryReveal,
@@ -921,6 +941,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 LocalSnackbar provides showSnackbar,
                 LocalDownloadLauncher provides downloadLauncher,
                 LocalAvailableOffline provides availableOffline,
+                LocalYtPlaylistActions provides ytPlaylistActions,
             ) {
                 if (nowPlayingOpen) {
                     NowPlayingScreen(
@@ -948,6 +969,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 }
                 DownloadDialogHost(graph, pendingDownload) { pendingDownload = null }
                 QuickDownloadHost(graph, pendingQuickDownload) { pendingQuickDownload = null }
+                YtPlaylistHost(graph, ytPlaylistRequest) { ytPlaylistRequest = null }
             }
             // Last, so messages land over everything — the shell, Now Playing — whichever screen is up.
             Box(Modifier.fillMaxSize()) {
