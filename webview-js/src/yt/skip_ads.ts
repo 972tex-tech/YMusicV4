@@ -392,7 +392,7 @@ export function skipAds(wvApi = window.ymixWvApi): void {
                 request = new Request(request, { body: newBody.buffer });
               }, token => postPoToken(token, 'sabr'));
             } catch (error: any) {
-              wvApi.reportError('handle sabr request body failure: ' + error?.message);
+              wvApi.reportError('handle sabr request body failure: ' + error?.message, error?.stack);
             }
           }
         }
@@ -414,7 +414,7 @@ export function skipAds(wvApi = window.ymixWvApi): void {
             const cached = await serveViaProxyChannel(request);
             if (cached) return cached;
           } catch (error: any) {
-            wvApi.reportError('proxy channel failed: ' + error?.message);
+            wvApi.reportError('proxy channel failed: ' + error?.message, error?.stack);
           }
           // channel absent / failed → fall through to the network fetch below
         } else {

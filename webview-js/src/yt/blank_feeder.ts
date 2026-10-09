@@ -124,7 +124,7 @@ export function blankVideoFeeder(wvApi = window.ymixWvApi) {
     try {
       trackSourceBuffer(this, sb, mime);
     } catch (e: any) {
-      wvApi.reportError('blankfeed track failure: ' + e?.message);
+      wvApi.reportError('blankfeed track failure: ' + e?.message, e?.stack);
     }
     return sb;
   };

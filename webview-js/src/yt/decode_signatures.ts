@@ -21,8 +21,8 @@ export function mockSignatureDecoder(wvApi = window.ymixWvApi) {
         let stringArrayValue: string[] | undefined;
         try {
           stringArrayValue = eval(initStringArray[2]);
-        } catch (e) {
-          wvApi.reportError(`eval init array failure: ${url} ${e}`);
+        } catch (e: any) {
+          wvApi.reportError(`eval init array failure: ${url} ${e}`, e?.stack);
           return [];
         }
         if (!Array.isArray(stringArrayValue)) {
