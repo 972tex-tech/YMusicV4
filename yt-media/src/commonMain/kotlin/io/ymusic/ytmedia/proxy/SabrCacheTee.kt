@@ -89,7 +89,7 @@ internal class SabrCacheTee(
                 dispatch()
             } catch (t: Throwable) {
                 // A thrown parse (bad varint / proto) or cache write (disk / index) — never trust the rest.
-                markIllegal("parse or cache-write error: ${t.message}")
+                markIllegal("parse or cache-write error: ${t.message}", t)
             }
         }
         return n
@@ -293,7 +293,10 @@ internal class SabrCacheTee(
     }
 
     private fun abortOpen() {
-        open.values.forEach { runCatching { it.fill.abort() } }
+        open.values.forEach { segment ->
+            runCatching { segment.fill.abort() }
+                .onFailure { logger?.log(Logger.Level.WARN, "sabr-fill abort failed", it) }
+        }
         open.clear()
     }
 

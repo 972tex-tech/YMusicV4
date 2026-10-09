@@ -291,6 +291,7 @@ class SabrSession(
         var minSeg = Int.MAX_VALUE
         var maxSeg = Int.MIN_VALUE
         var protectionStatus: Int? = null
+        var primary: Throwable? = null
         try {
             while (!body.exhausted()) {
                 val (partId, partSize) = body.readUmpPartHeader()
@@ -362,6 +363,7 @@ class SabrSession(
 
                     UmpPart.SABR_CONTEXT_UPDATE -> {
                         // A dropped update changes what the server does next round — record the drop.
+                        body.require(partSize)
                         val update = runCatching {
                             SabrContextUpdate.fromUmpResponse(body.readFields(partSize))
                         }.onFailure { e -> logger?.log(Logger.Level.WARN, "SABR_CONTEXT_UPDATE parse failed, dropped", e) }
@@ -372,12 +374,23 @@ class SabrSession(
                     else -> body.skipFully(partSize)
                 }
             }
+        } catch (error: Throwable) {
+            primary = error
+            throw error
         } finally {
+            val inFlight = primary
+            val onCleanupFailure: (Throwable) -> Unit = { cleanupError ->
+                if (inFlight != null) {
+                    inFlight.addSuppressed(cleanupError)
+                } else {
+                    logger?.log(Logger.Level.WARN, "SABR open-segment cleanup failed", cleanupError)
+                }
+            }
             open.values.forEach { state ->
-                state.sink?.let { s -> runCatching { s.close() } }
+                state.sink?.let { sink -> runCatching { sink.close() }.onFailure(onCleanupFailure) }
                 // A segment left open (truncated response) never sealed: drop its uncommitted cache block
                 // so no partial span survives; its orphan index row is pruned later by cleanup.
-                state.cacheFill?.let { runCatching { it.abort() } }
+                state.cacheFill?.let { fill -> runCatching { fill.abort() }.onFailure(onCleanupFailure) }
             }
         }
         return RoundOutcome(completed, redirect, backoffMs, headers, minSeg, maxSeg, protectionStatus)
