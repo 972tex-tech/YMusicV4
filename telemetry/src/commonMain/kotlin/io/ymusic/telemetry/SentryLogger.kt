@@ -12,7 +12,7 @@ import kmpcommon.log.Logger
 import kmpcommon.log.trailMark
 
 /**
- * The app's root [Logger] over Sentry: a WARN+ [log] is a Sentry Log (attributes = the crumb-tag
+ * The app's root [Logger] over Sentry: an INFO+ [log] is a Sentry Log (attributes = the crumb-tag
  * path + the trail's merged props), every [captureError] a Sentry event whose grouping comes from
  * the coded error — else exception type + tag path — applied by [applyYMusicTelemetry]'s
  * `beforeSend` off the tags set here (`Scope` exposes no fingerprint).
@@ -32,8 +32,8 @@ class SentryLogger private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs
     }
 
     override fun log(level: Logger.Level, message: String, error: Throwable?) {
-        // DEBUG/INFO stay in the local log file, which ships only with a user's feedback report.
-        if (level < Logger.Level.WARN) return
+        // DEBUG stays in the local log file, which ships only with a user's feedback report.
+        if (level == Logger.Level.DEBUG) return
         val body = buildString {
             append(message)
             if (error != null) {
