@@ -321,7 +321,8 @@ fun ChannelDetailScreen(
             s.feed.pager,
             coordinator,
             onOpen = onOpen,
-            topContent = if (onHomeTab) {
+            // Loading is a bare spinner — the header waits for the page instead of rendering from the tapped item.
+            topContent = if (onHomeTab && ready != null) {
                 { ChannelHeader(ready?.pageHeader, fallback = item) }
             } else {
                 null
