@@ -528,6 +528,13 @@ class MsePlayer internal constructor(
         json.objectOrNull("state")?.let { applyState(it) }
         json.objectOrNull("picture")?.let { applyPicture(it) }
         json.objectOrNull("details")?.let { applyDetails(it) }
+        json.objectOrNull("watchNext")?.let { applyWatchNext(it) }
+    }
+
+    private fun applyWatchNext(json: JsonObject) {
+        val videoId = json.stringOrNull("videoId") ?: return
+        val contents = json.stringOrNull("contents") ?: return
+        _watchNextSeen.tryEmit(WatchNextSeen(videoId, contents))
     }
 
     private fun applyDetails(json: JsonObject) {
