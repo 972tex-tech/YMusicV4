@@ -41,7 +41,7 @@ class HttpApiService(
     private val baseUrl: String,
     private val now: () -> Long,
     private val apiKey: String? = null,
-    /** CPU architecture (x64, arm64) where one OS ships a build per architecture: desktop. */
+    /** Which build this device needs: the CPU (x64, arm64) on desktop, the primary ABI on Android. */
     private val arch: String? = null,
 ) : ApiService {
 

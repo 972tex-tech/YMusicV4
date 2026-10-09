@@ -220,6 +220,8 @@ class YMusicApplication : Application() {
                 deviceId = deviceId,
                 baseUrl = baseUrl,
                 now = { System.currentTimeMillis() },
+                // The device's preferred ABI, so the service can offer its split APK.
+                arch = android.os.Build.SUPPORTED_ABIS.firstOrNull(),
             )
         }
         // Flags, the newest JS bundle revisions, and update availability. Started here so the first
