@@ -3,6 +3,7 @@ package io.ymusic.ui
 import kmphttp.AsyncInterceptor
 import kmphttp.Cache
 import kmphttp.DefaultPlatformCache
+import kmphttp.HttpLogInterceptor
 import kmphttp.KmpHttpClient
 import kmphttp.create
 import okio.FileSystem
@@ -36,22 +37,26 @@ class AppHttpClients(
         DefaultPlatformCache(cacheDir, maxSizeBytes)
     }
 
-    val engine: KmpHttpClient = KmpHttpClient.create {
+    private val base: KmpHttpClient = KmpHttpClient.create {
         defaultExecuteTimeout = APP_HTTP_TIMEOUT
         cache = diskCache
         this.logger = httpLogger // `logger` alone resolves to the constructor parameter
     }
 
+    val engine: KmpHttpClient = base.newBuilder().apply {
+        httpLogger?.let { interceptors += HttpLogInterceptor(it) }
+    }.build()
+
     /**
-     * The image loader's client — derived from [engine] so the whole app shares one connection
-     * pool, minus the HTTP cache (the loader streams originals into its own disk cache; see class
-     * doc). One YouTube quirk lives here: `i.ytimg.com/img/no_thumbnail.jpg` —
+     * The image loader's client — derived from the same base as [engine] so the whole app shares
+     * one connection pool, minus the HTTP cache (the loader streams originals into its own disk
+     * cache; see class doc) and the per-request log (thumbnail traffic would drown it). One YouTube quirk lives here: `i.ytimg.com/img/no_thumbnail.jpg` —
      * the default thumbnail YouTube emits for playlists with nothing to thumbnail — is a real
      * placeholder JPEG served with status 404. The failing status would keep it out of every image
      * cache, so each rebind refetched it; rewriting that one response to 200 lets it decode and
      * cache like any other image.
      */
-    val image: KmpHttpClient = engine.newBuilder().apply {
+    val image: KmpHttpClient = base.newBuilder().apply {
         cache = null
         networkInterceptors += AsyncInterceptor { chain ->
             val response = chain.proceed(chain.request)
