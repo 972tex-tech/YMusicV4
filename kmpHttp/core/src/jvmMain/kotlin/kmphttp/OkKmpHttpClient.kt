@@ -1,7 +1,6 @@
 package kmphttp
 
 import kmphttp.internal.AsyncChain
-import kmphttp.internal.CallTrace
 import kmphttp.internal.CallTraceListener
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -57,7 +56,7 @@ class OkKmpHttpClient : KmpHttpClient {
                 if (networkInterceptors().find { it is NetworkInterceptorBridge } == null) {
                     addNetworkInterceptor(NetworkInterceptorBridge())
                 }
-                if (builder.logger != null) eventListenerFactory(CallTraceListener.factory)
+                if (builder.interceptors.any { it is HttpLogInterceptor }) eventListenerFactory(CallTraceListener.factory)
             }
             .build()
 
@@ -92,10 +91,7 @@ class OkKmpHttpClient : KmpHttpClient {
         options: RedirectOptions,
         timeout: Duration?
     ): Response {
-        val trace = logger?.let { CallTrace(it, CallTrace.label(request)) }
-        trace?.log("execute")
         return withContext(defaultDispatcher) {
-            trace?.log("on dispatcher thread")
             val asyncChain = AsyncChain(
                 interceptors = interceptors,
                 interceptorIndex = 0,
@@ -104,16 +100,11 @@ class OkKmpHttpClient : KmpHttpClient {
 
                     suspendCancellableCoroutine { cont ->
                         val request =
-                            if (networkInterceptors.isNotEmpty() || trace != null) {
+                            if (networkInterceptors.isNotEmpty()) {
                                 beforeNetworkRequest.newBuilder()
-                                    .apply {
-                                        if (networkInterceptors.isNotEmpty()) {
-                                            tag(OkKmpHttpClient::class, this@OkKmpHttpClient)
-                                            tag(RedirectOptions::class, options)
-                                            tag(Job::class, cont.context.job)
-                                        }
-                                        if (trace != null) tag(CallTrace::class, trace)
-                                    }
+                                    .tag(OkKmpHttpClient::class, this@OkKmpHttpClient)
+                                    .tag(RedirectOptions::class, options)
+                                    .tag(Job::class, cont.context.job)
                                     .build()
                             } else {
                                 beforeNetworkRequest
