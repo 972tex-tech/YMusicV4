@@ -78,6 +78,8 @@
     <!-- Detail pages -->
     <string name="detail_playlist">Danh sách phát</string>
     <string name="subscribe">Đăng ký</string>
+    <string name="subscribed">Đã đăng ký</string>
+    <string name="channel_sign_in_to_subscribe">Đăng nhập để đăng ký kênh này</string>
     <string name="cd_add_to_playlist">Thêm vào danh sách phát</string>
     <string name="cd_share">Chia sẻ</string>
     <string name="cd_music_video">Âm nhạc</string>

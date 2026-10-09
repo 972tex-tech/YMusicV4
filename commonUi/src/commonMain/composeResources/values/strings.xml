@@ -100,6 +100,8 @@
     <!-- Detail pages -->
     <string name="detail_playlist">Playlist</string>
     <string name="subscribe">Subscribe</string>
+    <string name="subscribed">Subscribed</string>
+    <string name="channel_sign_in_to_subscribe">Sign in to subscribe to this channel</string>
     <string name="cd_add_to_playlist">Add to playlist</string>
     <string name="cd_share">Share</string>
     <string name="cd_music_video">Music</string>

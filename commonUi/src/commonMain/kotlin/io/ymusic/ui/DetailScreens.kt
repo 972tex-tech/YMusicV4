@@ -1,6 +1,7 @@
 package io.ymusic.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,16 +44,22 @@ import io.ymusic.dynamicengine.yt.YtPageHeader
 import io.ymusic.dynamicengine.yt.YtPageTab
 import io.ymusic.dynamicengine.yt.extractChannelDetail
 import io.ymusic.dynamicengine.yt.extractPlaylistDetail
+import io.ymusic.dynamicengine.yt.subscribeChannel
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_add_to_playlist
 import io.ymusic.ui.resources.cd_download
 import io.ymusic.ui.resources.cd_share
 import io.ymusic.ui.resources.cd_shuffle
+import io.ymusic.ui.resources.channel_sign_in_to_subscribe
 import io.ymusic.ui.resources.detail_playlist
 import io.ymusic.ui.resources.subscribe
+import io.ymusic.ui.resources.subscribed
 import kmpcommon.log.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.errorCode
 
 /**
  * Playlist detail's retained state (feed + scroll), created when the page is pushed. [url] is the
@@ -233,8 +240,8 @@ fun FeedDetailScreen(
  * the header while the page loads.
  */
 class ChannelSession(
-    graph: AppGraph,
-    scope: CoroutineScope,
+    private val graph: AppGraph,
+    private val scope: CoroutineScope,
     val item: YtFeedItem,
     initialUrl: String,
     parentLog: Logger?,
@@ -254,9 +261,18 @@ class ChannelSession(
     // the player's artist line. A deeplink seed's title is a shelf header, not the channel name.
     private var channelName: String? = item.title.takeIf { item.channelId == item.id }
 
+    /** The viewer's subscription; null while unknown or signed out. Flips optimistically on tap. */
+    var subscribed by mutableStateOf<Boolean?>(null)
+        private set
+    private var subscribing = false
+
+    /** A failed subscribe/unsubscribe, for the screen to show once and clear. */
+    var subscribeErrorCode by mutableStateOf<String?>(null)
+
     val feed = FeedSession(scope, log) { continuation ->
         val page = fetch(url, continuation, log)
         page.pageHeader?.title?.let { channelName = it }
+        page.pageHeader?.takeIf { it.channelId != null }?.let { subscribed = it.subscribed }
         val name = channelName ?: return@FeedSession page
         page.copy(
             sections = page.sections.map { section ->
@@ -271,6 +287,26 @@ class ChannelSession(
 
     init {
         feed.pager.refresh()
+    }
+
+    fun toggleSubscription(channelId: String) {
+        val current = subscribed ?: return
+        if (subscribing) return
+        subscribing = true
+        subscribed = !current
+        scope.launch {
+            try {
+                graph.engines.subscribeChannel(channelId, !current, log)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                log?.log(Logger.Level.WARN, "subscribe failed", error)
+                subscribed = current
+                subscribeErrorCode = error.errorCode() ?: "E20103"
+            } finally {
+                subscribing = false
+            }
+        }
     }
 
     fun close() {
@@ -300,6 +336,14 @@ fun ChannelDetailScreen(
     LaunchedEffect(ready?.pageTabs) {
         ready?.pageTabs?.takeIf { it.isNotEmpty() }?.let { s.tabs = it }
     }
+    s.subscribeErrorCode?.let { code ->
+        val snackbar = LocalSnackbar.current
+        val message = errorMessage(code)
+        LaunchedEffect(code, message) {
+            snackbar(message)
+            s.subscribeErrorCode = null
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         DetailAppBar(ready?.pageHeader?.title ?: item.title, onBack, onSearch) {
@@ -323,7 +367,7 @@ fun ChannelDetailScreen(
             onOpen = onOpen,
             // Loading is a bare spinner — the header waits for the page instead of rendering from the tapped item.
             topContent = if (onHomeTab && ready != null) {
-                { ChannelHeader(ready?.pageHeader, fallback = item) }
+                { ChannelHeader(ready?.pageHeader, fallback = item, s.subscribed) { s.toggleSubscription(it) } }
             } else {
                 null
             },
@@ -333,10 +377,15 @@ fun ChannelDetailScreen(
     }
 }
 
-/** Banner strip (when the channel has one) + avatar · name/meta · the Subscribe pill (chrome until
- *  accounts land). */
+/** Banner strip (when the channel has one) + avatar · name/meta · the Subscribe pill — shown when the
+ *  page names its channel; signed out ([subscribed] null), a tap explains that subscribing needs sign-in. */
 @Composable
-private fun ChannelHeader(header: YtPageHeader?, fallback: YtFeedItem) {
+private fun ChannelHeader(
+    header: YtPageHeader?,
+    fallback: YtFeedItem,
+    subscribed: Boolean?,
+    onToggleSubscription: (channelId: String) -> Unit,
+) {
     Column(Modifier.fillMaxWidth()) {
         val banner = header?.banner.orEmpty()
         if (banner.isNotEmpty()) {
@@ -384,15 +433,36 @@ private fun ChannelHeader(header: YtPageHeader?, fallback: YtFeedItem) {
                     )
                 }
             }
-            // Real action lands with accounts; filled pill per the mockup's channel header.
-            Text(
-                stringResource(Res.string.subscribe),
-                style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DesignColors.OnInk),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(DesignColors.InkStrong)
-                    .padding(horizontal = 16.dp, vertical = 7.dp),
-            )
+            header?.channelId?.let { channelId ->
+                SubscribePill(subscribed) { onToggleSubscription(channelId) }
+            }
         }
     }
+}
+
+/** Filled "Subscribe", or the quieter outlined "Subscribed" once subscribed. */
+@Composable
+private fun SubscribePill(subscribed: Boolean?, onToggle: () -> Unit) {
+    val snackbar = LocalSnackbar.current
+    val signIn = stringResource(Res.string.channel_sign_in_to_subscribe)
+    val shape = RoundedCornerShape(999.dp)
+    Text(
+        stringResource(if (subscribed == true) Res.string.subscribed else Res.string.subscribe),
+        style = TextStyle(
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (subscribed == true) DesignColors.InkSecondary else DesignColors.OnInk,
+        ),
+        modifier = Modifier
+            .clip(shape)
+            .then(
+                if (subscribed == true) {
+                    Modifier.border(1.dp, DesignColors.OutlineSoft, shape)
+                } else {
+                    Modifier.background(DesignColors.InkStrong)
+                },
+            )
+            .clickable { if (subscribed == null) snackbar(signIn) else onToggle() }
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+    )
 }
