@@ -261,10 +261,22 @@ fun PlayerTray(icon: Painter, onClick: (screenX: Int) -> Unit) {
                 LayoutDirection.Ltr,
                 Size(size.width.toFloat() * scale, size.height.toFloat() * scale),
             )
-            TrayIcon(
-                java.awt.image.BaseMultiResolutionImage(render(1), render(2)),
-                "YMusic",
-            ).apply {
+            val image = if (isLinux) {
+                // X11's tray peer paints transparent pixels in its own (white) background, so the
+                // disc is scaled to cover the whole cell and the corners cropped away.
+                val bleed = kotlin.math.ceil(size.width * kotlin.math.sqrt(2.0)).toInt()
+                val inset = (bleed - size.width) / 2
+                val disc = icon.toAwtImage(density, LayoutDirection.Ltr, Size(bleed.toFloat(), bleed.toFloat()))
+                java.awt.image.BufferedImage(size.width, size.height, java.awt.image.BufferedImage.TYPE_INT_ARGB).apply {
+                    createGraphics().apply {
+                        drawImage(disc, -inset, -inset, null)
+                        dispose()
+                    }
+                }
+            } else {
+                java.awt.image.BaseMultiResolutionImage(render(1), render(2))
+            }
+            TrayIcon(image, "YMusic").apply {
                 addMouseListener(
                     object : MouseAdapter() {
                         // TrayIcon events carry SCREEN coordinates (there is no component space).
@@ -277,6 +289,8 @@ fun PlayerTray(icon: Painter, onClick: (screenX: Int) -> Unit) {
         onDispose { trayIcon?.let { t -> tray?.remove(t) } }
     }
 }
+
+private val isLinux = "linux" in System.getProperty("os.name").orEmpty().lowercase()
 
 private const val WIDTH_DP = 340
 private const val HEIGHT_DP = 132
