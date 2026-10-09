@@ -42,6 +42,7 @@ fun AppTextField(
     supportingText: String? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
 ) {
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
@@ -71,6 +72,7 @@ fun AppTextField(
         cursorBrush = SolidColor(if (isError) MaterialTheme.colorScheme.error else DesignColors.Accent),
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
+        visualTransformation = visualTransformation,
         interactionSource = interactionSource,
         decorationBox = { inner ->
             TextFieldDefaults.DecorationBox(
@@ -78,7 +80,7 @@ fun AppTextField(
                 innerTextField = inner,
                 enabled = true,
                 singleLine = singleLine,
-                visualTransformation = VisualTransformation.None,
+                visualTransformation = visualTransformation,
                 interactionSource = interactionSource,
                 isError = isError,
                 label = { Text(label) },
