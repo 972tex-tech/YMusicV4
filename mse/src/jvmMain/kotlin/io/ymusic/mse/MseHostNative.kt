@@ -101,11 +101,21 @@ actual object MseHostNative {
             System.load(File(dir, libFileName).absolutePath)
             return
         }
-        try {
+        val libraryPathError = try {
             System.loadLibrary(name)
             return
-        } catch (_: UnsatisfiedLinkError) {
+        } catch (error: UnsatisfiedLinkError) {
+            error
         }
+        try {
+            loadBundled(name, libFileName)
+        } catch (error: Throwable) {
+            error.addSuppressed(libraryPathError)
+            throw error
+        }
+    }
+
+    private fun loadBundled(name: String, libFileName: String) {
         // Unpack JNI + sibling libav into one temp dir so @loader_path / $ORIGIN resolves.
         val folder = "jni/${hostJniFolder()}"
         val cl = MseHostNative::class.java.classLoader

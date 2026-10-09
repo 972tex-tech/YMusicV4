@@ -134,7 +134,7 @@ internal class AndroidLocalPlayer(
                 _status.update {
                     it.copy(
                         state = PlaybackState.Error(
-                            PlayerError("E60010", error.errorCodeName + ": " + error.message),
+                            PlayerError("E60010", error.errorCodeName + ": " + error.message, cause = error),
                         ),
                     )
                 }

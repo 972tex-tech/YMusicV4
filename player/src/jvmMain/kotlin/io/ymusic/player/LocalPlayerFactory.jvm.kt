@@ -15,7 +15,7 @@ actual class LocalPlayerContext(
 actual fun createLocalPlayer(context: LocalPlayerContext): LocalPlayer {
     return try {
         JvmLocalPlayer(context.videoSurface ?: LocalVideoSurface())
-    } catch (t: Throwable) {
-        throw TechnicalException("E60020", t.message ?: "libav local player failed")
+    } catch (error: Throwable) {
+        throw TechnicalException("E60020", error.message ?: "libav local player failed", cause = error)
     }
 }

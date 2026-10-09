@@ -633,7 +633,7 @@ class MsePlayer internal constructor(
         _status.update {
             it.copy(
                 state = PlaybackState.Error(
-                    PlayerError(code, message, canRetry = true, needReset = needReset),
+                    PlayerError(code, message, canRetry = true, needReset = needReset, cause = error),
                 ),
             )
         }

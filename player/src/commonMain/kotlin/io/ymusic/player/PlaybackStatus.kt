@@ -93,6 +93,7 @@ data class PlayerError(
     override val userMessage: String? = null,
     val canRetry: Boolean = true,
     val needReset: Boolean = false,
+    val cause: Throwable? = null,
 ) : CodedError
 
 /** A YouTube video's owner channel, as its player response reports it. [channelUrl] is an

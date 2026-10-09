@@ -145,7 +145,7 @@ class Media3PlayerAdapter(
             builder.setPlayerError(
                 PlaybackException(
                     listOfNotNull(error.code, error.message).joinToString(": "),
-                    null,
+                    error.cause,
                     PlaybackException.ERROR_CODE_UNSPECIFIED,
                 ),
             )
