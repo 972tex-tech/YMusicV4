@@ -249,7 +249,7 @@ fun main() {
                         )
                     }
                 }
-            }
+            }.onFailure { rootLogger.fork("dock").log(Logger.Level.WARN, "dock icon set failed", it) }
         }
         var graph by remember { mutableStateOf<AppGraph?>(null) }
         // Hoisted out of the window: whether the window may show at all depends on it.
@@ -1262,6 +1262,7 @@ private fun saveWindowPrefs(size: DpSize, position: WindowPosition) {
 private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = { draft ->
     withContext(Dispatchers.IO) {
         runCatching { logWorker.flush() }
+            .onFailure { rootLogger.fork("feedback").log(Logger.Level.WARN, "log flush before feedback failed", it) }
         val logs = logWorker.filePaths().map { path ->
             val name = path.substringAfterLast('/').substringAfterLast('\\')
             io.sentry.kotlin.multiplatform.Attachment(path, name, "text/plain")

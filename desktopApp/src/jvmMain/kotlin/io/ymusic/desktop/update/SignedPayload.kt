@@ -30,8 +30,11 @@ object SignedPayload {
      * does not match — never a silent skip: an unverified manifest is treated as hostile.
      */
     fun open(manifestJson: String, publicKeyBase64: String): JsonObject {
-        val root = runCatching { json.parseToJsonElement(manifestJson).jsonObject }.getOrNull()
-            ?: throw UpdateVerificationException("manifest is not a JSON object")
+        val root = try {
+            json.parseToJsonElement(manifestJson).jsonObject
+        } catch (e: IllegalArgumentException) {
+            throw UpdateVerificationException("manifest is not a JSON object", e)
+        }
         val payload = root.stringOrNull("payload")?.takeIf { it.isNotEmpty() }
             ?: throw UpdateVerificationException("manifest has no payload")
         val signature = root.stringOrNull("signature")?.takeIf { it.isNotEmpty() }
@@ -39,8 +42,11 @@ object SignedPayload {
         if (!verify(payload, signature, publicKeyBase64)) {
             throw UpdateVerificationException("manifest signature does not match the pinned key")
         }
-        return runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull()
-            ?: throw UpdateVerificationException("payload is not a JSON object")
+        return try {
+            json.parseToJsonElement(payload).jsonObject
+        } catch (e: IllegalArgumentException) {
+            throw UpdateVerificationException("payload is not a JSON object", e)
+        }
     }
 
     private fun verify(payload: String, signatureBase64: String, publicKeyBase64: String): Boolean =

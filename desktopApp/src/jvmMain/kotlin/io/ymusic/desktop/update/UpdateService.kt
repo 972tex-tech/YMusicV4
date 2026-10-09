@@ -3,6 +3,7 @@ package io.ymusic.desktop.update
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -111,7 +112,13 @@ class UpdateService(
         if (!isEnabled) return
         scope.launch {
             while (true) {
-                runCatching { check() }
+                try {
+                    check()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log?.log(Logger.Level.WARN, "update check failed", e)
+                }
                 delay(intervalMs)
             }
         }
@@ -132,6 +139,8 @@ class UpdateService(
             log?.captureError(e, "update manifest failed verification")
             _state.value = UpdateState.Failed("could not verify the update", null)
             return
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             log?.log(Logger.Level.WARN, "update check failed", e)
             _state.value = UpdateState.Idle
@@ -225,6 +234,8 @@ class UpdateService(
                 _state.value = UpdateState.Ready(info, target)
             }
             log?.log(Logger.Level.INFO, "update ${release.versionCode} downloaded and verified")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             log?.captureError(e, "downloading update ${release.versionCode} failed")
             _state.value = UpdateState.Failed(e.message ?: "download failed", release.url)
@@ -243,29 +254,31 @@ class UpdateService(
     private fun linkOrCopy(source: File, target: File) {
         target.parentFile?.mkdirs()
         if (target.exists()) return
-        runCatching { java.nio.file.Files.createLink(target.toPath(), source.toPath()) }
-            .onFailure { source.copyTo(target, overwrite = true) }
+        try {
+            java.nio.file.Files.createLink(target.toPath(), source.toPath())
+        } catch (linkError: Exception) {
+            try {
+                source.copyTo(target, overwrite = true)
+            } catch (copyError: Exception) {
+                copyError.addSuppressed(linkError)
+                throw copyError
+            }
+        }
     }
 
     private suspend fun fetchText(url: String): String {
-        val response = client.execute(RequestBuilder().url(url).get().build())
-        try {
+        client.execute(RequestBuilder().url(url).get().build()).use { response ->
             check(response.isSuccessful) { "HTTP ${response.code} fetching the update manifest" }
             return response.body.string()
-        } finally {
-            response.close()
         }
     }
 
     private suspend fun fetchTo(url: String, target: File, onProgress: (Int) -> Unit) {
-        val response = client.execute(RequestBuilder().url(url).get().build())
-        try {
+        client.execute(RequestBuilder().url(url).get().build()).use { response ->
             check(response.isSuccessful) { "HTTP ${response.code} fetching $url" }
             val bytes = response.body.byteString().toByteArray()
             target.writeBytes(bytes)
             onProgress(bytes.size)
-        } finally {
-            response.close()
         }
     }
 
@@ -302,7 +315,9 @@ class UpdateService(
      */
     fun pruneSupersededVersions() {
         val root = installRoot ?: return
-        val removed = runCatching { CfgPointer.pruneUnusedVersions(root) }.getOrDefault(0)
+        val removed = runCatching { CfgPointer.pruneUnusedVersions(root) }
+            .onFailure { log?.log(Logger.Level.WARN, "pruning superseded versions failed", it) }
+            .getOrDefault(0)
         if (removed > 0) log?.log(Logger.Level.INFO, "removed $removed superseded version(s)")
     }
 }

@@ -35,7 +35,7 @@ data class Release(
 /** One file of a release: [path] is relative to the app root, [sha256] identifies its content. */
 data class FileEntry(val path: String, val sha256: String, val size: Long)
 
-class UpdateVerificationException(message: String) : Exception(message)
+class UpdateVerificationException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 /**
  * Parses and AUTHENTICATES an update manifest.
