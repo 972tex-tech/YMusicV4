@@ -319,6 +319,23 @@ export function notePlayerResponse(rec: Record<string, unknown>): void {
       e.waiters.length,
   );
   if (complete(e)) flush(e, true);
+  if (playerResponseListener) playerResponseListener(vid);
+}
+
+let playerResponseListener: ((videoId: string) => void) | null = null;
+
+/** Told the videoId of every playable /player response, after it is cached. */
+export function setPlayerResponseListener(fn: ((videoId: string) => void) | null): void {
+  playerResponseListener = fn;
+}
+
+/** The video's `microformat` category ("Music", …) from its cached /player; "" if unknown. */
+export function playerCategory(videoId: string): string {
+  const e = cache[videoId];
+  const micro =
+    e && e.rec ? asRec(asRec(e.rec["microformat"])?.["playerMicroformatRenderer"]) : null;
+  const category = micro ? micro["category"] : undefined;
+  return typeof category === "string" ? category : "";
 }
 
 /** SABR `id=o-…` mapped from a prior /player. Empty if this stream is unknown. */

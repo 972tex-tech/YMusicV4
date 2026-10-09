@@ -4,6 +4,7 @@
 //   state    — onStateChange: newState, playWhenReady, live, error extras
 //   picture  — onVideoDataChange: videoWidth, videoHeight
 //   details  — onVideoDataChange: videoId, channelTitle, channelUrl
+//   watchNext — a music video's related items: videoId, contents (JSON text; see watch_next.ts)
 
 import { JsEngineErrorImpl } from "../../protocol/command";
 import {
@@ -17,6 +18,7 @@ import {
   setCatalogHook,
   setListenHook,
 } from "./boot";
+import { setWatchNextHook } from "./watch_next";
 
 let progressPipe: Pipe | null = null;
 let catalogPipe: Pipe | null = null;
@@ -144,8 +146,12 @@ export async function listenPlayerStatus(pipe: Pipe): Promise<void> {
       push(kind === "state" ? ["state", "details"] : [kind]);
     });
     push(["state", "progress", "picture", "details"]);
+    setWatchNextHook(function (watchNext: Record<string, unknown>) {
+      void emit(pipe.sink, { "watchNext": watchNext });
+    });
     await waitHostClose(pipe);
   } finally {
+    setWatchNextHook(null);
     setListenHook(null);
     progressPipe = null;
   }

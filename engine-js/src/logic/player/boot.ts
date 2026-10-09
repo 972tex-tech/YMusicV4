@@ -18,6 +18,7 @@ import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
 import { installSabrIntercept } from "../yt/sabr_http";
 import { installAdaptiveFormatsHeader } from "../yt/sabr_af";
+import { installWatchNextHarvest } from "./watch_next";
 import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
 import { isYmLive } from "./live";
 import { channelUrl } from "../yt/parse";
@@ -736,6 +737,7 @@ class Player {
     installPlayerAdStrip();
     installSabrIntercept();
     installAdaptiveFormatsHeader();
+    installWatchNextHarvest();
 
     const jsUrl = absUrl(jsUrlRaw);
     if (typeof cfg["jsUrl"] === "string") cfg["jsUrl"] = jsUrl;
