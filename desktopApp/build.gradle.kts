@@ -356,6 +356,7 @@ compose.desktop {
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.lwawt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED",
             "-Xms96m",
             "-Xmx256m",
             "-XX:ReservedCodeCacheSize=64m",

@@ -493,7 +493,7 @@ fun main() {
             }
         }
         if (queueNotEmpty || !windowVisible) {
-            PlayerTray(painterResource(Res.drawable.ymusic_logo)) { screenX ->
+            PlayerTray(painterResource(Res.drawable.ymusic_logo), rootLogger.fork("tray")) { screenX ->
                 miniAnchorX = screenX
                 miniOpen = !miniOpen
             }

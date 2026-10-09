@@ -42,6 +42,18 @@ internal fun linuxTrayEmbedFrame(): Window? =
     Window.getWindows().lastOrNull { it.javaClass.name.endsWith("XTrayIconEmbeddedFrame") }
 
 /**
+ * Hack: AWT routes every pointer event to a pressed window until a release that frees all buttons
+ * (XBaseWindow.isFullRelease). GNOME's tray synthesizes the release with an empty button state, so
+ * that routing never ends and hover/clicks on the mini player land on the tray icon instead.
+ */
+internal fun clearAwtPointerAutoGrab() {
+    Class.forName("sun.awt.X11.XAwtState")
+        .getDeclaredMethod("setAutoGrabWindow", Class.forName("sun.awt.X11.XBaseWindow"))
+        .apply { isAccessible = true }
+        .invoke(null, null)
+}
+
+/**
  * GNOME Shell takes window icons only from a .desktop entry matched by StartupWMClass, so a hidden
  * (NoDisplay) entry maps our windows to the logo. Rewritten only when its contents change.
  */

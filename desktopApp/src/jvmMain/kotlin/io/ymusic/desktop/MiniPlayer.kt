@@ -56,6 +56,7 @@ import io.ymusic.ui.SlimSeekBar
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.badge_live
 import io.ymusic.ui.skipSegmentFractions
+import kmpcommon.log.Logger
 import org.jetbrains.compose.resources.stringResource
 import java.awt.SystemTray
 import java.awt.Toolkit
@@ -249,7 +250,7 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
  * raster is upscaled by the OS on Retina and turns soft, no matter how good the source is.
  */
 @Composable
-fun PlayerTray(icon: Painter, onClick: (screenX: Int) -> Unit) {
+fun PlayerTray(icon: Painter, logger: Logger, onClick: (screenX: Int) -> Unit) {
     val density = LocalDensity.current
     val currentOnClick by rememberUpdatedState(onClick)
     DisposableEffect(icon) {
@@ -271,6 +272,12 @@ fun PlayerTray(icon: Painter, onClick: (screenX: Int) -> Unit) {
                     object : MouseAdapter() {
                         // TrayIcon events carry SCREEN coordinates (there is no component space).
                         override fun mousePressed(e: MouseEvent) = currentOnClick(e.x)
+
+                        override fun mouseReleased(e: MouseEvent) {
+                            if (!isLinux) return
+                            runCatching { clearAwtPointerAutoGrab() }
+                                .onFailure { logger.log(Logger.Level.WARN, "tray pointer auto-grab clear failed", it) }
+                        }
                     },
                 )
                 it.add(this)
