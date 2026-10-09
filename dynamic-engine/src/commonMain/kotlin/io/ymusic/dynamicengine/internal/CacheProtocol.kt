@@ -158,8 +158,8 @@ private suspend fun serve(
             // the engine hung up mid-call
         } catch (e: Throwable) {
             val wire = classify(e)
+            runCatching { pipe.sink.close(reason(wire)) }.exceptionOrNull()?.let(e::addSuppressed)
             log?.log(Logger.Level.WARN, "${wire.code} ${wire.message}", e)
-            runCatching { pipe.sink.close(reason(wire)) }
         }
     } finally {
         pipe.source.close()

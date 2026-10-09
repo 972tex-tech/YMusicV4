@@ -49,11 +49,11 @@ internal fun DynamicEngine.commandHandler(
         // the caller hung up mid-call — nothing to report, nowhere to report it
     } catch (e: Throwable) {
         val wire = classify(e)
+        // The RESET is first-close-wins; a failure of the close itself rides the log as suppressed.
+        runCatching { pipe.sink.close(Json.encodeToString(wire)) }.exceptionOrNull()?.let(e::addSuppressed)
         // Birth-site log: the real Throwable (stack, cause) stays here where the fidelity is; only
         // the {code, message} value crosses to the caller. A breadcrumb/warning, not a crash record.
         log?.log(Logger.Level.WARN, "${wire.code} ${wire.message}", e)
-        // The RESET is first-close-wins; a failure of the close itself has nowhere to go — swallow.
-        runCatching { pipe.sink.close(Json.encodeToString(wire)) }
     } finally {
         pipe.source.close()
     }

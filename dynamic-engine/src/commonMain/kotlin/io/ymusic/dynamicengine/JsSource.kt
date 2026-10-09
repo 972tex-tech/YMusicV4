@@ -137,11 +137,14 @@ class DefaultJsSourceProvider(
     }
 
     override suspend fun <T> fetchIfAny(currentVersion: Long, consume: suspend (String, Long) -> T): T? {
+        // A failed/absent config check still counts as a check (throttling).
         val remote = try {
             config.fetchConfig()
-        } finally {
-            stampLastFetch() // a failed/absent config check still counts as a check (throttling)
+        } catch (e: Throwable) {
+            runCatching { stampLastFetch() }.exceptionOrNull()?.let(e::addSuppressed)
+            throw e
         }
+        stampLastFetch()
         val (url, version) = remote ?: return null
         if (version <= currentVersion) return null
         val source = download(url)

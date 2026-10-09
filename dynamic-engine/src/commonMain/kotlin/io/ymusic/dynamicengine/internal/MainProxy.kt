@@ -54,11 +54,11 @@ private suspend fun serveMainProxy(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: QuickJsException) {
-                throw MainProxyError("E20080", e.message ?: "main JS refused $command")
+                throw MainProxyError("E20080", e.message ?: "main JS refused $command", e)
             } catch (e: MainProxyError) {
                 throw e
             } catch (e: IllegalStateException) {
-                throw MainProxyError("E20078", e.message ?: "no main engine")
+                throw MainProxyError("E20078", e.message ?: "no main engine", e)
             }
             mainPipe = opened
             coroutineScope {
@@ -72,8 +72,8 @@ private suspend fun serveMainProxy(
         // peer hung up
     } catch (e: Throwable) {
         val wire = classifyMain(e)
+        runCatching { pipe.sink.close(reason(wire)) }.exceptionOrNull()?.let(e::addSuppressed)
         log?.log(Logger.Level.WARN, "${wire.code} ${wire.message}", e)
-        runCatching { pipe.sink.close(reason(wire)) }
     } finally {
         runCatching { pipe.source.close() }
         val mp = mainPipe
@@ -105,7 +105,9 @@ private suspend fun copyDir(src: AsyncSource, dst: PipeSink) {
     }
 }
 
-private class MainProxyError(override val code: String, message: String) : Exception(message), CodedError {
+private class MainProxyError(override val code: String, message: String, cause: Throwable? = null) :
+    Exception(message, cause),
+    CodedError {
     override val userMessage: String? = null
 }
 

@@ -54,16 +54,19 @@ private val wireJson = Json { ignoreUnknownKeys = true }
  *  Fallback-tolerant: a reason that isn't the contract (the runtime's raw backstop text — a
  *  different, generic layer) still salvages an embedded site code, else mints the decoder's own. */
 internal fun decodeEngineError(reason: String, cause: Throwable?): EngineError {
+    var decodeFailure: Exception? = null
     val wire = reason.takeIf { it.startsWith("{") }?.let {
         try {
             wireJson.decodeFromString<WireError>(it)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            decodeFailure = e
             null
         }
     }
     if (wire == null) {
         val embedded = SITE_CODE.find(reason)?.value
         return EngineError.Technical(embedded ?: "E20003", reason, null, null, null, cause) // E20003: unstructured pipe reset
+            .also { error -> decodeFailure?.let(error::addSuppressed) }
     }
     val message = wire.message ?: reason
     return when {

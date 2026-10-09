@@ -121,7 +121,7 @@ class DiskCacheStore(
             val size = try {
                 streaming.await()
             } catch (e: CancellationException) {
-                if (streaming.isCancelled && isActive) throw CachePutSupersededError(scope, key) else throw e
+                if (streaming.isCancelled && isActive) throw CachePutSupersededError(scope, key, e) else throw e
             }
             log?.log(Logger.Level.INFO, "DBG put staged $scope/$key #$ticket wait")
             writeLock.withLock {
@@ -136,14 +136,14 @@ class DiskCacheStore(
                     try {
                         queries.upsert(scope, key, size, ts, ts, customJson)
                     } catch (e: Throwable) {
-                        fileSystem.delete(blob, mustExist = false)
+                        runCatching { fileSystem.delete(blob, mustExist = false) }.exceptionOrNull()?.let(e::addSuppressed)
                         throw e
                     }
                     CacheStore.Meta(key, size, updatedAt = ts, lastUsed = ts, custom = custom)
                 }
             }
         } catch (e: Throwable) {
-            fileSystem.delete(tmp, mustExist = false)
+            runCatching { fileSystem.delete(tmp, mustExist = false) }.exceptionOrNull()?.let(e::addSuppressed)
             throw e
         } finally {
             withContext(NonCancellable) {
@@ -191,8 +191,8 @@ class DiskCacheStore(
     // Length-prefix the scope so (scope, key) hashes injectively — no separator ambiguity.
     private fun stem(scope: String, key: String) = "${scope.length}:$scope:$key".encodeUtf8().sha256().hex()
 
-    private class CachePutSupersededError(scope: String, key: String) :
-        Exception("cache put $scope/$key superseded by a newer put/delete"),
+    private class CachePutSupersededError(scope: String, key: String, cause: Throwable? = null) :
+        Exception("cache put $scope/$key superseded by a newer put/delete", cause),
         CodedError {
         override val code = "E20053"
         override val userMessage: String? = null

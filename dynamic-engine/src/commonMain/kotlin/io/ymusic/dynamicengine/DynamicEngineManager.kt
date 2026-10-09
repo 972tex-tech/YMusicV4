@@ -171,7 +171,7 @@ class DynamicEngineManager(
                 try {
                     engine.healthCheck()
                 } catch (t: Throwable) {
-                    runCatching { engine.closeNow() } // best-effort teardown; the boot failure below is the story
+                    runCatching { engine.closeNow() }.exceptionOrNull()?.let(t::addSuppressed)
                     throw t
                 }
                 // Orphaned by the boot deadline (cancelled while the eval held this thread):
@@ -181,7 +181,7 @@ class DynamicEngineManager(
                 Slot(engine, thread.dispatcher)
             }
         } catch (t: Throwable) {
-            thread.dispatcher.close()
+            runCatching { thread.dispatcher.close() }.exceptionOrNull()?.let(t::addSuppressed)
             throw t
         } finally {
             thread.booting = false
