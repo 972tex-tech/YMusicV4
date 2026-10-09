@@ -12,6 +12,14 @@ import kmpcommon.io.AsyncSource
  * [DiskCacheStore] (metadata indexed in SQLite, blobs on the filesystem); pass it to [DynamicEngine.create].
  *
  * Deliberately NOT a filesystem: keyed within a scope, no paths, no seek/append.
+ *
+ * Guarantees every implementation must keep:
+ * - **No partial values.** A [put] commits only after [put]'s body reaches EOF; a body that fails or is
+ *   cancelled first leaves the previous value (or the miss) untouched.
+ * - **Keys never wait on each other.** A body may stay open indefinitely (a whole player session), so
+ *   no lock is held while one streams; a slow put only delays itself.
+ * - **The last to start wins.** A [put] or [delete] of a scope+key cancels that key's in-flight put,
+ *   which fails `E20053` (as does one done streaming but overtaken before it commits).
  */
 interface CacheStore {
     /** The entry for [key] in [scope] — its metadata plus a streaming value handle — or null on a
