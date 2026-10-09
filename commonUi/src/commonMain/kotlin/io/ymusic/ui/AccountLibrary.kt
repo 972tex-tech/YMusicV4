@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -133,30 +134,34 @@ private class NavTarget(
 )
 
 @Composable
+private fun BoxScope.AccountAvatarFallback(name: String?) {
+    Box(
+        Modifier.matchParentSize().background(DesignColors.Ink, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        val initial = name?.firstOrNull()?.uppercaseChar()
+        if (initial != null) {
+            Text(
+                initial.toString(),
+                style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = DesignColors.OnInk),
+            )
+        } else {
+            Icon(Icons.Filled.Person, stringResource(Res.string.cd_account_avatar), tint = DesignColors.OnInk)
+        }
+    }
+}
+
+@Composable
 private fun AccountCard(account: YtAccountInfo, onSignOut: () -> Unit, onSwitchAccount: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 15.dp, bottom = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(13.dp),
     ) {
-        Box(
-            Modifier.size(46.dp).background(DesignColors.Ink, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            val thumbs = account.thumbs
-            val initial = account.name?.firstOrNull()?.uppercaseChar()
-            when {
-                thumbs.isNotEmpty() -> ThumbImage(thumbs, CircleShape)
-                initial != null -> Text(
-                    initial.toString(),
-                    style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = DesignColors.OnInk),
-                )
-                else -> Icon(
-                    Icons.Filled.Person,
-                    stringResource(Res.string.cd_account_avatar),
-                    tint = DesignColors.OnInk,
-                )
-            }
+        Box(Modifier.size(46.dp)) {
+            // The disc only backs the fallback: under the photo its AA edge bleeds through as a dark ring.
+            val fallback: @Composable BoxScope.() -> Unit = { AccountAvatarFallback(account.name) }
+            if (account.thumbs.isNotEmpty()) ThumbImage(account.thumbs, CircleShape, fallback) else fallback()
         }
         Column(Modifier.weight(1f)) {
             Text(
