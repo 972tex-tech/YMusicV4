@@ -475,7 +475,7 @@
     <string name="video_details_delete_message">Xóa vĩnh viễn bình luận của bạn và tất cả phản hồi?</string>
     <string name="video_details_deleted">Đã xóa bình luận</string>
     <string name="cookie_protect_title">Bảo vệ đăng nhập bằng mật khẩu?</string>
-    <string name="cookie_protect_body">Thông tin đăng nhập YouTube của bạn được lưu trong một tệp trên máy tính này. Tệp đã được mã hoá nên bản sao mang đi nơi khác không đọc được — nhưng mọi ứng dụng bạn chạy trên máy này vẫn có thể mở khoá nó. Đặt mật khẩu để chỉ bạn mở được; YMusic sẽ hỏi mật khẩu mỗi lần khởi động.</string>
+    <string name="cookie_protect_body">Thông tin đăng nhập được lưu trên máy này, nơi các ứng dụng khác bạn chạy có thể đọc được. Đặt mật khẩu để khoá lại; YMusic sẽ hỏi mật khẩu mỗi lần khởi động.</string>
     <string name="cookie_password">Mật khẩu</string>
     <string name="cookie_protect_confirm">Nhập lại mật khẩu</string>
     <string name="cookie_protect_mismatch">Mật khẩu không khớp.</string>

@@ -500,7 +500,7 @@
     <string name="video_details_delete_message">Delete your comment and all of its replies permanently?</string>
     <string name="video_details_deleted">Comment deleted</string>
     <string name="cookie_protect_title">Protect your sign-in with a password?</string>
-    <string name="cookie_protect_body">Your YouTube sign-in is saved in a file on this computer. It’s encrypted, so a copy taken elsewhere can’t be read — but any app you run here can still unlock it. With a password, only you can, and YMusic asks for it each time it starts.</string>
+    <string name="cookie_protect_body">Your sign-in is saved on this computer, where other apps you run can read it. Set a password to lock it; YMusic asks for it at each start.</string>
     <string name="cookie_password">Password</string>
     <string name="cookie_protect_confirm">Confirm password</string>
     <string name="cookie_protect_mismatch">The passwords don’t match.</string>
