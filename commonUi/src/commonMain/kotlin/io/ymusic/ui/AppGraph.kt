@@ -7,6 +7,7 @@ import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.player.Player
+import io.ymusic.remoteconfig.ApiService
 import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.InMemorySettingsStore
@@ -158,7 +159,7 @@ class AppGraph(
      */
     val pickFeedbackFiles: (suspend () -> List<FeedbackFile>)? = null,
     /**
-     * The shell's self-updater; null where the platform store owns updates (mobile) or the shell
+     * The shell's self-updater; null where the platform store owns updates (iOS) or the shell
      * has none — the update prompt and its setting then never appear.
      */
     val updates: AppUpdates? = null,
@@ -168,6 +169,8 @@ class AppGraph(
      * null only in shells and tests that wire no recorder at all.
      */
     val stats: StatUsage? = null,
+    /** The YMusic service (the QR sign-in relay rides it); null when this build has no service url. */
+    val api: ApiService? = null,
     /**
      * Desktop: true while the top-level window is being resized. The shell sets this from
      * `componentResized` and clears it after 300ms without another event. Unused on mobile.

@@ -837,6 +837,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         guest = session.isGuest,
         cookieSignIn = if (session.isGuest) null else { onComplete, onBack ->
             DesktopCookieSignIn(
+                api = api,
                 importCookies = { cookies.importSessionCookies(it) },
                 loginStatus = { engines.ytLoginStatus() },
                 protectWithPassword = if (session.canProtect) session::protect else null,
@@ -848,6 +849,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         downloads = downloadService,
         updates = desktopUpdates,
         stats = stats,
+        api = api,
         sendFeedback = sendFeedbackAction.takeIf { SENTRY_DSN.isNotEmpty() },
         pickFeedbackFiles = ::pickFeedbackFiles,
         windowResizing = windowResizing,

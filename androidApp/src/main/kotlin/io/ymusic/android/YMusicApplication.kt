@@ -47,6 +47,7 @@ import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.isPlaying
 import io.ymusic.player.mse.MsePlayer
+import io.ymusic.remoteconfig.ApiService
 import io.ymusic.remoteconfig.HttpApiService
 import io.ymusic.remoteconfig.RemoteConfig
 import io.ymusic.remoteconfig.StatUsage
@@ -128,6 +129,8 @@ class SharedServices(
     val imageLoader: ImageLoader,
     val stats: StatUsage,
     val updates: AndroidAppUpdates,
+    /** The YMusic service; null when this build has no service url. */
+    val api: ApiService?,
 )
 
 class YMusicApplication : Application() {
@@ -340,7 +343,7 @@ class YMusicApplication : Application() {
         )
         updates.pruneDownloads()
         scope.launch { remoteConfig.config.collect { updates.offer(it.appUpdate) } }
-        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, webViewJs, playerJs, imageLoader, stats, updates)
+        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, webViewJs, playerJs, imageLoader, stats, updates, api)
     }
 
     private suspend fun buildGraph(): AppGraph {
@@ -539,6 +542,7 @@ class YMusicApplication : Application() {
             playerCache = playerCache,
             stats = shared.stats,
             updates = shared.updates,
+            api = shared.api,
             mediaStore = shared.mediaStore,
             playHistory = PlayHistoryStore(playHistoryAndroidDriver(this)),
             sponsorBlockStore = SqliteSponsorBlockStore(sponsorBlockAndroidDriver(this)),

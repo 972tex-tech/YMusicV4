@@ -1,16 +1,11 @@
 package io.ymusic.ui
 
+import io.ymusic.remoteconfig.ApiService
 import kmphttp.CookieBuilder
 import kmphttp.CookieJar
-import kmphttp.KmpHttpClient
-import kmphttp.MediaTypeX.toMediaType
-import kmphttp.RequestBodyX.toRequestBody
-import kmphttp.RequestBuilder
-import kmphttp.create
-import kmphttp.deleteWithoutBody
+import kmphttp.HttpStatusException
 import kmphttp.saveFromResponse
 import kmphttp.toHttpUrl
-import kmphttp.utf8String
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -19,7 +14,7 @@ import kotlinx.coroutines.withContext
 import okio.Buffer
 import okio.ByteString.Companion.decodeBase64
 import okio.ByteString.Companion.toByteString
-import okio.use
+import okio.IOException
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
@@ -34,14 +29,16 @@ data class SessionCookie(
     val expiresAt: Long? = null,
 )
 
-/** Desktop-minted inbox: a webhook.site URL plus the AES-equivalent key encoded in the QR. */
+/**
+ * Desktop-minted relay slot: its id on our service plus the key, both encoded in the QR. The QR
+ * carries no url — the phone sends to its own build's service, so a forged QR cannot redirect it.
+ */
 class DeviceLinkOffer(
-    val webhookUrl: String,
-    val tokenId: String,
+    val id: String,
     val key: ByteArray,
 ) {
     val qrPayload: String
-        get() = "$QR_PREFIX$webhookUrl|$QR_SEP${key.toByteString().base64Url()}"
+        get() = "$QR_PREFIX$id|$QR_SEP${key.toByteString().base64Url()}"
 }
 
 internal fun parseDeviceLinkQr(raw: String): Pair<String, ByteArray>? {
@@ -50,46 +47,27 @@ internal fun parseDeviceLinkQr(raw: String): Pair<String, ByteArray>? {
     val rest = text.removePrefix(QR_PREFIX)
     val bar = rest.indexOf("|$QR_SEP")
     if (bar <= 0) return null
-    val url = rest.substring(0, bar)
-    if (!WEBHOOK_INBOX.matches(url)) return null
+    val id = rest.substring(0, bar)
+    if (!LINK_ID.matches(id)) return null
     val key = rest.substring(bar + 1 + QR_SEP.length).decodeBase64Url() ?: return null
     if (key.size != KEY_LEN) return null
-    return url to key
+    return id to key
 }
 
-suspend fun createDeviceLinkOffer(client: KmpHttpClient): DeviceLinkOffer {
-    val json = """{"expiry":$TOKEN_EXPIRY_SEC,"request_limit":1}"""
-    val body = client.execute(
-        RequestBuilder()
-            .url(WEBHOOK_TOKEN)
-            .header("Accept", "application/json")
-            .header("User-Agent", USER_AGENT)
-            .post(json.toRequestBody("application/json".toMediaType()))
-            .build(),
-    ).use { response ->
-        if (!response.isSuccessful) error("network")
-        response.body.utf8String()
-    }
-    val uuid = UUID_FIELD.find(body)?.groupValues?.get(1) ?: error("network")
-    val url = "$WEBHOOK_ORIGIN/$uuid"
-    check(WEBHOOK_INBOX.matches(url))
-    return DeviceLinkOffer(url, uuid, deviceLinkRandomBytes(KEY_LEN))
+suspend fun createDeviceLinkOffer(api: ApiService?): DeviceLinkOffer {
+    val id = relay(api) { it.openDeviceLink() }
+    check(LINK_ID.matches(id)) { "bad-payload" }
+    return DeviceLinkOffer(id, deviceLinkRandomBytes(KEY_LEN))
 }
 
-/** Drops the webhook.site inbox. Failures are ignored — the token also expires at [TOKEN_EXPIRY_SEC]. */
-suspend fun deleteDeviceLinkToken(client: KmpHttpClient, tokenId: String) {
+/** Gives the slot up. Failures are ignored — the slot also expires on the service. */
+suspend fun closeDeviceLink(api: ApiService?, id: String) {
     try {
-        client.execute(
-            RequestBuilder()
-                .url("$WEBHOOK_ORIGIN/token/$tokenId")
-                .header("User-Agent", USER_AGENT)
-                .deleteWithoutBody()
-                .build(),
-        ).use { }
+        api?.closeDeviceLink(id)
     } catch (c: CancellationException) {
         throw c
     } catch (_: Throwable) {
-        // Fire-and-forget cleanup of the one-shot inbox.
+        // Fire-and-forget cleanup of the one-shot slot.
     }
 }
 
@@ -103,46 +81,42 @@ fun deviceLinkSas(key: ByteArray): String {
 }
 
 internal suspend fun pollDeviceLinkCookies(
-    client: KmpHttpClient,
+    api: ApiService?,
     offer: DeviceLinkOffer,
 ): List<SessionCookie>? {
-    val url = "$WEBHOOK_ORIGIN/token/${offer.tokenId}/request/latest/raw"
-    val response = client.execute(
-        RequestBuilder()
-            .url(url)
-            .header("User-Agent", USER_AGENT)
-            .get()
-            .build(),
-    )
-    val raw = response.use {
-        if (it.code == 404) return null
-        if (!it.isSuccessful) error("network")
-        it.body.utf8String().trim().trim('"')
+    val raw = try {
+        relay(api) { it.takeDeviceLink(offer.id) } ?: return null
+    } catch (gone: IllegalStateException) {
+        // 404: the slot expired on the service.
+        if ((gone.cause as? HttpStatusException)?.code == 404) error("timeout") else throw gone
     }
-    deleteDeviceLinkToken(client, offer.tokenId)
-    val blob = raw.decodeBase64Url() ?: error("bad-payload")
+    val blob = raw.trim().decodeBase64Url() ?: error("bad-payload")
     val plain = deviceLinkDecrypt(offer.key, blob)
     return decodeCookies(plain).ifEmpty { error("bad-payload") }
 }
 
 internal suspend fun postDeviceLinkCookies(
-    client: KmpHttpClient,
-    webhookUrl: String,
+    api: ApiService?,
+    id: String,
     key: ByteArray,
     cookies: List<SessionCookie>,
 ) {
-    check(WEBHOOK_INBOX.matches(webhookUrl))
+    check(LINK_ID.matches(id))
     val blob = deviceLinkEncrypt(key, encodeCookies(cookies))
-    val body = blob.toByteString().base64Url()
-    client.execute(
-        RequestBuilder()
-            .url(webhookUrl)
-            .header("User-Agent", USER_AGENT)
-            .header("Content-Type", "text/plain")
-            .post(body.toRequestBody(null))
-            .build(),
-    ).use { response ->
-        if (!response.isSuccessful) error("network")
+    if (!relay(api) { it.putDeviceLink(id, blob.toByteString().base64Url()) }) error("timeout")
+}
+
+/** Runs [call] on the relay; an unreachable or refusing service is the "network" failure. */
+private suspend fun <T> relay(api: ApiService?, call: suspend (ApiService) -> T): T {
+    val service = api ?: error("network")
+    return try {
+        call(service)
+    } catch (c: CancellationException) {
+        throw c
+    } catch (e: IOException) {
+        throw IllegalStateException("network", e)
+    } catch (e: HttpStatusException) {
+        throw IllegalStateException("network", e)
     }
 }
 
@@ -485,13 +459,9 @@ private fun String.decodeBase64Url(): ByteArray? {
     return padded.decodeBase64()?.toByteArray()
 }
 
-private const val QR_PREFIX = "ymusic-link:1:"
+private const val QR_PREFIX = "ymusic-link:2:"
 private const val QR_SEP = "k="
-private const val WEBHOOK_ORIGIN = "https://webhook.site"
-private const val WEBHOOK_TOKEN = "https://webhook.site/token"
-private val WEBHOOK_INBOX = Regex("^https://webhook\\.site/[0-9a-fA-F-]{36}$")
-private val UUID_FIELD = Regex(""""uuid"\s*:\s*"([0-9a-fA-F-]{36})"""")
-private const val USER_AGENT = "YMusic/4"
+private val LINK_ID = Regex("^[A-Za-z0-9_-]{22}$")
 private const val KEY_LEN = 32
 private const val IV_LEN = 16
 private const val MAC_LEN = 32
@@ -499,12 +469,11 @@ private const val ENC_LABEL = "enc"
 private const val MAC_LABEL = "mac"
 private const val SAS_LABEL = "sas"
 private const val PERSIST_MS = 400L * 24 * 60 * 60 * 1000
-private const val TOKEN_EXPIRY_SEC = 600
+/** The service keeps a slot open this long. */
+private const val LINK_TTL_SEC = 600
 
 internal const val DEVICE_LINK_POLL_MS = 2_000L
-internal const val DEVICE_LINK_TIMEOUT_MS = TOKEN_EXPIRY_SEC * 1000L
-
-fun newDeviceLinkHttpClient(): KmpHttpClient = KmpHttpClient.create { defaultExecuteTimeout = APP_HTTP_TIMEOUT }
+internal const val DEVICE_LINK_TIMEOUT_MS = LINK_TTL_SEC * 1000L
 
 internal val ESSENTIAL_COOKIE_NAMES = setOf(
     "LOGIN_INFO",
@@ -521,17 +490,16 @@ fun List<SessionCookie>.looksSignedIn(): Boolean =
     any { it.name in ESSENTIAL_COOKIE_NAMES && it.value.isNotEmpty() }
 
 suspend fun awaitDeviceLinkCookies(
-    client: KmpHttpClient,
+    api: ApiService?,
     offer: DeviceLinkOffer,
 ): List<SessionCookie> {
     val deadline = DEVICE_LINK_TIMEOUT_MS
     var waited = 0L
     while (waited <= deadline) {
-        val cookies = pollDeviceLinkCookies(client, offer)
+        val cookies = pollDeviceLinkCookies(api, offer)
         if (cookies != null) return cookies
         delay(DEVICE_LINK_POLL_MS)
         waited += DEVICE_LINK_POLL_MS
     }
-    deleteDeviceLinkToken(client, offer.tokenId)
     error("timeout")
 }

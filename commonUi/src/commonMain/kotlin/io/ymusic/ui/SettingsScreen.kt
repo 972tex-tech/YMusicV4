@@ -160,7 +160,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             SettingsSection(Res.string.settings_section_downloads) { DownloadSettingsRows(graph) }
         }
         if (graph.exportSessionCookies != null && graph.scanQrCode != null &&
-            graph.confirmDeviceOwner != null
+            graph.confirmDeviceOwner != null && graph.api != null
         ) {
             SettingsSection(Res.string.settings_section_devices) {
                 LinkDevicesRow(graph, signedIn = signedIn, onLogin = onLogin)

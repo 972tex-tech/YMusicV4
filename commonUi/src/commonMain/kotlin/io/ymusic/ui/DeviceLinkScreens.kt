@@ -107,7 +107,6 @@ private fun LinkDevicesDialog(
     onLogin: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val client = remember { newDeviceLinkHttpClient() }
     val log = remember(graph) { graph.logger?.fork("device-link") }
     var busy by remember { mutableStateOf(false) }
     var done by remember { mutableStateOf(false) }
@@ -154,7 +153,7 @@ private fun LinkDevicesDialog(
                 error = getString(Res.string.device_link_empty_cookies)
                 return
             }
-            postDeviceLinkCookies(client, parsed.first, parsed.second, cookies)
+            postDeviceLinkCookies(graph.api, parsed.first, parsed.second, cookies)
             done = true
             pending = null
         } catch (c: CancellationException) {

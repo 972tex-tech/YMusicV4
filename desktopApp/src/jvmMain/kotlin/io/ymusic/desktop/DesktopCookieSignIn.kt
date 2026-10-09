@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.ymusic.remoteconfig.ApiService
 import io.ymusic.ui.ActionIcon
 import io.ymusic.ui.AppTextField
 import io.ymusic.ui.DesignColors
@@ -53,12 +54,11 @@ import io.ymusic.ui.DeviceLinkQrCode
 import io.ymusic.ui.ElevatedBarDialog
 import io.ymusic.ui.SessionCookie
 import io.ymusic.ui.awaitDeviceLinkCookies
+import io.ymusic.ui.closeDeviceLink
 import io.ymusic.ui.createDeviceLinkOffer
-import io.ymusic.ui.deleteDeviceLinkToken
 import io.ymusic.ui.deviceLinkSas
 import io.ymusic.ui.looksLikeCurlPaste
 import io.ymusic.ui.looksSignedIn
-import io.ymusic.ui.newDeviceLinkHttpClient
 import io.ymusic.ui.parseCookiePaste
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_back
@@ -91,6 +91,8 @@ import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun DesktopCookieSignIn(
+    /** The QR relay's service; null (no service url in this build) leaves only the paste flow working. */
+    api: ApiService?,
     importCookies: suspend (List<SessionCookie>) -> Unit,
     loginStatus: suspend () -> Boolean,
     /** Offers the "protect with a password" step after a successful sign-in; null skips it. */
@@ -100,7 +102,6 @@ fun DesktopCookieSignIn(
     onBack: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val client = remember { newDeviceLinkHttpClient() }
     val log = remember(logger) { logger?.fork("device-link") }
     val lock = remember { Mutex() }
     var pasteFlow by remember { mutableStateOf(false) }
@@ -150,9 +151,9 @@ fun DesktopCookieSignIn(
         pasteError = null
         qrEnded = false
         try {
-            minted = createDeviceLinkOffer(client)
+            minted = createDeviceLinkOffer(api)
             offer = minted
-            finish(awaitDeviceLinkCookies(client, minted))
+            finish(awaitDeviceLinkCookies(api, minted))
         } catch (c: CancellationException) {
             throw c
         } catch (t: Throwable) {
@@ -160,7 +161,7 @@ fun DesktopCookieSignIn(
             offerError = deviceLinkErrorText(t)
         } finally {
             if (!finished) qrEnded = true
-            minted?.let { deleteDeviceLinkToken(client, it.tokenId) }
+            minted?.let { closeDeviceLink(api, it.id) }
         }
     }
 
