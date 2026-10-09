@@ -23,6 +23,14 @@ private class FakePulseApi : ApiService {
         failWith?.let { throw it }
         batches += events
     }
+
+    override suspend fun openDeviceLink(): String = throw UnsupportedOperationException()
+
+    override suspend fun putDeviceLink(id: String, payload: String): Boolean = throw UnsupportedOperationException()
+
+    override suspend fun takeDeviceLink(id: String): String? = throw UnsupportedOperationException()
+
+    override suspend fun closeDeviceLink(id: String) = throw UnsupportedOperationException()
 }
 
 class StatUsageTest {

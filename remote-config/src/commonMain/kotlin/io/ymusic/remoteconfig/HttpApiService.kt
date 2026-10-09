@@ -7,13 +7,18 @@ import kmphttp.HttpUrl
 import kmphttp.HttpUrlBuilder
 import kmphttp.KmpHttpClient
 import kmphttp.MediaTypeX.toMediaType
+import kmphttp.RequestBody
 import kmphttp.RequestBodyX.asOneshotRequestBody
+import kmphttp.RequestBodyX.toRequestBody
 import kmphttp.RequestBuilder
 import kmphttp.asyncSource
+import kmphttp.deleteWithoutBody
 import kmphttp.json.JsonReader
 import kmphttp.json.JsonWriter
 import kmphttp.toHttpUrlOrNull
+import kmphttp.utf8String
 import okio.use
+import projectcommon.json.string
 
 /**
  * The real [ApiService], over [KmpHttpClient]. Holds everything request-shaped: the base url and
@@ -67,6 +72,45 @@ class HttpApiService(
         client.execute(request(url).post(body).build()).use { response ->
             if (!response.isSuccessful) throw HttpStatusException(response.code)
         }
+    }
+
+    override suspend fun openDeviceLink(): String {
+        return client.execute(request(linkUrl()).post(RequestBody.EMPTY).build()).use { response ->
+            if (!response.isSuccessful) throw HttpStatusException(response.code)
+            JsonReader(response.body.asyncSource().buffer()).readObject().string("id")
+        }
+    }
+
+    override suspend fun putDeviceLink(id: String, payload: String): Boolean {
+        val body = payload.toRequestBody("text/plain".toMediaType())
+        return client.execute(request(linkUrl(id)).put(body).build()).use { response ->
+            when {
+                response.code == 404 -> false
+                response.isSuccessful -> true
+                else -> throw HttpStatusException(response.code)
+            }
+        }
+    }
+
+    override suspend fun takeDeviceLink(id: String): String? =
+        client.execute(request(linkUrl(id)).get().build()).use { response ->
+            when (response.code) {
+                200 -> response.body.utf8String()
+                204 -> null
+                else -> throw HttpStatusException(response.code)
+            }
+        }
+
+    override suspend fun closeDeviceLink(id: String) {
+        client.execute(request(linkUrl(id)).deleteWithoutBody().build()).use { response ->
+            if (!response.isSuccessful) throw HttpStatusException(response.code)
+        }
+    }
+
+    private fun linkUrl(id: String? = null): HttpUrl {
+        val url = url().addPathSegment("v1").addPathSegment("link")
+        id?.let { url.addPathSegment(it) }
+        return url.build()
     }
 
     private fun url(): HttpUrlBuilder =

@@ -26,4 +26,19 @@ interface ApiService {
      * out-of-order days would silently lose their activity credit.
      */
     suspend fun pulse(events: List<PulseEvent>)
+
+    /** QR sign-in relay: a fresh one-shot slot, open for ten minutes. Its id goes into the QR. */
+    suspend fun openDeviceLink(): String
+
+    /** Fill slot [id] with [payload] (base64url). False when there is no open slot: expired or used. */
+    suspend fun putDeviceLink(id: String, payload: String): Boolean
+
+    /**
+     * Slot [id]'s payload once the other device filled it, null while it is still empty. Reading it
+     * deletes it. Throws [kmphttp.HttpStatusException] 404 once the slot is gone (expired or taken).
+     */
+    suspend fun takeDeviceLink(id: String): String?
+
+    /** Give slot [id] up. */
+    suspend fun closeDeviceLink(id: String)
 }
