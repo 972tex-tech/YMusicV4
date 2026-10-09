@@ -323,3 +323,13 @@ export interface WireCommentPage {
   comments: WireComment[];
   continuation?: string;
 }
+
+/** One of the viewer's own playlists in the add-to-playlist picker (yt/playlist/targets). */
+export interface WirePlaylistTarget {
+  playlistId: string;
+  title: string;
+  /** PUBLIC | UNLISTED | PRIVATE. */
+  privacy?: string;
+  /** The playlist already holds the video. */
+  containsVideo?: boolean;
+}
