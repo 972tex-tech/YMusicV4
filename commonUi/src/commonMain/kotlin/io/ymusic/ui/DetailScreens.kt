@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -32,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -261,10 +263,11 @@ class ChannelSession(
     // the player's artist line. A deeplink seed's title is a shelf header, not the channel name.
     private var channelName: String? = item.title.takeIf { item.channelId == item.id }
 
-    /** The viewer's subscription; null while unknown or signed out. Flips optimistically on tap. */
+    /** The viewer's subscription; null while unknown or signed out. Flips once the server confirms. */
     var subscribed by mutableStateOf<Boolean?>(null)
         private set
-    private var subscribing = false
+    var subscribing by mutableStateOf(false)
+        private set
 
     /** A failed subscribe/unsubscribe, for the screen to show once and clear. */
     var subscribeErrorCode by mutableStateOf<String?>(null)
@@ -293,15 +296,14 @@ class ChannelSession(
         val current = subscribed ?: return
         if (subscribing) return
         subscribing = true
-        subscribed = !current
         scope.launch {
             try {
                 graph.engines.subscribeChannel(channelId, !current, log)
+                subscribed = !current
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
                 log?.log(Logger.Level.WARN, "subscribe failed", error)
-                subscribed = current
                 subscribeErrorCode = error.errorCode() ?: "E20103"
             } finally {
                 subscribing = false
@@ -367,7 +369,7 @@ fun ChannelDetailScreen(
             onOpen = onOpen,
             // Loading is a bare spinner — the header waits for the page instead of rendering from the tapped item.
             topContent = if (onHomeTab && ready != null) {
-                { ChannelHeader(ready?.pageHeader, fallback = item, s.subscribed) { s.toggleSubscription(it) } }
+                { ChannelHeader(ready?.pageHeader, fallback = item, s.subscribed, s.subscribing) { s.toggleSubscription(it) } }
             } else {
                 null
             },
@@ -384,6 +386,7 @@ private fun ChannelHeader(
     header: YtPageHeader?,
     fallback: YtFeedItem,
     subscribed: Boolean?,
+    subscribing: Boolean,
     onToggleSubscription: (channelId: String) -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
@@ -434,26 +437,22 @@ private fun ChannelHeader(
                 }
             }
             header?.channelId?.let { channelId ->
-                SubscribePill(subscribed) { onToggleSubscription(channelId) }
+                SubscribePill(subscribed, subscribing) { onToggleSubscription(channelId) }
             }
         }
     }
 }
 
-/** Filled "Subscribe", or the quieter outlined "Subscribed" once subscribed. */
+/** Filled "Subscribe", or the quieter outlined "Subscribed" once subscribed; a spinner replaces the
+ *  label (keeping the pill's width) while [subscribing]. */
 @Composable
-private fun SubscribePill(subscribed: Boolean?, onToggle: () -> Unit) {
+private fun SubscribePill(subscribed: Boolean?, subscribing: Boolean, onToggle: () -> Unit) {
     val snackbar = LocalSnackbar.current
     val signIn = stringResource(Res.string.channel_sign_in_to_subscribe)
     val shape = RoundedCornerShape(999.dp)
-    Text(
-        stringResource(if (subscribed == true) Res.string.subscribed else Res.string.subscribe),
-        style = TextStyle(
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (subscribed == true) DesignColors.InkSecondary else DesignColors.OnInk,
-        ),
-        modifier = Modifier
+    val contentColor = if (subscribed == true) DesignColors.InkSecondary else DesignColors.OnInk
+    Box(
+        Modifier
             .clip(shape)
             .then(
                 if (subscribed == true) {
@@ -462,7 +461,17 @@ private fun SubscribePill(subscribed: Boolean?, onToggle: () -> Unit) {
                     Modifier.background(DesignColors.InkStrong)
                 },
             )
-            .clickable { if (subscribed == null) snackbar(signIn) else onToggle() }
+            .clickable(enabled = !subscribing) { if (subscribed == null) snackbar(signIn) else onToggle() }
             .padding(horizontal = 16.dp, vertical = 7.dp),
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            stringResource(if (subscribed == true) Res.string.subscribed else Res.string.subscribe),
+            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = contentColor),
+            modifier = Modifier.alpha(if (subscribing) 0f else 1f),
+        )
+        if (subscribing) {
+            CircularProgressIndicator(Modifier.size(14.dp), color = contentColor, strokeWidth = 2.dp)
+        }
+    }
 }
