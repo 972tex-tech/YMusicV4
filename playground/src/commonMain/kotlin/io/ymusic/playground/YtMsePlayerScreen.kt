@@ -118,6 +118,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
             }
             withContext(Dispatchers.Default) { s.player.init(s.log) }
             session = s
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             error = t.message ?: t.toString()
             println("mse boot failed: $t")
@@ -157,6 +159,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
             qualityChoices = withContext(Dispatchers.Default) { pullQualityChoices(s) }
             captionVss = null
             captionLines = emptyList()
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             error = t.message ?: t.toString()
             println("mse boot failed: $t")
@@ -416,6 +420,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                                 captionVss = null
                                 captionLines = emptyList()
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
                             println("mse load failed: $t")
@@ -434,6 +440,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                         try {
                             withContext(Dispatchers.Default) { s.player.preload(id, s.log) }
                             println("mse preload ok $id")
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
                             println("mse preload failed: $t")
@@ -466,6 +474,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                                     s.player.setQuality(token, false, s.log)
                                 }
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
                             println("mse setQuality failed: $t")
@@ -480,6 +490,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) { s.player.setCaption(vss, s.log) }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
                             println("mse setCaption failed: $t")
@@ -512,6 +524,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                             withContext(Dispatchers.Default) {
                                 s.player.seekTo(clamped, s.log)
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
                             println("mse seek failed: $t")
@@ -523,6 +537,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) { s.player.play(s.log) }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
                             println("mse play failed: $t")
@@ -534,6 +550,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) { s.player.pause(s.log) }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
                             println("mse pause failed: $t")
@@ -545,6 +563,8 @@ fun YtMsePlayerScreen(modifier: Modifier = Modifier) {
                     scope.launch {
                         try {
                             withContext(Dispatchers.Default) { s.player.stop(s.log) }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (t: Throwable) {
                             error = t.message ?: t.toString()
                             println("mse stop failed: $t")
