@@ -77,7 +77,7 @@ class AppNavigationTest {
 
                 // Back again leaves search for the Discover shell.
                 onNodeWithContentDescription("Back").performClick()
-                waitUntilAtLeastOneExists(hasText("Home"), 10_000)
+                waitUntilAtLeastOneExists(hasText("Trending music"), 10_000)
             }
         } finally {
             runBlocking { engines.close() }
@@ -127,7 +127,7 @@ class AppNavigationTest {
                 onNodeWithContentDescription("Back").performClick()
                 waitUntilAtLeastOneExists(hasText("Playlist"), 10_000)
                 onNodeWithContentDescription("Back").performClick()
-                waitUntilAtLeastOneExists(hasText("Home"), 10_000)
+                waitUntilAtLeastOneExists(hasText("Trending music"), 10_000)
             }
         } finally {
             runBlocking { engines.close() }
@@ -336,7 +336,7 @@ class AppNavigationTest {
 
                 // Away to Discover and back: still INSIDE RootFolder, not reset to the root.
                 section.value = AppSection.Discover
-                waitUntilAtLeastOneExists(hasText("Home"), 20_000)
+                waitUntilAtLeastOneExists(hasText("Trending music"), 20_000)
                 section.value = AppSection.Library
                 waitUntilAtLeastOneExists(hasText("SubFolder"), 10_000)
 
@@ -344,7 +344,7 @@ class AppNavigationTest {
                 onNodeWithText("Songs").performClick()
                 waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
                 section.value = AppSection.Discover
-                waitUntilAtLeastOneExists(hasText("Home"), 10_000)
+                waitUntilAtLeastOneExists(hasText("Trending music"), 10_000)
                 section.value = AppSection.Library
                 waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
 
@@ -358,7 +358,7 @@ class AppNavigationTest {
                 onNodeWithText("MyList").performClick()
                 waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
                 section.value = AppSection.Discover
-                waitUntilAtLeastOneExists(hasText("Home"), 10_000)
+                waitUntilAtLeastOneExists(hasText("Trending music"), 10_000)
                 section.value = AppSection.Library
                 waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
 
@@ -368,7 +368,7 @@ class AppNavigationTest {
                 onNodeWithText("ArtistX").performClick()
                 waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
                 section.value = AppSection.Discover
-                waitUntilAtLeastOneExists(hasText("Home"), 10_000)
+                waitUntilAtLeastOneExists(hasText("Trending music"), 10_000)
                 section.value = AppSection.Library
                 waitUntilAtLeastOneExists(hasText("Local Song A"), 10_000)
             }

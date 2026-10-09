@@ -23,12 +23,12 @@
     <string name="coming_soon">%1$s — sẽ có trong bản cập nhật sau</string>
 
     <string name="tab_home">Trang chủ</string>
-    <string name="tab_music">Âm nhạc</string>
+    <string name="tab_music">Nhạc thịnh hành</string>
     <string name="tab_recommended">Đề xuất</string>
     <string name="tab_top_tracks">Bài hát nổi bật</string>
     <string name="tab_account_library">Thư viện</string>
     <string name="discover_needs_account">%1$s phản chiếu tài khoản YouTube của bạn — sẽ có khi đăng nhập</string>
-    <string name="discover_no_anonymous_home">YouTube không cung cấp trang chủ khi chưa đăng nhập — hãy dùng Tìm kiếm, hoặc đăng nhập (sắp có)</string>
+    <string name="discover_no_anonymous_home">YouTube sẽ đề xuất sau khi bạn xem vài video — hãy tìm gì đó để phát</string>
     <string name="discover_no_trending">Không có bảng xếp hạng cho khu vực này</string>
     <string name="discover_no_recommendations">Hãy nghe vài bài hát, gợi ý cho bạn sẽ xuất hiện ở đây</string>
     <string name="discover_no_top_tracks">Hãy phát vài video, bài hát bạn nghe nhiều nhất sẽ xuất hiện ở đây</string>
@@ -48,6 +48,7 @@
     <string name="error_generic">Đã xảy ra lỗi (%1$s)</string>
     <string name="retry">Thử lại</string>
     <string name="reload">Tải lại</string>
+    <string name="search_videos">Tìm video</string>
     <string name="show_more">Xem thêm</string>
     <string name="show_more_n">Xem thêm (%1$d)</string>
     <string name="show_less">Thu gọn</string>

@@ -51,7 +51,7 @@ class TrendingScreenTest {
                 val graph = AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})
                 setContent { App(graph) }
 
-                onNodeWithContentDescription("Music").performClick()
+                onNodeWithContentDescription("Trending music").performClick()
 
                 // The chart's own header — synthesized by the engine, localized here.
                 waitUntilAtLeastOneExists(hasText("Trending Music Videos"), 20_000)
@@ -91,7 +91,7 @@ class TrendingScreenTest {
                 val graph = AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})
                 setContent { App(graph) }
 
-                onNodeWithContentDescription("Music").performClick()
+                onNodeWithContentDescription("Trending music").performClick()
                 waitUntilAtLeastOneExists(hasText("Trending Music Videos"), 20_000)
 
                 // The trending chart holds 10 entries in the capture. How many the teaser shows is

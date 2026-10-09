@@ -2,7 +2,9 @@ package io.ymusic.ui
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.DynamicEngineManager
@@ -63,6 +65,7 @@ class EmptyFeedNudgeTest {
         try {
             runComposeUiTest {
                 setContent { App(AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})) }
+                onNodeWithContentDescription("Home").performClick()
                 waitUntilAtLeastOneExists(hasText("Try searching to get started"), 20_000)
                 onNodeWithText("Start watching videos to help us build a feed of videos you'll love.")
                     .assertExists()

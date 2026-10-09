@@ -102,6 +102,7 @@ import io.ymusic.ui.resources.discover_no_anonymous_home
 import io.ymusic.ui.resources.discover_no_recommendations
 import io.ymusic.ui.resources.discover_no_top_tracks
 import io.ymusic.ui.resources.discover_no_trending
+import io.ymusic.ui.resources.search_videos
 import io.ymusic.ui.resources.section_catalogue
 import io.ymusic.ui.resources.section_discover
 import io.ymusic.ui.resources.section_donate
@@ -328,7 +329,8 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 if (section == AppSection.Catalogue) onSection(AppSection.Discover)
             }
         }
-        var discoverTab by rememberSaveable { mutableStateOf(DiscoverTab.Home) }
+        // Trending music: the one tab with content on a fresh install — Home stays empty until YouTube has watch history.
+        var discoverTab by rememberSaveable { mutableStateOf(DiscoverTab.Music) }
         // Live swipe progress (−1..1) so the Discover underline tracks the drag, not just the commit.
         var discoverDrag by remember { mutableFloatStateOf(0f) }
         val nowPlayingOpen by graph.pip.nowPlayingOpen.collectAsState()
@@ -829,6 +831,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                         onSwitchAccount = openSwitchAccount,
                                                         onOpen = openItem,
                                                         onDeeplink = openDeeplink,
+                                                        onSearch = openSearch,
                                                     )
                                                 }
                                                 AppSection.YtMusic -> YtMusicScreen(
@@ -1018,6 +1021,7 @@ private fun DiscoverFeed(
     onSwitchAccount: () -> Unit,
     onOpen: ((io.ymusic.dynamicengine.yt.YtFeedItem) -> Unit)? = null,
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
+    onSearch: (() -> Unit)? = null,
 ) {
     if (tab == DiscoverTab.Account) {
         // The user/library tab: spinner until the profile probe finishes, then the sign-in
@@ -1119,6 +1123,11 @@ private fun DiscoverFeed(
                         else -> Res.string.discover_no_anonymous_home
                     },
                 ),
+                emptyAction = if (tab == DiscoverTab.Home && onSearch != null) {
+                    EmptyAction(stringResource(Res.string.search_videos), onSearch)
+                } else {
+                    null
+                },
                 onOpen = onOpen,
                 onPlayItem = if (tab == DiscoverTab.TopTracks) {
                     { tapped ->

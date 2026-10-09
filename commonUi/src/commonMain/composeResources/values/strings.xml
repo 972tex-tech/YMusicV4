@@ -30,12 +30,12 @@
 
     <!-- Discover tabs -->
     <string name="tab_home">Home</string>
-    <string name="tab_music">Music</string>
+    <string name="tab_music">Trending music</string>
     <string name="tab_recommended">Recommended</string>
     <string name="tab_top_tracks">Top tracks</string>
     <string name="tab_account_library">Library</string>
     <string name="discover_needs_account">%1$s mirrors your YouTube account — coming with sign-in</string>
-    <string name="discover_no_anonymous_home">YouTube serves no anonymous home feed — use Search, or sign in (coming)</string>
+    <string name="discover_no_anonymous_home">YouTube recommends once you've watched a few videos — search for something to play</string>
     <string name="discover_no_trending">No charts published for this region</string>
     <string name="discover_no_recommendations">Play a few songs and your recommendations will show up here</string>
     <string name="discover_no_top_tracks">Play some videos and your most-listened tracks will show up here</string>
@@ -69,6 +69,7 @@
     <string name="error_generic">Something went wrong (%1$s)</string>
     <string name="retry">Retry</string>
     <string name="reload">Reload</string>
+    <string name="search_videos">Search videos</string>
     <string name="show_more">Show more</string>
     <string name="show_more_n">Show more (%1$d)</string>
     <string name="show_less">Show less</string>

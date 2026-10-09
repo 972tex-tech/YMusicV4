@@ -44,9 +44,11 @@ class FeedCachingTest {
             runComposeUiTest {
                 val graph = AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})
                 setContent { App(graph) }
+                onNodeWithContentDescription("Home").performClick()
 
                 waitUntilAtLeastOneExists(hasText("Mock Text 010", substring = true), 20_000)
-                assertEquals(1, browseCalls.get(), "home loads once")
+                // The startup Trending tab is a /browse too.
+                val loadedCalls = browseCalls.get()
 
                 // Into the search layer and straight back out.
                 onNodeWithContentDescription("Search").performClick()
@@ -55,7 +57,7 @@ class FeedCachingTest {
 
                 // The feed is right back — same loaded page, no new /browse.
                 waitUntilAtLeastOneExists(hasText("Mock Text 010", substring = true), 10_000)
-                assertEquals(1, browseCalls.get(), "returning home must not refetch the feed")
+                assertEquals(loadedCalls, browseCalls.get(), "returning home must not refetch the feed")
             }
         } finally {
             runBlocking { engines.close() }

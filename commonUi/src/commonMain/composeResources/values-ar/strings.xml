@@ -23,12 +23,12 @@
     <string name="coming_soon">%1$s — قادم في مرحلة لاحقة</string>
 
     <string name="tab_home">الرئيسية</string>
-    <string name="tab_music">الموسيقى</string>
+    <string name="tab_music">موسيقى رائجة</string>
     <string name="tab_recommended">مقترحات</string>
     <string name="tab_top_tracks">أفضل المقاطع</string>
     <string name="tab_account_library">المكتبة</string>
     <string name="discover_needs_account">%1$s يعكس حساب YouTube الخاص بك — يأتي مع تسجيل الدخول</string>
-    <string name="discover_no_anonymous_home">لا يقدم YouTube صفحة رئيسية دون تسجيل الدخول — استخدم البحث أو سجّل الدخول (قريبًا)</string>
+    <string name="discover_no_anonymous_home">يقدم YouTube توصيات بعد مشاهدة بعض الفيديوهات — ابحث عن شيء لتشغيله</string>
     <string name="discover_no_trending">لا توجد قوائم رائجة لهذه المنطقة</string>
     <string name="discover_no_recommendations">شغّل بعض الأغاني وستظهر توصياتك هنا</string>
     <string name="discover_no_top_tracks">شغّل بعض الفيديوهات وستظهر أكثر مقاطعك استماعاً هنا</string>
@@ -48,6 +48,7 @@
     <string name="error_generic">حدث خطأ ما (%1$s)</string>
     <string name="retry">إعادة المحاولة</string>
     <string name="reload">إعادة التحميل</string>
+    <string name="search_videos">ابحث عن فيديوهات</string>
     <string name="show_more">عرض المزيد</string>
     <string name="show_more_n">عرض المزيد (%1$d)</string>
     <string name="show_less">عرض أقل</string>

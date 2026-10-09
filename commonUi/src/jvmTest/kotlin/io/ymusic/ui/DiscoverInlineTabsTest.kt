@@ -45,12 +45,12 @@ class DiscoverInlineTabsTest {
                 }
             }
 
-            val before = onNodeWithContentDescription("Music").fetchSemanticsNode().boundsInRoot.left
+            val before = onNodeWithContentDescription("Trending music").fetchSemanticsNode().boundsInRoot.left
             // "Home" → "Recommended" is the biggest title-width jump the tabs can see.
             onNodeWithContentDescription("Recommended").performClick()
             waitForIdle()
-            val after = onNodeWithContentDescription("Music").fetchSemanticsNode().boundsInRoot.left
-            assertTrue(abs(before - after) < 0.5f, "Music tab moved: $before → $after")
+            val after = onNodeWithContentDescription("Trending music").fetchSemanticsNode().boundsInRoot.left
+            assertTrue(abs(before - after) < 0.5f, "Trending music tab moved: $before → $after")
         }
     }
 }

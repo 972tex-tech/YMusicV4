@@ -319,6 +319,7 @@ fun FeedList(
     coordinator: PlaybackCoordinator,
     modifier: Modifier = Modifier,
     emptyMessage: String = stringResource(Res.string.feed_empty),
+    emptyAction: EmptyAction? = null,
     onOpen: ((YtFeedItem) -> Unit)? = null,
     onPlayItem: ((YtFeedItem) -> Unit)? = null,
     topContent: (@Composable () -> Unit)? = null,
@@ -364,10 +365,19 @@ fun FeedList(
                         FeedChips(s, pager)
                         // The source's own explainer (anonymous Home's "Try searching to get
                         // started") beats the surface's generic empty text.
-                        EmptyState(
-                            s.emptyMessage ?: emptyMessage,
-                            title = s.emptyTitle,
-                        ) { pager.refresh(s.selectedChipToken) }
+                        if (emptyAction != null) {
+                            EmptyState(
+                                s.emptyMessage ?: emptyMessage,
+                                title = s.emptyTitle,
+                                actionLabel = emptyAction.label,
+                                onReload = emptyAction.onClick,
+                            )
+                        } else {
+                            EmptyState(
+                                s.emptyMessage ?: emptyMessage,
+                                title = s.emptyTitle,
+                            ) { pager.refresh(s.selectedChipToken) }
+                        }
                     }
                 } else {
                     FeedSections(s, pager, coordinator, modifier, onOpen, onPlayItem, topContent, listState, onDeeplink)
@@ -376,6 +386,9 @@ fun FeedList(
         }
     }
 }
+
+/** Replaces an empty feed's reload button, for a surface whose emptiness a reload can't fix. */
+class EmptyAction(val label: String, val onClick: () -> Unit)
 
 /** Touch platforms wrap the feed in Material's pull-to-refresh; desktop reloads via F5/Cmd+R
  *  instead (a mouse can't over-drag a list), so the wrapper is a no-op there. The indicator spins
@@ -393,13 +406,14 @@ private fun PullToRefreshFeed(refreshing: Boolean, onRefresh: () -> Unit, conten
     }
 }
 
-/** Full-surface empty page: picture + message + an emphasized reload action. [title], when the
- *  source supplies its own explainer (anonymous Home's nudge), leads in emphasis over the message. */
+/** Full-surface empty page: picture + message + an emphasized action (reload by default). [title], when
+ *  the source supplies its own explainer (anonymous Home's nudge), leads in emphasis over the message. */
 @Composable
 internal fun EmptyState(
     message: String,
     modifier: Modifier = Modifier,
     title: String? = null,
+    actionLabel: String = stringResource(Res.string.reload),
     onReload: () -> Unit,
 ) {
     CenteredBox(modifier) {
@@ -424,7 +438,7 @@ internal fun EmptyState(
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
             Button(onClick = onReload, modifier = Modifier.padding(top = 8.dp)) {
-                Text(stringResource(Res.string.reload))
+                Text(actionLabel)
             }
         }
     }

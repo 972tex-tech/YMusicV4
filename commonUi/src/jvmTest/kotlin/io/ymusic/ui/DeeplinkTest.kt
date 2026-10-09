@@ -71,6 +71,7 @@ class DeeplinkTest {
             runComposeUiTest {
                 val graph = AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})
                 setContent { App(graph) }
+                onNodeWithContentDescription("Home").performClick()
 
                 waitUntilAtLeastOneExists(hasText("Sky Decade"), 20_000)
                 onNodeWithContentDescription("View all").performClick()

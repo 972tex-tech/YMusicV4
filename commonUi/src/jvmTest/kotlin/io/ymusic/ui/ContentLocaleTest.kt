@@ -73,7 +73,7 @@ class ContentLocaleTest {
                 val graph = AppGraph(engines = engines, player = StubPlayer(), settings = settings, playerSurface = {})
                 setContent { App(graph) }
 
-                onNodeWithContentDescription("Music").performClick()
+                onNodeWithContentDescription("Trending music").performClick()
                 waitUntilAtLeastOneExists(hasText("Trending Music Videos"), 20_000)
                 waitUntil(timeoutMillis = 10_000) { charts.isNotEmpty() }
 
@@ -164,7 +164,7 @@ class ContentLocaleTest {
                 val graph = AppGraph(engines = engines, player = StubPlayer(), settings = settings, playerSurface = {})
                 setContent { App(graph) }
 
-                onNodeWithContentDescription("Music").performClick()
+                onNodeWithContentDescription("Trending music").performClick()
                 waitUntilAtLeastOneExists(hasText("Trending Music Videos"), 20_000)
                 waitUntil(timeoutMillis = 10_000) { charts.isNotEmpty() }
                 val before = charts.size
