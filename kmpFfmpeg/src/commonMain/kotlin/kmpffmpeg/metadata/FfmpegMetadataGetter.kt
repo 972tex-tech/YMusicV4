@@ -97,7 +97,7 @@ open class FfmpegMetadataGetter(
                 "-map", "0:disp:attached_pic", "-c", "copy", "-frames:v", "1", "-update", "1", "-f", "image2", "pipe:1",
             )
         },
-        onNoOutput = { stderr -> FfmpegAttachedPicException(stderr) },
+        onNoOutput = { stderr, exitCode -> FfmpegAttachedPicException(stderr, exitCode) },
     )
 
     /**
@@ -123,7 +123,7 @@ open class FfmpegMetadataGetter(
                 "-vf", "thumbnail", "-frames:v", "1", "-an", "-c:v", "mjpeg", "-update", "1", "-f", "image2", "pipe:1",
             )
         },
-        onNoOutput = { stderr -> FfmpegThumbnailException(stderr) },
+        onNoOutput = { stderr, exitCode -> FfmpegThumbnailException(stderr, exitCode) },
     )
 
     /**
@@ -135,7 +135,7 @@ open class FfmpegMetadataGetter(
     private suspend fun streamSingleImage(
         uri: Uri,
         args: (spec: String) -> List<String>,
-        onNoOutput: (stderr: String) -> Throwable,
+        onNoOutput: (stderr: String, exitCode: Int) -> Throwable,
     ): Source = withContext(Dispatchers.IO) {
         val input = inputResolver.resolve(uri)
         val process = try {
@@ -144,7 +144,7 @@ open class FfmpegMetadataGetter(
                 .setEnv(environment)
                 .start()
         } catch (t: Throwable) {
-            input.close() // start() never ran onProcessStarted, so just tear the proxy down
+            input.closeSuppressing(t) // start() never ran onProcessStarted, so just tear the proxy down
             throw t
         }
         try {
@@ -158,13 +158,13 @@ open class FfmpegMetadataGetter(
             // non-zero exit with no output, so request(1) returns false right away → fail fast.
             val hasData = process.scope.async { out.request(1) }.await()
             if (!hasData) {
-                process.exitCode.await()
-                throw onNoOutput(stderr.await().trim())
+                val exitCode = process.exitCode.await()
+                throw onNoOutput(stderr.await().trim(), exitCode)
             }
             ProcessBoundSource(out, process, input)
         } catch (t: Throwable) {
             process.close(t)
-            input.close()
+            input.closeSuppressing(t)
             throw t
         }
     }
@@ -179,17 +179,28 @@ private class ProcessBoundSource(
     override fun close() {
         try {
             source.close()
-        } finally {
+        } catch (t: Throwable) {
             process.close()
-            input.close()
+            input.closeSuppressing(t)
+            throw t
         }
+        process.close()
+        input.close()
+    }
+}
+
+private fun FfInput.closeSuppressing(primary: Throwable) {
+    try {
+        close()
+    } catch (closeError: Throwable) {
+        primary.addSuppressed(closeError)
     }
 }
 
 /** Thrown by [FfmpegMetadataGetter.getAttachedPic] when the input has no attached picture. */
-class FfmpegAttachedPicException(val stderr: String) :
-    Exception("ffmpeg produced no attached picture\n$stderr")
+class FfmpegAttachedPicException(val stderr: String, val exitCode: Int) :
+    Exception("ffmpeg produced no attached picture (exit $exitCode)\n$stderr")
 
 /** Thrown by [FfmpegMetadataGetter.extractThumbnail] when ffmpeg decoded no frame from the input. */
-class FfmpegThumbnailException(val stderr: String) :
-    Exception("ffmpeg produced no thumbnail frame\n$stderr")
+class FfmpegThumbnailException(val stderr: String, val exitCode: Int) :
+    Exception("ffmpeg produced no thumbnail frame (exit $exitCode)\n$stderr")
