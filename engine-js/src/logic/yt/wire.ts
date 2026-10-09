@@ -99,6 +99,10 @@ export interface WirePageHeader {
   banner?: WireThumb[];
   /** Playlist length from the header's "31 videos" part; absent when the header shows none. */
   itemCount?: number;
+  /** A channel page's channel — the yt/channel/subscribe target. */
+  channelId?: string;
+  /** The viewer's subscription to [channelId]; absent when the header offers only a sign-in button. */
+  subscribed?: boolean;
 }
 
 /** One browse tab of a channel page (Home / Videos / Shorts / …). `url` is the app link fetching

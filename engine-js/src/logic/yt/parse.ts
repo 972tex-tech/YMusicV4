@@ -1183,5 +1183,52 @@ export function collectPage(
   if (pageTabs.length > 0) page["pageTabs"] = pageTabs;
   const pageHeader = pageHeaderOf(root["header"]) ?? panelHeader;
   if (pageHeader != null) page["pageHeader"] = pageHeader;
+  const channelId = asString(get(root["metadata"], "channelMetadataRenderer", "externalId"));
+  if (channelId !== undefined) {
+    // Topic channels carry a carousel header pageHeaderOf doesn't read; the subscribe state still applies.
+    const header: WirePageHeader = pageHeader ?? {};
+    header["channelId"] = channelId;
+    const subscribed = subscribedOf(root);
+    if (subscribed !== undefined) header["subscribed"] = subscribed;
+    page["pageHeader"] = header;
+  }
   return page;
+}
+
+/**
+ * The viewer's subscription from the header's subscribe button: `subscribeButtonRenderer.subscribed`
+ * or the view model's `subscribeState`, overridden by the frameworkUpdates `subscriptionStateEntity`
+ * its entity key names (the live store). Undefined when signed out — the header then holds a plain
+ * sign-in button with neither.
+ */
+function subscribedOf(root: Record<string, unknown>): boolean | undefined {
+  let subscribed: boolean | undefined;
+  let key: string | undefined;
+  walk(root["header"], (k, v) => {
+    if (!isObj(v)) return;
+    if (k === "subscribeButtonRenderer") {
+      if (typeof v["subscribed"] === "boolean") subscribed = v["subscribed"];
+      key = asString(v["subscribedEntityKey"]);
+      return true;
+    }
+    if (k === "subscribeButtonViewModel") {
+      const state = get(v, "subscribeButtonContent", "subscribeState", "subscribed");
+      if (typeof state === "boolean") subscribed = state;
+      key = asString(v["stateEntityStoreKey"]);
+      return true;
+    }
+    return;
+  });
+  const mutations = get(root["frameworkUpdates"], "entityBatchUpdate", "mutations");
+  if (!Array.isArray(mutations)) return subscribed;
+  const entities: Record<string, unknown>[] = [];
+  for (const m of mutations) {
+    const entity = get(m, "payload", "subscriptionStateEntity");
+    if (isObj(entity) && typeof entity["subscribed"] === "boolean") entities.push(entity);
+  }
+  // A key that matches nothing falls back to a lone entity — the page's own channel.
+  const match =
+    entities.filter((e) => key !== undefined && e["key"] === key)[0] ??
+    (entities.length === 1 ? entities[0] : undefined);
+  return match === undefined ? subscribed : match["subscribed"] === true;
 }

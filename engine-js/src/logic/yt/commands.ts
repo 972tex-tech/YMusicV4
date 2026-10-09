@@ -632,6 +632,33 @@ onAccept(
   }),
 );
 
+// The subscribe/unsubscribe endpoints' own params, as the channel page's buttons carry them.
+const SUBSCRIBE_PARAMS = "EgIIAhgA";
+const UNSUBSCRIBE_PARAMS = "CgIIAhgA";
+
+// {"channelId","subscribed"} -> {}. Sets the viewer's subscription to the channel (signed in).
+onAccept(
+  "yt/channel/subscribe",
+  commandHandler(async (src, out) => {
+    const args = await src.readJsonObject();
+    const channelId = asString(args["channelId"]);
+    if (channelId === undefined || channelId === "") {
+      throw JsEngineErrorImpl.parse("yt/channel/subscribe needs channelId");
+    }
+    const subscribe = args["subscribed"] === true;
+    await innertubeJson(
+      subscribe ? "subscription/subscribe" : "subscription/unsubscribe",
+      {
+        "channelIds": [channelId],
+        "params": subscribe ? SUBSCRIBE_PARAMS : UNSUBSCRIBE_PARAMS,
+      },
+      hostLogger(args, "yt/channel/subscribe"),
+    );
+    const p = out.writeObjectAsJson({});
+    if (p) await p;
+  }),
+);
+
 async function writeLocales(out: PipeSink, locales: WireLocales): Promise<void> {
   const p = out.writeObjectAsJson(locales);
   if (p) await p;
