@@ -37,10 +37,6 @@ function jsonRec(body: unknown): Record<string, unknown> | null {
   }
 }
 
-function errText(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
 export function transformPlayerRequest(rec: Record<string, unknown>): Record<string, unknown> {
   rec["racyCheckOk"] = true;
   rec["contentCheckOk"] = true;
@@ -127,7 +123,7 @@ function rewriteReq(req: HttpReq): HttpReq {
   try {
     transformPlayerRequest(rec);
   } catch (e) {
-    console.warn("player ads: transformPlayerRequest failed: " + errText(e));
+    console.warn("player ads: transformPlayerRequest failed:", e);
     return req;
   }
   const headers = req.headers.filter(function (e) {
@@ -150,7 +146,7 @@ async function playerAdsIntercept(chain: HttpChain): Promise<HttpResponse> {
   try {
     transformPlayerResponse(rec);
   } catch (e) {
-    console.warn("player ads: transformPlayerResponse failed: " + errText(e));
+    console.warn("player ads: transformPlayerResponse failed:", e);
   }
   return new BufferedResponse(res, stringifyJson(rec));
 }

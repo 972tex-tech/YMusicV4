@@ -183,7 +183,7 @@ export class HttpCallImpl implements HttpCall {
         io2.sink.close();
         io2.source.close();
       }
-      if (this._cancelled) throw new Error("request cancelled");
+      if (this._cancelled) throw new Error("request cancelled", { cause: e });
       throw hostError(e);
     }
   }

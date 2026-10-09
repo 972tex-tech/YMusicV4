@@ -52,7 +52,9 @@ function fire(x: XhrJs, type: string): void {
     for (let i = 0; i < list.length; i++) {
       try {
         list[i]!.call(x, ev);
-      } catch (_e) {}
+      } catch (e) {
+        console.error("xhr " + type + " listener threw:", e);
+      }
     }
   }
   const key = "on" + type;
@@ -60,7 +62,9 @@ function fire(x: XhrJs, type: string): void {
   if (typeof fn === "function") {
     try {
       (fn as Listener).call(x, ev);
-    } catch (_e) {}
+    } catch (e) {
+      console.error("xhr on" + type + " threw:", e);
+    }
   }
 }
 
@@ -275,8 +279,9 @@ XhrImpl.prototype["send"] = function (this: XhrJs, body?: unknown): void {
       setReady(self, 3);
       setReady(self, 4);
       fire(self, "load");
-    } catch (_e) {
+    } catch (e) {
       if (self._aborted) return;
+      console.warn("xhr " + url + " failed:", e);
       setReady(self, 4);
       fire(self, "error");
     } finally {

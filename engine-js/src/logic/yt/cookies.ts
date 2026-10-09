@@ -285,7 +285,7 @@ async function applySetCookieValues(url: string, values: string[]): Promise<void
   try {
     await Cookies.set(url, values);
   } catch (e) {
-    console.warn("cookie store write failed: " + (e instanceof Error ? e.message : String(e)));
+    console.warn("cookie store write failed:", e);
   }
   let wiped = false;
   for (const v of values) {
@@ -299,7 +299,7 @@ async function applySetCookieValues(url: string, values: string[]): Promise<void
     try {
       await onLoginInfoWiped();
     } catch (e) {
-      console.warn("remote logout cleanup failed: " + (e instanceof Error ? e.message : String(e)));
+      console.warn("remote logout cleanup failed:", e);
     }
   }
 }

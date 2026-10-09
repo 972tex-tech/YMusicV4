@@ -50,29 +50,37 @@ interface ThrownLike {
   name?: unknown;
   userMessage?: unknown;
   stack?: unknown;
-  cause?: { name?: unknown; message?: unknown };
+  cause?: ThrownLike;
 }
 
 // Classify a thrown value into the wire error object — the WireError contract (Kotlin mirror:
-// WireError.kt, decoded by decodeEngineError). An explicit .code wins (ours — including http.ts's
-// host-adopted codes); a site code embedded in the message is preserved (host reasons can cross as
-// text); engine InternalError = OOM/stack overflow; a runtime SyntaxError is almost always
-// JSON.parse on scraped data; anything else is an uncaught script error — E20001.
+// WireError.kt, decoded by decodeEngineError). The deepest explicit .code in the cause chain wins,
+// as Kotlin's codedError() (ours — including http.ts's host-adopted codes; wrap, never re-mint);
+// causes' stacks append to `stack` as "Caused by:" (the host keeps no cause stack); a site code
+// embedded in the message is preserved (host reasons can cross as text); engine InternalError =
+// OOM/stack overflow; a runtime SyntaxError is almost always JSON.parse on scraped data; anything
+// else is an uncaught script error — E20001.
 // Wire keys are QUOTED (Closure never renames quoted properties): this object crosses to Kotlin as
 // JSON, so its keys must survive the ADVANCED pass literally. The error-object reads (t.code, …)
 // stay dotted — those are in-bundle properties that rename consistently.
 function classify(e: unknown): WireError {
   const t = (e ?? {}) as ThrownLike;
   const msg = t.message !== undefined ? String(t.message) : String(e);
+  let deepCode: string | undefined;
+  let stack = typeof t.stack === "string" ? t.stack : "";
+  for (let link: ThrownLike | undefined = t, depth = 0; link && depth < 8; depth++) {
+    if (typeof link.code === "string") deepCode = link.code;
+    if (depth > 0) stack += "\nCaused by: " + (typeof link.stack === "string" ? link.stack : link);
+    link = link.cause;
+  }
   const code =
-    typeof t.code === "string"
-      ? t.code
-      : (msg.match(/\bE\d{5}\b/) || [])[0] ||
-        (t.name === "InternalError" ? "oom" : e instanceof SyntaxError ? "parse" : "E20001"); // E20001: uncaught script error
+    deepCode ||
+    (msg.match(/\bE\d{5}\b/) || [])[0] ||
+    (t.name === "InternalError" ? "oom" : e instanceof SyntaxError ? "parse" : "E20001"); // E20001: uncaught script error
   const out: WireError = { "code": code, "message": msg };
   if (t.name) out["name"] = String(t.name);
   if (typeof t.userMessage === "string") out["userMessage"] = t.userMessage;
-  if (typeof t.stack === "string") out["stack"] = t.stack.slice(0, STACK_CAP);
+  if (stack) out["stack"] = stack.slice(0, STACK_CAP);
   const c = t.cause;
   if (c) {
     const cause: WireError["cause"] = {

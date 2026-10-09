@@ -200,43 +200,15 @@ onAccept(
   }),
 );
 
-onAccept("listen/player/status", async (pipe) => {
-  try {
-    await listenPlayerStatus(pipe);
-    const pr = pipe.sink.close();
-    if (pr) await pr;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (!/^EPIPE\b/.test(msg)) {
-      try {
-        const code = e instanceof JsEngineErrorImpl ? e.code : "E20001";
-        const pr2 = pipe.sink.close(JSON.stringify({ "code": code, "message": msg }));
-        if (pr2) await pr2;
-      } catch (_e) {}
-    }
-  } finally {
-    pipe.source.close();
-  }
-});
+onAccept(
+  "listen/player/status",
+  commandHandler((_src, _out, pipe) => listenPlayerStatus(pipe)),
+);
 
-onAccept("listen/player/catalog", async (pipe) => {
-  try {
-    await runCatalogSession(pipe);
-    const pr = pipe.sink.close();
-    if (pr) await pr;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (!/^EPIPE\b/.test(msg)) {
-      try {
-        const code = e instanceof JsEngineErrorImpl ? e.code : "E20001";
-        const pr2 = pipe.sink.close(JSON.stringify({ "code": code, "message": msg }));
-        if (pr2) await pr2;
-      } catch (_e) {}
-    }
-  } finally {
-    pipe.source.close();
-  }
-});
+onAccept(
+  "listen/player/catalog",
+  commandHandler((_src, _out, pipe) => runCatalogSession(pipe)),
+);
 
 onAccept(
   "player/captions",
@@ -270,8 +242,8 @@ onAccept(
       await preloadPlayer(id);
       try {
         rec = await waitDownloadJson(id, downloadWaitMs());
-      } catch (_e) {
-        throw new JsEngineErrorImpl("player response not cached", "E20087");
+      } catch (e) {
+        throw new JsEngineErrorImpl("player response not cached", "E20087", { cause: e });
       }
     }
     const p = out.writeObjectAsJson(rec);
@@ -279,21 +251,7 @@ onAccept(
   }),
 );
 
-onAccept("player/caption", async (pipe) => {
-  try {
-    await runCaptionSession(pipe);
-    const pr = pipe.sink.close();
-    if (pr) await pr;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (!/^EPIPE\b/.test(msg)) {
-      try {
-        const code = e instanceof JsEngineErrorImpl ? e.code : "E20001";
-        const pr2 = pipe.sink.close(JSON.stringify({ "code": code, "message": msg }));
-        if (pr2) await pr2;
-      } catch (_e) {}
-    }
-  } finally {
-    pipe.source.close();
-  }
-});
+onAccept(
+  "player/caption",
+  commandHandler((_src, _out, pipe) => runCaptionSession(pipe)),
+);
