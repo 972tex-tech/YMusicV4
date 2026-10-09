@@ -12,7 +12,8 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
 /**
- * Per-module `internal const val DEBUG_BUILD`, baked from `-Pymusic.debugLogs` (default true).
+ * Per-module `internal const val DEBUG_BUILD`, baked from `-Pymusic.debugLogs` (default true);
+ * `-Pproduction=true` forces it false — a production build never reports as a debug one.
  * Emitted into that module's own root package (longest common prefix of its source packages).
  * Android app modules keep `BuildConfig.DEBUG` — this is not generated there.
  */
@@ -49,7 +50,7 @@ abstract class GenerateDebugBuildFlag : DefaultTask() {
             """
             |package $pkg
             |
-            |/** Baked at build time from -Pymusic.debugLogs (default true). */
+            |/** Baked at build time from -Pymusic.debugLogs (default true; false under -Pproduction). */
             |internal const val DEBUG_BUILD: Boolean = ${debugBuild.get()}
             |
             """.trimMargin(),
@@ -61,7 +62,9 @@ private fun Project.debugBuildFlagTask(packageName: String): TaskProvider<Genera
     val existing = tasks.findByName("generateDebugBuildFlag")
     if (existing != null) return tasks.named("generateDebugBuildFlag", GenerateDebugBuildFlag::class.java)
 
+    val production = providers.gradleProperty("production").map(String::toBoolean).getOrElse(false)
     val debugBuild = providers.gradleProperty("ymusic.debugLogs").map(String::toBoolean).orElse(true)
+        .map { it && !production }
     return tasks.register<GenerateDebugBuildFlag>("generateDebugBuildFlag") {
         this.debugBuild.set(debugBuild)
         this.packageName.set(packageName)

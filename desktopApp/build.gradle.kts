@@ -192,7 +192,7 @@ kotlin {
 }
 
 // Producer side of the update flow (client side: io.ymusic.desktop.update):
-//   ./gradlew :desktopApp:packageReleaseDmg -Pproduction=true -Pymusic.debugLogs=false
+//   ./gradlew :desktopApp:packageReleaseDmg -Pproduction=true
 //   ./gradlew :desktopApp:signUpdateManifest -Pymusic.updateBaseUrl=https://.../download/v1.0.0
 // Each platform is built on its own machine; signUpdateManifest merges its entry into
 // build/update/platforms.json so one manifest can describe all of them.
