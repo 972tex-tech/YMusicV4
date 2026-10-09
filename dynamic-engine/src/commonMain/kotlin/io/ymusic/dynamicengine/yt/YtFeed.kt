@@ -60,6 +60,9 @@ data class YtFeedItem(
     val ownerBadge: String? = null,
     /** A [KIND_TAG]'s accent colour, 8-hex `AARRGGBB` (YouTube Music's per-mood/genre colour); null = none. */
     val accent: String? = null,
+    /** [removeFromPlaylist]'s token: set when YouTube offers removing this video from the playlist
+     *  being shown (the viewer's own); null elsewhere. */
+    val removeToken: String? = null,
 ) {
     companion object {
         const val KIND_VIDEO = "video"

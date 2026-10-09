@@ -243,6 +243,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
     var album = false
     var ownerBadge: String? = null
     var accent: String? = null
+    var removeToken: String? = null
     r.beginObject()
     while (r.hasNextObjectKey()) {
         when (r.nextKey()) {
@@ -266,6 +267,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
             "album" -> album = r.boolean()
             "ownerBadge" -> ownerBadge = r.stringOrNull()
             "accent" -> accent = r.stringOrNull()
+            "removeToken" -> removeToken = r.stringOrNull()
             else -> r.skipValue()
         }
     }
@@ -273,7 +275,7 @@ private suspend fun readItem(r: JsonReader): YtFeedItem {
     return YtFeedItem(
         kind, id, title, subtitleLine1, subtitleLine2, ctaText, channelId, channelTitle, channelUrl, url, thumbs,
         duration, durationMs, itemCount, live, musicVideo, watchedPercent, album, ownerBadge,
-        accent,
+        accent, removeToken,
     )
 }
 

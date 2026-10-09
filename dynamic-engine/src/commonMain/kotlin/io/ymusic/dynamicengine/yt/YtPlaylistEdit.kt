@@ -43,6 +43,17 @@ suspend fun DynamicEngineManager.addToPlaylist(playlistId: String, videoId: Stri
     }
 }
 
+/** Remove a video from the viewer's playlist through its [YtFeedItem.removeToken]. */
+suspend fun DynamicEngineManager.removeFromPlaylist(removeToken: String, logger: Logger? = null) {
+    use { engine ->
+        engine.jsonCommand(
+            "yt/playlist/remove",
+            log = logger.cmd("removeFromPlaylist"),
+            writeFields = { w -> w.name("token").value(removeToken) },
+        ) { it.skipValue() }
+    }
+}
+
 /** Create a playlist named [title] ([privacy] one of [YtPlaylistTarget.PUBLIC]…) holding [videoIds];
  *  returns its id. */
 suspend fun DynamicEngineManager.createPlaylist(
