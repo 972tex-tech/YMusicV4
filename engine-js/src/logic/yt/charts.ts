@@ -15,11 +15,19 @@ import type { JsLogger } from "../../protocol/logger";
 import { HttpRequest } from "../../protocol/http";
 import { executeWithCookies } from "./cookies";
 import { channelUrl, setDurationBadge } from "./parse";
-import { DESKTOP_UA, effectiveLocale } from "./session";
+import { effectiveLocale } from "./session";
 import { asString, get, isObj, walk } from "./scan";
 import type { WireFeedItem, WireFeedPage, WireSection, WireSectionHeader } from "./wire";
 
 const CHARTS_ORIGIN = "https://charts.youtube.com";
+
+/**
+ * Charts only: charts.youtube.com answers 429 to a Chrome older than ~154 (Chrome/151, our
+ * DESKTOP_UA, fails; 154+ passes — measured 2026-10-09). Bump when it starts failing again.
+ */
+const CHARTS_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
 
 /**
  * POST the chart-home browse for the engine-resolved region (session.ts effectiveLocale).
@@ -44,7 +52,7 @@ async function chartsBrowse(log?: JsLogger): Promise<Record<string, unknown>> {
   const url = CHARTS_ORIGIN + "/youtubei/v1/browse?alt=json&prettyPrint=false";
   const builder = HttpRequest.post(url)
     .json(body)
-    .setHeader("User-Agent", DESKTOP_UA)
+    .setHeader("User-Agent", CHARTS_UA)
     .setHeader("Origin", CHARTS_ORIGIN)
     .setHeader("Referer", CHARTS_ORIGIN + "/")
     .logger(log ?? jsLogger("yt/trending"));
