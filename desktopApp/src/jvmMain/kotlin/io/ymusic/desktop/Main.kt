@@ -72,6 +72,9 @@ import io.ymusic.desktop.media.connectMediaSession
 import io.ymusic.desktop.resources.ymusic_logo_dock
 import io.ymusic.desktop.update.DesktopAppUpdates
 import io.ymusic.desktop.update.UpdateService
+import io.ymusic.desktop.update.desktopArch
+import io.ymusic.desktop.update.desktopPlatformKey
+import io.ymusic.desktop.update.installerFor
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.ENGINE_BUNDLE
@@ -545,6 +548,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
             deviceId = deviceId,
             baseUrl = baseUrl,
             now = { System.currentTimeMillis() },
+            arch = desktopArch(),
         )
     }
     // Flags, the newest JS bundle revisions, and update availability. Started here so the first
@@ -768,27 +772,29 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         )
     }
 
-    // Self-update: adopt anything a previous run staged, then poll. Disabled outright when no
-    // manifest/key is configured — an unverifiable update is worse than none.
+    // Self-update: the config service's appUpdate, verified against the pinned update key.
+    // Disabled outright without a key — an unverifiable update is worse than none.
     val updateScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val updateService = UpdateService(
         client = http.engine,
-        manifestUrl = UPDATE_MANIFEST_URL,
         publicKey = UPDATE_PUBLIC_KEY,
         currentVersionCode = APP_VERSION_CODE,
-        scope = updateScope,
+        platform = desktopPlatformKey(desktopOsKey()),
+        downloadDir = File(dataDir, "update"),
+        installer = installerFor(desktopOsKey()),
         logger = rootLogger,
         autoDownload = { autoDownloadUpdates },
     )
-    // Mirrored into a field: the service asks synchronously, mid-check, and a suspending read
-    // there would either block the check or race it.
+    // Mirrored into a field: the service asks synchronously, mid-offer, and a suspending read
+    // there would either block the offer or race it.
     updateScope.launch {
         settings.flow(AppSettings.autoDownloadUpdates).collect { autoDownloadUpdates = it }
     }
     val desktopUpdates = if (updateService.isEnabled) {
-        updateService.pruneSupersededVersions()
-        updateService.adoptStagedUpdate()
-        updateService.startPeriodicChecks()
+        updateService.pruneDownloads()
+        updateScope.launch {
+            remoteConfig?.config?.collect { updateService.offer(it.appUpdate) }
+        }
         DesktopAppUpdates(updateService, updateScope)
     } else {
         null

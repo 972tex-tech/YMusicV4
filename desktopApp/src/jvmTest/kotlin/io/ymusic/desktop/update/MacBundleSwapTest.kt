@@ -4,10 +4,9 @@ import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /** The exchange is the commit point of a macOS update, so it is worth proving it really swaps
- *  rather than copies — and that a hardlinked bundle shares content with its source. */
+ *  rather than copies. */
 class MacBundleSwapTest {
 
     private val tmp = File("build/test-swap-np-${System.nanoTime()}").apply { mkdirs() }
@@ -26,17 +25,6 @@ class MacBundleSwapTest {
 
         assertEquals("new", File(current, "v").readText(), "the install path now holds the new bundle")
         assertEquals("old", File(assembled, "v").readText(), "and the scratch path holds the old one")
-    }
-
-    @Test
-    fun a_hardlinked_file_shares_content_so_a_signature_would_still_cover_it() {
-        if (!MacBundleSwap.isSupported) return
-        val source = File(tmp, "orig.jar").apply { writeText("payload") }
-        val linked = File(tmp, "assembled.jar")
-        java.nio.file.Files.createLink(linked.toPath(), source.toPath())
-
-        assertEquals(sha256Of(source), sha256Of(linked), "same content, so the same seal")
-        assertTrue(linked.length() == source.length())
     }
 
     @Test

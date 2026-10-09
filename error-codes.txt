@@ -6,7 +6,7 @@
 # NOTHING is deployed yet, so every row below is `-` (free).
 # Ranges: E1xxxx :quickjs | E2xxxx :dynamic-engine + engine-js | E3xxxx :kmpHttp
 #         E4xxxx :kmpFfmpeg | E5xxxx :media-store / :media-scanner | E6xxxx :player | E7xxxx :download
-#         E8xxxx :mse
+#         E8xxxx :mse | E91xxx app updater (desktopApp / androidApp)
 
 E10001 - (example) kmpCommon CodedErrorTest fixture
 E12345 - (example) doc placeholder in AGENTS.md minting rule
@@ -113,3 +113,8 @@ E80075 - ffmpeg JNI backend missing or failed to create (mse jvm)
 E80076 - MSE append parse / byte-stream violation (mse)
 
 E90210 - (example) kmpCommon CodedErrorTest / HOST_PROTOCOLS.md fixture
+
+E91001 - desktop update entry's signature does not match the pinned update key (UpdateService.offer)
+E91002 - desktop update installer's size/sha256 differs from the signed entry (UpdateService.download)
+E91003 - desktop update installer download failed (UpdateService.download)
+E91004 - desktop update installer failed to run (UpdateService.install)

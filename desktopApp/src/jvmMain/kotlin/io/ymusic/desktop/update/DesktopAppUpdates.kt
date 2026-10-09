@@ -32,36 +32,36 @@ class DesktopAppUpdates(
             service.state.collect { s ->
                 _status.value = when (s) {
                     is UpdateState.Available ->
-                        if (s.release.versionCode == dismissed) AppUpdateStatus.None
+                        if (s.update.versionCode == dismissed) AppUpdateStatus.None
                         else AppUpdateStatus.Available(
-                            s.release.versionCode, s.release.versionName, s.release.notes, s.downloadBytes,
+                            s.update.versionCode, s.update.versionName, s.update.notes, s.update.size,
                         )
                     is UpdateState.Downloading ->
-                        AppUpdateStatus.Downloading(s.release.versionName, s.done, s.total)
+                        AppUpdateStatus.Downloading(s.update.versionName, s.done, s.total)
                     is UpdateState.Ready ->
                         // A ready update is always announced, even if the prompt was dismissed
                         // earlier: it is one click from applying and cost nothing more to offer.
-                        AppUpdateStatus.Ready(s.release.versionCode, s.release.versionName, s.release.notes)
-                    is UpdateState.Failed -> AppUpdateStatus.Failed(s.reason)
-                    UpdateState.Idle, UpdateState.Checking -> AppUpdateStatus.None
+                        AppUpdateStatus.Ready(s.update.versionCode, s.update.versionName, s.update.notes)
+                    is UpdateState.Failed -> AppUpdateStatus.Failed(s.code)
+                    UpdateState.Idle -> AppUpdateStatus.None
                 }
             }
         }
     }
 
     override fun download() {
-        val release = service.pendingRelease ?: return
-        scope.launch { service.download(release) }
+        scope.launch { service.download() }
     }
 
     override fun installAndRestart() {
-        // install() relaunches; this process must go, or two copies fight over the data dir.
-        if (service.install()) exitProcess(0)
+        // The new version is already starting; this process must go, or two copies fight over
+        // the data dir — and on Windows the installer waits for it.
+        scope.launch { if (service.install()) exitProcess(0) }
     }
 
     override fun openDownloadPage() {
-        val url = (service.state.value as? UpdateState.Failed)?.manualDownloadUrl
-            ?: service.pendingRelease?.url
+        val url = (service.state.value as? UpdateState.Failed)?.let { it.manualDownloadUrl ?: return }
+            ?: service.pendingUpdate?.url
             ?: return
         runCatching { Desktop.getDesktop().browse(URI(url)) }
     }

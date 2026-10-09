@@ -1,12 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.nio.file.Files
-import java.security.KeyFactory
-import java.security.KeyPairGenerator
-import java.security.MessageDigest
-import java.security.Signature
-import java.security.spec.PKCS8EncodedKeySpec
-import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -46,11 +39,8 @@ val fullJdkHome: String? = run {
 // The DSN is machine-local (see SentryProps in buildSrc), so it reaches the app as generated
 // source rather than a checked-in constant. The release carries the git commit — that's how an
 // event traces back to git history without a source-context upload.
-// Where installed copies look for releases, and the key that authenticates them. Both come from
-// the environment/local.properties so a fork builds without ours, and an unsigned-manifest build
-// is impossible: no key means no update checks at all.
-val updateUrl: String = providers.gradleProperty("ymusic.updateManifestUrl").orNull
-    ?: updateManifestUrl()
+// The key app updates must be signed with, from the environment/local.properties so a fork builds
+// without ours. No key means no update is ever offered.
 val updatePublicKeyValue: String = providers.gradleProperty("ymusic.updatePublicKey").orNull
     ?: updatePublicKey()
 
@@ -106,7 +96,6 @@ val generateBuildConfig by tasks.registering {
     inputs.property("release", release)
     inputs.property("engineJsVersion", Versions.engineJsBackendVersion)
     inputs.property("versionCode", desktopVersionCode)
-    inputs.property("updateUrl", updateUrl)
     inputs.property("updatePublicKey", updatePublicKeyValue)
     inputs.property("remoteConfigBaseUrl", remoteConfigBaseUrl)
     inputs.property("bundlePublicKey", bundlePublicKeyValue)
@@ -124,14 +113,12 @@ val generateBuildConfig by tasks.registering {
             // The jar's engine_ymusic.js resource revision (Versions.engineJsBackendVersion).
             internal const val ENGINE_JS_VERSION: Long = ${Versions.engineJsBackendVersion}L
 
-            // What the update check compares against a manifest's versionCode.
+            // What the update check compares against the config's appUpdate.versionCode.
             internal const val APP_VERSION_CODE: Int = $desktopVersionCode
             internal const val APP_VERSION_NAME = "$desktopVersion"
 
-            // The update manifest and the key that authenticates it. Empty disables update
-            // checks entirely — with nothing to verify against, trusting the network is worse
-            // than not checking.
-            internal const val UPDATE_MANIFEST_URL = "$updateUrl"
+            // The P-256 key app updates must be signed with. Empty disables updates entirely —
+            // with nothing to verify against, trusting the network is worse than not updating.
             internal const val UPDATE_PUBLIC_KEY = "$updatePublicKeyValue"
 
             // Base url of the remote config service. Empty = no request, compiled-in defaults.
@@ -199,137 +186,8 @@ kotlin {
     }
 }
 
-// Producer side of the update flow (client side: io.ymusic.desktop.update):
-//   ./gradlew :desktopApp:packageReleaseDmg -Pproduction=true
-//   ./gradlew :desktopApp:signUpdateManifest -Pymusic.updateBaseUrl=https://.../download/v1.0.0
-// Each platform is built on its own machine; signUpdateManifest merges its entry into
-// build/update/platforms.json so one manifest can describe all of them.
-// These import java.security rather than qualifying it: inside a task action `java` resolves to
-// the Java plugin extension, not the package root.
-tasks.register("generateUpdateKey") {
-    group = "distribution"
-    description = "Print a fresh Ed25519 key pair for signing update manifests."
-    doLast {
-        val pair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
-        val enc = Base64.getEncoder()
-        logger.lifecycle(
-            "Add to local.properties (NEVER commit the private key):\n\n" +
-                "update.public.key=" + enc.encodeToString(pair.public.encoded) + "\n" +
-                "update.private.key=" + enc.encodeToString(pair.private.encoded),
-        )
-    }
-}
-
-tasks.register("signUpdateManifest") {
-    group = "distribution"
-    description = "Hash this platform's release artifact and write a signed update manifest."
-    val outDir = layout.buildDirectory.dir("update")
-    val binariesDir = layout.buildDirectory.dir("compose/binaries")
-    val privateKey = updatePrivateKey()
-    val versionCode = desktopVersionCode
-    val versionName = desktopVersion
-    val baseUrlProp = providers.gradleProperty("ymusic.updateBaseUrl").orNull
-    val notesProp = providers.gradleProperty("ymusic.releaseNotes").orNull
-    outputs.dir(outDir)
-    doLast {
-        check(privateKey.isNotBlank()) {
-            "no signing key: set YMUSIC_UPDATE_PRIVATE_KEY or update.private.key in local.properties " +
-                "(:desktopApp:generateUpdateKey mints one)"
-        }
-        val artifact = binariesDir.get().asFile.walkTopDown()
-            .filter { it.isFile && it.extension in setOf("dmg", "msi", "deb") }
-            .maxByOrNull { it.lastModified() }
-            ?: error("no release artifact under ${binariesDir.get().asFile} — run a packageRelease* task first")
-
-        val os = org.gradle.internal.os.OperatingSystem.current()
-        val arch = if (System.getProperty("os.arch").lowercase() in setOf("aarch64", "arm64")) "arm64" else "x64"
-        val platformKey = when {
-            os.isMacOsX -> "mac-$arch"
-            os.isWindows -> "windows-$arch"
-            else -> "linux-$arch"
-        }
-        fun hash(f: File): String {
-            val md = MessageDigest.getInstance("SHA-256")
-            f.inputStream().buffered().use { ins ->
-                val buf = ByteArray(1 shl 16)
-                while (true) {
-                    val n = ins.read(buf)
-                    if (n <= 0) break
-                    md.update(buf, 0, n)
-                }
-            }
-            return md.digest().joinToString("") { "%02x".format(it) }
-        }
-        val sha256 = hash(artifact)
-        val baseUrl = (baseUrlProp ?: "https://example.invalid/releases/v$versionName").trimEnd('/')
-
-        // Entries from other machines' runs survive, so one manifest can cover every platform.
-        val out = outDir.get().asFile.apply { mkdirs() }
-        val store = File(out, "platforms.json")
-        val entries = linkedMapOf<String, String>()
-        if (store.isFile) {
-            Regex(""""([a-z]+-[a-z0-9]+)":(\{[^}]*\})""").findAll(store.readText())
-                .forEach { entries[it.groupValues[1]] = it.groupValues[2] }
-        }
-        // Every file of the installed app, addressed by content hash: an update fetches only the
-        // hashes it does not already have, so an unchanged JVM or dependency costs nothing.
-        val appImage = binariesDir.get().asFile.resolve("main-release/app").listFiles().orEmpty()
-            .firstOrNull { it.isDirectory }
-            ?: error("no app image under ${binariesDir.get().asFile}/main-release/app")
-        val blobs = File(outDir.get().asFile, "blobs").apply { mkdirs() }
-        val fileEntries = StringBuilder()
-        var files = 0
-        var reusedBlobs = 0
-        appImage.walkTopDown().filter { it.isFile }.forEach { f ->
-            val h = hash(f)
-            val rel = f.relativeTo(appImage).path
-            val blob = File(blobs, h)
-            if (blob.exists()) {
-                reusedBlobs++
-            } else {
-                // Hardlink when the filesystem allows it — a release is ~125MB and copying every
-                // build is pure waste.
-                runCatching { Files.createLink(blob.toPath(), f.toPath()) }
-                    .onFailure { f.copyTo(blob, overwrite = true) }
-            }
-            if (files++ > 0) fileEntries.append(",")
-            fileEntries.append("""{"path":"${rel.replace("\\", "/")}","sha256":"$h","size":"${f.length()}"}""")
-        }
-
-        entries[platformKey] = """{"installer":{"url":"$baseUrl/${artifact.name}","sha256":"$sha256",""" +
-            """"size":"${artifact.length()}"},"blobBaseUrl":"$baseUrl/blobs",""" +
-            """"root":"${appImage.name}","files":[$fileEntries]}"""
-        val platformsJson = entries.entries.joinToString(",") { """"${it.key}":${it.value}""" }
-        store.writeText(platformsJson)
-
-        val notes = notesProp.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
-        val payload = """{"manifestVersion":2,"versionCode":$versionCode,"versionName":"$versionName",""" +
-            """"notes":"$notes","platforms":{$platformsJson}}"""
-        val key = KeyFactory.getInstance("Ed25519")
-            .generatePrivate(PKCS8EncodedKeySpec(Base64.getDecoder().decode(privateKey)))
-        val signature = Signature.getInstance("Ed25519").run {
-            initSign(key)
-            update(payload.toByteArray())
-            Base64.getEncoder().encodeToString(sign())
-        }
-        val escaped = payload.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-        File(out, "update.json").writeText("""{"payload":"$escaped","signature":"$signature"}""")
-        logger.lifecycle("signed update.json: $platformKey, versionCode $versionCode, ${artifact.name}")
-        logger.lifecycle("  $files files -> ${blobs.name}/ ($reusedBlobs already present from an earlier release)")
-    }
-}
-
-// Local stand-in for the release/config service (see MockUpdateServer.kt):
-//   ./gradlew :desktopApp:mockUpdateServer -PmockArgs="8899 build/mock-update 9.9.9"
-tasks.register<JavaExec>("mockUpdateServer") {
-    group = "verification"
-    description = "Serve a signed update manifest + JS remote config from localhost."
-    val jvmMainCompilation = kotlin.jvm().compilations.getByName("main")
-    dependsOn(jvmMainCompilation.compileTaskProvider)
-    classpath(jvmMainCompilation.output.allOutputs, jvmMainCompilation.runtimeDependencyFiles)
-    mainClass.set("io.ymusic.desktop.update.MockUpdateServer")
-    args((providers.gradleProperty("mockArgs").orNull ?: "").split(" ").filter { it.isNotBlank() })
-}
+// Publishing a release: package on each platform's machine (packageReleaseDmg / Msi / Deb), then
+// sign each installer with the config service's scripts/sign-app-update.mjs.
 
 // Standalone UI-component catalogue (see CatalogueMain.kt): ./gradlew :desktopApp:catalogue
 tasks.register<JavaExec>("catalogue") {
@@ -400,6 +258,14 @@ compose.desktop {
                         teamID.set(macTeamId())
                     }
                 }
+            }
+            windows {
+                // Fixed for the app's lifetime: a new MSI with the same upgrade code replaces the
+                // installed one instead of installing beside it. Per-machine, under Program Files.
+                upgradeUuid = "6f3c2b9e-4d1a-4e8b-9a57-2c1f0d8e7b34"
+                perUserInstall = false
+                menu = true
+                shortcut = true
             }
             // jlink modules the default set misses but the runtime graph uses: java.sql
             // (sqlite-jdbc), jdk.unsupported (Unsafe — JNA/coroutines/okio),

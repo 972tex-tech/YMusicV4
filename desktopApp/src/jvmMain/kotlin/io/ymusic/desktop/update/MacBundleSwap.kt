@@ -5,18 +5,10 @@ import com.sun.jna.Native
 import java.io.File
 
 /**
- * Replacing a macOS app bundle the way Sparkle does: assemble a COMPLETE bundle elsewhere, then
- * exchange it with the installed one in a single atomic operation.
- *
- * Two reasons it must be whole-bundle rather than patched in place:
- *  - a signed bundle seals every file it contains, so writing anything inside a signed .app breaks
- *    its signature (and eventually Gatekeeper);
- *  - an exchange has no instant where the install path is missing or half-written, which a
- *    rename-aside-then-rename-in sequence cannot avoid.
- *
- * The assembled bundle is byte-identical to the one we published and signed — unchanged files are
- * hardlinked from the running copy, and a hardlink shares content, which is what a signature
- * covers. Nothing is added inside it (progress markers live beside it) for the same reason.
+ * Replacing a macOS app bundle the way Sparkle does: the new bundle is copied out whole beside the
+ * installed one, then the two are exchanged in a single atomic rename — there is no instant where
+ * the install path is missing or half-written. Nothing is ever written inside a bundle: a signed
+ * .app seals every file it contains.
  */
 object MacBundleSwap {
 
