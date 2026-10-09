@@ -193,7 +193,7 @@ private val logWorker = LoggingWorker(File(ymusicDataDir(), "logs").absolutePath
 
 // File + Sentry (no-op when Sentry wasn't initialized) teed with stdout.
 private val rootLogger: Logger =
-    TeeLogger(FileLogger(logWorker), TeeLogger(SentryLogger(logWorker), StdoutLogger()))
+    TeeLogger(FileLogger(logWorker), TeeLogger(SentryLogger(), StdoutLogger()))
         .also { it.bindMseNativeLogs() }
 
 /** Mirrors AppSettings.autoDownloadUpdates for the updater's synchronous read. */

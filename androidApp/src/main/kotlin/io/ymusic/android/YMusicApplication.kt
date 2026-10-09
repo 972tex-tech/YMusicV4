@@ -131,7 +131,7 @@ class YMusicApplication : Application() {
 
     /** The app's root logger: file + Sentry (no-op until Sentry.init) teed with logcat. */
     val rootLogger: Logger by lazy {
-        TeeLogger(FileLogger(logWorker), TeeLogger(SentryLogger(logWorker), LogcatLogger()))
+        TeeLogger(FileLogger(logWorker), TeeLogger(SentryLogger(), LogcatLogger()))
             .also { it.bindMseNativeLogs() }
     }
 
