@@ -211,8 +211,8 @@ class QuickJsRuntime private constructor(
             // tear it down here or it leaks (a live JS handler + a routing entry). closeWrite/closeRead
             // self-hop NonCancellable (surviving the cancellation) and reap it from the pipes map.
             opened?.let { impl ->
-                runCatching { impl.closeWrite(null) }
-                runCatching { impl.closeRead() }
+                runCatching { impl.closeWrite(null) }.exceptionOrNull()?.let(t::addSuppressed)
+                runCatching { impl.closeRead() }.exceptionOrNull()?.let(t::addSuppressed)
             }
             throw t
         }
@@ -246,13 +246,16 @@ class QuickJsRuntime private constructor(
             notifyIfIdle()
             throw QuickJsException("open(\"$command\") refused: no JS handler")
         }
-        try {
+        val body = try {
             impl.closeWriteNow(null)
-            return impl.takeCompletedNow()
+            impl.takeCompletedNow()
                 ?: throw QuickJsException("\"$command\" did not complete synchronously")
-        } finally {
-            impl.closeReadDirect()
+        } catch (t: Throwable) {
+            runCatching { impl.closeReadDirect() }.exceptionOrNull()?.let(t::addSuppressed)
+            throw t
         }
+        impl.closeReadDirect()
+        return body
     }
 
     /** JS opened a pipe to us — route to the registered handler (on the engine thread).
@@ -461,7 +464,7 @@ class QuickJsRuntime private constructor(
                         // side HERE, synchronously on the engine thread, so a racing deliver() can't
                         // slip in before it closes. Fire-and-forget: cleanup must not mask the cause.
                         if (t !is PipeResetException) {
-                            runCatching { closeReadNow(t) }
+                            runCatching { closeReadNow(t) }.exceptionOrNull()?.let(t::addSuppressed)
                             cleaned = true
                         }
                         throw t
@@ -479,7 +482,9 @@ class QuickJsRuntime private constructor(
                 // null (sync paths never parked; a parked read that completed was resumed by deliver),
                 // so this closeReadNow can't race a live deliver.
                 if (entered && !cleaned && t !is PipeResetException) {
-                    withContext(engineDispatcher + NonCancellable) { runCatching { closeReadNow(t) } }
+                    withContext(engineDispatcher + NonCancellable) {
+                        runCatching { closeReadNow(t) }.exceptionOrNull()?.let(t::addSuppressed)
+                    }
                 }
                 throw t
             }
@@ -526,7 +531,7 @@ class QuickJsRuntime private constructor(
                         weEnded = true
                         runCatching {
                             engine.closeWrite(id, "send aborted mid-stream: ${t.message ?: "cancelled"}")
-                        }
+                        }.exceptionOrNull()?.let(t::addSuppressed)
                         maybeReap()
                     }
                     throw t
@@ -818,7 +823,7 @@ class QuickJsRuntime private constructor(
             val rt = try {
                 QuickJsRuntime(engine, dispatcher, onLog)
             } catch (t: Throwable) {
-                runCatching { engine.destroy() }
+                runCatching { engine.destroy() }.exceptionOrNull()?.let(t::addSuppressed)
                 throw t
             }
             rtRef = rt
@@ -830,7 +835,7 @@ class QuickJsRuntime private constructor(
                 // Full close, not the bare teardown: pipes may have opened during the failed boot
                 // (their handlers never ran — the boot held the thread — so closeNow's no-yield
                 // teardown is exactly right).
-                runCatching { rt.closeNow() }
+                runCatching { rt.closeNow() }.exceptionOrNull()?.let(t::addSuppressed)
                 throw t
             }
             return rt
