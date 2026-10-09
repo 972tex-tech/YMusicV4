@@ -64,7 +64,7 @@ import kotlin.math.max
  *  app routes items/deeplinks carrying it to the music detail layer instead of the WEB pages. */
 internal const val MusicBrowsePrefix = "/ytmusic/browse"
 
-/** The YT Music (Beta) top tabs. All but Library are anonymous WEB_REMIX feeds; Library needs sign-in. */
+/** The YT Music top tabs. All but Library are anonymous WEB_REMIX feeds; Library needs sign-in. */
 enum class YtMusicTab(val label: StringResource) {
     Home(Res.string.ytmusic_tab_home),
     Explore(Res.string.ytmusic_tab_explore),
@@ -74,7 +74,7 @@ enum class YtMusicTab(val label: StringResource) {
 }
 
 /**
- * YT Music (Beta) — the music.youtube.com surface. Swipeable tabs, each backed by a cached
+ * YT Music — the music.youtube.com surface. Swipeable tabs, each backed by a cached
  * [FeedSession] over the `ytmusic/…` engine commands and drawn with the shared [FeedList]. Library
  * is the signed-in `ytmusic/library` feed — the sign-in preface when logged out; its filter chips
  * (Playlists / Songs / Albums / …) and sort menu ride the page's own chip/sort rows. Songs play on
