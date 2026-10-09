@@ -22,10 +22,10 @@ import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.alloc
-import kotlinx.cinterop.convert
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -37,12 +37,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import libcurl.CURLMSG
 import libcurl.CURLM_OK
-import libcurl.curl_easy_strerror
 import libcurl.curl_multi_cleanup
 import libcurl.curl_multi_info_read
 import libcurl.curl_multi_init
 import libcurl.curl_multi_perform
 import libcurl.curl_multi_poll
+import libcurl.curl_multi_strerror
 import libcurl.curl_multi_wakeup
 import okio.IOException
 import kotlin.concurrent.atomics.AtomicReference
@@ -228,7 +228,7 @@ class CurlMultiApi(
                 val performResult = curl_multi_perform(multiHandle, runningHandles.ptr)
                 if (performResult != CURLM_OK) {
                     performError =
-                        IOException("curl_multi_perform failure: ${curl_easy_strerror(performResult.convert())}")
+                        IOException("curl_multi_perform failure ($performResult): ${curl_multi_strerror(performResult)?.toKString()}")
                     break // shutdown
                 }
 
@@ -273,7 +273,7 @@ class CurlMultiApi(
                     if (result != CURLM_OK) {
                         val completion = synchronized(lock) { activeJobs[action.easyHandle] }
                         completion?.completeExceptionally(
-                            IOException("Failed to add handle: ${curl_easy_strerror(result.convert())}")
+                            IOException("Failed to add handle ($result): ${curl_multi_strerror(result)?.toKString()}")
                         )
                     }
                 }

@@ -117,14 +117,18 @@ private fun parseCertificates(bytes: ByteArray): Array<X509Certificate> {
 /** Decodes a PKCS#8 private key (DER), trying common algorithms (the spec doesn't carry one). */
 private fun loadPrivateKey(pkcs8Der: ByteArray): java.security.PrivateKey {
     val spec = PKCS8EncodedKeySpec(pkcs8Der)
+    val attemptFailures = mutableListOf<InvalidKeySpecException>()
     for (algorithm in arrayOf("RSA", "EC")) {
         try {
             return KeyFactory.getInstance(algorithm).generatePrivate(spec)
-        } catch (_: InvalidKeySpecException) {
-            // Wrong algorithm for this key; try the next one.
+        } catch (e: InvalidKeySpecException) {
+            attemptFailures += e
         }
     }
-    throw IllegalArgumentException("Unsupported client private key: expected PKCS#8 RSA or EC")
+    throw IllegalArgumentException(
+        "Unsupported client private key: expected PKCS#8 RSA or EC",
+        attemptFailures.lastOrNull(),
+    ).apply { attemptFailures.dropLast(1).forEach(::addSuppressed) }
 }
 
 /** Extracts the DER bytes from a single-block PEM (e.g. a PRIVATE KEY). */

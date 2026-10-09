@@ -548,7 +548,7 @@ private class StreamingResponseHandler(
             if (completed.compareAndSet(false, true)) {
                 if (result != CURLE_OK) {
                     val errorMsg = curl_easy_strerror(result)?.toKString() ?: "Unknown error"
-                    val message = "curl failed: $errorMsg"
+                    val message = "curl failed ($result): $errorMsg"
                     // Connection-establishment failures (handshake reset, connect/DNS, etc.) are
                     // transient and safe to retry on a fresh connection; tag them so
                     // RetryOnConnectionFailureInterceptor picks them up. Cert/pin verification

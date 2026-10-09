@@ -4,6 +4,7 @@ import kmpcommon.io.AsyncSink
 import kmpcommon.io.AsyncSource
 import kmpcommon.io.asAsyncSink
 import kmpcommon.io.asAsyncSource
+import kmpcommon.log.Logger
 import kmphttp.Headers
 import kmphttp.HeadersBuilder
 import kmphttp.HttpCache
@@ -108,8 +109,9 @@ class DefaultCache(
         val snapshot: DiskLruCache.Snapshot =
             try {
                 cache.get(key) ?: return null
-            } catch (_: IOException) {
-                return null // Give up because the cache cannot be read.
+            } catch (e: IOException) {
+                logger?.log(Logger.Level.WARN, "cache read failed — treated as a miss", e)
+                return null
             }
 
         val entry: Entry =
@@ -117,7 +119,10 @@ class DefaultCache(
                 Entry.create(snapshot.getSource(ENTRY_METADATA))
             } catch (e: Throwable) {
                 snapshot.closeQuietly()
-                if (e is IOException) return null
+                if (e is IOException) {
+                    logger?.log(Logger.Level.WARN, "cache entry metadata unreadable — treated as a miss", e)
+                    return null
+                }
                 throw e
             }
 
@@ -137,8 +142,8 @@ class DefaultCache(
         if (HttpMethod.invalidatesCache(response.request.method)) {
             try {
                 remove(response.request)
-            } catch (_: IOException) {
-                // The cache cannot be written.
+            } catch (e: IOException) {
+                logger?.log(Logger.Level.WARN, "cache invalidation failed", e)
             }
             return null
         }
@@ -158,12 +163,15 @@ class DefaultCache(
         try {
             editor = cache.edit(key(response.request.url)) ?: return null
             entry.writeTo(editor)
-            return RealCacheRequest.create(editor, commitScope)
+            return RealCacheRequest.create(editor, commitScope, logger)
         } catch (e: Throwable) {
             // NonCancellable so the abort still runs when the caller is cancelled (abortQuietly
             // suspends). IOException -> null (uncacheable); anything else rethrows.
-            withContext(NonCancellable) { abortQuietly(editor) }
-            if (e is IOException) return null
+            withContext(NonCancellable) { abortQuietly(editor, e) }
+            if (e is IOException) {
+                logger?.log(Logger.Level.WARN, "cache put failed — response not cached", e)
+                return null
+            }
             throw e
         }
     }
@@ -185,18 +193,18 @@ class DefaultCache(
             editor = snapshot.edit() ?: return // edit() returns null if snapshot is not current.
             entry.writeTo(editor)
             editor.commit()
-        } catch (_: IOException) {
-            abortQuietly(editor)
+        } catch (e: IOException) {
+            abortQuietly(editor, e)
+            logger?.log(Logger.Level.WARN, "cache update failed", e)
         }
     }
 
-    private suspend fun abortQuietly(editor: DiskLruCache.Editor?) {
+    private suspend fun abortQuietly(editor: DiskLruCache.Editor?, primary: Throwable) {
         editor ?: return
-        // Give up because the cache cannot be written.
         try {
             editor.abort()
-        } catch (_: IOException) {
-            // Editor abort is best-effort cleanup; the caller already has the real failure.
+        } catch (abortError: IOException) {
+            primary.addSuppressed(abortError)
         }
     }
 
@@ -212,15 +220,17 @@ class DefaultCache(
     private class RealCacheRequest private constructor(
         private val editor: DiskLruCache.Editor,
         private val cacheOut: Sink,
-        private val commitScope: CoroutineScope
+        private val commitScope: CoroutineScope,
+        private val logger: Logger?,
     ) : CacheRequest {
         companion object {
             fun create(
                 editor: DiskLruCache.Editor,
-                commitScope: CoroutineScope
+                commitScope: CoroutineScope,
+                logger: Logger?,
             ): RealCacheRequest {
                 val cacheOut = editor.newSink(ENTRY_BODY)
-                return RealCacheRequest(editor, cacheOut, commitScope)
+                return RealCacheRequest(editor, cacheOut, commitScope, logger)
             }
         }
 
@@ -232,8 +242,8 @@ class DefaultCache(
                     commitScope.launch {
                         try {
                             editor.commit()
-                        } catch (_: IOException) {
-                            // Editor abort is best-effort cleanup; the caller already has the real failure.
+                        } catch (e: IOException) {
+                            logger?.log(Logger.Level.WARN, "cache commit failed — response not cached", e)
                         }
                     }
                 }
@@ -246,8 +256,8 @@ class DefaultCache(
                 commitScope.launch {
                     try {
                         editor.abort()
-                    } catch (_: IOException) {
-                        // Editor abort is best-effort cleanup; the caller already has the real failure.
+                    } catch (e: IOException) {
+                        logger?.log(Logger.Level.WARN, "cache abort failed", e)
                     }
                 }
             }
@@ -475,7 +485,7 @@ class DefaultCache(
                 }
                 return result.toInt()
             } catch (e: NumberFormatException) {
-                throw IOException(e.message)
+                throw IOException(e.message, e)
             }
         }
 

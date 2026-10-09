@@ -57,6 +57,7 @@ import platform.Foundation.NSURLSessionResponseAllow
 import platform.Foundation.NSURLSessionResponseDisposition
 import platform.Foundation.NSURLSessionTask
 import platform.Foundation.NSURLSessionTaskDelegateProtocol
+import platform.Foundation.NSUnderlyingErrorKey
 import platform.Foundation.setHTTPBodyStream
 import platform.Foundation.setHTTPMethod
 import platform.Foundation.setValue
@@ -184,7 +185,7 @@ class UrlSessionKmpHttpClient(builder: Builder) : KmpHttpClient {
     override fun newBuilder(): Builder = Builder(this)
 
     private suspend fun executeNetwork(request: Request): Response {
-        urlSessionFailure?.let { throw it }
+        urlSessionFailure?.let { throw IOException("URL session invalidated", it) }
         if (released.load()) throw IllegalStateException("This instance is invalidated.")
 
         val sentRequestAtMillis = currentTimeMillis()
@@ -567,10 +568,15 @@ private fun NSError.toIOException(): IOException {
     // An engine-attached Kotlin exception (e.g. the SslException born at a trust rejection)
     // propagates as-is — type, message, and birth-site stack intact.
     (userInfo?.get(KMPHTTP_ERROR_EXCEPTION_KEY) as? IOException)?.let { return it }
-    val message = "NSURLSession error: $localizedDescription"
+    val message = "NSURLSession error ($domain $code): $localizedDescription"
+    val cause = when (val underlying = userInfo?.get(NSUnderlyingErrorKey)) {
+        is Throwable -> underlying
+        is NSError -> underlying.toIOException()
+        else -> null
+    }
     return if (domain == NSURLErrorDomain && code.toLong() in RECOVERABLE_NSURL_ERRORS) {
-        RecoverableIOException(message)
+        RecoverableIOException(message, cause)
     } else {
-        IOException(message)
+        IOException(message, cause)
     }
 }

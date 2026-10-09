@@ -4,6 +4,7 @@ import kmpcommon.log.debug
 import kmphttp.AsyncInterceptor
 import kmphttp.Request
 import kmphttp.Response
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import okio.IOException
 import kotlin.random.Random
@@ -35,11 +36,16 @@ internal class RetryOnConnectionFailureInterceptor(
 
     override suspend fun intercept(chain: AsyncInterceptor.Chain): Response {
         var attempt = 0
+        val earlierFailures = mutableListOf<Throwable>()
         while (true) {
             try {
                 return chain.proceed(chain.request)
-            } catch (e: RecoverableIOException) {
-                if (attempt >= maxRetries || !chain.request.isRetryable()) throw e
+            } catch (e: Throwable) {
+                if (e !is RecoverableIOException || attempt >= maxRetries || !chain.request.isRetryable()) {
+                    if (e !is CancellationException) earlierFailures.forEach(e::addSuppressed)
+                    throw e
+                }
+                earlierFailures += e
                 attempt++
                 // Silent retries make a flaky network look like a slow one — leave a trace.
                 logger?.debug { "retry $attempt/$maxRetries for ${chain.request.url.host}: ${e.message}" }

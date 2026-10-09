@@ -283,7 +283,8 @@ class DiskLruCache(
         fileSystem.createDirectories(directory)
         try {
             fileSystem.deleteRecursively(tempDir)
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            logger?.log(Logger.Level.WARN, "cache temp dir cleanup failed", e)
         }
         fileSystem.createDirectories(tempDir)
         if (fileSystem.metadataOrNull(tempDir)?.isDirectory != true) {
@@ -304,8 +305,8 @@ class DiskLruCache(
                 fileSystem.source(journalFile).use { source ->
                     source.readJournalFile(appVersion, valueCount)
                 }
-            } catch (_: IOException) {
-                // journal file corrupted?
+            } catch (e: IOException) {
+                logger?.log(Logger.Level.WARN, "cache journal unreadable — starting empty", e)
                 fileSystem.deleteRecursively(journalFile)
                 JournalFileState(appVersion, valueCount, 0, false, linkedMapOf())
             }
@@ -348,7 +349,8 @@ class DiskLruCache(
 
         try {
             trimToSizeInState()
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            logger?.log(Logger.Level.WARN, "cache trim failed", e)
             setMostRecentTrimFailed(true)
         }
 
@@ -356,7 +358,8 @@ class DiskLruCache(
             if (journalRebuildRequiredInState()) {
                 rebuildJournalInState()
             }
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            logger?.log(Logger.Level.WARN, "cache journal rebuild failed", e)
             setMostRecentRebuildFailed(true)
             setJournalWriter(null)
         }
@@ -576,7 +579,8 @@ class DiskLruCache(
                         checkNotNull(editor.existingEntry).cleanFiles[i]
                     }
                 }
-            } catch (_: Throwable) {
+            } catch (e: Throwable) {
+                logger?.log(Logger.Level.WARN, "cache commit failed — edit discarded", e)
                 stagingFiles.forEach { fileSystem.deleteRecursively(it) }
                 return commitEditInState(editor, success = false)
             }
@@ -600,7 +604,8 @@ class DiskLruCache(
                 sources += fileSystem.source(path)
             }
             return Snapshot(entry, sources)
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            logger?.log(Logger.Level.WARN, "cache entry files unreadable — treated as a miss", e)
             for (source in sources) {
                 source.closeQuietly()
             }
