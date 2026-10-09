@@ -350,10 +350,12 @@ class PlaybackService : MediaLibraryService() {
         // or an unreleased session outliving the service is the real leak).
         runCatching { serviceScope.cancel() }
         releaseLocks()
-        session?.let {
-            val adapter = it.player
-            runCatching { it.release() }
+        session?.let { mediaSession ->
+            val adapter = mediaSession.player
+            runCatching { mediaSession.release() }
+                .onFailure { log?.log(Logger.Level.WARN, "session release failed", it) }
             runCatching { adapter.release() }
+                .onFailure { log?.log(Logger.Level.WARN, "player adapter release failed", it) }
         }
         session = null
         art = null

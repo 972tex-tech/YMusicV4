@@ -21,6 +21,8 @@ import io.ymusic.download.DownloadTask
 import io.ymusic.download.DownloadTasksAggregator
 import io.ymusic.imageloader.ImageLoader
 import kmpcommon.log.Logger
+import kmpcommon.log.debug
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -279,9 +281,14 @@ class DownloadForegroundService : Service() {
         if (icons.containsKey(task.id)) return
         icons[task.id] = null
         serviceScope.launch {
-            icons[task.id] = runCatching {
+            icons[task.id] = try {
                 loader.load(url, THUMB_PX, THUMB_PX, cacheInMemory = false).asAndroidBitmap()
-            }.getOrNull()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log?.debug { "download icon load failed for $url: $e" }
+                null
+            }
         }
     }
 

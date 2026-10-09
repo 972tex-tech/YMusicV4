@@ -6,6 +6,7 @@ import io.ymusic.player.isPlaying
 import kmpcommon.log.Logger
 import kmpcommon.log.debug
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -127,15 +128,18 @@ fun connectIosMediaSession(
 
 @OptIn(ExperimentalForeignApi::class)
 private suspend fun loadArtwork(loader: ImageLoader, url: String, logger: Logger?): MPMediaItemArtwork? {
-    return runCatching {
+    return try {
         val path = loader.loadFile(url, ARTWORK_MAX_PX, ARTWORK_MAX_PX)
             ?: return null
         val image = UIImage.imageWithContentsOfFile(path.toString()) ?: return null
         val size = image.size
         MPMediaItemArtwork(boundsSize = size) { _ -> image }
-    }.onFailure {
-        logger?.debug { "now-playing artwork failed for $url: $it" }
-    }.getOrNull()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        logger?.debug { "now-playing artwork failed for $url: $e" }
+        null
+    }
 }
 
 @OptIn(ExperimentalForeignApi::class)

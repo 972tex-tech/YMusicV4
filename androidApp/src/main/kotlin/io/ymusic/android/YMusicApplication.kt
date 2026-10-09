@@ -600,6 +600,7 @@ class YMusicApplication : Application() {
     private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = { draft ->
         withContext(Dispatchers.IO) {
             runCatching { logWorker.flush() }
+                .onFailure { rootLogger.fork("feedback").log(Logger.Level.WARN, "log flush before feedback failed", it) }
             val logs = logWorker.filePaths().map { path ->
                 val name = path.substringAfterLast('/').substringAfterLast('\\')
                 io.sentry.kotlin.multiplatform.Attachment(path, name, "text/plain")

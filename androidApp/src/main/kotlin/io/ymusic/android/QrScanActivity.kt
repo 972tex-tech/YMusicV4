@@ -114,7 +114,8 @@ class QrScanActivity : ComponentActivity() {
                 if (isDestroyed || isFinishing) return@addListener
                 val provider = try {
                     future.get()
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    android.util.Log.e("QrScan", "camera provider unavailable", e)
                     finish()
                     return@addListener
                 }

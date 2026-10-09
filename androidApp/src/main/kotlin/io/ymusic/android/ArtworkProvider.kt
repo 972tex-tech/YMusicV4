@@ -46,12 +46,17 @@ class ArtworkProvider : ContentProvider() {
             ?.takeIf { verifySignature(context, it, uri.getQueryParameter(ARTWORK_SIG_PARAM)) }
             ?.takeIf { isAllowedArtworkTarget(it) }
             ?: throw FileNotFoundException("refused artwork target: $uri")
+        var firstMiss: FileNotFoundException? = null
         repeat(2) { attempt ->
             val path = resolve(target)
             try {
                 return ParcelFileDescriptor.open(path.toFile(), ParcelFileDescriptor.MODE_READ_ONLY)
             } catch (e: FileNotFoundException) {
-                if (attempt == 1) throw e // evicted twice in a row: give up
+                if (attempt == 1) { // evicted twice in a row: give up
+                    firstMiss?.let(e::addSuppressed)
+                    throw e
+                }
+                firstMiss = e
             }
         }
         throw FileNotFoundException(target) // unreachable
