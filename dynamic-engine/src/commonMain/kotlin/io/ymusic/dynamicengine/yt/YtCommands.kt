@@ -117,6 +117,20 @@ suspend fun DynamicEngineManager.extractChannelDetail(
     w.optionalField("continuation", continuation)
 }
 
+/** Subscribe the signed-in viewer to [channelId] ([YtPageHeader.channelId]), or unsubscribe when [subscribed] is false. */
+suspend fun DynamicEngineManager.subscribeChannel(channelId: String, subscribed: Boolean, logger: Logger? = null) {
+    use { engine ->
+        engine.jsonCommand(
+            "yt/channel/subscribe",
+            log = logger.cmd("subscribeChannel", "channelId" to channelId, "subscribed" to subscribed),
+            writeFields = { w ->
+                w.name("channelId").value(channelId)
+                w.name("subscribed").value(subscribed)
+            },
+        ) { it.skipValue() }
+    }
+}
+
 suspend fun DynamicEngineManager.search(
     query: String? = null,
     params: String? = null,

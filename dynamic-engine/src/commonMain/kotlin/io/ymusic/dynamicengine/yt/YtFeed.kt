@@ -114,6 +114,10 @@ data class YtPageHeader(
     val banner: List<YtThumb> = emptyList(),
     /** A playlist's length when its header states one; null otherwise (Mixes, music pages). */
     val itemCount: Int? = null,
+    /** A channel page's channel — the [subscribeChannel] target. */
+    val channelId: String? = null,
+    /** The viewer's subscription to [channelId]; null when signed out (YouTube offers only sign-in). */
+    val subscribed: Boolean? = null,
 )
 
 /** One browse tab of a channel page (Home / Videos / …). [url] is the app link fetching the channel
