@@ -73,7 +73,7 @@ import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.show_less
 import io.ymusic.ui.resources.show_more
 import io.ymusic.ui.resources.show_more_n
-import kmpcommon.error.CodedError
+import kmpcommon.error.errorCode
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -167,7 +167,7 @@ class Pager(
                 throw e // a newer refresh took over the state — this coroutine just dies
             } catch (e: Exception) {
                 logger?.captureError(e)
-                State.Failed((e as? CodedError)?.code ?: "E20032", e.message)
+                State.Failed(e.errorCode() ?: "E20032", e.message)
             }
         }
     }
@@ -199,7 +199,7 @@ class Pager(
                 current.copy(refreshing = false)
             } catch (e: Exception) {
                 logger?.captureError(e)
-                _errors.tryEmit((e as? CodedError)?.code ?: "E20033")
+                _errors.tryEmit(e.errorCode() ?: "E20033")
                 current.copy(refreshing = false)
             }
         }

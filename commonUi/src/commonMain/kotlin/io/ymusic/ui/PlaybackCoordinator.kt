@@ -54,7 +54,7 @@ class PlaybackCoordinator(
                 player.status.map { it.error }.distinctUntilChanged().collect { err ->
                     if (err != null) {
                         log.captureError(
-                            TechnicalException(err.code, err.message ?: "player error"),
+                            TechnicalException(err.code, err.message ?: "player error", cause = err.cause),
                             prop = mapOf("canRetry" to err.canRetry, "needReset" to err.needReset),
                         )
                     }

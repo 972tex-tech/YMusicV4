@@ -6,7 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.library_scan_failed
-import kmpcommon.error.CodedError
+import kmpcommon.error.errorCode
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -44,7 +44,7 @@ internal class ScanController(private val scope: CoroutineScope, private val log
                 throw e
             } catch (e: Exception) {
                 log?.captureError(e, "library scan failed")
-                _summaries.tryEmit(getString(Res.string.library_scan_failed, (e as? CodedError)?.code ?: e.message ?: "$e"))
+                _summaries.tryEmit(getString(Res.string.library_scan_failed, e.errorCode() ?: e.message ?: "$e"))
             } finally {
                 running = false
                 scanned = null

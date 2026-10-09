@@ -102,7 +102,7 @@ import io.ymusic.ui.resources.video_details_reply
 import io.ymusic.ui.resources.video_details_reply_posted
 import io.ymusic.ui.resources.video_details_sign_in_to_comment
 import io.ymusic.ui.resources.video_details_sign_in_to_rate
-import kmpcommon.error.CodedError
+import kmpcommon.error.errorCode
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -169,7 +169,7 @@ internal class VideoDetailsState(
                 throw error
             } catch (error: Throwable) {
                 log?.log(Logger.Level.WARN, "video details failed", error)
-                detailsErrorCode = (error as? CodedError)?.code ?: "E20094"
+                detailsErrorCode = error.errorCode() ?: "E20094"
             }
         }
     }
@@ -196,7 +196,7 @@ internal class VideoDetailsState(
                 throw error
             } catch (error: Throwable) {
                 log?.log(Logger.Level.WARN, "comments page failed", error)
-                list.errorCode = (error as? CodedError)?.code ?: "E20095"
+                list.errorCode = error.errorCode() ?: "E20095"
             } finally {
                 list.loading = false
             }
@@ -224,7 +224,7 @@ internal class VideoDetailsState(
             } catch (error: Throwable) {
                 log?.log(Logger.Level.WARN, "rate video failed", error)
                 if (likeStatus == target) likeStatus = previous
-                actionErrorCode = (error as? CodedError)?.code ?: "E20097"
+                actionErrorCode = error.errorCode() ?: "E20097"
             }
         }
     }
@@ -254,7 +254,7 @@ internal class VideoDetailsState(
             } catch (error: Throwable) {
                 log?.log(Logger.Level.WARN, "comment rating failed", error)
                 commentRating[comment.id] = current
-                actionErrorCode = (error as? CodedError)?.code ?: "E20099"
+                actionErrorCode = error.errorCode() ?: "E20099"
             }
         }
     }
@@ -281,7 +281,7 @@ internal class VideoDetailsState(
                 throw error
             } catch (error: Throwable) {
                 log?.log(Logger.Level.WARN, "edit comment failed", error)
-                editErrorCode = (error as? CodedError)?.code ?: "E20102"
+                editErrorCode = error.errorCode() ?: "E20102"
             } finally {
                 editPosting = false
             }
@@ -301,7 +301,7 @@ internal class VideoDetailsState(
                 throw error
             } catch (error: Throwable) {
                 log?.log(Logger.Level.WARN, "delete comment failed", error)
-                actionErrorCode = (error as? CodedError)?.code ?: "E20101"
+                actionErrorCode = error.errorCode() ?: "E20101"
             }
         }
     }
@@ -328,7 +328,7 @@ internal class VideoDetailsState(
                 throw error
             } catch (error: Throwable) {
                 log?.log(Logger.Level.WARN, "reply failed", error)
-                replyErrorCode = (error as? CodedError)?.code ?: "E20100"
+                replyErrorCode = error.errorCode() ?: "E20100"
             } finally {
                 replyPosting = false
             }
@@ -349,7 +349,7 @@ internal class VideoDetailsState(
                 throw error
             } catch (error: Throwable) {
                 log?.log(Logger.Level.WARN, "post comment failed", error)
-                postErrorCode = (error as? CodedError)?.code ?: "E20096"
+                postErrorCode = error.errorCode() ?: "E20096"
             } finally {
                 posting = false
             }

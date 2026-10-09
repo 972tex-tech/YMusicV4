@@ -118,6 +118,7 @@ import io.ymusic.ui.resources.tab_music
 import io.ymusic.ui.resources.tab_recommended
 import io.ymusic.ui.resources.tab_top_tracks
 import io.ymusic.ui.sponsorblock.SponsorBlockCoordinator
+import kmpcommon.error.runSuspendCatching
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -315,7 +316,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // harvest that fails must never disturb playback.
         LaunchedEffect(graph) {
             graph.player.watchNextSeen.collect { seen ->
-                runCatching { graph.engines.handleWebViewPlayNext(seen.videoId, seen.contentsJson) }
+                runSuspendCatching { graph.engines.handleWebViewPlayNext(seen.videoId, seen.contentsJson) }
                     .onFailure { graph.logger?.fork("watch-next-harvest")?.log(kmpcommon.log.Logger.Level.WARN, "harvest hand-off failed", it) }
             }
         }
