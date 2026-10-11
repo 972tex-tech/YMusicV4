@@ -111,6 +111,7 @@ data class RemoteConfigData(
     companion object {
         /** What the app runs on before the first successful fetch, and with no cache to fall back on. */
         val DEFAULTS = RemoteConfigData(updatedAt = 0L)
+        private const val KEY_FEATURES = "features"
         private const val KEY_VARIABLE_A = "variableA"
         private const val KEY_FEATURE_X = "featureX"
         private const val KEY_APP_UPDATE = "appUpdate"
@@ -126,19 +127,24 @@ data class RemoteConfigData(
          * so [now] stamps it. If a server ever DOES send it, it wins — which is worth knowing, since
          * that hands it the ability to pin clients to a document it declares perpetually fresh.
          */
-        fun from(root: JsonObject, now: () -> Long): RemoteConfigData = RemoteConfigData(
-            variableA = root.intOrNull(KEY_VARIABLE_A) ?: DEFAULTS.variableA,
-            featureX = root.boolOrNull(KEY_FEATURE_X) ?: DEFAULTS.featureX,
-            appUpdate = root.objectOrNull(KEY_APP_UPDATE)?.let(AppUpdate::from),
-            engineJs = root.objectOrNull(KEY_ENGINE_JS)?.let(BundleVersion::from),
-            playerJs = root.objectOrNull(KEY_PLAYER_JS)?.let(BundleVersion::from),
-            updatedAt = root.longOrNull(KEY_UPDATED_AT) ?: now(),
-        )
+        fun from(root: JsonObject, now: () -> Long): RemoteConfigData {
+            val features = root.objectOrNull(KEY_FEATURES)
+            return RemoteConfigData(
+                variableA = features?.intOrNull(KEY_VARIABLE_A) ?: DEFAULTS.variableA,
+                featureX = features?.boolOrNull(KEY_FEATURE_X) ?: DEFAULTS.featureX,
+                appUpdate = root.objectOrNull(KEY_APP_UPDATE)?.let(AppUpdate::from),
+                engineJs = root.objectOrNull(KEY_ENGINE_JS)?.let(BundleVersion::from),
+                playerJs = root.objectOrNull(KEY_PLAYER_JS)?.let(BundleVersion::from),
+                updatedAt = root.longOrNull(KEY_UPDATED_AT) ?: now(),
+            )
+        }
 
         fun JsonWriter.value(data: RemoteConfigData): JsonWriter {
             beginObject()
+            name(KEY_FEATURES).beginObject()
             name(KEY_VARIABLE_A).value(data.variableA)
             name(KEY_FEATURE_X).value(data.featureX)
+            endObject()
             data.appUpdate?.let { name(KEY_APP_UPDATE).value(it) }
             data.engineJs?.let { name(KEY_ENGINE_JS).value(it) }
             data.playerJs?.let { name(KEY_PLAYER_JS).value(it) }

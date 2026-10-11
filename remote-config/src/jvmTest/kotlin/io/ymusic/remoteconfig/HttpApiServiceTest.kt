@@ -31,8 +31,7 @@ import kotlin.time.Duration
 
 private const val BODY = """
 {
-  "variableA": 7,
-  "featureX": true,
+  "features": {"variableA": 7, "featureX": true},
   "appUpdate": {"versionCode":1300,"versionName":"4.1.0","notes":"n","url":"https://x/y.msi","size":12,"sha256":"AB","signature":"sig"},
   "playerJs": {"version": 123, "url": "https://x/player.js", "signature": "sig-player"},
   "engineJs": {"version": 11, "url": "https://x/engine.js", "signature": "sig-engine"}
@@ -222,7 +221,7 @@ class HttpApiServiceTest {
 
     @Test
     fun unknown_fields_are_ignored_so_the_service_can_add_one() = runTest {
-        val body = """{"variableA":1,"featureZ":true,"somethingNew":{"a":[1,2]}}"""
+        val body = """{"features":{"variableA":1,"featureZ":true},"somethingNew":{"a":[1,2]}}"""
 
         assertEquals(1, service(FakeHttp(body = body)).getConfig().variableA)
     }
