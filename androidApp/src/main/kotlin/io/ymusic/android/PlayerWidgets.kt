@@ -259,6 +259,13 @@ class PlayerWidgets(
                 views.setInt(R.id.widget_next, "setColorFilter", palette.title)
                 views.setInt(R.id.widget_play_bg, "setColorFilter", palette.playBg)
                 views.setInt(R.id.widget_play_icon, "setColorFilter", palette.playIcon)
+                if (kind == WidgetKind.SQUARE) {
+                    if (art != null) {
+                        views.setImageViewBitmap(R.id.widget_backdrop, art.backdrop)
+                    } else {
+                        views.setImageViewResource(R.id.widget_backdrop, 0)
+                    }
+                }
                 val bitmap = if (kind == WidgetKind.LARGE) art?.fade else art?.cover
                 val roomForArt = kind == WidgetKind.SQUARE || minWidthDp == 0 || minWidthDp >= LARGE_ART_MIN_DP
                 if (bitmap != null && roomForArt) {

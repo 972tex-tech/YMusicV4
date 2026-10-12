@@ -35,6 +35,17 @@
             android:src="@drawable/widget_fill"
             android:tint="@color/widget_card_fallback" />
 
+        <ImageView
+            android:id="@+id/widget_backdrop"
+            android:layout_alignStart="@id/widget_sizer"
+            android:layout_alignTop="@id/widget_sizer"
+            android:layout_alignEnd="@id/widget_sizer"
+            android:layout_alignBottom="@id/widget_sizer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop" />
+
         <LinearLayout
             android:id="@+id/widget_body"
             android:layout_alignStart="@id/widget_sizer"
