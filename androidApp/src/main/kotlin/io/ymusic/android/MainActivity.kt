@@ -44,6 +44,7 @@ import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppSection
 import io.ymusic.ui.FeedbackFile
+import io.ymusic.ui.IncomingLinks
 import io.ymusic.ui.rememberStartSection
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CompletableDeferred
@@ -274,6 +275,8 @@ class MainActivity : FragmentActivity() {
         (application as YMusicApplication).qrScanner = scanQr
         (application as YMusicApplication).deviceOwnerAuth = confirmOwner
         sectionFor(intent)?.let { pendingSection.value = it }
+        // A recreation re-delivers the launching intent; its link was already opened.
+        if (savedInstanceState == null) openLink(intent)
         setContent {
             if (BuildConfig.DEBUG) CompositionClockProbe()
             var graph by remember { mutableStateOf<AppGraph?>(null) }
@@ -418,6 +421,14 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         sectionFor(intent)?.let { pendingSection.value = it }
+        openLink(intent)
+    }
+
+    private fun openLink(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        // Reopened from Recents: the task's original link intent comes back, already handled.
+        if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return
+        intent.dataString?.let(IncomingLinks::open)
     }
 
     @Deprecated("Deprecated in Java")
