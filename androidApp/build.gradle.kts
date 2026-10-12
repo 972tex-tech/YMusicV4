@@ -147,6 +147,7 @@ dependencies {
     implementation(compose.foundation)
     implementation(compose.components.resources)
     implementation(Libs.AndroidX.biometric)
+    implementation(Libs.AndroidX.fragment)
     implementation(Libs.AndroidX.cameraCore)
     implementation(Libs.AndroidX.cameraCamera2)
     implementation(Libs.AndroidX.cameraLifecycle)
