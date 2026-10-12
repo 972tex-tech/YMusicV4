@@ -41,6 +41,13 @@ target_link_directories(mseffmpegjni PRIVATE ${FFMPEG_ROOT}/lib)
 # Same shared libav the packed ffmpeg CLI loads. LAME/shine/dav1d/vpx are inside libavcodec.
 target_link_libraries(mseffmpegjni PRIVATE avformat avcodec swscale swresample avutil)
 target_compile_options(mseffmpegjni PRIVATE -O2 -Wall -Wextra)
+# Only the JNIEXPORT entry points stay visible; unreferenced sections are dropped at link.
+target_compile_options(mseffmpegjni PRIVATE -fvisibility=hidden -ffunction-sections -fdata-sections)
+if(APPLE)
+  target_link_options(mseffmpegjni PRIVATE "-Wl,-dead_strip")
+else()
+  target_link_options(mseffmpegjni PRIVATE "-Wl,--gc-sections")
+endif()
 
 if(ANDROID)
   find_library(log-lib log)

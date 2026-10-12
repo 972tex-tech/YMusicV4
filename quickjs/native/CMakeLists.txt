@@ -44,6 +44,13 @@ endif()
 target_compile_definitions(quickjsjni PRIVATE _GNU_SOURCE CONFIG_VERSION="2026-06-04")
 # QuickJS emits many warnings by design; silence them and optimize.
 target_compile_options(quickjsjni PRIVATE -w -O2 -funsigned-char)
+# Only the JNIEXPORT entry points stay visible; unreferenced sections are dropped at link.
+target_compile_options(quickjsjni PRIVATE -fvisibility=hidden -ffunction-sections -fdata-sections)
+if(APPLE)
+  target_link_options(quickjsjni PRIVATE "-Wl,-dead_strip")
+else()
+  target_link_options(quickjsjni PRIVATE "-Wl,--gc-sections")
+endif()
 
 # ASan/UBSan harness for the C pipe layer — dev-only, never part of the normal build
 # (see pipe_stress.c for build/run instructions). It #includes quickjs_native.c itself.
