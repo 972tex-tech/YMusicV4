@@ -11,7 +11,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -23,7 +22,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,16 +31,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.currentStateAsState
-import io.ymusic.settings.AppSettings
-import io.ymusic.settings.flow
-import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.update_ask_later
-import io.ymusic.ui.resources.update_auto_checkbox
 import io.ymusic.ui.resources.update_available_title
+import io.ymusic.ui.resources.update_background
 import io.ymusic.ui.resources.update_check
 import io.ymusic.ui.resources.update_check_failed
 import io.ymusic.ui.resources.update_checking
@@ -56,90 +48,92 @@ import io.ymusic.ui.resources.update_manual_hint
 import io.ymusic.ui.resources.update_ready
 import io.ymusic.ui.resources.update_up_to_date
 import io.ymusic.ui.resources.update_version
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * The update prompt: the version, its brief notes (and a link to the full changelog), "Ask later",
- * and one action — "Install now" when this release can replace the installed copy in place, or
- * "Download" (the release's web page) when it cannot (`installInApp` false, or self-update blocked).
+ * The update prompt: the version, its brief notes and a link to the full changelog.
  *
- * "Ask later" ([AppUpdates.dismiss]) hides it for the rest of this run, even across a download
- * finishing; the next cold start asks again. "Install now" keeps the dialog up through the download
- * and hands straight to the installer; a background download stays silent until it is Ready.
+ * - Available: "Ask later" / "Download". Download starts the download with progress here; when this
+ *   release cannot replace the installed copy (`installInApp` false, or self-update blocked) it
+ *   opens the release's web page instead.
+ * - Downloading (started here): "Background" hides the dialog and lets the download go on;
+ *   "Install now" stays disabled until it finishes.
+ * - Ready: "Ready to install" beside the version; "Ask later" / "Install now". A download hidden or
+ *   finished in the background brings the dialog back here — nothing installs without a tap.
+ *
+ * "Ask later" ([AppUpdates.dismiss]) hides it for the rest of this run; the next cold start asks again.
  */
 @Composable
 fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
     val updates = graph.updates ?: return
     val status by updates.status.collectAsState()
-    val scope = rememberCoroutineScope()
     val uriHandler = LocalUriHandler.current
     // Keyed on [recheck]: a manual "Check for update" brings back a release asked about later.
-    var dismissedVersion by remember(recheck) { mutableStateOf(-1) }
-    var installRequested by remember(recheck) { mutableStateOf(false) }
+    var dismissedVersion by remember(recheck) { mutableStateOf<Int?>(null) }
+    var failureDismissed by remember(recheck) { mutableStateOf(false) }
+    // The download was started here and not sent to the background: show its progress.
+    var watching by remember(recheck) { mutableStateOf(false) }
 
     val versionCode = when (val s = status) {
         is AppUpdateStatus.Available -> s.versionCode
         is AppUpdateStatus.Downloading -> s.versionCode
         is AppUpdateStatus.Ready -> s.versionCode
-        else -> -1
+        else -> null
     }
-    // The installer only ever opens in the foreground: a download finishing while the app is in the
-    // background waits here and installs when the user is back.
-    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
-    val foreground = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
-    LaunchedEffect(status, installRequested, foreground) {
-        if (installRequested && foreground && status is AppUpdateStatus.Ready) {
-            installRequested = false
-            updates.installAndRestart()
-        }
+    when (status) {
+        AppUpdateStatus.None -> return
+        is AppUpdateStatus.Failed -> if (failureDismissed) return
+        is AppUpdateStatus.Downloading -> if (!watching || versionCode == dismissedVersion) return
+        else -> if (versionCode == dismissedVersion) return
     }
-    if (status is AppUpdateStatus.None || versionCode == dismissedVersion) return
-    if (status is AppUpdateStatus.Downloading && !installRequested) return
 
     val blocked = updates.blockedReason
-    val inPlace = blocked == null && when (val s = status) {
-        is AppUpdateStatus.Available -> s.installInApp
-        else -> true
-    }
+    val inPlace = blocked == null && (status as? AppUpdateStatus.Available)?.installInApp != false
     val changelogUrl = when (val s = status) {
         is AppUpdateStatus.Available -> s.changelogUrl
         is AppUpdateStatus.Ready -> s.changelogUrl
         else -> null
     }
-    val later = {
-        dismissedVersion = versionCode
-        installRequested = false
-        updates.dismiss(versionCode)
+    val askLater: () -> Unit = {
+        if (status is AppUpdateStatus.Failed) failureDismissed = true else dismissedVersion = versionCode
+        watching = false
+        if (versionCode != null) updates.dismiss(versionCode)
     }
+    val background: () -> Unit = { watching = false }
 
     ElevatedBarDialog(
         title = stringResource(Res.string.update_available_title),
-        onDismiss = later,
+        onDismiss = if (status is AppUpdateStatus.Downloading) background else askLater,
         canScrollBackward = false,
         canScrollForward = false,
         buttons = {
-            DialogSecondaryButton(stringResource(Res.string.update_ask_later), onClick = later)
             when (status) {
-                is AppUpdateStatus.Available ->
-                    if (inPlace) {
-                        TextButton(onClick = { installRequested = true; updates.download() }) {
-                            Text(stringResource(Res.string.update_install_now))
-                        }
-                    } else {
-                        TextButton(onClick = { updates.openDownloadPage() }) {
-                            Text(stringResource(Res.string.update_download))
-                        }
-                    }
-                is AppUpdateStatus.Ready ->
-                    TextButton(onClick = { updates.installAndRestart() }) {
-                        Text(stringResource(Res.string.update_install_now))
-                    }
-                is AppUpdateStatus.Failed ->
-                    TextButton(onClick = { updates.openDownloadPage() }) {
-                        Text(stringResource(Res.string.update_download))
-                    }
-                else -> Unit
+                is AppUpdateStatus.Available -> {
+                    DialogSecondaryButton(stringResource(Res.string.update_ask_later), onClick = askLater)
+                    TextButton(
+                        onClick = {
+                            if (inPlace) {
+                                watching = true
+                                updates.download()
+                            } else {
+                                updates.openDownloadPage()
+                            }
+                        },
+                    ) { Text(stringResource(Res.string.update_download)) }
+                }
+                is AppUpdateStatus.Downloading -> {
+                    DialogSecondaryButton(stringResource(Res.string.update_background), onClick = background)
+                    TextButton(onClick = {}, enabled = false) { Text(stringResource(Res.string.update_install_now)) }
+                }
+                is AppUpdateStatus.Ready -> {
+                    DialogSecondaryButton(stringResource(Res.string.update_ask_later), onClick = askLater)
+                    TextButton(onClick = { updates.installAndRestart() }) { Text(stringResource(Res.string.update_install_now)) }
+                }
+                is AppUpdateStatus.Failed -> {
+                    DialogSecondaryButton(stringResource(Res.string.update_ask_later), onClick = askLater)
+                    TextButton(onClick = { updates.openDownloadPage() }) { Text(stringResource(Res.string.update_download)) }
+                }
+                AppUpdateStatus.None -> Unit
             }
         },
     ) {
@@ -155,20 +149,25 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
                 else -> ""
             }
             if (name.isNotEmpty()) {
-                Text(
-                    stringResource(Res.string.update_version, name),
-                    style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(Res.string.update_version, name),
+                        style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+                    )
+                    if (status is AppUpdateStatus.Ready) {
+                        Text(
+                            stringResource(Res.string.update_ready),
+                            style = TextStyle(fontSize = 13.sp, color = DesignColors.Accent),
+                        )
+                    }
+                }
             }
             when (val s = status) {
                 is AppUpdateStatus.Available -> ChangeNotes(s.notes)
-                is AppUpdateStatus.Ready -> {
-                    Text(
-                        stringResource(Res.string.update_ready),
-                        style = TextStyle(fontSize = 13.sp, color = DesignColors.Accent),
-                    )
-                    ChangeNotes(s.notes)
-                }
+                is AppUpdateStatus.Ready -> ChangeNotes(s.notes)
                 is AppUpdateStatus.Downloading -> {
                     Text(
                         stringResource(
@@ -197,31 +196,11 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
                         .padding(vertical = DesignSpacing.Space4),
                 )
             }
-
             if (blocked != null) {
                 Text(
                     stringResource(Res.string.update_manual_hint, blocked),
                     style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
                 )
-            } else if (inPlace) {
-                // Opting in here means every later release downloads in the background and applies
-                // on the next start, so this prompt stops appearing before the work is done.
-                val auto by remember(graph) {
-                    graph.settings.flow(AppSettings.autoDownloadUpdates)
-                }.collectAsState()
-                Row(
-                    Modifier.fillMaxWidth()
-                        .clickable { scope.launch { graph.settings.put(AppSettings.autoDownloadUpdates, !auto) } }
-                        .padding(vertical = DesignSpacing.Space8),
-                    horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Checkbox(checked = auto, onCheckedChange = null)
-                    Text(
-                        stringResource(Res.string.update_auto_checkbox),
-                        style = TextStyle(fontSize = 13.sp, color = DesignColors.Ink),
-                    )
-                }
             }
         }
     }

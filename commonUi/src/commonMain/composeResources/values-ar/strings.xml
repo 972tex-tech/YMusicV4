@@ -247,7 +247,7 @@
 
     <!-- Updates -->
     <string name="settings_auto_update">تنزيل التحديثات تلقائيًا</string>
-    <string name="settings_auto_update_hint">تنزيل الإصدارات الجديدة في الخلفية وتثبيتها عند التشغيل التالي.</string>
+    <string name="settings_auto_update_hint">تنزيل الإصدارات الجديدة في الخلفية لتكون جاهزة للتثبيت.</string>
     <string name="settings_crash_reports">إرسال تقارير أعطال مجهولة الهوية</string>
     <string name="settings_crash_reports_hint">ساعد في إصلاح الأخطاء بالإبلاغ عن الأعطال والأخطاء. تحمل التقارير معرّفًا عشوائيًا للتطبيق — دون بيانات الحساب ودون سجل الاستماع.</string>
     <string name="settings_stats">إرسال إحصاءات مجهولة الهوية</string>
@@ -358,10 +358,10 @@
     <string name="update_download">تنزيل</string>
     <string name="update_install_now">التثبيت الآن</string>
     <string name="update_ask_later">ذكّرني لاحقًا</string>
+    <string name="update_background">في الخلفية</string>
     <string name="update_full_changelog">سجل التغييرات الكامل</string>
     <string name="update_downloading">جارٍ التنزيل… %1$s من %2$s</string>
     <string name="update_ready">جاهز للتثبيت</string>
-    <string name="update_auto_checkbox">تنزيل التحديثات المستقبلية تلقائيًا</string>
     <string name="update_manual_hint">هذه النسخة لا يمكنها تحديث نفسها (%1$s). نزّل الإصدار الجديد يدويًا.</string>
     <string name="update_failed">فشل التحديث: %1$s</string>
     <string name="update_check">التحقق من التحديثات</string>

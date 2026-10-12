@@ -91,11 +91,11 @@ object AppSettings {
     val lastDiscoverTab = IntSetting("app.lastDiscoverTab", 0)
 
     /**
-     * Fetch updates in the background as soon as they are found, and apply them on the next start.
-     * Off by default: downloading tens of MB unasked is the user's call, not ours. Desktop only —
-     * the mobile stores own updating there.
+     * Fetch updates in the background as soon as they are found, so the update prompt opens ready
+     * to install. On by default; the install itself always waits for the user's tap. Android and
+     * desktop (iOS has no updater).
      */
-    val autoDownloadUpdates = BoolSetting("update.autoDownload", false)
+    val autoDownloadUpdates = BoolSetting("update.autoDownload", true)
 
     /** Anonymous stable device id — a random UUID minted on first launch by [anonymousDeviceId],
      *  never derived from hardware identity. Empty = unseeded. */

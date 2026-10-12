@@ -369,7 +369,6 @@
     <string name="update_download">دانلود</string>
     <string name="update_downloading">در حال دانلود… %1$s از %2$s</string>
     <string name="update_ready">آماده نصب</string>
-    <string name="update_auto_checkbox">به‌روزرسانی‌های بعدی خودکار دانلود شوند</string>
     <string name="update_manual_hint">این نسخه نمی‌تواند خودش را به‌روز کند (%1$s). به‌جای آن نسخه جدید را دانلود کنید.</string>
     <string name="update_failed">به‌روزرسانی ناموفق بود: %1$s</string>
     <string name="download_title">دانلود</string>

@@ -368,7 +368,6 @@
     <string name="update_download">Unduh</string>
     <string name="update_downloading">Mengunduh… %1$s dari %2$s</string>
     <string name="update_ready">Siap dipasang</string>
-    <string name="update_auto_checkbox">Unduh pembaruan berikutnya secara otomatis</string>
     <string name="update_manual_hint">Salinan ini tidak dapat memperbarui dirinya sendiri (%1$s). Unduh versi baru secara manual.</string>
     <string name="update_failed">Pembaruan gagal: %1$s</string>
     <string name="download_title">Unduh</string>

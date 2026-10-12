@@ -370,7 +370,6 @@
     <string name="update_download">Preuzmi</string>
     <string name="update_downloading">Preuzimanje… %1$s od %2$s</string>
     <string name="update_ready">Spremno za instalaciju</string>
-    <string name="update_auto_checkbox">Automatski preuzimaj buduća ažuriranja</string>
     <string name="update_manual_hint">Ova se kopija ne može sama ažurirati (%1$s). Umjesto toga preuzmite novu verziju.</string>
     <string name="update_failed">Ažuriranje nije uspjelo: %1$s</string>
     <string name="download_title">Preuzimanje</string>

@@ -173,8 +173,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             ToggleRow(graph, AppSettings.stats, Res.string.settings_stats, Res.string.settings_stats_hint)
         }
         SettingsSection(Res.string.settings_section_about) {
-            // Auto-update: off by default, fetching tens of MB unasked is the user's call. Turning it
-            // on also makes future releases apply on the next start.
+            // Download updates in the background (on by default); installing still waits for a tap.
             if (graph.updates != null) {
                 ToggleRow(graph, AppSettings.autoDownloadUpdates, Res.string.settings_auto_update, Res.string.settings_auto_update_hint)
             }

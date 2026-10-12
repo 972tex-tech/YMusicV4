@@ -369,7 +369,6 @@
     <string name="update_download">பதிவிறக்கு</string>
     <string name="update_downloading">பதிவிறக்குகிறது… %2$s இல் %1$s</string>
     <string name="update_ready">நிறுவத் தயார்</string>
-    <string name="update_auto_checkbox">எதிர்காலப் புதுப்பிப்புகளைத் தானாகப் பதிவிறக்கு</string>
     <string name="update_manual_hint">இந்த நகல் தன்னைத்தானே புதுப்பிக்க முடியாது (%1$s). அதற்குப் பதிலாகப் புதிய பதிப்பைப் பதிவிறக்கவும்.</string>
     <string name="update_failed">புதுப்பிப்பு தோல்வியடைந்தது: %1$s</string>
     <string name="download_title">பதிவிறக்கம்</string>

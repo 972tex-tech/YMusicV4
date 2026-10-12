@@ -335,7 +335,7 @@
 
     <!-- Updates -->
     <string name="settings_auto_update">Download updates automatically</string>
-    <string name="settings_auto_update_hint">Fetch new versions in the background and install them on the next start.</string>
+    <string name="settings_auto_update_hint">Fetch new versions in the background, so they are ready to install.</string>
     <string name="settings_crash_reports">Send anonymous crash reports</string>
     <string name="settings_crash_reports_hint">Help fix bugs by reporting crashes and errors. Reports carry a random app id — no account data, no listening history.</string>
     <string name="settings_stats">Send anonymous stats</string>
@@ -374,10 +374,10 @@
     <string name="update_download">Download</string>
     <string name="update_install_now">Install now</string>
     <string name="update_ask_later">Ask later</string>
+    <string name="update_background">Background</string>
     <string name="update_full_changelog">Full changelog</string>
     <string name="update_downloading">Downloading… %1$s of %2$s</string>
     <string name="update_ready">Ready to install</string>
-    <string name="update_auto_checkbox">Download future updates automatically</string>
     <string name="update_manual_hint">This copy cannot update itself (%1$s). Download the new version instead.</string>
     <string name="update_failed">Update failed: %1$s</string>
     <string name="update_check">Check for update</string>

@@ -370,7 +370,6 @@
     <string name="update_download">Descargar</string>
     <string name="update_downloading">Descargando… %1$s de %2$s</string>
     <string name="update_ready">Lista para instalar</string>
-    <string name="update_auto_checkbox">Descargar futuras actualizaciones automáticamente</string>
     <string name="update_manual_hint">Esta copia no puede actualizarse sola (%1$s). Descarga la nueva versión.</string>
     <string name="update_failed">Error al actualizar: %1$s</string>
     <string name="download_title">Descargar</string>

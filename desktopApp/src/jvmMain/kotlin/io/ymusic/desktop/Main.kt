@@ -203,7 +203,7 @@ private val rootLogger: Logger =
         .also { it.bindMseNativeLogs() }
 
 /** Mirrors AppSettings.autoDownloadUpdates for the updater's synchronous read. */
-@Volatile private var autoDownloadUpdates: Boolean = false
+@Volatile private var autoDownloadUpdates: Boolean = AppSettings.autoDownloadUpdates.default
 
 fun main() {
     defaultLinuxSoftwareRendering()

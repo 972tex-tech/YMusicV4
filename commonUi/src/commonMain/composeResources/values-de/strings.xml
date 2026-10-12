@@ -369,7 +369,6 @@
     <string name="update_download">Herunterladen</string>
     <string name="update_downloading">Wird heruntergeladen… %1$s von %2$s</string>
     <string name="update_ready">Bereit zur Installation</string>
-    <string name="update_auto_checkbox">Künftige Updates automatisch herunterladen</string>
     <string name="update_manual_hint">Diese Installation kann sich nicht selbst aktualisieren (%1$s). Lade stattdessen die neue Version herunter.</string>
     <string name="update_failed">Update fehlgeschlagen: %1$s</string>
     <string name="download_title">Herunterladen</string>

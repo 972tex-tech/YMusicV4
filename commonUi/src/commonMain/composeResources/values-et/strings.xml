@@ -369,7 +369,6 @@
     <string name="update_download">Laadi alla</string>
     <string name="update_downloading">Allalaadimine… %1$s / %2$s</string>
     <string name="update_ready">Valmis paigaldamiseks</string>
-    <string name="update_auto_checkbox">Laadi tulevased värskendused automaatselt alla</string>
     <string name="update_manual_hint">See koopia ei saa end ise värskendada (%1$s). Laadi selle asemel alla uus versioon.</string>
     <string name="update_failed">Värskendamine ebaõnnestus: %1$s</string>
     <string name="download_title">Allalaadimine</string>

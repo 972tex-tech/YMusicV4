@@ -368,7 +368,6 @@
     <string name="update_download">下载</string>
     <string name="update_downloading">正在下载… %1$s / %2$s</string>
     <string name="update_ready">可以安装</string>
-    <string name="update_auto_checkbox">以后自动下载更新</string>
     <string name="update_manual_hint">此版本无法自行更新（%1$s）。请改为下载新版本。</string>
     <string name="update_failed">更新失败：%1$s</string>
     <string name="download_title">下载</string>

@@ -369,7 +369,6 @@
     <string name="update_download">Laai af</string>
     <string name="update_downloading">Laai tans af… %1$s van %2$s</string>
     <string name="update_ready">Gereed om te installeer</string>
-    <string name="update_auto_checkbox">Laai toekomstige opdaterings outomaties af</string>
     <string name="update_manual_hint">Hierdie kopie kan homself nie opdateer nie (%1$s). Laai eerder die nuwe weergawe af.</string>
     <string name="update_failed">Opdatering het misluk: %1$s</string>
     <string name="download_title">Laai af</string>

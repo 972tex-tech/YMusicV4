@@ -369,7 +369,6 @@
     <string name="update_download">Deskargatu</string>
     <string name="update_downloading">Deskargatzen… %1$s / %2$s</string>
     <string name="update_ready">Instalatzeko prest</string>
-    <string name="update_auto_checkbox">Deskargatu etorkizuneko eguneratzeak automatikoki</string>
     <string name="update_manual_hint">Kopia honek ezin du bere burua eguneratu (%1$s). Deskargatu bertsio berria.</string>
     <string name="update_failed">Eguneratzeak huts egin du: %1$s</string>
     <string name="download_title">Deskargatu</string>

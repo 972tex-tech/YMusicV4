@@ -369,7 +369,6 @@
     <string name="update_download">Letöltés</string>
     <string name="update_downloading">Letöltés… %1$s / %2$s</string>
     <string name="update_ready">Telepítésre kész</string>
-    <string name="update_auto_checkbox">A jövőbeli frissítések automatikus letöltése</string>
     <string name="update_manual_hint">Ez a példány nem tudja frissíteni magát (%1$s). Töltsd le inkább az új verziót.</string>
     <string name="update_failed">A frissítés sikertelen: %1$s</string>
     <string name="download_title">Letöltés</string>

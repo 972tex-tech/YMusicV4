@@ -369,7 +369,6 @@
     <string name="update_download">ડાઉનલોડ કરો</string>
     <string name="update_downloading">ડાઉનલોડ થઈ રહ્યું છે… %2$s માંથી %1$s</string>
     <string name="update_ready">ઇન્સ્ટોલ કરવા તૈયાર</string>
-    <string name="update_auto_checkbox">ભવિષ્યના અપડેટ આપમેળે ડાઉનલોડ કરો</string>
     <string name="update_manual_hint">આ કૉપિ પોતાને અપડેટ કરી શકતી નથી (%1$s). તેના બદલે નવું સંસ્કરણ ડાઉનલોડ કરો.</string>
     <string name="update_failed">અપડેટ નિષ્ફળ: %1$s</string>
     <string name="download_title">ડાઉનલોડ</string>

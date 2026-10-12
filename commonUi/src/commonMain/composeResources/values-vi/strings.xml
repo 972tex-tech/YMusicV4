@@ -242,7 +242,7 @@
 
     <!-- Updates -->
     <string name="settings_auto_update">Tự động tải bản cập nhật</string>
-    <string name="settings_auto_update_hint">Tải bản mới ở chế độ nền và cài đặt trong lần khởi động kế tiếp.</string>
+    <string name="settings_auto_update_hint">Tải phiên bản mới ở chế độ nền để sẵn sàng cài đặt.</string>
     <string name="settings_crash_reports">Gửi báo cáo sự cố ẩn danh</string>
     <string name="settings_crash_reports_hint">Giúp sửa lỗi bằng cách báo cáo sự cố và lỗi. Báo cáo chỉ kèm một mã ứng dụng ngẫu nhiên — không có dữ liệu tài khoản, không có lịch sử nghe.</string>
     <string name="settings_stats">Gửi thống kê ẩn danh</string>
@@ -353,10 +353,10 @@
     <string name="update_download">Tải xuống</string>
     <string name="update_install_now">Cài đặt ngay</string>
     <string name="update_ask_later">Nhắc lại sau</string>
+    <string name="update_background">Chạy nền</string>
     <string name="update_full_changelog">Xem toàn bộ thay đổi</string>
     <string name="update_downloading">Đang tải… %1$s / %2$s</string>
     <string name="update_ready">Sẵn sàng cài đặt</string>
-    <string name="update_auto_checkbox">Tự động tải các bản cập nhật sau</string>
     <string name="update_manual_hint">Bản này không thể tự cập nhật (%1$s). Hãy tải bản mới theo cách thủ công.</string>
     <string name="update_failed">Cập nhật thất bại: %1$s</string>
     <string name="update_check">Kiểm tra cập nhật</string>
