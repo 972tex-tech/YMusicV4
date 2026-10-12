@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Search
@@ -150,7 +149,7 @@ enum class AppSection(val id: Int, val label: StringResource, val icon: ImageVec
     Settings(6, Res.string.section_settings, Icons.Outlined.Settings, 1),
     Catalogue(7, Res.string.section_catalogue, Icons.Outlined.Palette, 1),
     Donate(8, Res.string.section_donate, Icons.Outlined.FavoriteBorder, 2),
-    Telegram(9, Res.string.section_telegram, Icons.AutoMirrored.Outlined.Send, 2),
+    Telegram(9, Res.string.section_telegram, TelegramIcon, 2),
     Feedback(10, Res.string.section_feedback, Icons.AutoMirrored.Outlined.Chat, 2),
 }
 
