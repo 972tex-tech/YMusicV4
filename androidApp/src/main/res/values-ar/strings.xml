@@ -5,4 +5,11 @@
     <string name="share_download_m4a">تنزيل M4A</string>
     <string name="share_download">تنزيل آخر</string>
     <string name="share_no_link">لا يوجد رابط لفتحه في المحتوى المُشارَك</string>
+    <string name="widget_small_name">المشغّل · صغير</string>
+    <string name="widget_compact_name">المشغّل · مضغوط</string>
+    <string name="widget_large_name">المشغّل · كبير</string>
+    <string name="widget_square_name">المشغّل · مربّع</string>
+    <string name="widget_description">ما يُشغَّل الآن مع أزرار التحكم</string>
+    <string name="widget_nothing_playing">لا شيء قيد التشغيل</string>
+    <string name="widget_open_to_start">افتح YMusic لبدء الاستماع</string>
 </resources>

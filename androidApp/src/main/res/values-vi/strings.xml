@@ -5,4 +5,11 @@
     <string name="share_download_m4a">Tải M4A</string>
     <string name="share_download">Tải định dạng khác</string>
     <string name="share_no_link">Không có liên kết nào để mở trong nội dung được chia sẻ</string>
+    <string name="widget_small_name">Trình phát · Nhỏ</string>
+    <string name="widget_compact_name">Trình phát · Gọn</string>
+    <string name="widget_large_name">Trình phát · Lớn</string>
+    <string name="widget_square_name">Trình phát · Vuông</string>
+    <string name="widget_description">Bài đang phát và nút điều khiển</string>
+    <string name="widget_nothing_playing">Không có gì đang phát</string>
+    <string name="widget_open_to_start">Mở YMusic để bắt đầu nghe</string>
 </resources>

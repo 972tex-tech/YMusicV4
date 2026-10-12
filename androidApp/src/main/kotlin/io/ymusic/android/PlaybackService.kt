@@ -33,9 +33,11 @@ import io.ymusic.player.Player
 import io.ymusic.player.isPlaying
 import io.ymusic.player.media3.Media3PlayerAdapter
 import io.ymusic.ui.AppGraph
+import io.ymusic.ui.playhistory.PlayAgainStore
 import io.ymusic.ui.youtubeThumbUrl
 import kmpcommon.log.Logger
 import kmpcommon.log.debug
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -69,6 +71,8 @@ class PlaybackService : MediaLibraryService() {
     private var session: MediaLibrarySession? = null
     private var tree: MediaBrowseTree? = null
     private var coordinator: io.ymusic.ui.PlaybackCoordinator? = null
+    private var playAgain: PlayAgainStore? = null
+    private val ready = CompletableDeferred<Unit>()
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var art: Pair<String, Bitmap?>? = null
@@ -104,6 +108,7 @@ class PlaybackService : MediaLibraryService() {
         val player = graph.player.also { this.player = it }
         val tree = MediaBrowseTree(this, graph).also { this.tree = it }
         coordinator = io.ymusic.ui.PlaybackCoordinator(graph, serviceScope)
+        playAgain = graph.playHistory?.playAgain
         val adapter = Media3PlayerAdapter(
             player,
             describe = { item -> item.toMediaMetadata(this) },
@@ -130,6 +135,28 @@ class PlaybackService : MediaLibraryService() {
             }.distinctUntilChanged().collect { updateNotification() }
         }
         holdLocksWhilePlaying(player)
+        ready.complete(Unit)
+    }
+
+    /** Play, or with an empty queue (fresh process) resume the newest "Play again" session. */
+    private suspend fun playOrResume() {
+        val player = this.player ?: return
+        if (player.queue.value.currentItem != null) return player.play()
+        val last = playAgain?.sessions()?.firstOrNull() ?: return
+        coordinator?.playAgain(last)
+    }
+
+    private suspend fun onWidgetCommand(action: String) {
+        ready.await()
+        val player = this.player ?: return
+        when (action) {
+            ACTION_WIDGET_PLAY -> playOrResume()
+            ACTION_WIDGET_PAUSE -> player.pause()
+            ACTION_WIDGET_NEXT -> player.skipNext()
+            ACTION_WIDGET_PREV -> player.skipPrev()
+        }
+        // Nothing to play: no (playing × item) transition will demote the start's foreground.
+        if (player.queue.value.currentItem == null) updateNotification()
     }
 
     /** A controller's setMediaItems (Auto browse/search tap), applied with phone-app semantics. */
@@ -334,6 +361,9 @@ class PlaybackService : MediaLibraryService() {
             foreground = false
             stopSelf()
             return START_NOT_STICKY
+        }
+        intent?.action?.takeIf { it in WIDGET_ACTIONS }?.let { action ->
+            serviceScope.launch { onWidgetCommand(action) }
         }
         // super routes MEDIA_BUTTON intents (our notification actions) onto the session.
         val result = super.onStartCommand(intent, flags, startId)

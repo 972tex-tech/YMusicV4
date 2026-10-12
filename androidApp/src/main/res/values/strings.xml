@@ -39,4 +39,11 @@
     <string name="share_download_m4a">M4A Download</string>
     <string name="share_download">Other Download</string>
     <string name="share_no_link">No link to open in what was shared</string>
+    <string name="widget_small_name">Player · Small</string>
+    <string name="widget_compact_name">Player · Compact</string>
+    <string name="widget_large_name">Player · Large</string>
+    <string name="widget_square_name">Player · Square</string>
+    <string name="widget_description">Now playing with playback controls</string>
+    <string name="widget_nothing_playing">Nothing playing</string>
+    <string name="widget_open_to_start">Open YMusic to start listening</string>
 </resources>

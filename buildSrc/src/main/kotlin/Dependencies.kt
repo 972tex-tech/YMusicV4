@@ -69,6 +69,7 @@ object Libs {
         const val lifecycleRuntimeKtx = "androidx.lifecycle:lifecycle-runtime-ktx:${Versions.lifecycleRuntimeKtx}"
         const val activityCompose = "androidx.activity:activity-compose:${Versions.activityCompose}"
         const val biometric = "androidx.biometric:biometric:1.1.0"
+        const val palette = "androidx.palette:palette:1.0.0"
 
         // biometric 1.1.0 drags in fragment 1.2.5, whose FragmentActivity rejects the request codes
         // registerForActivityResult issues ("Can only use lower 16 bits for requestCode").

@@ -174,6 +174,9 @@ class YMusicApplication : Application() {
     /** Main-thread, app-lifetime scope for playback glue (service start, audio focus). */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + uncaught("app-main"))
 
+    /** The home-screen player widgets; live once the graph is built. */
+    val widgets: PlayerWidgets by lazy { PlayerWidgets(this, appScope, rootLogger.fork("widgets")) }
+
     /** The current Activity's SAF folder pick, registered while it lives. The graph is app-scoped
      *  but a pick needs an Activity; a scan is always user-driven, so one is up when this runs. */
     @Volatile var folderPicker: (suspend () -> Uri?)? = null
@@ -425,6 +428,7 @@ class YMusicApplication : Application() {
                 }
         }
         AudioFocusCoordinator(this, graph.player, appScope).start()
+        widgets.attach(graph)
         // Same pattern for downloads: any change that (re)starts work also (re)starts the
         // dataSync foreground host; the service winds itself down when the queue drains. Enqueue
         // and resume are user actions with the app foregrounded, so FGS-start is permitted.
