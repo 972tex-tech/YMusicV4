@@ -174,7 +174,10 @@ class AndroidAppUpdates(
         val sessionId = installer.createSession(params)
         installer.openSession(sessionId).use { session ->
             session.openWrite("base.apk", 0, apk.length()).use { out ->
-                out.sink().buffer().use { sink -> apk.source().use { sink.writeAll(it) } }
+                // fsync needs the stream open: closing the okio sink would close [out] with it.
+                val sink = out.sink().buffer()
+                apk.source().use { sink.writeAll(it) }
+                sink.flush()
                 session.fsync(out)
             }
             val callback = PendingIntent.getBroadcast(
