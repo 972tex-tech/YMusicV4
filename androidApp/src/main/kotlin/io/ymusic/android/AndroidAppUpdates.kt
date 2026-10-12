@@ -104,7 +104,7 @@ class AndroidAppUpdates(
                 val update = pending ?: return@launch
                 if (!update.installInApp) return@launch
                 if (_status.value is AppUpdateStatus.Downloading || _status.value is AppUpdateStatus.Ready) return@launch
-                _status.value = AppUpdateStatus.Downloading(update.versionName, 0, update.size)
+                _status.value = AppUpdateStatus.Downloading(update.versionCode, update.versionName, 0, update.size)
                 update
             }
             try {
@@ -141,7 +141,7 @@ class AndroidAppUpdates(
                         out.write(chunk, read)
                         done += read
                         if (done > update.size) throw ApkMismatchException("more than the published ${update.size} bytes")
-                        _status.value = AppUpdateStatus.Downloading(update.versionName, done, update.size)
+                        _status.value = AppUpdateStatus.Downloading(update.versionCode, update.versionName, done, update.size)
                     }
                 }
                 hashing.hash.hex()

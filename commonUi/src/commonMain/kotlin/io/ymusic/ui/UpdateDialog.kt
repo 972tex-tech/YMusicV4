@@ -64,9 +64,9 @@ import org.jetbrains.compose.resources.stringResource
  * and one action — "Install now" when this release can replace the installed copy in place, or
  * "Download" (the release's web page) when it cannot (`installInApp` false, or self-update blocked).
  *
- * Shown once per release — [AppUpdates.dismiss] silences a version the user asked about later, so a
- * declined update never nags again. "Install now" keeps the dialog up through the download and hands
- * straight to the installer; a background download stays silent until it is Ready.
+ * "Ask later" ([AppUpdates.dismiss]) hides it for the rest of this run, even across a download
+ * finishing; the next cold start asks again. "Install now" keeps the dialog up through the download
+ * and hands straight to the installer; a background download stays silent until it is Ready.
  */
 @Composable
 fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
@@ -80,6 +80,7 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
 
     val versionCode = when (val s = status) {
         is AppUpdateStatus.Available -> s.versionCode
+        is AppUpdateStatus.Downloading -> s.versionCode
         is AppUpdateStatus.Ready -> s.versionCode
         else -> -1
     }

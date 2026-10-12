@@ -23,7 +23,7 @@ interface AppUpdates {
      *  this release cannot be installed in place, self-update is blocked, or it has failed. */
     fun openDownloadPage()
 
-    /** Dismiss this version's prompt; it must not nag again for the same release. */
+    /** "Ask later": hide this version's prompt for the rest of this run; the next cold start asks again. */
     fun dismiss(versionCode: Int)
 
     /**
@@ -47,7 +47,7 @@ sealed interface AppUpdateStatus {
         val changelogUrl: String?,
         val installInApp: Boolean,
     ) : AppUpdateStatus
-    data class Downloading(val versionName: String, val done: Long, val total: Long) : AppUpdateStatus
+    data class Downloading(val versionCode: Int, val versionName: String, val done: Long, val total: Long) : AppUpdateStatus
     data class Ready(val versionCode: Int, val versionName: String, val notes: String, val changelogUrl: String?) : AppUpdateStatus
     data class Failed(val reason: String) : AppUpdateStatus
 }

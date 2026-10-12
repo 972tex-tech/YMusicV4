@@ -47,7 +47,7 @@ class DesktopAppUpdates(
                 s.update.changelogUrl, s.update.installInApp,
             )
         is UpdateState.Downloading ->
-            AppUpdateStatus.Downloading(s.update.versionName, s.done, s.total)
+            AppUpdateStatus.Downloading(s.update.versionCode, s.update.versionName, s.done, s.total)
         is UpdateState.Ready ->
             // A ready update is always announced, even if the prompt was dismissed
             // earlier: it is one click from applying and cost nothing more to offer.
