@@ -43,8 +43,10 @@ import io.ymusic.settings.flow
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppSection
+import io.ymusic.ui.DarkDesignColors
 import io.ymusic.ui.FeedbackFile
 import io.ymusic.ui.IncomingLinks
+import io.ymusic.ui.LightDesignColors
 import io.ymusic.ui.LinkAction
 import io.ymusic.ui.rememberStartSection
 import kmpcommon.uri.Uri
@@ -500,5 +502,14 @@ private fun NotificationRequiredDialog(onAllow: () -> Unit) {
 
 @androidx.compose.runtime.Composable
 private fun Booting(content: @androidx.compose.runtime.Composable () -> Unit) {
-    Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) { content() }
+    // The first frame App will paint, so the launch window → this → App never changes colour.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val theme = remember { PrefsSettingsStore.open(context).flow(AppSettings.theme).value }
+    val dark = when (theme) {
+        "light" -> false
+        "dark" -> true
+        else -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
+    val ground = if (dark) DarkDesignColors.Surface else LightDesignColors.Surface
+    Box(Modifier.fillMaxSize().background(ground), contentAlignment = Alignment.Center) { content() }
 }

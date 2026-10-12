@@ -2,9 +2,11 @@ package io.ymusic.android
 
 import android.app.Activity
 import android.app.Application
+import android.app.UiModeManager
 import android.content.ComponentCallbacks2
 import android.content.Intent
 import android.graphics.SurfaceTexture
+import android.os.Build
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
@@ -207,6 +209,20 @@ class YMusicApplication : Application() {
         // One client stack, one disk cache, shared by the engine and the player's embed fetch.
         val http = AppHttpClients(cacheDir.resolve("http-cache").toOkioPath(), logger = rootLogger)
         val settings = PrefsSettingsStore.open(this)
+        if (Build.VERSION.SDK_INT >= 31) {
+            val uiModes = getSystemService(UiModeManager::class.java)
+            scope.launch {
+                settings.flow(AppSettings.theme).collect { theme ->
+                    uiModes.setApplicationNightMode(
+                        when (theme) {
+                            "light" -> UiModeManager.MODE_NIGHT_NO
+                            "dark" -> UiModeManager.MODE_NIGHT_YES
+                            else -> UiModeManager.MODE_NIGHT_AUTO
+                        },
+                    )
+                }
+            }
+        }
         val deviceId = settings.anonymousDeviceId()
         // Crash reporting is consent-gated and LIVE: init runs once (crash handlers install and
         // stay), but nothing leaves the process unless the settings toggle says yes — default

@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Before API 31 the launch window is drawn before the in-app theme setting can be read: the default
+         (dark) ground. values-v31 follows the app's night mode instead (YMusicApplication syncs it). -->
     <style name="Theme.YMusicV4" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/app_surface_dark</item>
     </style>
     <!-- The share targets: no window of their own, only the Play chooser dialog. -->
     <style name="Theme.YMusicV4.Share" parent="android:Theme.Translucent.NoTitleBar">
