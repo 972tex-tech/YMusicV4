@@ -72,8 +72,11 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0, showMessage: (String) -> Uni
     // Keyed on [recheck]: a manual "Check for update" brings back a release asked about later.
     var dismissedVersion by remember(recheck) { mutableStateOf<Int?>(null) }
     var failureDismissed by remember(recheck) { mutableStateOf(false) }
-    // The download was started here and not sent to the background: show its progress.
-    var watching by remember(recheck) { mutableStateOf(false) }
+    // The download was started here and not sent to the background: show its progress. A manual
+    // "Check for update" ([recheck]) that lands on an automatic download in flight shows it too.
+    var watching by remember(recheck) {
+        mutableStateOf(recheck > 0 && updates.status.value is AppUpdateStatus.Downloading)
+    }
     // Sent to the background: a failure there is a short message, not this dialog; the next launch
     // offers the update afresh.
     var backgrounded by remember(recheck) { mutableStateOf(false) }
