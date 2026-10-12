@@ -366,13 +366,10 @@
     <string name="update_available_title">有可用的更新</string>
     <string name="update_version">版本 %1$s</string>
     <string name="update_download">下載</string>
-    <string name="update_install_restart">安裝並重新啟動</string>
-    <string name="update_later">稍後</string>
     <string name="update_downloading">下載中… %1$s / %2$s</string>
     <string name="update_ready">可以安裝了</string>
     <string name="update_auto_checkbox">日後自動下載更新</string>
     <string name="update_manual_hint">這個版本無法自行更新（%1$s）。請改為下載新版本。</string>
-    <string name="update_open_download">開啟下載頁面</string>
     <string name="update_failed">更新失敗：%1$s</string>
     <string name="download_title">下載</string>
     <string name="download_audio_only">僅音訊</string>

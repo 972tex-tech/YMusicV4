@@ -356,13 +356,13 @@
     <string name="update_available_title">يتوفّر تحديث</string>
     <string name="update_version">الإصدار %1$s</string>
     <string name="update_download">تنزيل</string>
-    <string name="update_install_restart">التثبيت وإعادة التشغيل</string>
-    <string name="update_later">لاحقًا</string>
+    <string name="update_install_now">التثبيت الآن</string>
+    <string name="update_ask_later">ذكّرني لاحقًا</string>
+    <string name="update_full_changelog">سجل التغييرات الكامل</string>
     <string name="update_downloading">جارٍ التنزيل… %1$s من %2$s</string>
     <string name="update_ready">جاهز للتثبيت</string>
     <string name="update_auto_checkbox">تنزيل التحديثات المستقبلية تلقائيًا</string>
     <string name="update_manual_hint">هذه النسخة لا يمكنها تحديث نفسها (%1$s). نزّل الإصدار الجديد يدويًا.</string>
-    <string name="update_open_download">فتح صفحة التنزيل</string>
     <string name="update_failed">فشل التحديث: %1$s</string>
     <string name="download_title">تنزيل</string>
     <string name="download_audio_only">صوت فقط</string>

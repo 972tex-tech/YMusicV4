@@ -367,13 +367,10 @@
     <string name="update_available_title">Հասանելի է թարմացում</string>
     <string name="update_version">Տարբերակ %1$s</string>
     <string name="update_download">Ներբեռնել</string>
-    <string name="update_install_restart">Տեղադրել և վերագործարկել</string>
-    <string name="update_later">Ավելի ուշ</string>
     <string name="update_downloading">Ներբեռնվում է… %1$s / %2$s</string>
     <string name="update_ready">Պատրաստ է տեղադրման</string>
     <string name="update_auto_checkbox">Ավտոմատ ներբեռնել հետագա թարմացումները</string>
     <string name="update_manual_hint">Այս օրինակը չի կարող ինքնուրույն թարմացվել (%1$s)։ Փոխարենը ներբեռնեք նոր տարբերակը։</string>
-    <string name="update_open_download">Բացել ներբեռնման էջը</string>
     <string name="update_failed">Թարմացումը ձախողվեց՝ %1$s</string>
     <string name="download_title">Ներբեռնել</string>
     <string name="download_audio_only">Միայն աուդիո</string>

@@ -369,13 +369,10 @@
     <string name="update_available_title">Доступно обновление</string>
     <string name="update_version">Версия %1$s</string>
     <string name="update_download">Скачать</string>
-    <string name="update_install_restart">Установить и перезапустить</string>
-    <string name="update_later">Позже</string>
     <string name="update_downloading">Загрузка… %1$s из %2$s</string>
     <string name="update_ready">Готово к установке</string>
     <string name="update_auto_checkbox">Скачивать будущие обновления автоматически</string>
     <string name="update_manual_hint">Эта копия не может обновиться сама (%1$s). Скачайте новую версию вручную.</string>
-    <string name="update_open_download">Открыть страницу загрузки</string>
     <string name="update_failed">Ошибка обновления: %1$s</string>
     <string name="download_title">Скачать</string>
     <string name="download_audio_only">Только аудио</string>

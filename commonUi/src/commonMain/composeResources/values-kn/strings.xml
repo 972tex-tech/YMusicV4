@@ -367,13 +367,10 @@
     <string name="update_available_title">ಅಪ್‌ಡೇಟ್ ಲಭ್ಯವಿದೆ</string>
     <string name="update_version">ಆವೃತ್ತಿ %1$s</string>
     <string name="update_download">ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ</string>
-    <string name="update_install_restart">ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಿ ಮತ್ತು ಮರುಪ್ರಾರಂಭಿಸಿ</string>
-    <string name="update_later">ನಂತರ</string>
     <string name="update_downloading">ಡೌನ್‌ಲೋಡ್ ಆಗುತ್ತಿದೆ… %2$s ರಲ್ಲಿ %1$s</string>
     <string name="update_ready">ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲು ಸಿದ್ಧವಾಗಿದೆ</string>
     <string name="update_auto_checkbox">ಮುಂದಿನ ಅಪ್‌ಡೇಟ್‌ಗಳನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ</string>
     <string name="update_manual_hint">ಈ ಪ್ರತಿ ತಾನಾಗಿಯೇ ಅಪ್‌ಡೇಟ್ ಆಗಲು ಸಾಧ್ಯವಿಲ್ಲ (%1$s). ಬದಲಾಗಿ ಹೊಸ ಆವೃತ್ತಿಯನ್ನು ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ.</string>
-    <string name="update_open_download">ಡೌನ್‌ಲೋಡ್ ಪುಟ ತೆರೆಯಿರಿ</string>
     <string name="update_failed">ಅಪ್‌ಡೇಟ್ ವಿಫಲವಾಗಿದೆ: %1$s</string>
     <string name="download_title">ಡೌನ್‌ಲೋಡ್</string>
     <string name="download_audio_only">ಆಡಿಯೊ ಮಾತ್ರ</string>

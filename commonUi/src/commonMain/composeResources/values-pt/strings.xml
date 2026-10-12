@@ -368,13 +368,10 @@
     <string name="update_available_title">Atualização disponível</string>
     <string name="update_version">Versão %1$s</string>
     <string name="update_download">Baixar</string>
-    <string name="update_install_restart">Instalar e reiniciar</string>
-    <string name="update_later">Mais tarde</string>
     <string name="update_downloading">Baixando… %1$s de %2$s</string>
     <string name="update_ready">Pronta para instalar</string>
     <string name="update_auto_checkbox">Baixar atualizações futuras automaticamente</string>
     <string name="update_manual_hint">Esta cópia não pode se atualizar sozinha (%1$s). Baixe a nova versão.</string>
-    <string name="update_open_download">Abrir página de download</string>
     <string name="update_failed">Falha na atualização: %1$s</string>
     <string name="download_title">Baixar</string>
     <string name="download_audio_only">Só áudio</string>

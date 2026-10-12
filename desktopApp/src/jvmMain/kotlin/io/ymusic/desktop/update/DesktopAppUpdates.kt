@@ -35,13 +35,14 @@ class DesktopAppUpdates(
                         if (s.update.versionCode == dismissed) AppUpdateStatus.None
                         else AppUpdateStatus.Available(
                             s.update.versionCode, s.update.versionName, s.update.notes, s.update.size,
+                            s.update.changelogUrl, s.update.installInApp,
                         )
                     is UpdateState.Downloading ->
                         AppUpdateStatus.Downloading(s.update.versionName, s.done, s.total)
                     is UpdateState.Ready ->
                         // A ready update is always announced, even if the prompt was dismissed
                         // earlier: it is one click from applying and cost nothing more to offer.
-                        AppUpdateStatus.Ready(s.update.versionCode, s.update.versionName, s.update.notes)
+                        AppUpdateStatus.Ready(s.update.versionCode, s.update.versionName, s.update.notes, s.update.changelogUrl)
                     is UpdateState.Failed -> AppUpdateStatus.Failed(s.code)
                     UpdateState.Idle -> AppUpdateStatus.None
                 }
@@ -61,7 +62,7 @@ class DesktopAppUpdates(
 
     override fun openDownloadPage() {
         val url = (service.state.value as? UpdateState.Failed)?.let { it.manualDownloadUrl ?: return }
-            ?: service.pendingUpdate?.url
+            ?: service.pendingUpdate?.let { it.downloadPage ?: it.url }
             ?: return
         runCatching { Desktop.getDesktop().browse(URI(url)) }
     }

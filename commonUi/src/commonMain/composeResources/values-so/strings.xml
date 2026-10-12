@@ -367,13 +367,10 @@
     <string name="update_available_title">Cusboonaysiin ayaa diyaar ah</string>
     <string name="update_version">Nooca %1$s</string>
     <string name="update_download">Daji</string>
-    <string name="update_install_restart">Ku shub oo dib u bilow</string>
-    <string name="update_later">Hadhow</string>
     <string name="update_downloading">Dajinaya… %1$s ee %2$s</string>
     <string name="update_ready">Diyaar u ah in lagu shubo</string>
     <string name="update_auto_checkbox">Si iskeed ah u daji cusboonaysiinta dambe</string>
     <string name="update_manual_hint">Nuskhadani iskeed isuma cusboonaysiin karto (%1$s). Taa beddelkeeda soo daji nooca cusub.</string>
-    <string name="update_open_download">Fur bogga dajinta</string>
     <string name="update_failed">Cusboonaysiintu way guuldaraysatay: %1$s</string>
     <string name="download_title">Daji</string>
     <string name="download_audio_only">Cod kaliya</string>

@@ -366,13 +366,10 @@
     <string name="update_available_title">มีอัปเดตใหม่</string>
     <string name="update_version">เวอร์ชัน %1$s</string>
     <string name="update_download">ดาวน์โหลด</string>
-    <string name="update_install_restart">ติดตั้งและรีสตาร์ท</string>
-    <string name="update_later">ภายหลัง</string>
     <string name="update_downloading">กำลังดาวน์โหลด… %1$s จาก %2$s</string>
     <string name="update_ready">พร้อมติดตั้ง</string>
     <string name="update_auto_checkbox">ดาวน์โหลดอัปเดตในอนาคตโดยอัตโนมัติ</string>
     <string name="update_manual_hint">สำเนานี้อัปเดตตัวเองไม่ได้ (%1$s) โปรดดาวน์โหลดเวอร์ชันใหม่แทน</string>
-    <string name="update_open_download">เปิดหน้าดาวน์โหลด</string>
     <string name="update_failed">อัปเดตไม่สำเร็จ: %1$s</string>
     <string name="download_title">ดาวน์โหลด</string>
     <string name="download_audio_only">เสียงเท่านั้น</string>

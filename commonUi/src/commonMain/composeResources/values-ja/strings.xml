@@ -366,13 +366,10 @@
     <string name="update_available_title">アップデートがあります</string>
     <string name="update_version">バージョン %1$s</string>
     <string name="update_download">ダウンロード</string>
-    <string name="update_install_restart">インストールして再起動</string>
-    <string name="update_later">後で</string>
     <string name="update_downloading">ダウンロード中… %1$s / %2$s</string>
     <string name="update_ready">インストールの準備ができました</string>
     <string name="update_auto_checkbox">今後のアップデートを自動でダウンロード</string>
     <string name="update_manual_hint">このコピーは自動更新できません（%1$s）。新しいバージョンをダウンロードしてください。</string>
-    <string name="update_open_download">ダウンロードページを開く</string>
     <string name="update_failed">アップデートに失敗しました：%1$s</string>
     <string name="download_title">ダウンロード</string>
     <string name="download_audio_only">音声のみ</string>

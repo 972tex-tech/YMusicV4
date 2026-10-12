@@ -99,15 +99,18 @@ class UpdateService internal constructor(
             pendingUpdate = update
             val file = installerFile(update)
             val downloaded = withContext(Dispatchers.IO) { file.isFile && sha256Of(file) == update.sha256 }
-            _state.value = if (downloaded) UpdateState.Ready(update, file) else UpdateState.Available(update)
+            _state.value = if (downloaded && update.installInApp) UpdateState.Ready(update, file) else UpdateState.Available(update)
         }
-        if (_state.value is UpdateState.Available && autoDownload() && selfUpdateBlockedReason == null) download()
+        if (_state.value is UpdateState.Available && update?.installInApp == true && autoDownload() && selfUpdateBlockedReason == null) {
+            download()
+        }
     }
 
     /** Fetch [pendingUpdate]'s installer and verify it against the signed hash. */
     suspend fun download() {
         val update = mutex.withLock {
             val update = pendingUpdate ?: return
+            if (!update.installInApp) return
             if (_state.value is UpdateState.Downloading || _state.value is UpdateState.Ready) return
             _state.value = UpdateState.Downloading(update, 0, update.size)
             update

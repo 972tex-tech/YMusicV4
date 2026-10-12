@@ -368,13 +368,10 @@
     <string name="update_available_title">Dostupno je ažuriranje</string>
     <string name="update_version">Verzija %1$s</string>
     <string name="update_download">Preuzmi</string>
-    <string name="update_install_restart">Instaliraj i ponovno pokreni</string>
-    <string name="update_later">Kasnije</string>
     <string name="update_downloading">Preuzimanje… %1$s od %2$s</string>
     <string name="update_ready">Spremno za instalaciju</string>
     <string name="update_auto_checkbox">Automatski preuzimaj buduća ažuriranja</string>
     <string name="update_manual_hint">Ova se kopija ne može sama ažurirati (%1$s). Umjesto toga preuzmite novu verziju.</string>
-    <string name="update_open_download">Otvori stranicu za preuzimanje</string>
     <string name="update_failed">Ažuriranje nije uspjelo: %1$s</string>
     <string name="download_title">Preuzimanje</string>
     <string name="download_audio_only">Samo zvuk</string>

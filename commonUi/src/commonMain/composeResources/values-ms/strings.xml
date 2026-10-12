@@ -366,13 +366,10 @@
     <string name="update_available_title">Kemas kini tersedia</string>
     <string name="update_version">Versi %1$s</string>
     <string name="update_download">Muat turun</string>
-    <string name="update_install_restart">Pasang dan mulakan semula</string>
-    <string name="update_later">Kemudian</string>
     <string name="update_downloading">Memuat turun… %1$s daripada %2$s</string>
     <string name="update_ready">Sedia untuk dipasang</string>
     <string name="update_auto_checkbox">Muat turun kemas kini akan datang secara automatik</string>
     <string name="update_manual_hint">Salinan ini tidak dapat mengemas kini dirinya sendiri (%1$s). Muat turun versi baharu sebaliknya.</string>
-    <string name="update_open_download">Buka halaman muat turun</string>
     <string name="update_failed">Kemas kini gagal: %1$s</string>
     <string name="download_title">Muat turun</string>
     <string name="download_audio_only">Audio sahaja</string>

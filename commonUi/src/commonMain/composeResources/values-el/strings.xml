@@ -367,13 +367,10 @@
     <string name="update_available_title">Διαθέσιμη ενημέρωση</string>
     <string name="update_version">Έκδοση %1$s</string>
     <string name="update_download">Λήψη</string>
-    <string name="update_install_restart">Εγκατάσταση και επανεκκίνηση</string>
-    <string name="update_later">Αργότερα</string>
     <string name="update_downloading">Λήψη… %1$s από %2$s</string>
     <string name="update_ready">Έτοιμο για εγκατάσταση</string>
     <string name="update_auto_checkbox">Αυτόματη λήψη μελλοντικών ενημερώσεων</string>
     <string name="update_manual_hint">Αυτό το αντίγραφο δεν μπορεί να ενημερωθεί μόνο του (%1$s). Κατεβάστε τη νέα έκδοση.</string>
-    <string name="update_open_download">Άνοιγμα σελίδας λήψης</string>
     <string name="update_failed">Η ενημέρωση απέτυχε: %1$s</string>
     <string name="download_title">Λήψη</string>
     <string name="download_audio_only">Μόνο ήχος</string>

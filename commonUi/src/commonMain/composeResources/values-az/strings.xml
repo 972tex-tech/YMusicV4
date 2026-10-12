@@ -367,13 +367,10 @@
     <string name="update_available_title">Yeniləmə mövcuddur</string>
     <string name="update_version">Versiya %1$s</string>
     <string name="update_download">Yüklə</string>
-    <string name="update_install_restart">Quraşdır və yenidən başlat</string>
-    <string name="update_later">Sonra</string>
     <string name="update_downloading">Yüklənir… %1$s / %2$s</string>
     <string name="update_ready">Quraşdırmağa hazırdır</string>
     <string name="update_auto_checkbox">Gələcək yeniləmələri avtomatik yüklə</string>
     <string name="update_manual_hint">Bu nüsxə özünü yeniləyə bilmir (%1$s). Əvəzinə yeni versiyanı yükləyin.</string>
-    <string name="update_open_download">Yükləmə səhifəsini aç</string>
     <string name="update_failed">Yeniləmə uğursuz oldu: %1$s</string>
     <string name="download_title">Yüklə</string>
     <string name="download_audio_only">Yalnız audio</string>

@@ -366,13 +366,10 @@
     <string name="update_available_title">업데이트 가능</string>
     <string name="update_version">버전 %1$s</string>
     <string name="update_download">다운로드</string>
-    <string name="update_install_restart">설치 후 다시 시작</string>
-    <string name="update_later">나중에</string>
     <string name="update_downloading">다운로드 중… %1$s / %2$s</string>
     <string name="update_ready">설치 준비 완료</string>
     <string name="update_auto_checkbox">이후 업데이트 자동 다운로드</string>
     <string name="update_manual_hint">이 버전은 자동으로 업데이트할 수 없습니다(%1$s). 새 버전을 직접 다운로드하세요.</string>
-    <string name="update_open_download">다운로드 페이지 열기</string>
     <string name="update_failed">업데이트 실패: %1$s</string>
     <string name="download_title">다운로드</string>
     <string name="download_audio_only">오디오만</string>

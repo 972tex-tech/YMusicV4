@@ -367,13 +367,10 @@
     <string name="update_available_title">Sasisho linapatikana</string>
     <string name="update_version">Toleo %1$s</string>
     <string name="update_download">Pakua</string>
-    <string name="update_install_restart">Sakinisha na uzime kisha uwashe</string>
-    <string name="update_later">Baadaye</string>
     <string name="update_downloading">Inapakua… %1$s kati ya %2$s</string>
     <string name="update_ready">Iko tayari kusakinishwa</string>
     <string name="update_auto_checkbox">Pakua masasisho yajayo kiotomatiki</string>
     <string name="update_manual_hint">Nakala hii haiwezi kujisasisha yenyewe (%1$s). Badala yake pakua toleo jipya.</string>
-    <string name="update_open_download">Fungua ukurasa wa kupakua</string>
     <string name="update_failed">Imeshindwa kusasisha: %1$s</string>
     <string name="download_title">Pakua</string>
     <string name="download_audio_only">Sauti pekee</string>

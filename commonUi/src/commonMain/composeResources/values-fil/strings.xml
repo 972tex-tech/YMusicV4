@@ -367,13 +367,10 @@
     <string name="update_available_title">May available na update</string>
     <string name="update_version">Bersyon %1$s</string>
     <string name="update_download">I-download</string>
-    <string name="update_install_restart">I-install at i-restart</string>
-    <string name="update_later">Mamaya</string>
     <string name="update_downloading">Nagda-download… %1$s ng %2$s</string>
     <string name="update_ready">Handa nang i-install</string>
     <string name="update_auto_checkbox">Awtomatikong i-download ang mga susunod na update</string>
     <string name="update_manual_hint">Hindi kayang i-update ng kopyang ito ang sarili nito (%1$s). I-download na lang ang bagong bersyon.</string>
-    <string name="update_open_download">Buksan ang download page</string>
     <string name="update_failed">Nabigo ang update: %1$s</string>
     <string name="download_title">I-download</string>
     <string name="download_audio_only">Audio lang</string>

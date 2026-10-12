@@ -367,13 +367,10 @@
     <string name="update_available_title">Налична е актуализация</string>
     <string name="update_version">Версия %1$s</string>
     <string name="update_download">Изтегли</string>
-    <string name="update_install_restart">Инсталирай и рестартирай</string>
-    <string name="update_later">По-късно</string>
     <string name="update_downloading">Изтегляне… %1$s от %2$s</string>
     <string name="update_ready">Готово за инсталиране</string>
     <string name="update_auto_checkbox">Автоматично изтегляне на бъдещи актуализации</string>
     <string name="update_manual_hint">Това копие не може да се актуализира само (%1$s). Изтеглете новата версия ръчно.</string>
-    <string name="update_open_download">Отвори страницата за изтегляне</string>
     <string name="update_failed">Неуспешна актуализация: %1$s</string>
     <string name="download_title">Изтегляне</string>
     <string name="download_audio_only">Само аудио</string>

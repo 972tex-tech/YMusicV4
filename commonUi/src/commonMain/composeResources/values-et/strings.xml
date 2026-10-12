@@ -367,13 +367,10 @@
     <string name="update_available_title">Värskendus on saadaval</string>
     <string name="update_version">Versioon %1$s</string>
     <string name="update_download">Laadi alla</string>
-    <string name="update_install_restart">Paigalda ja taaskäivita</string>
-    <string name="update_later">Hiljem</string>
     <string name="update_downloading">Allalaadimine… %1$s / %2$s</string>
     <string name="update_ready">Valmis paigaldamiseks</string>
     <string name="update_auto_checkbox">Laadi tulevased värskendused automaatselt alla</string>
     <string name="update_manual_hint">See koopia ei saa end ise värskendada (%1$s). Laadi selle asemel alla uus versioon.</string>
-    <string name="update_open_download">Ava allalaadimisleht</string>
     <string name="update_failed">Värskendamine ebaõnnestus: %1$s</string>
     <string name="download_title">Allalaadimine</string>
     <string name="download_audio_only">Ainult heli</string>

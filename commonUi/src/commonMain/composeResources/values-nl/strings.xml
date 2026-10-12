@@ -367,13 +367,10 @@
     <string name="update_available_title">Update beschikbaar</string>
     <string name="update_version">Versie %1$s</string>
     <string name="update_download">Downloaden</string>
-    <string name="update_install_restart">Installeren en herstarten</string>
-    <string name="update_later">Later</string>
     <string name="update_downloading">Downloaden… %1$s van %2$s</string>
     <string name="update_ready">Klaar om te installeren</string>
     <string name="update_auto_checkbox">Toekomstige updates automatisch downloaden</string>
     <string name="update_manual_hint">Deze kopie kan zichzelf niet updaten (%1$s). Download in plaats daarvan de nieuwe versie.</string>
-    <string name="update_open_download">Downloadpagina openen</string>
     <string name="update_failed">Update mislukt: %1$s</string>
     <string name="download_title">Downloaden</string>
     <string name="download_audio_only">Alleen audio</string>

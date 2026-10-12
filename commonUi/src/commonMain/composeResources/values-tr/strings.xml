@@ -367,13 +367,10 @@
     <string name="update_available_title">Güncelleme mevcut</string>
     <string name="update_version">Sürüm %1$s</string>
     <string name="update_download">İndir</string>
-    <string name="update_install_restart">Yükle ve yeniden başlat</string>
-    <string name="update_later">Daha sonra</string>
     <string name="update_downloading">İndiriliyor… %1$s / %2$s</string>
     <string name="update_ready">Yüklemeye hazır</string>
     <string name="update_auto_checkbox">Gelecekteki güncellemeleri otomatik indir</string>
     <string name="update_manual_hint">Bu kopya kendini güncelleyemiyor (%1$s). Bunun yerine yeni sürümü indirin.</string>
-    <string name="update_open_download">İndirme sayfasını aç</string>
     <string name="update_failed">Güncelleme başarısız: %1$s</string>
     <string name="download_title">İndir</string>
     <string name="download_audio_only">Yalnızca ses</string>

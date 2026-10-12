@@ -368,13 +368,10 @@
     <string name="update_available_title">יש עדכון זמין</string>
     <string name="update_version">גרסה %1$s</string>
     <string name="update_download">הורדה</string>
-    <string name="update_install_restart">התקן והפעל מחדש</string>
-    <string name="update_later">אחר כך</string>
     <string name="update_downloading">מוריד… %1$s מתוך %2$s</string>
     <string name="update_ready">מוכן להתקנה</string>
     <string name="update_auto_checkbox">הורד עדכונים עתידיים אוטומטית</string>
     <string name="update_manual_hint">העותק הזה לא יכול לעדכן את עצמו (%1$s). הורד את הגרסה החדשה במקום.</string>
-    <string name="update_open_download">פתח את דף ההורדה</string>
     <string name="update_failed">העדכון נכשל: %1$s</string>
     <string name="download_title">הורדה</string>
     <string name="download_audio_only">אודיו בלבד</string>

@@ -368,13 +368,10 @@
     <string name="update_available_title">Доступно је ажурирање</string>
     <string name="update_version">Верзија %1$s</string>
     <string name="update_download">Преузми</string>
-    <string name="update_install_restart">Инсталирај и поново покрени</string>
-    <string name="update_later">Касније</string>
     <string name="update_downloading">Преузимање… %1$s од %2$s</string>
     <string name="update_ready">Спремно за инсталирање</string>
     <string name="update_auto_checkbox">Аутоматски преузимај будућа ажурирања</string>
     <string name="update_manual_hint">Ова копија не може сама да се ажурира (%1$s). Уместо тога преузмите нову верзију.</string>
-    <string name="update_open_download">Отвори страницу за преузимање</string>
     <string name="update_failed">Ажурирање није успело: %1$s</string>
     <string name="download_title">Преузимање</string>
     <string name="download_audio_only">Само звук</string>

@@ -372,13 +372,13 @@
     <string name="update_available_title">Update available</string>
     <string name="update_version">Version %1$s</string>
     <string name="update_download">Download</string>
-    <string name="update_install_restart">Install and restart</string>
-    <string name="update_later">Later</string>
+    <string name="update_install_now">Install now</string>
+    <string name="update_ask_later">Ask later</string>
+    <string name="update_full_changelog">Full changelog</string>
     <string name="update_downloading">Downloading… %1$s of %2$s</string>
     <string name="update_ready">Ready to install</string>
     <string name="update_auto_checkbox">Download future updates automatically</string>
     <string name="update_manual_hint">This copy cannot update itself (%1$s). Download the new version instead.</string>
-    <string name="update_open_download">Open download page</string>
     <string name="update_failed">Update failed: %1$s</string>
     <string name="download_title">Download</string>
     <string name="download_audio_only">Audio only</string>

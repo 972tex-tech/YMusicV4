@@ -73,12 +73,16 @@ class AndroidAppUpdates(
             val apk = apkFile(update)
             val downloaded = withContext(Dispatchers.IO) { apk.isFile && sha256Of(apk) == update.sha256 }
             _status.value = when {
-                downloaded -> AppUpdateStatus.Ready(update.versionCode, update.versionName, update.notes)
+                downloaded && update.installInApp ->
+                    AppUpdateStatus.Ready(update.versionCode, update.versionName, update.notes, update.changelogUrl)
                 update.versionCode == dismissed -> AppUpdateStatus.None
-                else -> AppUpdateStatus.Available(update.versionCode, update.versionName, update.notes, update.size)
+                else -> AppUpdateStatus.Available(
+                    update.versionCode, update.versionName, update.notes, update.size, update.changelogUrl, update.installInApp,
+                )
             }
         }
-        if (_status.value is AppUpdateStatus.Available && autoDownload()) download()
+        val status = _status.value
+        if (status is AppUpdateStatus.Available && status.installInApp && autoDownload()) download()
     }
 
     /** Remove APKs this version has caught up with, and abandoned partial downloads. */
@@ -93,13 +97,14 @@ class AndroidAppUpdates(
         scope.launch {
             val update = mutex.withLock {
                 val update = pending ?: return@launch
+                if (!update.installInApp) return@launch
                 if (_status.value is AppUpdateStatus.Downloading || _status.value is AppUpdateStatus.Ready) return@launch
                 _status.value = AppUpdateStatus.Downloading(update.versionName, 0, update.size)
                 update
             }
             try {
                 withContext(Dispatchers.IO) { fetch(update) }
-                _status.value = AppUpdateStatus.Ready(update.versionCode, update.versionName, update.notes)
+                _status.value = AppUpdateStatus.Ready(update.versionCode, update.versionName, update.notes, update.changelogUrl)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: ApkMismatchException) {
@@ -183,7 +188,7 @@ class AndroidAppUpdates(
     }
 
     override fun openDownloadPage() {
-        val url = pending?.url ?: return
+        val url = pending?.let { it.downloadPage ?: it.url } ?: return
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 

@@ -56,6 +56,15 @@ data class AppUpdate(
     val size: Long,
     val sha256: String,
     val signature: String,
+    /** The full release notes, behind the dialog's "Full changelog". */
+    val changelogUrl: String? = null,
+    /** The web page "Download" opens when [installInApp] is false. */
+    val downloadPage: String? = null,
+    /**
+     * Whether this build can upgrade the installed one in place. False when it cannot be installed
+     * over it (e.g. signed with another key): the dialog then sends the user to [downloadPage].
+     */
+    val installInApp: Boolean = true,
 ) {
     companion object {
         private const val KEY_VERSION_CODE = "versionCode"
@@ -65,6 +74,9 @@ data class AppUpdate(
         private const val KEY_SIZE = "size"
         private const val KEY_SHA256 = "sha256"
         private const val KEY_SIGNATURE = "signature"
+        private const val KEY_CHANGELOG_URL = "changelogUrl"
+        private const val KEY_DOWNLOAD_PAGE = "downloadPage"
+        private const val KEY_INSTALL_IN_APP = "installInApp"
 
         fun from(json: JsonObject): AppUpdate = AppUpdate(
             versionCode = json.int(KEY_VERSION_CODE),
@@ -74,6 +86,9 @@ data class AppUpdate(
             size = json.long(KEY_SIZE),
             sha256 = json.string(KEY_SHA256).lowercase(),
             signature = json.stringOrNull(KEY_SIGNATURE).orEmpty(),
+            changelogUrl = json.stringOrNull(KEY_CHANGELOG_URL),
+            downloadPage = json.stringOrNull(KEY_DOWNLOAD_PAGE),
+            installInApp = json.boolOrNull(KEY_INSTALL_IN_APP) ?: true,
         )
 
         fun JsonWriter.value(data: AppUpdate): JsonWriter {
@@ -85,6 +100,9 @@ data class AppUpdate(
             name(KEY_SIZE).value(data.size)
             name(KEY_SHA256).value(data.sha256)
             name(KEY_SIGNATURE).value(data.signature)
+            data.changelogUrl?.let { name(KEY_CHANGELOG_URL).value(it) }
+            data.downloadPage?.let { name(KEY_DOWNLOAD_PAGE).value(it) }
+            name(KEY_INSTALL_IN_APP).value(data.installInApp)
             endObject()
             return this
         }

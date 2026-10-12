@@ -367,13 +367,10 @@
     <string name="update_available_title">अपडेट उपलब्ध आहे</string>
     <string name="update_version">आवृत्ती %1$s</string>
     <string name="update_download">डाउनलोड करा</string>
-    <string name="update_install_restart">इंस्टॉल करा आणि रीस्टार्ट करा</string>
-    <string name="update_later">नंतर</string>
     <string name="update_downloading">डाउनलोड करत आहे… %2$s पैकी %1$s</string>
     <string name="update_ready">इंस्टॉल करण्यास तयार</string>
     <string name="update_auto_checkbox">पुढील अपडेट आपोआप डाउनलोड करा</string>
     <string name="update_manual_hint">ही प्रत स्वतः अपडेट होऊ शकत नाही (%1$s). त्याऐवजी नवीन आवृत्ती डाउनलोड करा.</string>
-    <string name="update_open_download">डाउनलोड पेज उघडा</string>
     <string name="update_failed">अपडेट अयशस्वी: %1$s</string>
     <string name="download_title">डाउनलोड</string>
     <string name="download_audio_only">फक्त ऑडिओ</string>

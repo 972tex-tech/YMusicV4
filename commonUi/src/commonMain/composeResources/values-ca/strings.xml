@@ -368,13 +368,10 @@
     <string name="update_available_title">Actualització disponible</string>
     <string name="update_version">Versió %1$s</string>
     <string name="update_download">Descarrega</string>
-    <string name="update_install_restart">Instal·la i reinicia</string>
-    <string name="update_later">Més tard</string>
     <string name="update_downloading">S'està descarregant… %1$s de %2$s</string>
     <string name="update_ready">A punt per instal·lar</string>
     <string name="update_auto_checkbox">Descarrega automàticament les actualitzacions futures</string>
     <string name="update_manual_hint">Aquesta còpia no es pot actualitzar sola (%1$s). Descarrega la versió nova.</string>
-    <string name="update_open_download">Obre la pàgina de descàrrega</string>
     <string name="update_failed">L'actualització ha fallat: %1$s</string>
     <string name="download_title">Descarrega</string>
     <string name="download_audio_only">Només àudio</string>

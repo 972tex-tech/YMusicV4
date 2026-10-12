@@ -367,13 +367,10 @@
     <string name="update_available_title">अपडेट उपलब्ध है</string>
     <string name="update_version">वर्शन %1$s</string>
     <string name="update_download">डाउनलोड करें</string>
-    <string name="update_install_restart">इंस्टॉल करें और रीस्टार्ट करें</string>
-    <string name="update_later">बाद में</string>
     <string name="update_downloading">डाउनलोड हो रहा है… %2$s में से %1$s</string>
     <string name="update_ready">इंस्टॉल के लिए तैयार</string>
     <string name="update_auto_checkbox">आगे के अपडेट अपने-आप डाउनलोड करें</string>
     <string name="update_manual_hint">यह कॉपी खुद अपडेट नहीं हो सकती (%1$s)। इसकी जगह नया वर्शन डाउनलोड करें।</string>
-    <string name="update_open_download">डाउनलोड पेज खोलें</string>
     <string name="update_failed">अपडेट विफल: %1$s</string>
     <string name="download_title">डाउनलोड करें</string>
     <string name="download_audio_only">सिर्फ़ ऑडियो</string>
