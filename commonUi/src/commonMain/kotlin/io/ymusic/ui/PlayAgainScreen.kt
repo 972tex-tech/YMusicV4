@@ -120,7 +120,12 @@ fun PlayAgainScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             columns = GridCells.Adaptive(minSize = PlayAgainCardMinWidth),
             modifier = Modifier.fillMaxSize(),
             state = gridState,
-            contentPadding = PaddingValues(DesignSpacing.Space16),
+            contentPadding = PaddingValues(
+                start = DesignSpacing.Space16,
+                end = DesignSpacing.Space16,
+                top = DesignSpacing.Space16,
+                bottom = DesignSpacing.Space16 + LocalMiniPlayerInset.current,
+            ),
             horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
             verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
         ) {

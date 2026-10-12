@@ -54,6 +54,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +76,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
@@ -289,6 +291,10 @@ internal val LocalRefreshRequests = compositionLocalOf<kotlinx.coroutines.flow.F
 
 /** Show a transient message in the app's snackbar. No-op outside the app shell (tests, standalone). */
 internal val LocalSnackbar = compositionLocalOf<(String) -> Unit> { {} }
+
+/** Height of the mini player overlaid on the screens' bottom edge (0 when hidden or docked below them):
+ *  scrolling content adds it as bottom padding so its last rows can scroll clear of the bar. */
+internal val LocalMiniPlayerInset = compositionLocalOf { 0.dp }
 
 /**
  * One pushed navigation layer. Each layer OWNS its screen state (loaded feed, scroll position,
@@ -1053,12 +1059,18 @@ private fun AppRoot(
                                         mini(Modifier.fillMaxWidth())
                                     }
                                 } else {
+                                    val miniVisible = coordinator.player.queue.collectAsState().value.currentItem != null
+                                    var miniHeightPx by remember { mutableIntStateOf(0) }
+                                    val miniInset = if (miniVisible) with(LocalDensity.current) { miniHeightPx.toDp() } else 0.dp
                                     Box(Modifier.fillMaxSize()) {
-                                        Column(Modifier.fillMaxSize().padding(padding)) { screens() }
+                                        Column(Modifier.fillMaxSize().padding(padding)) {
+                                            CompositionLocalProvider(LocalMiniPlayerInset provides miniInset) { screens() }
+                                        }
                                         mini(
                                             Modifier.align(Alignment.BottomCenter)
                                                 .fillMaxWidth()
-                                                .navigationBarsPadding(),
+                                                .navigationBarsPadding()
+                                                .onSizeChanged { miniHeightPx = it.height },
                                         )
                                     }
                                 }

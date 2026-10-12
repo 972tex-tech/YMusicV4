@@ -92,7 +92,7 @@ internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
         val centerVertically = maxWidth >= 840.dp && maxHeight >= 600.dp
         val viewportHeight = maxHeight
         Column(
-            Modifier.fillMaxSize().verticalScroll(scrollState),
+            Modifier.fillMaxSize().verticalScroll(scrollState).padding(bottom = LocalMiniPlayerInset.current),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(

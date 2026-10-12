@@ -120,7 +120,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
     // scrolling screen does this via TrackScroll; without it the bar never elevates).
     val scrollState = rememberScrollState()
     TrackScroll { scrollState.canScrollBackward }
-    Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(bottom = DesignSpacing.SettingsSectionGap)) {
+    Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(bottom = DesignSpacing.SettingsSectionGap + LocalMiniPlayerInset.current)) {
         SettingsSection(Res.string.settings_section_appearance) {
             ThemeRow(
                 current = theme,

@@ -129,7 +129,7 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 start = DesignSpacing.MarginCompact,
                 end = DesignSpacing.MarginCompact,
                 top = DesignSpacing.Space8,
-                bottom = FabClearance, // so the last card isn't hidden behind the FAB
+                bottom = FabClearance + LocalMiniPlayerInset.current, // so the last card isn't hidden behind the FAB
             ),
             horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Gutter),
             verticalArrangement = Arrangement.spacedBy(CardGap),
@@ -190,7 +190,7 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 onClick = { if (running) service.pauseAll() else service.resumeAll() },
                 text = { Text(if (running) "Pause all" else "Resume all") },
                 icon = { Icon(if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow, null) },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(DesignSpacing.Space16),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = LocalMiniPlayerInset.current).padding(DesignSpacing.Space16),
             )
         }
     }

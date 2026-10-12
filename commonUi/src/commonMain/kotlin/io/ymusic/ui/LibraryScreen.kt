@@ -520,7 +520,7 @@ private fun FoldersTab(
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(columns),
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                         state = folderGridState,
                     ) {
                         item(span = { GridItemSpan(maxLineSpan) }) { header() }
@@ -550,7 +550,7 @@ private fun FoldersTab(
                         }
                     }
                 } else {
-                    LazyColumn(Modifier.fillMaxSize(), state = folderListState) {
+                    LazyColumn(Modifier.fillMaxSize(), state = folderListState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
                         item { header() }
                         items(sortedFolders, key = { "b${it.id}" }) { bucket ->
                             FolderRow(
@@ -996,7 +996,7 @@ private fun PlaylistsTab(
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                     state = gridState,
                 ) {
                     item(span = { GridItemSpan(maxLineSpan) }) { header() }
@@ -1019,7 +1019,7 @@ private fun PlaylistsTab(
                     }
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize(), state = listState) {
+                LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
                     item { header() }
                     if (open == null) {
                         items(entries, key = { it.id }) { entry ->
@@ -1398,6 +1398,7 @@ internal fun SongList(
                 columns = GridCells.Fixed(librarySongColumns(maxWidth)),
                 modifier = Modifier.fillMaxSize(),
                 state = gridState,
+                contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current),
             ) {
                 if (header != null) item(span = { GridItemSpan(maxLineSpan) }) { header() }
                 items(songs.size, key = { songs[it].id }) { index ->
@@ -1405,7 +1406,7 @@ internal fun SongList(
                 }
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), state = listState) {
+            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
                 if (header != null) item { header() }
                 itemsIndexed(songs, key = { _, s -> s.id }) { index, song ->
                     SongRow(song, coordinator) { coordinator.playLocal(songs, index) }
@@ -1531,7 +1532,7 @@ private fun GroupedList(
             LazyVerticalGrid(
                 columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                 state = gridState,
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) { header() }
@@ -1552,7 +1553,7 @@ private fun GroupedList(
                 }
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), state = listState) {
+            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
                 item { header() }
                 if (selected == null) {
                     items(entries, key = { it.first }) { (name, members) -> GroupRow(icon, name, members) { group = name } }

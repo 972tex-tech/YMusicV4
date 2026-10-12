@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -117,7 +118,11 @@ fun LibrarySearchScreen(
                     // (columns == 1 collapses the grid back to the phone-width single-column list); the
                     // online hand-off, section headers and artist/album rows always span the full width.
                     val columns = if (maxWidth >= LibraryGridMinWidth) librarySongColumns(maxWidth) else 1
-                    LazyVerticalGrid(columns = GridCells.Fixed(columns), modifier = Modifier.fillMaxSize()) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(columns),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current),
+                    ) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             Text(
                                 stringResource(Res.string.library_search_online, query),

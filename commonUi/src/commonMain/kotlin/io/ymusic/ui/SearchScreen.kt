@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -217,7 +218,7 @@ fun SearchScreen(
                 s.field.text.isBlank() && history.isEmpty() -> CenteredBox {
                     Text(stringResource(Res.string.search_type_to_search), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                s.field.text.isBlank() -> LazyColumn(Modifier.fillMaxSize()) {
+                s.field.text.isBlank() -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
                     items(history) { entry ->
                         QueryRow(
                             icon = Icons.Outlined.Schedule,
@@ -229,7 +230,7 @@ fun SearchScreen(
                     }
                     item { ClearHistoryRow { saveHistory(emptyList()) } }
                 }
-                else -> LazyColumn(Modifier.fillMaxSize()) {
+                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
                     items(suggestions) { sug ->
                         QueryRow(
                             icon = Icons.Default.Search,
