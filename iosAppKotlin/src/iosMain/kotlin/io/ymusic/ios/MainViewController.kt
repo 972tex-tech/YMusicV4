@@ -28,7 +28,11 @@ import io.ymusic.player.PlayerEngines
 import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.mse.MsePlayer
+import io.ymusic.remoteconfig.HttpApiService
+import io.ymusic.remoteconfig.RemoteConfig
+import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
+import io.ymusic.settings.anonymousDeviceId
 import io.ymusic.settings.flow
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
@@ -50,14 +54,20 @@ import kmphttp.KmpHttpClient
 import kmphttp.RedirectOptions
 import kmphttp.create
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
 import okio.FileSystem
 import okio.Path.Companion.toPath
+import platform.Foundation.NSApplicationSupportDirectory
+import platform.Foundation.NSBundle
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSDate
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.timeIntervalSince1970
+import platform.UIKit.UIDevice
 import platform.UIKit.UIView
 import platform.UIKit.UIViewController
 import projectcommon.log.FileLogger
@@ -159,6 +169,49 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         scaledCache = DiskScaledImageCache(FileSystem.SYSTEM, cacheRoot.resolve("scaled")),
     )
 
+    // The one client of the YMusic service; null when this build has no service url. Versions come
+    // from Info.plist, the same values the App Store sees.
+    val now = { (NSDate().timeIntervalSince1970 * 1000).toLong() }
+    val appVersionCode = (NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleVersion") as? String)?.toIntOrNull() ?: -1
+    val appVersionName = NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: ""
+    val api = REMOTE_CONFIG_URL.takeIf { it.isNotBlank() }?.let { baseUrl ->
+        HttpApiService(
+            client = KmpHttpClient.create { cookieJar = cookies },
+            os = "ios",
+            osVersion = UIDevice.currentDevice.systemVersion,
+            appVersionCode = appVersionCode,
+            appVersionName = appVersionName,
+            deviceId = settings.anonymousDeviceId(),
+            baseUrl = baseUrl,
+            now = now,
+        )
+    }
+    // Kept, not cached: Application Support is never purged under storage pressure.
+    val dataDir = (NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, true).first() as String)
+        .toPath()
+        .resolve("ymusic")
+    FileSystem.SYSTEM.createDirectories(dataDir)
+    // Flags and the newest JS bundle revisions (the App Store owns app updates). Started here so
+    // the first fetch overlaps the rest of startup.
+    RemoteConfig(
+        api = api,
+        cacheFile = dataDir.resolve("remote-config.json"),
+        fileSystem = FileSystem.SYSTEM,
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        now = now,
+        log = rootLogger.fork("remote-config"),
+    ).checkUpdate()
+    // Anonymous usage stats, gated per event by the "Send anonymous stats" setting.
+    val stats = StatUsage(
+        api = api,
+        enabled = { settings.flow(AppSettings.stats).value },
+        queueFile = dataDir.resolve("stat-queue.json"),
+        fileSystem = FileSystem.SYSTEM,
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        now = now,
+        log = rootLogger.fork("stats"),
+    ).also { it.onAppStart() }
+
     val playerCacheRoot = (NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String)
         .toPath()
         .resolve("ymusic-player-cache")
@@ -212,6 +265,9 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         scanLibraryFolder = null,
         imageLoader = imageLoader,
         settings = settings,
+        appVersion = appVersionName,
+        stats = stats,
+        api = api,
         surfaceScalesDown = true,
         loginBrowser = { url, state, onPageChanged, modifier ->
             IosLoginBrowser(url, state, onPageChanged, modifier)

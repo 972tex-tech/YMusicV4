@@ -4,6 +4,32 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// The YMusic service the shell talks to: remote.config.url, or this machine's server with
+// -PuseLocalServerIp (buildSrc LocalIp.kt / UpdateSigning.kt — same rules as Android and desktop).
+val generateIosBuildConfig by tasks.registering {
+    val url = remoteConfigUrl()
+    val localIp = localServerIp()
+    val outDir = layout.buildDirectory.dir("generated/buildconfig/kotlin")
+    inputs.property("remoteConfigUrl", url)
+    inputs.property("localIp", localIp)
+    outputs.dir(outDir)
+    doLast {
+        val file = outDir.get().asFile.resolve("io/ymusic/ios/BuildConfig.kt")
+        file.parentFile.mkdirs()
+        file.writeText(
+            """
+            package io.ymusic.ios
+
+            // Base url of the YMusic service. Empty = no request, compiled-in defaults.
+            internal const val REMOTE_CONFIG_URL = "$url"
+
+            // The build machine's LAN address with -PuseLocalServerIp ("" otherwise).
+            internal const val LOCAL_IP = "$localIp"
+            """.trimIndent() + "\n",
+        )
+    }
+}
+
 /**
  * The iOS product shell over :commonUi — the composition-root peer of :androidApp / :desktopApp.
  * Builds the AppGraph (engine manager, player facade, cookie jar, settings) and produces the
@@ -57,6 +83,7 @@ kotlin {
 
     // Lazy: iosMain only exists once the (host-gated) ios targets are configured.
     sourceSets.matching { it.name == "iosMain" }.configureEach {
+        kotlin.srcDir(generateIosBuildConfig)
         dependencies {
             api(project(":commonUi"))
             implementation(project(":yt-media")) // the player-cache router (LocalMediaProxy) for the WebView

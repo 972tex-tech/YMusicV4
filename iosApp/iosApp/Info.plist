@@ -7,9 +7,16 @@
     <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
     <key>CFBundleDisplayName</key><string>YMusic</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>CFBundleShortVersionString</key><string>1.0.0</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSRequiresIPhoneOS</key><true/>
+    <!-- Plain http to the local network only: a dev build talks to the YMusic server on the build
+         machine (-PuseLocalServerIp). Everything else stays https-only. -->
+    <key>NSLocalNetworkUsageDescription</key><string>YMusic connects to a development server on your local network.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key><true/>
+    </dict>
     <!-- Compose MP hard-requires this (120Hz ProMotion pacing); its plist sanity check aborts without it. -->
     <key>CADisableMinimumFrameDurationOnPhone</key><true/>
     <key>UILaunchScreen</key><dict/>
