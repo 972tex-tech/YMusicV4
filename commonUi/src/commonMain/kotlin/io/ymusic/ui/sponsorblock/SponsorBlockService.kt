@@ -32,7 +32,7 @@ data class SponsorBlockSnapshot(
  * stale cache when one exists.
  */
 class SponsorBlockService(
-    private val api: SponsorBlockApi,
+    private val api: SponsorBlockApi?,
     private val store: SponsorBlockStore,
     private val settings: SettingsStore,
     logger: Logger? = null,
@@ -63,6 +63,7 @@ class SponsorBlockService(
         if (cached != null && now - cached.updatedAt < CACHE_TTL_MS) {
             return@withLock snapshotOf(cached.segments)
         }
+        if (api == null) return@withLock snapshotOf(cached?.segments.orEmpty())
         try {
             val response = api.getSkipSegments(videoId)
             try {

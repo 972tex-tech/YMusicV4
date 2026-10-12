@@ -19,7 +19,7 @@ import io.ymusic.settings.put
 import io.ymusic.ui.playhistory.PlayAgainRecorder
 import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.sponsorblock.InMemorySponsorBlockStore
-import io.ymusic.ui.sponsorblock.MockSponsorBlockApi
+import io.ymusic.ui.sponsorblock.ServiceSponsorBlockApi
 import io.ymusic.ui.sponsorblock.SponsorBlockApi
 import io.ymusic.ui.sponsorblock.SponsorBlockService
 import io.ymusic.ui.sponsorblock.SponsorBlockStore
@@ -185,13 +185,13 @@ class AppGraph(
      * `componentResized` and clears it after 300ms without another event. Unused on mobile.
      */
     val windowResizing: MutableStateFlow<Boolean> = MutableStateFlow(false),
-    /**
-     * SponsorBlock skip-segment fetch. Defaults to [MockSponsorBlockApi] until the real HTTP
-     * client is wired. Shells pass a SQLite [sponsorBlockStore] for cache + per-video whitelist.
-     */
     /** The player cache, for its size limit and Settings' usage line; null hides the setting. */
     val playerCache: io.ymusic.ytmedia.cache.MediaCache? = null,
-    sponsorBlockApi: SponsorBlockApi = MockSponsorBlockApi(),
+    /**
+     * SponsorBlock skip-segment fetch, over [api]; null (no service) skips nothing. Shells pass a
+     * SQLite [sponsorBlockStore] for cache + per-video whitelist.
+     */
+    sponsorBlockApi: SponsorBlockApi? = api?.let(::ServiceSponsorBlockApi),
     sponsorBlockStore: SponsorBlockStore = InMemorySponsorBlockStore(),
     // Kept last so shells pass it as the trailing lambda.
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
