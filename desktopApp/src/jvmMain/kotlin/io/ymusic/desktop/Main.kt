@@ -860,6 +860,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         updates = desktopUpdates,
         stats = stats,
         api = api,
+        remoteConfig = remoteConfig?.config,
         sendFeedback = sendFeedbackAction.takeIf { SENTRY_DSN.isNotEmpty() },
         pickFeedbackFiles = ::pickFeedbackFiles,
         windowResizing = windowResizing,

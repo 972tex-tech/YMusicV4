@@ -8,6 +8,7 @@ import io.ymusic.imageloader.ImageLoader
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.player.Player
 import io.ymusic.remoteconfig.ApiService
+import io.ymusic.remoteconfig.RemoteConfigData
 import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.InMemorySettingsStore
@@ -27,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /** The player-quality settings key — public because shell settings stores (iOS NSUserDefaults
@@ -163,6 +165,8 @@ class AppGraph(
      * has none — the update prompt and its setting then never appear.
      */
     val updates: AppUpdates? = null,
+    /** The YMusic service's latest config (flags, links); null without a service client. */
+    val remoteConfig: SharedFlow<RemoteConfigData>? = null,
     /** Premium: on Android, the "Support Development" app is installed. Shows the drawer's badge. */
     val premium: StateFlow<Boolean> = MutableStateFlow(false),
     /** Opens the donation screen; null where there is none (only Android has one) — the drawer's

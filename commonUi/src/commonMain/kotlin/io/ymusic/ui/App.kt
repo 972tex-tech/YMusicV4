@@ -125,6 +125,7 @@ import io.ymusic.ui.sponsorblock.SponsorBlockCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -137,7 +138,7 @@ import kotlin.math.roundToInt
 
 /** App-level sections — the drawer's three groups (design/final/drawer.html). */
 /** [id] is persisted (the section a restart resumes): stable, never reused, independent of entry order. */
-/** YMusic's announcement channel, the drawer's "Telegram announcements". */
+/** YMusic's announcement channel, the drawer's "Telegram announcements", until the config names one. */
 private const val TELEGRAM_CHANNEL_URL = "https://t.me/ymusic_io"
 
 enum class AppSection(val id: Int, val label: StringResource, val icon: ImageVector, val group: Int) {
@@ -618,6 +619,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // "Check for update" from the drawer; a found update bumps [updateRecheck] so the prompt
         // shows it even after an earlier "Ask later".
         val uriHandler = LocalUriHandler.current
+        val config by remember(graph) { graph.remoteConfig ?: emptyFlow() }.collectAsState(initial = null)
         var checkingUpdate by remember { mutableStateOf(false) }
         val premium by graph.premium.collectAsState()
         var updateRecheck by remember { mutableStateOf(0) }
@@ -682,7 +684,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                     // Donate and Telegram are actions, not screens.
                                     when (s) {
                                         AppSection.Donate -> graph.openDonation?.invoke()
-                                        AppSection.Telegram -> uriHandler.openUri(TELEGRAM_CHANNEL_URL)
+                                        AppSection.Telegram -> uriHandler.openUri(config?.telegramUrl ?: TELEGRAM_CHANNEL_URL)
                                         else -> onSection(s)
                                     }
                                     scope.launch { drawer.close() }

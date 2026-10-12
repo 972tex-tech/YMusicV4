@@ -193,14 +193,14 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     FileSystem.SYSTEM.createDirectories(dataDir)
     // Flags and the newest JS bundle revisions (the App Store owns app updates). Started here so
     // the first fetch overlaps the rest of startup.
-    RemoteConfig(
+    val remoteConfig = RemoteConfig(
         api = api,
         cacheFile = dataDir.resolve("remote-config.json"),
         fileSystem = FileSystem.SYSTEM,
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
         now = now,
         log = rootLogger.fork("remote-config"),
-    ).checkUpdate()
+    ).also { it.checkUpdate() }
     // Anonymous usage stats, gated per event by the "Send anonymous stats" setting.
     val stats = StatUsage(
         api = api,
@@ -268,6 +268,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         appVersion = appVersionName,
         stats = stats,
         api = api,
+        remoteConfig = remoteConfig.config,
         surfaceScalesDown = true,
         loginBrowser = { url, state, onPageChanged, modifier ->
             IosLoginBrowser(url, state, onPageChanged, modifier)

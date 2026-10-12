@@ -136,6 +136,7 @@ class SharedServices(
     val updates: AndroidAppUpdates,
     /** The YMusic service; null when this build has no service url. */
     val api: ApiService?,
+    val remoteConfig: RemoteConfig,
 )
 
 class YMusicApplication : Application() {
@@ -367,7 +368,7 @@ class YMusicApplication : Application() {
         )
         updates.pruneDownloads()
         scope.launch { remoteConfig.config.collect { updates.offer(it.appUpdate) } }
-        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, webViewJs, playerJs, imageLoader, stats, updates, api)
+        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, webViewJs, playerJs, imageLoader, stats, updates, api, remoteConfig)
     }
 
     private suspend fun buildGraph(): AppGraph {
@@ -569,6 +570,7 @@ class YMusicApplication : Application() {
             premium = premium,
             openDonation = { resumedActivity?.get()?.let(SupportApp::openDonation) },
             api = shared.api,
+            remoteConfig = shared.remoteConfig.config,
             mediaStore = shared.mediaStore,
             playHistory = PlayHistoryStore(playHistoryAndroidDriver(this)),
             sponsorBlockStore = SqliteSponsorBlockStore(sponsorBlockAndroidDriver(this)),
