@@ -17,6 +17,27 @@
         android:src="@drawable/widget_fill"
         android:tint="@color/widget_card_fallback" />
 
+    <!-- Behind the body: the cover's faded leading edge runs under the end of the text column. -->
+    <FrameLayout
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_gravity="right">
+
+        <ImageView
+            android:id="@+id/widget_art"
+            android:layout_width="196dp"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop" />
+
+        <ImageView
+            android:id="@+id/widget_art_fade"
+            android:layout_width="112dp"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:scaleType="fitXY" />
+    </FrameLayout>
+
     <LinearLayout
         android:id="@+id/widget_body"
         android:layout_width="match_parent"
@@ -40,7 +61,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:maxLines="2"
+                android:maxLines="3"
                 android:text="@string/widget_nothing_playing"
                 android:textColor="#FFFFE9DF"
                 android:textDirection="locale"
@@ -96,24 +117,8 @@
         </LinearLayout>
 
         <FrameLayout
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent">
-
-            <ImageView
-                android:id="@+id/widget_art"
-                android:layout_width="130dp"
-                android:layout_height="match_parent"
-                android:importantForAccessibility="no"
-                android:scaleType="centerCrop" />
-
-            <ImageView
-                android:id="@+id/widget_art_fade"
-                android:layout_width="64dp"
-                android:layout_height="match_parent"
-                android:importantForAccessibility="no"
-                android:scaleType="fitXY"
-                android:src="@drawable/widget_fade_edge"
-                android:tint="@color/widget_card_fallback" />
-        </FrameLayout>
+            android:id="@+id/widget_art_space"
+            android:layout_width="116dp"
+            android:layout_height="match_parent" />
     </LinearLayout>
 </FrameLayout>

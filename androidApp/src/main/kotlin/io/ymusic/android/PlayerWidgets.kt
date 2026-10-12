@@ -270,8 +270,10 @@ class PlayerWidgets(
                 if (showArt) views.setImageViewBitmap(R.id.widget_art, bitmap)
                 views.setViewVisibility(R.id.widget_art, visibleIf(showArt))
                 if (kind == WidgetKind.LARGE) {
+                    views.setImageViewBitmap(R.id.widget_art_fade, FADE_EDGE)
                     views.setInt(R.id.widget_art_fade, "setColorFilter", palette.card)
                     views.setViewVisibility(R.id.widget_art_fade, visibleIf(showArt))
+                    views.setViewVisibility(R.id.widget_art_space, visibleIf(showArt))
                 }
             }
         }
@@ -296,7 +298,7 @@ class PlayerWidgets(
     private companion object {
         const val ART_SOURCE_PX = 384
         const val COMPACT_PREV_MIN_DP = 250
-        const val LARGE_ART_MIN_DP = 230
+        const val LARGE_ART_MIN_DP = 260
         val FALLBACK_PALETTE = WidgetPalette(
             card = 0xFF5A2E2A.toInt(),
             title = 0xFFFFE9DF.toInt(),
@@ -314,8 +316,22 @@ private const val SOFT_BACKDROP_PX = 128
 private const val SOFT_BLUR_RADIUS = 3
 private const val SOFT_BLUR_PASSES = 2
 private const val BACKDROP_DIM = 0.58f
-private const val PANEL_W = 208
+private const val PANEL_W = 288
 private const val PANEL_H = 320
+private const val FADE_EDGE_PX = 128
+
+/**
+ * Opaque white at the leading edge to clear, tinted to the card. Smoothstep, not a linear shape
+ * gradient: a linear ramp's abrupt end reads as a seam.
+ */
+private val FADE_EDGE: Bitmap by lazy {
+    val pixels = IntArray(FADE_EDGE_PX) { x ->
+        val t = x / (FADE_EDGE_PX - 1f)
+        val eased = t * t * (3 - 2 * t)
+        Color.argb(((1 - eased) * 255).toInt(), 255, 255, 255)
+    }
+    Bitmap.createBitmap(pixels, FADE_EDGE_PX, 1, Bitmap.Config.ARGB_8888)
+}
 private const val COVER_PX = 192
 private const val COVER_RADIUS_PX = 32f
 
