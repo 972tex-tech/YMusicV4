@@ -57,7 +57,7 @@ android {
         // Base url of the remote config service. Empty = no request, compiled-in defaults.
         val configUrl = remoteConfigUrl()
         buildConfigField("String", "REMOTE_CONFIG_URL", "\"$configUrl\"")
-        // The build machine's LAN address with -PuseLocalServerIp ("" otherwise). A dev server is
+        // local.server.ip with -PuseLocalServerIp ("" otherwise). A dev server is
         // plain http: cleartext is allowed only for a build whose service url is http.
         buildConfigField("String", "LOCAL_IP", "\"${localServerIp()}\"")
         manifestPlaceholders["usesCleartextTraffic"] = configUrl.startsWith("http://").toString()

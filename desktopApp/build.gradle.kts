@@ -54,7 +54,7 @@ val remoteConfigBaseUrl: String = localServerUrl()
     ?: providers.gradleProperty("ymusic.remoteConfigUrl").orNull
     ?: remoteConfigUrl()
 
-// This machine's LAN address with -PuseLocalServerIp, else "": a released build must not depend on
+// local.server.ip with -PuseLocalServerIp, else "": a released build must not depend on
 // (or reveal) where it was built.
 val localIp: String = localServerIp()
 
@@ -187,7 +187,7 @@ val generateBuildConfig by tasks.registering {
             // Base url of the remote config service. Empty = no request, compiled-in defaults.
             internal const val REMOTE_CONFIG_URL = "$remoteConfigBaseUrl"
 
-            // The build machine's LAN address with -PuseLocalServerIp ("" otherwise).
+            // local.server.ip with -PuseLocalServerIp ("" otherwise).
             internal const val LOCAL_IP = "$localIp"
 
             // The key remote engine/player bundles must be signed with. Empty = shipped bundles only.

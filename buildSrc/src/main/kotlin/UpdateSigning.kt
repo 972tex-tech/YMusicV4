@@ -1,7 +1,7 @@
 import org.gradle.api.Project
 import java.util.Properties
 
-private fun Project.localProp(name: String): String? =
+internal fun Project.localProp(name: String): String? =
     rootProject.file("local.properties").takeIf { it.exists() }?.let { file ->
         Properties().apply { file.inputStream().use { load(it) } }.getProperty(name)
     }

@@ -4,7 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// The YMusic service the shell talks to: remote.config.url, or this machine's server with
+// The YMusic service the shell talks to: remote.config.url, or the local dev server with
 // -PuseLocalServerIp (buildSrc LocalIp.kt / UpdateSigning.kt — same rules as Android and desktop).
 val generateIosBuildConfig by tasks.registering {
     val url = remoteConfigUrl()
@@ -23,7 +23,7 @@ val generateIosBuildConfig by tasks.registering {
             // Base url of the YMusic service. Empty = no request, compiled-in defaults.
             internal const val REMOTE_CONFIG_URL = "$url"
 
-            // The build machine's LAN address with -PuseLocalServerIp ("" otherwise).
+            // local.server.ip with -PuseLocalServerIp ("" otherwise).
             internal const val LOCAL_IP = "$localIp"
             """.trimIndent() + "\n",
         )
