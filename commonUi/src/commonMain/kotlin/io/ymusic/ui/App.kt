@@ -798,9 +798,10 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         val scrollHost = remember { ScrollHost() }
                         // Touch platforms scroll the toolbar row away (enter-always) while the tab row
                         // stays pinned; with the tabs inline (wide) the bar carries them, so it stays put.
-                        // Downloads pins its bar outright: no tab row below it, and with the grid's status
-                        // sections a vanishing toolbar reads as lost context, not gained space.
-                        val collapsible = platformUsesTouch && !wide && section != AppSection.Downloads
+                        // Only the tabbed sections collapse: without a tab row below, a vanishing toolbar
+                        // reads as lost context, not gained space.
+                        val collapsible = platformUsesTouch && !wide &&
+                            (section == AppSection.Discover || section == AppSection.YtMusic || section == AppSection.Library)
                         var toolbarHeightPx by remember { mutableStateOf(0) }
                         var toolbarOffsetPx by remember { mutableStateOf(0f) }
                         LaunchedEffect(section, discoverTab, layers.isEmpty(), collapsible) {
