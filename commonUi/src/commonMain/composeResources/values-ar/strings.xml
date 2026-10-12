@@ -198,6 +198,7 @@
     <string name="settings_show_fps">إظهار معدل الإطارات</string>
     <string name="settings_show_fps_hint">عرض عدد الإطارات في الثانية على فيديو التشغيل الآن. يتوقف القياس عند الإيقاف المؤقت أو مغادرة تلك الشاشة.</string>
     <string name="overlay_fps">%1$d إطار/ث</string>
+    <string name="settings_changelog">سجل التغييرات</string>
     <string name="settings_licenses">تراخيص المصادر المفتوحة</string>
     <string name="settings_licenses_intro">‏YMusic مفتوح المصدر بموجب رخصة GNU GPL v3.0، ويتضمن المكوّنات التالية:</string>
     <string name="feedback_hint">أخبرنا بما تعطّل أو بما تودّ رؤيته. لقطات الشاشة أو ملفات السجلّ مفيدة.</string>

@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,7 @@ import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.settings_auto_update
 import io.ymusic.ui.resources.settings_auto_update_hint
+import io.ymusic.ui.resources.settings_changelog
 import io.ymusic.ui.resources.settings_content_locale_hint
 import io.ymusic.ui.resources.settings_content_region
 import io.ymusic.ui.resources.settings_crash_reports
@@ -78,6 +80,7 @@ import io.ymusic.ui.resources.settings_theme_system
 import io.ymusic.ui.resources.sound_eq
 import io.ymusic.ui.resources.sound_speed
 import kmpcommon.log.Logger
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -177,6 +180,8 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             if (graph.updates != null) {
                 ToggleRow(graph, AppSettings.autoDownloadUpdates, Res.string.settings_auto_update, Res.string.settings_auto_update_hint)
             }
+            val config by remember(graph) { graph.remoteConfig ?: emptyFlow() }.collectAsState(initial = null)
+            config?.changelogUrl?.let { ChangelogRow(it) }
             LicensesRow()
         }
         SettingsSection(Res.string.settings_debug) {
@@ -244,6 +249,19 @@ private fun ToggleRow(graph: AppGraph, setting: BoolSetting, title: StringResour
 
 /** Settings → Open source licenses: the shipped third-party components ([OssComponents]) in the
  *  ElevatedBarDialog idiom (see [LocalePickerDialog]). */
+@Composable
+private fun ChangelogRow(url: String) {
+    val uriHandler = LocalUriHandler.current
+    Text(
+        stringResource(Res.string.settings_changelog),
+        style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { uriHandler.openUri(url) }
+            .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
+    )
+}
+
 @Composable
 private fun LicensesRow() {
     var open by remember { mutableStateOf(false) }
