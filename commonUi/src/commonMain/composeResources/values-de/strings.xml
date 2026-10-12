@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">Keine fehlgeschlagenen Downloads</string>
     <string name="section_settings">Einstellungen</string>
     <string name="section_donate">Spenden</string>
-    <string name="section_facebook">Like uns auf Facebook</string>
     <string name="section_feedback">Feedback</string>
     <string name="coming_soon">%1$s — kommt in einer späteren Version</string>
 

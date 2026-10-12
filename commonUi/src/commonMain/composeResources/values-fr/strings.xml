@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">Aucun téléchargement échoué</string>
     <string name="section_settings">Paramètres</string>
     <string name="section_donate">Faire un don</string>
-    <string name="section_facebook">Aimez-nous sur Facebook</string>
     <string name="section_feedback">Commentaires</string>
     <string name="coming_soon">%1$s — prévu dans une version ultérieure</string>
 

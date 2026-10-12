@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">Başarısız indirme yok</string>
     <string name="section_settings">Ayarlar</string>
     <string name="section_donate">Bağış yap</string>
-    <string name="section_facebook">Bizi Facebook'ta beğenin</string>
     <string name="section_feedback">Geri bildirim</string>
     <string name="coming_soon">%1$s — sonraki bir sürümde geliyor</string>
 

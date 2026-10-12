@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">没有失败的下载</string>
     <string name="section_settings">设置</string>
     <string name="section_donate">捐赠</string>
-    <string name="section_facebook">在 Facebook 上关注我们</string>
     <string name="section_feedback">反馈</string>
     <string name="coming_soon">%1$s — 将在后续版本中推出</string>
 

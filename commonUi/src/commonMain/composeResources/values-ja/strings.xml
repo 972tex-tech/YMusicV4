@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">失敗したダウンロードはありません</string>
     <string name="section_settings">設定</string>
     <string name="section_donate">寄付</string>
-    <string name="section_facebook">Facebook で「いいね！」</string>
     <string name="section_feedback">フィードバック</string>
     <string name="coming_soon">%1$s — 今後のアップデートで対応予定</string>
 

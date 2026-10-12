@@ -18,7 +18,7 @@
     <string name="downloads_empty_error">Không có bản tải xuống bị lỗi</string>
     <string name="section_settings">Cài đặt</string>
     <string name="section_donate">Ủng hộ</string>
-    <string name="section_facebook">Thích chúng tôi trên Facebook</string>
+    <string name="section_telegram">Thông báo trên Telegram</string>
     <string name="section_feedback">Phản hồi</string>
     <string name="coming_soon">%1$s — sẽ có trong bản cập nhật sau</string>
 

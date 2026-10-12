@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">Немає невдалих завантажень</string>
     <string name="section_settings">Налаштування</string>
     <string name="section_donate">Підтримати</string>
-    <string name="section_facebook">Ми у Facebook</string>
     <string name="section_feedback">Зворотний зв’язок</string>
     <string name="coming_soon">%1$s — з’явиться в наступних версіях</string>
 

@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">Нет неудачных загрузок</string>
     <string name="section_settings">Настройки</string>
     <string name="section_donate">Поддержать</string>
-    <string name="section_facebook">Мы в Facebook</string>
     <string name="section_feedback">Обратная связь</string>
     <string name="coming_soon">%1$s — появится в следующих версиях</string>
 

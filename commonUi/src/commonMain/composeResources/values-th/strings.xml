@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">ไม่มีรายการดาวน์โหลดที่ล้มเหลว</string>
     <string name="section_settings">การตั้งค่า</string>
     <string name="section_donate">บริจาค</string>
-    <string name="section_facebook">กดถูกใจเราบน Facebook</string>
     <string name="section_feedback">ส่งความคิดเห็น</string>
     <string name="coming_soon">%1$s — จะมาในเวอร์ชันถัดไป</string>
 

@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">실패한 다운로드가 없습니다</string>
     <string name="section_settings">설정</string>
     <string name="section_donate">후원하기</string>
-    <string name="section_facebook">Facebook 좋아요 누르기</string>
     <string name="section_feedback">피드백</string>
     <string name="coming_soon">%1$s — 이후 업데이트에서 제공 예정</string>
 

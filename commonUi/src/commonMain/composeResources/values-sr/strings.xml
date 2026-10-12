@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">Нема неуспелих преузимања</string>
     <string name="section_settings">Подешавања</string>
     <string name="section_donate">Донирајте</string>
-    <string name="section_facebook">Лајкујте нас на Facebook-у</string>
     <string name="section_feedback">Повратне информације</string>
     <string name="coming_soon">%1$s — стиже у некој од наредних верзија</string>
 

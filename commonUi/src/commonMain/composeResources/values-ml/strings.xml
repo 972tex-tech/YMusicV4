@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">പരാജയപ്പെട്ട ഡൗൺലോഡുകളൊന്നുമില്ല</string>
     <string name="section_settings">ക്രമീകരണങ്ങൾ</string>
     <string name="section_donate">സംഭാവന ചെയ്യുക</string>
-    <string name="section_facebook">Facebook-ൽ ഞങ്ങളെ ലൈക്ക് ചെയ്യുക</string>
     <string name="section_feedback">ഫീഡ്‌ബാക്ക്</string>
     <string name="coming_soon">%1$s — അടുത്ത പതിപ്പിൽ വരുന്നു</string>
 

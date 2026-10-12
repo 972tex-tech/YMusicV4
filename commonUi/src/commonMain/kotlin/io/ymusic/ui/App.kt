@@ -20,8 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
-import androidx.compose.material.icons.filled.Facebook
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.StarBorder
@@ -78,6 +78,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -109,11 +110,11 @@ import io.ymusic.ui.resources.section_catalogue
 import io.ymusic.ui.resources.section_discover
 import io.ymusic.ui.resources.section_donate
 import io.ymusic.ui.resources.section_downloads
-import io.ymusic.ui.resources.section_facebook
 import io.ymusic.ui.resources.section_feedback
 import io.ymusic.ui.resources.section_library
 import io.ymusic.ui.resources.section_play_again
 import io.ymusic.ui.resources.section_settings
+import io.ymusic.ui.resources.section_telegram
 import io.ymusic.ui.resources.section_yt_music
 import io.ymusic.ui.resources.tab_account_library
 import io.ymusic.ui.resources.tab_home
@@ -137,6 +138,9 @@ import kotlin.math.roundToInt
 
 /** App-level sections — the drawer's three groups (design/final/drawer.html). */
 /** [id] is persisted (the section a restart resumes): stable, never reused, independent of entry order. */
+/** YMusic's announcement channel, the drawer's "Telegram announcements". */
+private const val TELEGRAM_CHANNEL_URL = "https://t.me/ymusic_io"
+
 enum class AppSection(val id: Int, val label: StringResource, val icon: ImageVector, val group: Int) {
     Discover(1, Res.string.section_discover, Icons.Outlined.OndemandVideo, 0),
     YtMusic(2, Res.string.section_yt_music, Icons.Default.PlayCircleOutline, 0),
@@ -146,7 +150,7 @@ enum class AppSection(val id: Int, val label: StringResource, val icon: ImageVec
     Settings(6, Res.string.section_settings, Icons.Outlined.Settings, 1),
     Catalogue(7, Res.string.section_catalogue, Icons.Outlined.Palette, 1),
     Donate(8, Res.string.section_donate, Icons.Outlined.FavoriteBorder, 2),
-    Facebook(9, Res.string.section_facebook, Icons.Default.Facebook, 2),
+    Telegram(9, Res.string.section_telegram, Icons.AutoMirrored.Outlined.Send, 2),
     Feedback(10, Res.string.section_feedback, Icons.AutoMirrored.Outlined.Chat, 2),
 }
 
@@ -614,6 +618,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
 
         // "Check for update" from the drawer; a found update bumps [updateRecheck] so the prompt
         // shows it even after an earlier "Ask later".
+        val uriHandler = LocalUriHandler.current
         var checkingUpdate by remember { mutableStateOf(false) }
         val premium by graph.premium.collectAsState()
         var updateRecheck by remember { mutableStateOf(0) }
@@ -675,8 +680,12 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                 appVersion = graph.appVersion,
                                 guest = graph.guest,
                                 onSelect = { s ->
-                                    // Donate is an action, not a screen: it opens the donation screen.
-                                    if (s == AppSection.Donate) graph.openDonation?.invoke() else onSection(s)
+                                    // Donate and Telegram are actions, not screens.
+                                    when (s) {
+                                        AppSection.Donate -> graph.openDonation?.invoke()
+                                        AppSection.Telegram -> uriHandler.openUri(TELEGRAM_CHANNEL_URL)
+                                        else -> onSection(s)
+                                    }
                                     scope.launch { drawer.close() }
                                 },
                                 premium = premium,

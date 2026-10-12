@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">No hay descargas fallidas</string>
     <string name="section_settings">Ajustes</string>
     <string name="section_donate">Donar</string>
-    <string name="section_facebook">Síguenos en Facebook</string>
     <string name="section_feedback">Comentarios</string>
     <string name="coming_soon">%1$s — llegará en una versión posterior</string>
 

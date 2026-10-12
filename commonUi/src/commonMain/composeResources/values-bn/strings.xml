@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">ব্যর্থ কোনো ডাউনলোড নেই</string>
     <string name="section_settings">সেটিংস</string>
     <string name="section_donate">অনুদান দিন</string>
-    <string name="section_facebook">Facebook-এ আমাদের লাইক দিন</string>
     <string name="section_feedback">মতামত</string>
     <string name="coming_soon">%1$s — পরবর্তী সংস্করণে আসছে</string>
 

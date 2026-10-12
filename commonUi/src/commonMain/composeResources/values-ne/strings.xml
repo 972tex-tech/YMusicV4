@@ -19,7 +19,6 @@
     <string name="downloads_empty_error">असफल कुनै डाउनलोड छैन</string>
     <string name="section_settings">सेटिङ</string>
     <string name="section_donate">सहयोग गर्नुहोस्</string>
-    <string name="section_facebook">Facebook मा हामीलाई लाइक गर्नुहोस्</string>
     <string name="section_feedback">प्रतिक्रिया</string>
     <string name="coming_soon">%1$s — पछिको संस्करणमा आउँदैछ</string>
 
