@@ -24,6 +24,37 @@ export async function innertubeJson(
   fields: Record<string, unknown>,
   log?: JsLogger,
 ): Promise<Record<string, unknown>> {
+  const res = await innertubeResponse(endpoint, fields, log);
+  if (!res.ok) {
+    res.close();
+    throw JsEngineErrorImpl.network("yt " + endpoint + " HTTP " + res.status);
+  }
+  return res.jsonObject();
+}
+
+/** [innertubeJson], except a 404 (YouTube knows no such thing) answers null. */
+export async function innertubeJsonOrNotFound(
+  endpoint: string,
+  fields: Record<string, unknown>,
+  log?: JsLogger,
+): Promise<Record<string, unknown> | null> {
+  const res = await innertubeResponse(endpoint, fields, log);
+  if (res.status === 404) {
+    res.close();
+    return null;
+  }
+  if (!res.ok) {
+    res.close();
+    throw JsEngineErrorImpl.network("yt " + endpoint + " HTTP " + res.status);
+  }
+  return res.jsonObject();
+}
+
+async function innertubeResponse(
+  endpoint: string,
+  fields: Record<string, unknown>,
+  log?: JsLogger,
+): Promise<HttpResponse> {
   let session = await getSession(SESSION_MAX_AGE_MS);
   let res = await post(endpoint, fields, session, log);
   if (res.status === 403) {
@@ -31,11 +62,7 @@ export async function innertubeJson(
     session = await getSession(0); // rotate: re-scrape the homepage, then retry once
     res = await post(endpoint, fields, session, log);
   }
-  if (!res.ok) {
-    res.close();
-    throw JsEngineErrorImpl.network("yt " + endpoint + " HTTP " + res.status);
-  }
-  return res.jsonObject();
+  return res;
 }
 
 async function post(

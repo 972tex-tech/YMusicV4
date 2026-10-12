@@ -336,3 +336,15 @@ export interface WirePlaylistTarget {
   /** The playlist already holds the video. */
   containsVideo?: boolean;
 }
+
+/** What an outside link (a youtube.com / youtu.be / music.youtube.com url, or the same path under
+ *  the app's own scheme/domains) opens (yt/resolve-link). `kind`: "video" (play `item`; `url` is its
+ *  playlist's app link when the link named one, `startMs` its start time), "playlist" / "channel" /
+ *  "music" (the detail page behind the app link `url`), "search" (`query`), "none" (not openable). */
+export interface WireLinkTarget {
+  kind: string;
+  item?: WireFeedItem;
+  url?: string;
+  startMs?: number;
+  query?: string;
+}

@@ -8,3 +8,4 @@ import "./yt/login";
 import "./yt/embed";
 import "./yt/videoDetails";
 import "./yt/playlistEdit";
+import "./yt/links";
