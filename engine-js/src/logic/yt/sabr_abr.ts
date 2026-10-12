@@ -132,7 +132,7 @@ function formatItag(msg: Uint8Array): number | null {
 
 function parseBufferedRange(
   msg: Uint8Array,
-): { itag: number; startMs: number; durationMs: number } | null {
+): { itag: number; lmt: number; startMs: number; durationMs: number } | null {
   const fs = readFields(msg);
   if (!fs) return null;
   let id: { itag: number; lmt: number } | null = null;
@@ -145,7 +145,7 @@ function parseBufferedRange(
     if (f.field === 3 && f.wire === 0) durationMs = f.value as number;
   }
   if (!id || startMs == null || durationMs == null) return null;
-  return { itag: id.itag, startMs: startMs, durationMs: durationMs };
+  return { itag: id.itag, lmt: id.lmt, startMs: startMs, durationMs: durationMs };
 }
 
 function casPlayerTimeMs(cas: Uint8Array): number {
@@ -160,6 +160,14 @@ function casPlayerTimeMs(cas: Uint8Array): number {
 
 function drop144(itag: number, audioOnly: boolean): boolean {
   return is144pItag(itag) && audioOnly && !isYmLive();
+}
+
+// Outlives audio-only in YouTube's player as a 0..duration range; sent, googlevideo sends no video.
+let injectedFake: { videoId: string; itag: number; lmt: number } | null = null;
+
+function isInjectedFake(videoId: string, itag: number, lmt: number): boolean {
+  const fake = injectedFake;
+  return !!fake && fake.videoId === videoId && fake.itag === itag && fake.lmt === lmt;
 }
 
 function decToNum(s: string): number {
@@ -376,6 +384,7 @@ function buildFakeUmp(state: SabrRequestState, maxHid: number): Uint8Array[] | n
     mediaDataUmp(mediaHid, media),
     mediaEndUmp(mediaHid),
   ];
+  injectedFake = { videoId: state.videoId, itag: row.itag, lmt: decToNum(row.lmt) };
   debug(function () {
     return (
       "mse sabr fake-ump itag=" +
@@ -487,7 +496,7 @@ function rewriteAbr(
     if (f.field === INITIALIZED_FORMAT_IDS && f.wire === 2 && f.value instanceof Uint8Array) {
       const id = parseFormatId(f.value);
       if (id) selItags.push(id.itag);
-      if (id && drop144(id.itag, audioOnly)) {
+      if (id && (drop144(id.itag, audioOnly) || isInjectedFake(videoId, id.itag, id.lmt))) {
         stripped = true;
         continue;
       }
@@ -506,7 +515,7 @@ function rewriteAbr(
     }
     if (f.field === BUFFERED_RANGES && f.wire === 2 && f.value instanceof Uint8Array) {
       const r = parseBufferedRange(f.value);
-      if (r && drop144(r.itag, audioOnly)) {
+      if (r && (drop144(r.itag, audioOnly) || isInjectedFake(videoId, r.itag, r.lmt))) {
         has144Buffered = true;
         const end = r.startMs + r.durationMs;
         if (end > buffered144End) buffered144End = end;
