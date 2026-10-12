@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Transparent square with a huge intrinsic size: an adjustViewBounds ImageView of it, in an AT_MOST
+     cell, measures to the largest square that fits (RemoteViews have no aspect-ratio layout). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <size android:width="4000dp" android:height="4000dp" />
+</shape>
