@@ -123,6 +123,7 @@ import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.DarkDesignColors
+import io.ymusic.ui.IncomingLinks
 import io.ymusic.ui.LightDesignColors
 import io.ymusic.ui.VideoOverlayNative
 import io.ymusic.ui.WebViewSabrSpecResolver
@@ -173,6 +174,7 @@ import projectcommon.log.FileLogger
 import projectcommon.log.LoggingWorker
 import java.awt.BorderLayout
 import java.awt.Canvas
+import java.awt.Desktop
 import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.Graphics
@@ -206,9 +208,20 @@ private val rootLogger: Logger =
 /** Mirrors AppSettings.autoDownloadUpdates for the updater's synchronous read. */
 @Volatile private var autoDownloadUpdates: Boolean = AppSettings.autoDownloadUpdates.default
 
+/** Ticks when the OS hands over a link, so a window hidden to the tray comes back for it. */
+private val linkArrivals = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
 fun main() {
     defaultLinuxSoftwareRendering()
     useBundledMseNatives()
+    // macOS delivers ymusic:// opens (Info.plist CFBundleURLTypes) as Apple Events to the running
+    // instance — set before the toolkit starts so a cold-launch link is not lost.
+    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.APP_OPEN_URI)) {
+        Desktop.getDesktop().setOpenURIHandler { event ->
+            IncomingLinks.open(event.uri.toString())
+            linkArrivals.tryEmit(Unit)
+        }
+    }
     // Opened before anything else: crash-reporting consent lives here.
     val settings = kotlinx.coroutines.runBlocking {
         val dir = ymusicDataDir().apply { mkdirs() }
@@ -293,6 +306,12 @@ fun main() {
                         withContext(Dispatchers.IO) { saveWindowPrefs(size, position) }
                     }
                 }
+        }
+        LaunchedEffect(Unit) {
+            linkArrivals.collect {
+                windowVisible = true
+                windowState.isMinimized = false
+            }
         }
         LaunchedEffect(windowVisible, windowState.isMinimized) {
             videoUnderlay.shown = windowVisible && !windowState.isMinimized

@@ -305,6 +305,20 @@ compose.desktop {
                 // The rounded-square dock tile; the runtime Taskbar icon (dev runs) is the same
                 // artwork from src/jvmMain/resources/ymusic_dock.png.
                 iconFile.set(project.file("ymusic.icns"))
+                // ymusic:// links open the app (Main.kt's open-URI handler takes them).
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>CFBundleURLTypes</key>
+                        <array>
+                            <dict>
+                                <key>CFBundleURLName</key>
+                                <string>io.ymusic.desktop</string>
+                                <key>CFBundleURLSchemes</key>
+                                <array><string>ymusic</string></array>
+                            </dict>
+                        </array>
+                    """.trimIndent()
+                }
                 // Signing is opt-in so a checkout without the identity still builds. An unsigned
                 // build is fine to run locally and impossible to ship: Gatekeeper rejects it.
                 val signingIdentity = macSigningIdentity()
