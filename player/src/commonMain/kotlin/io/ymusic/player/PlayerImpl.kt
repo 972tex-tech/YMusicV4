@@ -564,7 +564,7 @@ internal class PlayerImpl(
         val p = engine.progress.value
         val dur = p.durationMs
         if (dur <= 0L) return
-        if (p.positionMs > dur || dur - p.positionMs > PRELOAD_LEAD_MS) return
+        if (p.positionMs > dur || contentEndMs(dur) - p.positionMs > PRELOAD_LEAD_MS) return
         val nextItem = controller.state.items.getOrNull(nextIndex) ?: return
         val nextEngine = engineFor(nextItem, create = true) ?: run {
             prepareNextArmed = true
@@ -833,10 +833,30 @@ internal class PlayerImpl(
             if (!_status.value.state.isPlaying() || nowPlaying != skipSegmentData?.playableItem) {
                 return@collect
             }
-            seekTo(endTime)
+            if (finishesTrack(nearest, snapshot.durationMs)) onTrackEnded() else seekTo(endTime)
             skippedSeg = nearest
             lastItem = nowPlaying
         }
+    }
+
+    /** The duration pulled in to the start of a skip-segment chain that runs out the track. */
+    private fun contentEndMs(durationMs: Long): Long {
+        val data = skipSegmentData ?: return durationMs
+        if (data.playableItem != controller.state.currentItem) return durationMs
+        var end = durationMs
+        for (segment in data.skipSegments.values.sortedByDescending { it.startMs }) {
+            if (segment.startMs + segment.lengthMs < end - OUTRO_TOLERANCE_MS) break
+            end = minOf(end, segment.startMs)
+        }
+        return end
+    }
+
+    /** An outro skip can advance straight to the queued next item instead of seeking to the tail. */
+    private fun finishesTrack(segment: SkipSegment, durationMs: Long): Boolean {
+        if (durationMs <= 0L || segment.startMs + segment.lengthMs < durationMs - OUTRO_TOLERANCE_MS) return false
+        if (controller.state.loopMode == LoopMode.One) return false
+        if ((controller.state.currentItem as? PlayableItem.YtMedia)?.live == true) return false
+        return prepareNextIndex != null
     }
 
     private data class SkipSegmentData(
@@ -864,5 +884,8 @@ internal class PlayerImpl(
         const val SEEK_HOLD_TICKS = 25
 
         const val MIN_SKIP_LENGTH_MS = 1_000L
+
+        /** A skip segment ending this close to the duration counts as running out the track. */
+        const val OUTRO_TOLERANCE_MS = 1_000L
     }
 }
