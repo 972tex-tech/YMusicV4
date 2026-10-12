@@ -185,8 +185,17 @@
     <string name="queue_load_failed">Imeshindwa kupakia zaidi</string>
     <string name="queue_end">Mwisho wa orodha ya kucheza</string>
     <string name="remove_from_queue">Ondoa kwenye foleni</string>
-    <string name="sleep_off_remaining">Imezimwa (zimebaki %1$s)</string>
     <string name="sleep_minutes">Dak %1$d</string>
+    <string name="sleep_end_of_track">Mwisho wa wimbo</string>
+    <string name="sleep_finish_track">Acha wimbo wa mwisho umalizike</string>
+    <string name="sleep_stops_at">Itasimama saa %1$s</string>
+    <string name="sleep_pausing_in">Itasitishwa baada ya %1$s</string>
+    <string name="sleep_pausing_after_track">Itasitishwa baada ya wimbo huu</string>
+    <string name="sleep_turn_off">Zima</string>
+    <string name="sleep_start">Anza</string>
+    <string name="sleep_hours">Saa %1$d</string>
+    <string name="sleep_hours_minutes">Saa %1$d dak %2$d</string>
+    <string name="sleep_add_minutes">+Dak %1$d</string>
     <string name="playback_failed">Imeshindikana (%1$s)</string>
 
 

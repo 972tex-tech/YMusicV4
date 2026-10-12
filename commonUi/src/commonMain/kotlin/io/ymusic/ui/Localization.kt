@@ -74,6 +74,9 @@ val UiLanguages: List<UiLanguage> = listOf(
  */
 internal expect fun applyUiLocale(tag: String?)
 
+/** [epochMs] as a wall-clock time of day in the current locale's short style ("23:45" / "11:45 PM"). */
+internal expect fun formatTimeOfDay(epochMs: Long): String
+
 /** The device's own UI language subtag ("vi"), unaffected by [applyUiLocale] overrides. */
 internal expect fun systemLanguageTag(): String
 

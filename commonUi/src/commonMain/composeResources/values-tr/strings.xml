@@ -185,8 +185,17 @@
     <string name="queue_load_failed">Daha fazlası yüklenemedi</string>
     <string name="queue_end">Oynatma listesinin sonu</string>
     <string name="remove_from_queue">Sıradan kaldır</string>
-    <string name="sleep_off_remaining">Kapat (%1$s kaldı)</string>
     <string name="sleep_minutes">%1$d dk</string>
+    <string name="sleep_end_of_track">Parça sonu</string>
+    <string name="sleep_finish_track">Son parçanın bitmesine izin ver</string>
+    <string name="sleep_stops_at">%1$s itibarıyla durur</string>
+    <string name="sleep_pausing_in">%1$s sonra duraklatılacak</string>
+    <string name="sleep_pausing_after_track">Bu parçadan sonra duraklatılacak</string>
+    <string name="sleep_turn_off">Kapat</string>
+    <string name="sleep_start">Başlat</string>
+    <string name="sleep_hours">%1$d sa</string>
+    <string name="sleep_hours_minutes">%1$d sa %2$d dk</string>
+    <string name="sleep_add_minutes">+%1$d dk</string>
     <string name="playback_failed">Başarısız (%1$s)</string>
 
 

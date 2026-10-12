@@ -1,8 +1,13 @@
 package io.ymusic.ui
 
+import platform.Foundation.NSDate
+import platform.Foundation.NSDateFormatter
+import platform.Foundation.NSDateFormatterNoStyle
+import platform.Foundation.NSDateFormatterShortStyle
 import platform.Foundation.NSLocale
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.currentLocale
+import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.Foundation.localeIdentifier
 
 internal actual fun applyUiLocale(tag: String?) {
@@ -23,3 +28,10 @@ internal actual fun systemLanguageTag(): String {
 
 internal actual fun systemLocaleTag(): String =
     NSLocale.currentLocale.localeIdentifier.substringBefore('@').replace('_', '-')
+
+internal actual fun formatTimeOfDay(epochMs: Long): String {
+    val formatter = NSDateFormatter()
+    formatter.dateStyle = NSDateFormatterNoStyle
+    formatter.timeStyle = NSDateFormatterShortStyle
+    return formatter.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochMs / 1000.0))
+}

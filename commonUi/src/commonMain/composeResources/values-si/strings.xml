@@ -185,8 +185,17 @@
     <string name="queue_load_failed">තව පූරණය කළ නොහැකි විය</string>
     <string name="queue_end">ධාවන ලැයිස්තුවේ අවසානය</string>
     <string name="remove_from_queue">පෝලිමෙන් ඉවත් කරන්න</string>
-    <string name="sleep_off_remaining">අක්‍රිය (%1$s ඉතිරියි)</string>
     <string name="sleep_minutes">මිනි. %1$d</string>
+    <string name="sleep_end_of_track">ගීතයේ අවසානයේ</string>
+    <string name="sleep_finish_track">අවසාන ගීතය අවසන් වීමට ඉඩ දෙන්න</string>
+    <string name="sleep_stops_at">%1$s ට නවතී</string>
+    <string name="sleep_pausing_in">%1$s කින් විරාම වේ</string>
+    <string name="sleep_pausing_after_track">මෙම ගීතයෙන් පසු විරාම වේ</string>
+    <string name="sleep_turn_off">ක්‍රියාවිරහිත කරන්න</string>
+    <string name="sleep_start">අරඹන්න</string>
+    <string name="sleep_hours">පැය %1$d</string>
+    <string name="sleep_hours_minutes">පැය %1$d මිනි. %2$d</string>
+    <string name="sleep_add_minutes">+මිනි. %1$d</string>
     <string name="playback_failed">අසාර්ථකයි (%1$s)</string>
 
 

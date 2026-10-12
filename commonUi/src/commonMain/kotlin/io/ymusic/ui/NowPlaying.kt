@@ -37,7 +37,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.CropFree
@@ -118,6 +117,7 @@ import io.ymusic.player.VideoQualityOption
 import io.ymusic.player.VideoQualityState
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
+import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.audio_only
 import io.ymusic.ui.resources.badge_live
@@ -139,7 +139,6 @@ import io.ymusic.ui.resources.cd_previous
 import io.ymusic.ui.resources.cd_repeat
 import io.ymusic.ui.resources.cd_rewind10
 import io.ymusic.ui.resources.cd_shuffle
-import io.ymusic.ui.resources.cd_sleep_timer
 import io.ymusic.ui.resources.ic_sponsor_block
 import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.playback_failed
@@ -150,8 +149,6 @@ import io.ymusic.ui.resources.queue_loading_more
 import io.ymusic.ui.resources.queue_save_as_yt_playlist
 import io.ymusic.ui.resources.remove_from_queue
 import io.ymusic.ui.resources.retry
-import io.ymusic.ui.resources.sleep_minutes
-import io.ymusic.ui.resources.sleep_off_remaining
 import io.ymusic.ui.resources.sound_eq
 import io.ymusic.ui.resources.sound_speed
 import io.ymusic.ui.resources.sponsor_block_excluded
@@ -974,7 +971,28 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
                 },
             )
         }
-        SleepTimerButton(sleepMs) { player.setSleepTimer(it) }
+        val sleepAfterCurrent by player.sleepAfterCurrent.collectAsState()
+        val settings = coordinator.graph.settings
+        val lastSleepMinutes by remember(settings) { settings.flow(AppSettings.sleepTimerMinutes) }.collectAsState()
+        val lastSleepFinishTrack by remember(settings) { settings.flow(AppSettings.sleepFinishTrack) }.collectAsState()
+        SleepTimerButton(
+            sleepMs = sleepMs,
+            afterCurrent = sleepAfterCurrent,
+            lastMinutes = lastSleepMinutes,
+            lastFinishTrack = lastSleepFinishTrack,
+        ) { choice ->
+            when (choice) {
+                is SleepChoice.Timer -> {
+                    player.setSleepTimer(choice.minutes * 60_000L, finishTrack = choice.finishTrack)
+                    scope.launch {
+                        settings.put(AppSettings.sleepTimerMinutes, choice.minutes)
+                        settings.put(AppSettings.sleepFinishTrack, choice.finishTrack)
+                    }
+                }
+                SleepChoice.EndOfTrack -> player.setSleepAfterCurrent(true)
+                SleepChoice.Off -> player.setSleepTimer(null)
+            }
+        }
         if (quality.options.isNotEmpty()) {
             QualityChip(
                 label = quality.options.firstOrNull { it.quality == quality.actualQuality }?.let(::qualityLabel)
@@ -1546,34 +1564,6 @@ private fun QueueRow(
                 DropdownMenuItem(
                     text = { Text(stringResource(Res.string.remove_from_queue)) },
                     onClick = { coordinator.player.removeAt(index); menuOpen = false },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-internal fun SleepTimerButton(sleepMs: Long?, onSet: (Long?) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    HoldVideoOverlay(open)
-    Box {
-        ActionIcon(
-            Icons.Default.Bedtime,
-            stringResource(Res.string.cd_sleep_timer),
-            tint = if (sleepMs != null) DesignColors.Accent else DesignColors.InkMuted,
-            onClick = { open = true },
-        )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            sleepMs?.let {
-                DropdownMenuItem(
-                    text = { Text(stringResource(Res.string.sleep_off_remaining, formatMillis(it))) },
-                    onClick = { onSet(null); open = false },
-                )
-            }
-            listOf(15, 30, 60).forEach { minutes ->
-                DropdownMenuItem(
-                    text = { Text(stringResource(Res.string.sleep_minutes, minutes)) },
-                    onClick = { onSet(minutes * 60_000L); open = false },
                 )
             }
         }

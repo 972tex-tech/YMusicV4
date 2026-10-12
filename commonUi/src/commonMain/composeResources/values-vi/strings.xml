@@ -176,8 +176,17 @@
     <string name="queue_load_failed">Không tải thêm được</string>
     <string name="queue_end">Hết danh sách phát</string>
     <string name="remove_from_queue">Xóa khỏi hàng đợi</string>
-    <string name="sleep_off_remaining">Tắt (còn %1$s)</string>
     <string name="sleep_minutes">%1$d phút</string>
+    <string name="sleep_end_of_track">Hết bài</string>
+    <string name="sleep_finish_track">Cho phát hết bài cuối</string>
+    <string name="sleep_stops_at">Dừng lúc %1$s</string>
+    <string name="sleep_pausing_in">Tạm dừng sau %1$s</string>
+    <string name="sleep_pausing_after_track">Tạm dừng sau bài này</string>
+    <string name="sleep_turn_off">Tắt</string>
+    <string name="sleep_start">Bắt đầu</string>
+    <string name="sleep_hours">%1$d giờ</string>
+    <string name="sleep_hours_minutes">%1$d giờ %2$d phút</string>
+    <string name="sleep_add_minutes">+%1$d phút</string>
     <string name="playback_failed">Phát thất bại (%1$s)</string>
 
 

@@ -181,8 +181,17 @@
     <string name="queue_load_failed">تعذّر تحميل المزيد</string>
     <string name="queue_end">نهاية قائمة التشغيل</string>
     <string name="remove_from_queue">إزالة من قائمة الانتظار</string>
-    <string name="sleep_off_remaining">إيقاف (متبقٍ %1$s)</string>
     <string name="sleep_minutes">%1$d دقيقة</string>
+    <string name="sleep_end_of_track">نهاية المقطع</string>
+    <string name="sleep_finish_track">السماح بإنهاء المقطع الأخير</string>
+    <string name="sleep_stops_at">يتوقف في %1$s</string>
+    <string name="sleep_pausing_in">إيقاف مؤقت خلال %1$s</string>
+    <string name="sleep_pausing_after_track">إيقاف مؤقت بعد هذا المقطع</string>
+    <string name="sleep_turn_off">إيقاف</string>
+    <string name="sleep_start">بدء</string>
+    <string name="sleep_hours">%1$d س</string>
+    <string name="sleep_hours_minutes">%1$d س %2$d دقيقة</string>
+    <string name="sleep_add_minutes">+%1$d دقيقة</string>
     <string name="playback_failed">فشل التشغيل (%1$s)</string>
 
 

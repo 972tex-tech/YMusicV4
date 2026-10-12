@@ -185,8 +185,17 @@
     <string name="queue_load_failed">थप लोड गर्न सकिएन</string>
     <string name="queue_end">प्लेलिस्टको अन्त्य</string>
     <string name="remove_from_queue">क्युबाट हटाउनुहोस्</string>
-    <string name="sleep_off_remaining">बन्द (%1$s बाँकी)</string>
     <string name="sleep_minutes">%1$d मिनेट</string>
+    <string name="sleep_end_of_track">ट्र्याकको अन्त्यमा</string>
+    <string name="sleep_finish_track">अन्तिम ट्र्याक सकिन दिनुहोस्</string>
+    <string name="sleep_stops_at">%1$s मा रोकिन्छ</string>
+    <string name="sleep_pausing_in">%1$s मा पज हुन्छ</string>
+    <string name="sleep_pausing_after_track">यो ट्र्याकपछि पज हुन्छ</string>
+    <string name="sleep_turn_off">बन्द गर्नुहोस्</string>
+    <string name="sleep_start">सुरु गर्नुहोस्</string>
+    <string name="sleep_hours">%1$d घण्टा</string>
+    <string name="sleep_hours_minutes">%1$d घण्टा %2$d मिनेट</string>
+    <string name="sleep_add_minutes">+%1$d मिनेट</string>
     <string name="playback_failed">असफल (%1$s)</string>
 
 

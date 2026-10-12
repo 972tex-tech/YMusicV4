@@ -186,8 +186,17 @@
     <string name="queue_load_failed">Impossibile caricare altro</string>
     <string name="queue_end">Fine della playlist</string>
     <string name="remove_from_queue">Rimuovi dalla coda</string>
-    <string name="sleep_off_remaining">Disattivato (mancano %1$s)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Fine del brano</string>
+    <string name="sleep_finish_track">Lascia finire l'ultimo brano</string>
+    <string name="sleep_stops_at">Si ferma alle %1$s</string>
+    <string name="sleep_pausing_in">Pausa tra %1$s</string>
+    <string name="sleep_pausing_after_track">Pausa dopo questo brano</string>
+    <string name="sleep_turn_off">Disattiva</string>
+    <string name="sleep_start">Avvia</string>
+    <string name="sleep_hours">%1$d h</string>
+    <string name="sleep_hours_minutes">%1$d h %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Non riuscito (%1$s)</string>
 
 

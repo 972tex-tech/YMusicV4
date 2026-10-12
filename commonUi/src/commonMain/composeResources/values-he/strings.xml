@@ -186,8 +186,17 @@
     <string name="queue_load_failed">לא ניתן לטעון עוד</string>
     <string name="queue_end">סוף רשימת ההשמעה</string>
     <string name="remove_from_queue">הסר מהתור</string>
-    <string name="sleep_off_remaining">כבוי (נותרו %1$s)</string>
     <string name="sleep_minutes">%1$d דק'</string>
+    <string name="sleep_end_of_track">סוף הרצועה</string>
+    <string name="sleep_finish_track">לתת לרצועה האחרונה להסתיים</string>
+    <string name="sleep_stops_at">ייעצר ב-%1$s</string>
+    <string name="sleep_pausing_in">השהיה בעוד %1$s</string>
+    <string name="sleep_pausing_after_track">השהיה אחרי הרצועה הזו</string>
+    <string name="sleep_turn_off">כיבוי</string>
+    <string name="sleep_start">התחלה</string>
+    <string name="sleep_hours">%1$d ש'</string>
+    <string name="sleep_hours_minutes">%1$d ש' %2$d דק'</string>
+    <string name="sleep_add_minutes">+%1$d דק'</string>
     <string name="playback_failed">נכשל (%1$s)</string>
 
 

@@ -186,8 +186,17 @@
     <string name="queue_load_failed">Учитавање није успело</string>
     <string name="queue_end">Крај плејлисте</string>
     <string name="remove_from_queue">Уклони из реда</string>
-    <string name="sleep_off_remaining">Искључи (преостало %1$s)</string>
     <string name="sleep_minutes">%1$d мин</string>
+    <string name="sleep_end_of_track">Крај песме</string>
+    <string name="sleep_finish_track">Пусти да последња песма заврши</string>
+    <string name="sleep_stops_at">Зауставља се у %1$s</string>
+    <string name="sleep_pausing_in">Пауза за %1$s</string>
+    <string name="sleep_pausing_after_track">Пауза после ове песме</string>
+    <string name="sleep_turn_off">Искључи</string>
+    <string name="sleep_start">Покрени</string>
+    <string name="sleep_hours">%1$d ч</string>
+    <string name="sleep_hours_minutes">%1$d ч %2$d мин</string>
+    <string name="sleep_add_minutes">+%1$d мин</string>
     <string name="playback_failed">Неуспело (%1$s)</string>
 
 

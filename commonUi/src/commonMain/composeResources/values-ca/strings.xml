@@ -186,8 +186,17 @@
     <string name="queue_load_failed">No se n'han pogut carregar més</string>
     <string name="queue_end">Final de la llista</string>
     <string name="remove_from_queue">Treu de la cua</string>
-    <string name="sleep_off_remaining">Desactivat (queden %1$s)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Final de la pista</string>
+    <string name="sleep_finish_track">Deixa acabar l'última pista</string>
+    <string name="sleep_stops_at">S'atura a les %1$s</string>
+    <string name="sleep_pausing_in">Pausa d'aquí a %1$s</string>
+    <string name="sleep_pausing_after_track">Pausa després d'aquesta pista</string>
+    <string name="sleep_turn_off">Desactiva</string>
+    <string name="sleep_start">Inicia</string>
+    <string name="sleep_hours">%1$d h</string>
+    <string name="sleep_hours_minutes">%1$d h %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Error (%1$s)</string>
 
 

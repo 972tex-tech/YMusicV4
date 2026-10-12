@@ -184,8 +184,17 @@
     <string name="queue_load_failed">无法加载更多</string>
     <string name="queue_end">播放列表已结束</string>
     <string name="remove_from_queue">从队列中移除</string>
-    <string name="sleep_off_remaining">关闭（剩余 %1$s）</string>
     <string name="sleep_minutes">%1$d 分钟</string>
+    <string name="sleep_end_of_track">当前曲目结束时</string>
+    <string name="sleep_finish_track">让最后一首播完</string>
+    <string name="sleep_stops_at">将于 %1$s 停止</string>
+    <string name="sleep_pausing_in">%1$s 后暂停</string>
+    <string name="sleep_pausing_after_track">本曲结束后暂停</string>
+    <string name="sleep_turn_off">关闭</string>
+    <string name="sleep_start">开始</string>
+    <string name="sleep_hours">%1$d 小时</string>
+    <string name="sleep_hours_minutes">%1$d 小时 %2$d 分钟</string>
+    <string name="sleep_add_minutes">+%1$d 分钟</string>
     <string name="playback_failed">播放失败（%1$s）</string>
 
 

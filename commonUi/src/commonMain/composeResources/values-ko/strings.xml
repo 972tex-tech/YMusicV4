@@ -184,8 +184,17 @@
     <string name="queue_load_failed">더 불러오지 못했습니다</string>
     <string name="queue_end">재생목록 끝</string>
     <string name="remove_from_queue">대기열에서 삭제</string>
-    <string name="sleep_off_remaining">끄기(%1$s 남음)</string>
     <string name="sleep_minutes">%1$d분</string>
+    <string name="sleep_end_of_track">트랙 종료 시</string>
+    <string name="sleep_finish_track">마지막 트랙은 끝까지 재생</string>
+    <string name="sleep_stops_at">%1$s에 중지</string>
+    <string name="sleep_pausing_in">%1$s 후 일시중지</string>
+    <string name="sleep_pausing_after_track">이 트랙 후 일시중지</string>
+    <string name="sleep_turn_off">끄기</string>
+    <string name="sleep_start">시작</string>
+    <string name="sleep_hours">%1$d시간</string>
+    <string name="sleep_hours_minutes">%1$d시간 %2$d분</string>
+    <string name="sleep_add_minutes">+%1$d분</string>
     <string name="playback_failed">실패(%1$s)</string>
 
 

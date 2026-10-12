@@ -185,8 +185,17 @@
     <string name="queue_load_failed">Kan niet meer laden</string>
     <string name="queue_end">Einde van afspeellijst</string>
     <string name="remove_from_queue">Verwijderen uit wachtrij</string>
-    <string name="sleep_off_remaining">Uit (nog %1$s)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Einde van nummer</string>
+    <string name="sleep_finish_track">Laatste nummer laten afspelen</string>
+    <string name="sleep_stops_at">Stopt om %1$s</string>
+    <string name="sleep_pausing_in">Pauze over %1$s</string>
+    <string name="sleep_pausing_after_track">Pauze na dit nummer</string>
+    <string name="sleep_turn_off">Uitzetten</string>
+    <string name="sleep_start">Starten</string>
+    <string name="sleep_hours">%1$d u</string>
+    <string name="sleep_hours_minutes">%1$d u %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Mislukt (%1$s)</string>
 
 

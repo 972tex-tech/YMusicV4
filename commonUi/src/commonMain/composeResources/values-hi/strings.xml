@@ -185,8 +185,17 @@
     <string name="queue_load_failed">और लोड नहीं हो सका</string>
     <string name="queue_end">प्लेलिस्ट समाप्त</string>
     <string name="remove_from_queue">कतार से हटाएं</string>
-    <string name="sleep_off_remaining">बंद (%1$s बाकी)</string>
     <string name="sleep_minutes">%1$d मिनट</string>
+    <string name="sleep_end_of_track">ट्रैक के अंत में</string>
+    <string name="sleep_finish_track">आखिरी ट्रैक पूरा होने दें</string>
+    <string name="sleep_stops_at">%1$s पर रुकेगा</string>
+    <string name="sleep_pausing_in">%1$s में रुकेगा</string>
+    <string name="sleep_pausing_after_track">इस ट्रैक के बाद रुकेगा</string>
+    <string name="sleep_turn_off">बंद करें</string>
+    <string name="sleep_start">शुरू करें</string>
+    <string name="sleep_hours">%1$d घंटे</string>
+    <string name="sleep_hours_minutes">%1$d घंटे %2$d मिनट</string>
+    <string name="sleep_add_minutes">+%1$d मिनट</string>
     <string name="playback_failed">विफल (%1$s)</string>
 
 

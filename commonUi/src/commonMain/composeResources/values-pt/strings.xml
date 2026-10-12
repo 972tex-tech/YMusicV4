@@ -186,8 +186,17 @@
     <string name="queue_load_failed">Não foi possível carregar mais</string>
     <string name="queue_end">Fim da playlist</string>
     <string name="remove_from_queue">Remover da fila</string>
-    <string name="sleep_off_remaining">Desativado (faltam %1$s)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Fim da faixa</string>
+    <string name="sleep_finish_track">Deixar a última faixa terminar</string>
+    <string name="sleep_stops_at">Para às %1$s</string>
+    <string name="sleep_pausing_in">Pausa em %1$s</string>
+    <string name="sleep_pausing_after_track">Pausa após esta faixa</string>
+    <string name="sleep_turn_off">Desativar</string>
+    <string name="sleep_start">Iniciar</string>
+    <string name="sleep_hours">%1$d h</string>
+    <string name="sleep_hours_minutes">%1$d h %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Falhou (%1$s)</string>
 
 

@@ -186,8 +186,17 @@
     <string name="queue_load_failed">Nu s-au putut încărca mai multe</string>
     <string name="queue_end">Sfârșitul playlistului</string>
     <string name="remove_from_queue">Elimină din coadă</string>
-    <string name="sleep_off_remaining">Oprit (au mai rămas %1$s)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Sfârșitul piesei</string>
+    <string name="sleep_finish_track">Lasă ultima piesă să se termine</string>
+    <string name="sleep_stops_at">Se oprește la %1$s</string>
+    <string name="sleep_pausing_in">Pauză în %1$s</string>
+    <string name="sleep_pausing_after_track">Pauză după această piesă</string>
+    <string name="sleep_turn_off">Dezactivează</string>
+    <string name="sleep_start">Pornește</string>
+    <string name="sleep_hours">%1$d h</string>
+    <string name="sleep_hours_minutes">%1$d h %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Eșuat (%1$s)</string>
 
 

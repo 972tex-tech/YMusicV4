@@ -184,8 +184,17 @@
     <string name="queue_load_failed">โหลดเพิ่มไม่ได้</string>
     <string name="queue_end">สิ้นสุดเพลย์ลิสต์</string>
     <string name="remove_from_queue">นำออกจากคิว</string>
-    <string name="sleep_off_remaining">ปิด (เหลือ %1$s)</string>
     <string name="sleep_minutes">%1$d นาที</string>
+    <string name="sleep_end_of_track">จบเพลง</string>
+    <string name="sleep_finish_track">ให้เพลงสุดท้ายเล่นจนจบ</string>
+    <string name="sleep_stops_at">หยุดเวลา %1$s</string>
+    <string name="sleep_pausing_in">หยุดชั่วคราวใน %1$s</string>
+    <string name="sleep_pausing_after_track">หยุดชั่วคราวหลังเพลงนี้</string>
+    <string name="sleep_turn_off">ปิด</string>
+    <string name="sleep_start">เริ่ม</string>
+    <string name="sleep_hours">%1$d ชม.</string>
+    <string name="sleep_hours_minutes">%1$d ชม. %2$d นาที</string>
+    <string name="sleep_add_minutes">+%1$d นาที</string>
     <string name="playback_failed">ล้มเหลว (%1$s)</string>
 
 

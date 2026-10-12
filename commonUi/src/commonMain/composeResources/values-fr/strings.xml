@@ -186,8 +186,17 @@
     <string name="queue_load_failed">Impossible de charger la suite</string>
     <string name="queue_end">Fin de la playlist</string>
     <string name="remove_from_queue">Retirer de la file d'attente</string>
-    <string name="sleep_off_remaining">Désactivé (reste %1$s)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Fin du titre</string>
+    <string name="sleep_finish_track">Laisser finir le dernier titre</string>
+    <string name="sleep_stops_at">S'arrête à %1$s</string>
+    <string name="sleep_pausing_in">Pause dans %1$s</string>
+    <string name="sleep_pausing_after_track">Pause après ce titre</string>
+    <string name="sleep_turn_off">Désactiver</string>
+    <string name="sleep_start">Démarrer</string>
+    <string name="sleep_hours">%1$d h</string>
+    <string name="sleep_hours_minutes">%1$d h %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Échec (%1$s)</string>
 
 

@@ -184,8 +184,17 @@
     <string name="queue_load_failed">Tidak dapat memuatkan lagi</string>
     <string name="queue_end">Tamat senarai main</string>
     <string name="remove_from_queue">Alih keluar daripada baris gilir</string>
-    <string name="sleep_off_remaining">Mati (tinggal %1$s)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Akhir lagu</string>
+    <string name="sleep_finish_track">Biarkan lagu terakhir selesai</string>
+    <string name="sleep_stops_at">Berhenti pada %1$s</string>
+    <string name="sleep_pausing_in">Jeda dalam %1$s</string>
+    <string name="sleep_pausing_after_track">Jeda selepas lagu ini</string>
+    <string name="sleep_turn_off">Matikan</string>
+    <string name="sleep_start">Mula</string>
+    <string name="sleep_hours">%1$d j</string>
+    <string name="sleep_hours_minutes">%1$d j %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Gagal (%1$s)</string>
 
 

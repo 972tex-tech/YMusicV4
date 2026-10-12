@@ -186,8 +186,17 @@
     <string name="queue_load_failed">Učitavanje nije uspjelo</string>
     <string name="queue_end">Kraj popisa za reprodukciju</string>
     <string name="remove_from_queue">Ukloni iz reda</string>
-    <string name="sleep_off_remaining">Isključi (preostalo %1$s)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Kraj pjesme</string>
+    <string name="sleep_finish_track">Pusti da zadnja pjesma završi</string>
+    <string name="sleep_stops_at">Zaustavlja se u %1$s</string>
+    <string name="sleep_pausing_in">Pauza za %1$s</string>
+    <string name="sleep_pausing_after_track">Pauza nakon ove pjesme</string>
+    <string name="sleep_turn_off">Isključi</string>
+    <string name="sleep_start">Pokreni</string>
+    <string name="sleep_hours">%1$d h</string>
+    <string name="sleep_hours_minutes">%1$d h %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Nije uspjelo (%1$s)</string>
 
 

@@ -185,8 +185,17 @@
     <string name="queue_load_failed">Nem sikerült többet betölteni</string>
     <string name="queue_end">A lejátszási lista vége</string>
     <string name="remove_from_queue">Eltávolítás a sorból</string>
-    <string name="sleep_off_remaining">Ki (%1$s van hátra)</string>
     <string name="sleep_minutes">%1$d perc</string>
+    <string name="sleep_end_of_track">Szám vége</string>
+    <string name="sleep_finish_track">Az utolsó szám végigszólhat</string>
+    <string name="sleep_stops_at">Leáll ekkor: %1$s</string>
+    <string name="sleep_pausing_in">Szünet ennyi múlva: %1$s</string>
+    <string name="sleep_pausing_after_track">Szünet e szám után</string>
+    <string name="sleep_turn_off">Kikapcsolás</string>
+    <string name="sleep_start">Indítás</string>
+    <string name="sleep_hours">%1$d óra</string>
+    <string name="sleep_hours_minutes">%1$d óra %2$d perc</string>
+    <string name="sleep_add_minutes">+%1$d perc</string>
     <string name="playback_failed">Sikertelen (%1$s)</string>
 
 

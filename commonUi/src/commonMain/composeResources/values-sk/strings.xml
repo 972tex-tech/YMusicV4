@@ -187,8 +187,17 @@
     <string name="queue_load_failed">Ďalšie sa nepodarilo načítať</string>
     <string name="queue_end">Koniec playlistu</string>
     <string name="remove_from_queue">Odstrániť z radu</string>
-    <string name="sleep_off_remaining">Vypnúť (zostáva %1$s)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Koniec skladby</string>
+    <string name="sleep_finish_track">Nechať poslednú skladbu dohrať</string>
+    <string name="sleep_stops_at">Zastaví sa o %1$s</string>
+    <string name="sleep_pausing_in">Pozastavenie o %1$s</string>
+    <string name="sleep_pausing_after_track">Pozastavenie po tejto skladbe</string>
+    <string name="sleep_turn_off">Vypnúť</string>
+    <string name="sleep_start">Spustiť</string>
+    <string name="sleep_hours">%1$d h</string>
+    <string name="sleep_hours_minutes">%1$d h %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Chyba (%1$s)</string>
 
 

@@ -185,8 +185,17 @@
     <string name="queue_load_failed">আরও লোড করা যায়নি</string>
     <string name="queue_end">প্লেলিস্টের শেষ</string>
     <string name="remove_from_queue">সারি থেকে সরান</string>
-    <string name="sleep_off_remaining">বন্ধ (%1$s বাকি)</string>
     <string name="sleep_minutes">%1$d মিনিট</string>
+    <string name="sleep_end_of_track">ট্র্যাকের শেষে</string>
+    <string name="sleep_finish_track">শেষ ট্র্যাকটি শেষ হতে দিন</string>
+    <string name="sleep_stops_at">%1$s-এ থামবে</string>
+    <string name="sleep_pausing_in">%1$s পরে বিরতি</string>
+    <string name="sleep_pausing_after_track">এই ট্র্যাকের পরে বিরতি</string>
+    <string name="sleep_turn_off">বন্ধ করুন</string>
+    <string name="sleep_start">শুরু</string>
+    <string name="sleep_hours">%1$d ঘণ্টা</string>
+    <string name="sleep_hours_minutes">%1$d ঘণ্টা %2$d মিনিট</string>
+    <string name="sleep_add_minutes">+%1$d মিনিট</string>
     <string name="playback_failed">ব্যর্থ (%1$s)</string>
 
 

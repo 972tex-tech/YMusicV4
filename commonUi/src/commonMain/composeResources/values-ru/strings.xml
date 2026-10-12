@@ -187,8 +187,17 @@
     <string name="queue_load_failed">Не удалось загрузить ещё</string>
     <string name="queue_end">Конец плейлиста</string>
     <string name="remove_from_queue">Удалить из очереди</string>
-    <string name="sleep_off_remaining">Выкл. (осталось %1$s)</string>
     <string name="sleep_minutes">%1$d мин</string>
+    <string name="sleep_end_of_track">Конец трека</string>
+    <string name="sleep_finish_track">Дать доиграть последнему треку</string>
+    <string name="sleep_stops_at">Остановится в %1$s</string>
+    <string name="sleep_pausing_in">Пауза через %1$s</string>
+    <string name="sleep_pausing_after_track">Пауза после этого трека</string>
+    <string name="sleep_turn_off">Выключить</string>
+    <string name="sleep_start">Старт</string>
+    <string name="sleep_hours">%1$d ч</string>
+    <string name="sleep_hours_minutes">%1$d ч %2$d мин</string>
+    <string name="sleep_add_minutes">+%1$d мин</string>
     <string name="playback_failed">Ошибка (%1$s)</string>
 
 

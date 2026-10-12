@@ -187,8 +187,17 @@
     <string name="queue_load_failed">Не вдалося завантажити ще</string>
     <string name="queue_end">Кінець плейлиста</string>
     <string name="remove_from_queue">Видалити з черги</string>
-    <string name="sleep_off_remaining">Вимк. (залишилося %1$s)</string>
     <string name="sleep_minutes">%1$d хв</string>
+    <string name="sleep_end_of_track">Кінець треку</string>
+    <string name="sleep_finish_track">Дати дограти останньому треку</string>
+    <string name="sleep_stops_at">Зупиниться о %1$s</string>
+    <string name="sleep_pausing_in">Пауза через %1$s</string>
+    <string name="sleep_pausing_after_track">Пауза після цього треку</string>
+    <string name="sleep_turn_off">Вимкнути</string>
+    <string name="sleep_start">Старт</string>
+    <string name="sleep_hours">%1$d год</string>
+    <string name="sleep_hours_minutes">%1$d год %2$d хв</string>
+    <string name="sleep_add_minutes">+%1$d хв</string>
     <string name="playback_failed">Помилка (%1$s)</string>
 
 

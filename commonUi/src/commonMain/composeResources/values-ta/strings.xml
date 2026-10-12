@@ -185,8 +185,17 @@
     <string name="queue_load_failed">மேலும் ஏற்ற முடியவில்லை</string>
     <string name="queue_end">பிளேலிஸ்ட்டின் முடிவு</string>
     <string name="remove_from_queue">வரிசையிலிருந்து அகற்று</string>
-    <string name="sleep_off_remaining">முடக்கு (%1$s மீதம்)</string>
     <string name="sleep_minutes">%1$d நிமி</string>
+    <string name="sleep_end_of_track">டிராக்கின் முடிவில்</string>
+    <string name="sleep_finish_track">கடைசி டிராக் முடியட்டும்</string>
+    <string name="sleep_stops_at">%1$s க்கு நிற்கும்</string>
+    <string name="sleep_pausing_in">%1$s இல் இடைநிறுத்தம்</string>
+    <string name="sleep_pausing_after_track">இந்த டிராக்கிற்குப் பிறகு இடைநிறுத்தம்</string>
+    <string name="sleep_turn_off">முடக்கு</string>
+    <string name="sleep_start">தொடங்கு</string>
+    <string name="sleep_hours">%1$d மணி</string>
+    <string name="sleep_hours_minutes">%1$d மணி %2$d நிமி</string>
+    <string name="sleep_add_minutes">+%1$d நிமி</string>
     <string name="playback_failed">தோல்வி (%1$s)</string>
 
 

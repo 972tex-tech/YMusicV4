@@ -185,8 +185,17 @@
     <string name="queue_load_failed">Ezin izan da gehiago kargatu</string>
     <string name="queue_end">Zerrendaren amaiera</string>
     <string name="remove_from_queue">Kendu ilaratik</string>
-    <string name="sleep_off_remaining">Desaktibatuta (%1$s falta)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Pistaren amaiera</string>
+    <string name="sleep_finish_track">Utzi azken pista amaitzen</string>
+    <string name="sleep_stops_at">%1$s(e)tan geldituko da</string>
+    <string name="sleep_pausing_in">Pausa %1$s barru</string>
+    <string name="sleep_pausing_after_track">Pausa pista honen ondoren</string>
+    <string name="sleep_turn_off">Desaktibatu</string>
+    <string name="sleep_start">Hasi</string>
+    <string name="sleep_hours">%1$d h</string>
+    <string name="sleep_hours_minutes">%1$d h %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Huts egin du (%1$s)</string>
 
 

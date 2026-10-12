@@ -185,8 +185,17 @@
     <string name="queue_load_failed">بارگذاری بیشتر ممکن نشد</string>
     <string name="queue_end">پایان لیست پخش</string>
     <string name="remove_from_queue">حذف از صف</string>
-    <string name="sleep_off_remaining">خاموش (%1$s باقی‌مانده)</string>
     <string name="sleep_minutes">%1$d دقیقه</string>
+    <string name="sleep_end_of_track">پایان قطعه</string>
+    <string name="sleep_finish_track">اجازه بده آخرین قطعه تمام شود</string>
+    <string name="sleep_stops_at">توقف در %1$s</string>
+    <string name="sleep_pausing_in">مکث تا %1$s دیگر</string>
+    <string name="sleep_pausing_after_track">مکث بعد از این قطعه</string>
+    <string name="sleep_turn_off">خاموش</string>
+    <string name="sleep_start">شروع</string>
+    <string name="sleep_hours">%1$d ساعت</string>
+    <string name="sleep_hours_minutes">%1$d ساعت %2$d دقیقه</string>
+    <string name="sleep_add_minutes">+%1$d دقیقه</string>
     <string name="playback_failed">ناموفق (%1$s)</string>
 
 

@@ -184,8 +184,17 @@
     <string name="queue_load_failed">Tidak dapat memuat lebih banyak</string>
     <string name="queue_end">Akhir daftar putar</string>
     <string name="remove_from_queue">Hapus dari antrean</string>
-    <string name="sleep_off_remaining">Nonaktif (sisa %1$s)</string>
     <string name="sleep_minutes">%1$d mnt</string>
+    <string name="sleep_end_of_track">Akhir lagu</string>
+    <string name="sleep_finish_track">Biarkan lagu terakhir selesai</string>
+    <string name="sleep_stops_at">Berhenti pukul %1$s</string>
+    <string name="sleep_pausing_in">Jeda dalam %1$s</string>
+    <string name="sleep_pausing_after_track">Jeda setelah lagu ini</string>
+    <string name="sleep_turn_off">Matikan</string>
+    <string name="sleep_start">Mulai</string>
+    <string name="sleep_hours">%1$d j</string>
+    <string name="sleep_hours_minutes">%1$d j %2$d mnt</string>
+    <string name="sleep_add_minutes">+%1$d mnt</string>
     <string name="playback_failed">Gagal (%1$s)</string>
 
 

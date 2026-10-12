@@ -185,8 +185,17 @@
     <string name="queue_load_failed">Wax badan lama soo kicin karo</string>
     <string name="queue_end">Dhammaadka xulka</string>
     <string name="remove_from_queue">Ka saar hormada</string>
-    <string name="sleep_off_remaining">Xidhan (%1$s ayaa hadhay)</string>
     <string name="sleep_minutes">%1$d daqiiqo</string>
+    <string name="sleep_end_of_track">Dhammaadka heesta</string>
+    <string name="sleep_finish_track">U oggolow heesta ugu dambeysa inay dhammaato</string>
+    <string name="sleep_stops_at">Wuxuu joogsanayaa %1$s</string>
+    <string name="sleep_pausing_in">Hakin %1$s kadib</string>
+    <string name="sleep_pausing_after_track">Hakin heestan kadib</string>
+    <string name="sleep_turn_off">Dami</string>
+    <string name="sleep_start">Bilow</string>
+    <string name="sleep_hours">%1$d saac</string>
+    <string name="sleep_hours_minutes">%1$d saac %2$d daqiiqo</string>
+    <string name="sleep_add_minutes">+%1$d daqiiqo</string>
     <string name="playback_failed">Way guuldaraysatay (%1$s)</string>
 
 

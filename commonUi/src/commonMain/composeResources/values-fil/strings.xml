@@ -185,8 +185,17 @@
     <string name="queue_load_failed">Hindi makapag-load pa</string>
     <string name="queue_end">Katapusan ng playlist</string>
     <string name="remove_from_queue">Alisin sa queue</string>
-    <string name="sleep_off_remaining">Naka-off (%1$s na lang)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Dulo ng track</string>
+    <string name="sleep_finish_track">Hayaang matapos ang huling track</string>
+    <string name="sleep_stops_at">Hihinto sa %1$s</string>
+    <string name="sleep_pausing_in">Magpo-pause sa loob ng %1$s</string>
+    <string name="sleep_pausing_after_track">Magpo-pause pagkatapos ng track na ito</string>
+    <string name="sleep_turn_off">I-off</string>
+    <string name="sleep_start">Simulan</string>
+    <string name="sleep_hours">%1$d oras</string>
+    <string name="sleep_hours_minutes">%1$d oras %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Nabigo (%1$s)</string>
 
 

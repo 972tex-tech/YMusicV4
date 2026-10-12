@@ -187,8 +187,17 @@
     <string name="queue_load_failed">Nie udało się wczytać więcej</string>
     <string name="queue_end">Koniec playlisty</string>
     <string name="remove_from_queue">Usuń z kolejki</string>
-    <string name="sleep_off_remaining">Wył. (zostało %1$s)</string>
     <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_end_of_track">Koniec utworu</string>
+    <string name="sleep_finish_track">Pozwól dokończyć ostatni utwór</string>
+    <string name="sleep_stops_at">Zatrzyma się o %1$s</string>
+    <string name="sleep_pausing_in">Pauza za %1$s</string>
+    <string name="sleep_pausing_after_track">Pauza po tym utworze</string>
+    <string name="sleep_turn_off">Wyłącz</string>
+    <string name="sleep_start">Start</string>
+    <string name="sleep_hours">%1$d godz.</string>
+    <string name="sleep_hours_minutes">%1$d godz. %2$d min</string>
+    <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Błąd (%1$s)</string>
 
 
