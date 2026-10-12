@@ -103,7 +103,9 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
 
     ElevatedBarDialog(
         title = stringResource(Res.string.update_available_title),
+        // Back acts as the first button; a tap outside does nothing — only the buttons close it.
         onDismiss = if (status is AppUpdateStatus.Downloading) background else askLater,
+        dismissOnClickOutside = false,
         canScrollBackward = false,
         canScrollForward = false,
         buttons = {
