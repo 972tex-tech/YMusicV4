@@ -63,6 +63,16 @@ gradle_phase.shell_script = <<~SH
 SH
 target.build_phases.unshift(target.build_phases.delete(gradle_phase))
 
+# Last, after Info.plist is processed: the version name is gradle.properties' ymusic.versionName,
+# shared with Android and desktop.
+version_phase = target.new_shell_script_build_phase("Stamp version name from gradle.properties")
+version_phase.shell_script = <<~'SH'
+set -e
+v=$(sed -n 's/^ymusic\.versionName=//p' "$SRCROOT/../gradle.properties")
+[ -n "$v" ] || { echo "error: ymusic.versionName missing from gradle.properties"; exit 1; }
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $v" "$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+SH
+
 target.build_configurations.each do |config|
   s = config.build_settings
   s["SWIFT_VERSION"] = "5.0"

@@ -32,7 +32,7 @@ sentry {
     telemetry.set(false)
 }
 
-val appVersionName = "1.0.0"
+val appVersionName = appVersionName()
 
 // Outputs read YMusic-<versionName>-<abi|universal>-release.apk.
 base { archivesName.set("YMusic-$appVersionName") }
