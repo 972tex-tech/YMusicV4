@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">沒有已暫停的下載</string>
     <string name="downloads_empty_completed">尚無已完成的下載</string>
     <string name="downloads_empty_error">沒有失敗的下載</string>
+    <string name="downloads_pause_all">全部暫停</string>
+    <string name="downloads_resume_all">全部繼續</string>
+    <string name="downloads_unavailable">此裝置不支援下載。</string>
+    <string name="downloads_none_title">尚無下載</string>
+    <string name="downloads_none_message">已下載的歌曲和影片可離線播放。</string>
+    <string name="downloads_failed">下載失敗</string>
     <string name="section_settings">設定</string>
     <string name="section_donate">贊助</string>
     <string name="section_feedback">意見回饋</string>

@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Walang naka-pause na download</string>
     <string name="downloads_empty_completed">Wala pang natapos na download</string>
     <string name="downloads_empty_error">Walang nabigong download</string>
+    <string name="downloads_pause_all">I-pause lahat</string>
+    <string name="downloads_resume_all">Ituloy lahat</string>
+    <string name="downloads_unavailable">Hindi available ang mga download sa device na ito.</string>
+    <string name="downloads_none_title">Wala pang mga download</string>
+    <string name="downloads_none_message">Nagpe-play offline ang mga na-download na kanta at video.</string>
+    <string name="downloads_failed">Nabigo ang download</string>
     <string name="section_settings">Mga setting</string>
     <string name="section_donate">Mag-donate</string>
     <string name="section_feedback">Feedback</string>

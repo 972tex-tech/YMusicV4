@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Tiada muat turun yang dijeda</string>
     <string name="downloads_empty_completed">Belum ada muat turun yang selesai</string>
     <string name="downloads_empty_error">Tiada muat turun yang gagal</string>
+    <string name="downloads_pause_all">Jeda semua</string>
+    <string name="downloads_resume_all">Sambung semua</string>
+    <string name="downloads_unavailable">Muat turun tidak tersedia pada peranti ini.</string>
+    <string name="downloads_none_title">Belum ada muat turun</string>
+    <string name="downloads_none_message">Lagu dan video yang dimuat turun boleh dimainkan di luar talian.</string>
+    <string name="downloads_failed">Muat turun gagal</string>
     <string name="section_settings">Tetapan</string>
     <string name="section_donate">Derma</string>
     <string name="section_feedback">Maklum balas</string>

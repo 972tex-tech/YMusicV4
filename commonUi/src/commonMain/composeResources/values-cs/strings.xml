@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Žádná pozastavená stahování</string>
     <string name="downloads_empty_completed">Zatím žádná dokončená stahování</string>
     <string name="downloads_empty_error">Žádná neúspěšná stahování</string>
+    <string name="downloads_pause_all">Pozastavit vše</string>
+    <string name="downloads_resume_all">Obnovit vše</string>
+    <string name="downloads_unavailable">Stahování není na tomto zařízení k dispozici.</string>
+    <string name="downloads_none_title">Zatím žádná stahování</string>
+    <string name="downloads_none_message">Stažené skladby a videa se přehrávají offline.</string>
+    <string name="downloads_failed">Stahování se nezdařilo</string>
     <string name="section_settings">Nastavení</string>
     <string name="section_donate">Podpořit</string>
     <string name="section_feedback">Zpětná vazba</string>

@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">一時停止中のダウンロードはありません</string>
     <string name="downloads_empty_completed">完了したダウンロードはまだありません</string>
     <string name="downloads_empty_error">失敗したダウンロードはありません</string>
+    <string name="downloads_pause_all">すべて一時停止</string>
+    <string name="downloads_resume_all">すべて再開</string>
+    <string name="downloads_unavailable">このデバイスではダウンロードを利用できません。</string>
+    <string name="downloads_none_title">ダウンロードはまだありません</string>
+    <string name="downloads_none_message">ダウンロードした曲や動画はオフラインで再生できます。</string>
+    <string name="downloads_failed">ダウンロードに失敗しました</string>
     <string name="section_settings">設定</string>
     <string name="section_donate">寄付</string>
     <string name="section_feedback">フィードバック</string>

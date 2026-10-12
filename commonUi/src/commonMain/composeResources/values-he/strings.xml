@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">אין הורדות מושהות</string>
     <string name="downloads_empty_completed">עדיין אין הורדות שהושלמו</string>
     <string name="downloads_empty_error">אין הורדות שנכשלו</string>
+    <string name="downloads_pause_all">השהיית הכול</string>
+    <string name="downloads_resume_all">המשך הכול</string>
+    <string name="downloads_unavailable">הורדות אינן זמינות במכשיר הזה.</string>
+    <string name="downloads_none_title">אין עדיין הורדות</string>
+    <string name="downloads_none_message">שירים וסרטונים שהורדו מתנגנים ללא חיבור.</string>
+    <string name="downloads_failed">ההורדה נכשלה</string>
     <string name="section_settings">הגדרות</string>
     <string name="section_donate">תרומה</string>
     <string name="section_feedback">משוב</string>

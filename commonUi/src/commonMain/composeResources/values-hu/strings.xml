@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Nincsenek szüneteltetett letöltések</string>
     <string name="downloads_empty_completed">Még nincsenek befejezett letöltések</string>
     <string name="downloads_empty_error">Nincsenek sikertelen letöltések</string>
+    <string name="downloads_pause_all">Összes szüneteltetése</string>
+    <string name="downloads_resume_all">Összes folytatása</string>
+    <string name="downloads_unavailable">A letöltések nem érhetők el ezen az eszközön.</string>
+    <string name="downloads_none_title">Még nincs letöltés</string>
+    <string name="downloads_none_message">A letöltött dalok és videók offline is lejátszhatók.</string>
+    <string name="downloads_failed">A letöltés sikertelen</string>
     <string name="section_settings">Beállítások</string>
     <string name="section_donate">Támogatás</string>
     <string name="section_feedback">Visszajelzés</string>

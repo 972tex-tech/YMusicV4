@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">താൽക്കാലികമായി നിർത്തിയ ഡൗൺലോഡുകളൊന്നുമില്ല</string>
     <string name="downloads_empty_completed">ഇതുവരെ ഡൗൺലോഡുകളൊന്നും പൂർത്തിയായിട്ടില്ല</string>
     <string name="downloads_empty_error">പരാജയപ്പെട്ട ഡൗൺലോഡുകളൊന്നുമില്ല</string>
+    <string name="downloads_pause_all">എല്ലാം താൽക്കാലികമായി നിർത്തുക</string>
+    <string name="downloads_resume_all">എല്ലാം പുനരാരംഭിക്കുക</string>
+    <string name="downloads_unavailable">ഈ ഉപകരണത്തിൽ ഡൗൺലോഡുകൾ ലഭ്യമല്ല.</string>
+    <string name="downloads_none_title">ഇതുവരെ ഡൗൺലോഡുകളൊന്നുമില്ല</string>
+    <string name="downloads_none_message">ഡൗൺലോഡ് ചെയ്ത പാട്ടുകളും വീഡിയോകളും ഓഫ്‌ലൈനായി പ്ലേ ചെയ്യാം.</string>
+    <string name="downloads_failed">ഡൗൺലോഡ് പരാജയപ്പെട്ടു</string>
     <string name="section_settings">ക്രമീകരണങ്ങൾ</string>
     <string name="section_donate">സംഭാവന ചെയ്യുക</string>
     <string name="section_feedback">ഫീഡ്‌ബാക്ക്</string>

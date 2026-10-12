@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Нет приостановленных загрузок</string>
     <string name="downloads_empty_completed">Пока нет завершённых загрузок</string>
     <string name="downloads_empty_error">Нет неудачных загрузок</string>
+    <string name="downloads_pause_all">Приостановить все</string>
+    <string name="downloads_resume_all">Возобновить все</string>
+    <string name="downloads_unavailable">Загрузки недоступны на этом устройстве.</string>
+    <string name="downloads_none_title">Загрузок пока нет</string>
+    <string name="downloads_none_message">Скачанные песни и видео воспроизводятся офлайн.</string>
+    <string name="downloads_failed">Не удалось скачать</string>
     <string name="section_settings">Настройки</string>
     <string name="section_donate">Поддержать</string>
     <string name="section_feedback">Обратная связь</string>

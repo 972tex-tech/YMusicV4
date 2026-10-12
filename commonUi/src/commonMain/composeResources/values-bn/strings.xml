@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">বিরতিতে থাকা কোনো ডাউনলোড নেই</string>
     <string name="downloads_empty_completed">এখনও কোনো ডাউনলোড সম্পন্ন হয়নি</string>
     <string name="downloads_empty_error">ব্যর্থ কোনো ডাউনলোড নেই</string>
+    <string name="downloads_pause_all">সব থামান</string>
+    <string name="downloads_resume_all">সব আবার শুরু করুন</string>
+    <string name="downloads_unavailable">এই ডিভাইসে ডাউনলোড উপলব্ধ নয়।</string>
+    <string name="downloads_none_title">এখনও কোনো ডাউনলোড নেই</string>
+    <string name="downloads_none_message">ডাউনলোড করা গান ও ভিডিও অফলাইনে চলে।</string>
+    <string name="downloads_failed">ডাউনলোড ব্যর্থ হয়েছে</string>
     <string name="section_settings">সেটিংস</string>
     <string name="section_donate">অনুদান দিন</string>
     <string name="section_feedback">মতামত</string>

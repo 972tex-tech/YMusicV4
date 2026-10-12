@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Aucun téléchargement en pause</string>
     <string name="downloads_empty_completed">Aucun téléchargement terminé pour l'instant</string>
     <string name="downloads_empty_error">Aucun téléchargement échoué</string>
+    <string name="downloads_pause_all">Tout mettre en pause</string>
+    <string name="downloads_resume_all">Tout reprendre</string>
+    <string name="downloads_unavailable">Les téléchargements ne sont pas disponibles sur cet appareil.</string>
+    <string name="downloads_none_title">Aucun téléchargement pour l’instant</string>
+    <string name="downloads_none_message">Les titres et vidéos téléchargés se lisent hors connexion.</string>
+    <string name="downloads_failed">Échec du téléchargement</string>
     <string name="section_settings">Paramètres</string>
     <string name="section_donate">Faire un don</string>
     <string name="section_feedback">Commentaires</string>

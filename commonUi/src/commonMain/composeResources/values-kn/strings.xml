@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">ವಿರಾಮಗೊಳಿಸಿದ ಡೌನ್‌ಲೋಡ್‌ಗಳಿಲ್ಲ</string>
     <string name="downloads_empty_completed">ಇನ್ನೂ ಯಾವುದೇ ಡೌನ್‌ಲೋಡ್ ಪೂರ್ಣಗೊಂಡಿಲ್ಲ</string>
     <string name="downloads_empty_error">ವಿಫಲವಾದ ಡೌನ್‌ಲೋಡ್‌ಗಳಿಲ್ಲ</string>
+    <string name="downloads_pause_all">ಎಲ್ಲವನ್ನೂ ವಿರಾಮಗೊಳಿಸಿ</string>
+    <string name="downloads_resume_all">ಎಲ್ಲವನ್ನೂ ಮುಂದುವರಿಸಿ</string>
+    <string name="downloads_unavailable">ಈ ಸಾಧನದಲ್ಲಿ ಡೌನ್‌ಲೋಡ್‌ಗಳು ಲಭ್ಯವಿಲ್ಲ.</string>
+    <string name="downloads_none_title">ಇನ್ನೂ ಯಾವುದೇ ಡೌನ್‌ಲೋಡ್‌ಗಳಿಲ್ಲ</string>
+    <string name="downloads_none_message">ಡೌನ್‌ಲೋಡ್ ಮಾಡಿದ ಹಾಡುಗಳು ಮತ್ತು ವೀಡಿಯೊಗಳು ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿ ಪ್ಲೇ ಆಗುತ್ತವೆ.</string>
+    <string name="downloads_failed">ಡೌನ್‌ಲೋಡ್ ವಿಫಲವಾಗಿದೆ</string>
     <string name="section_settings">ಸೆಟ್ಟಿಂಗ್‌ಗಳು</string>
     <string name="section_donate">ದೇಣಿಗೆ ನೀಡಿ</string>
     <string name="section_feedback">ಪ್ರತಿಕ್ರಿಯೆ</string>

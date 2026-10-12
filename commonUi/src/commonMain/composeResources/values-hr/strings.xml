@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Nema pauziranih preuzimanja</string>
     <string name="downloads_empty_completed">Još nema završenih preuzimanja</string>
     <string name="downloads_empty_error">Nema neuspjelih preuzimanja</string>
+    <string name="downloads_pause_all">Pauziraj sve</string>
+    <string name="downloads_resume_all">Nastavi sve</string>
+    <string name="downloads_unavailable">Preuzimanja nisu dostupna na ovom uređaju.</string>
+    <string name="downloads_none_title">Još nema preuzimanja</string>
+    <string name="downloads_none_message">Preuzete pjesme i videozapisi reproduciraju se izvanmrežno.</string>
+    <string name="downloads_failed">Preuzimanje nije uspjelo</string>
     <string name="section_settings">Postavke</string>
     <string name="section_donate">Doniraj</string>
     <string name="section_feedback">Povratne informacije</string>

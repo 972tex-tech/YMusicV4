@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">કોઈ થોભાવેલા ડાઉનલોડ નથી</string>
     <string name="downloads_empty_completed">હજી કોઈ ડાઉનલોડ પૂર્ણ થયા નથી</string>
     <string name="downloads_empty_error">કોઈ નિષ્ફળ ડાઉનલોડ નથી</string>
+    <string name="downloads_pause_all">બધું થોભાવો</string>
+    <string name="downloads_resume_all">બધું ફરી શરૂ કરો</string>
+    <string name="downloads_unavailable">આ ડિવાઇસ પર ડાઉનલોડ ઉપલબ્ધ નથી.</string>
+    <string name="downloads_none_title">હજી કોઈ ડાઉનલોડ નથી</string>
+    <string name="downloads_none_message">ડાઉનલોડ કરેલાં ગીતો અને વીડિયો ઑફલાઇન ચાલે છે.</string>
+    <string name="downloads_failed">ડાઉનલોડ નિષ્ફળ</string>
     <string name="section_settings">સેટિંગ્સ</string>
     <string name="section_donate">દાન કરો</string>
     <string name="section_feedback">પ્રતિસાદ</string>

@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Δεν υπάρχουν λήψεις σε παύση</string>
     <string name="downloads_empty_completed">Δεν υπάρχουν ακόμη ολοκληρωμένες λήψεις</string>
     <string name="downloads_empty_error">Δεν υπάρχουν αποτυχημένες λήψεις</string>
+    <string name="downloads_pause_all">Παύση όλων</string>
+    <string name="downloads_resume_all">Συνέχιση όλων</string>
+    <string name="downloads_unavailable">Οι λήψεις δεν είναι διαθέσιμες σε αυτήν τη συσκευή.</string>
+    <string name="downloads_none_title">Δεν υπάρχουν λήψεις ακόμα</string>
+    <string name="downloads_none_message">Τα τραγούδια και τα βίντεο που κατεβάσατε παίζουν εκτός σύνδεσης.</string>
+    <string name="downloads_failed">Η λήψη απέτυχε</string>
     <string name="section_settings">Ρυθμίσεις</string>
     <string name="section_donate">Δωρεά</string>
     <string name="section_feedback">Σχόλια</string>

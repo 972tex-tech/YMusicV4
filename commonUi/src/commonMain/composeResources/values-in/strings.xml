@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Tidak ada unduhan yang dijeda</string>
     <string name="downloads_empty_completed">Belum ada unduhan yang selesai</string>
     <string name="downloads_empty_error">Tidak ada unduhan yang gagal</string>
+    <string name="downloads_pause_all">Jeda semua</string>
+    <string name="downloads_resume_all">Lanjutkan semua</string>
+    <string name="downloads_unavailable">Download tidak tersedia di perangkat ini.</string>
+    <string name="downloads_none_title">Belum ada download</string>
+    <string name="downloads_none_message">Lagu dan video yang didownload dapat diputar offline.</string>
+    <string name="downloads_failed">Download gagal</string>
     <string name="section_settings">Setelan</string>
     <string name="section_donate">Donasi</string>
     <string name="section_feedback">Masukan</string>

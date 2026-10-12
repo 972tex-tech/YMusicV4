@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Nessun download in pausa</string>
     <string name="downloads_empty_completed">Ancora nessun download completato</string>
     <string name="downloads_empty_error">Nessun download non riuscito</string>
+    <string name="downloads_pause_all">Metti tutto in pausa</string>
+    <string name="downloads_resume_all">Riprendi tutto</string>
+    <string name="downloads_unavailable">I download non sono disponibili su questo dispositivo.</string>
+    <string name="downloads_none_title">Nessun download per ora</string>
+    <string name="downloads_none_message">Brani e video scaricati si riproducono offline.</string>
+    <string name="downloads_failed">Download non riuscito</string>
     <string name="section_settings">Impostazioni</string>
     <string name="section_donate">Fai una donazione</string>
     <string name="section_feedback">Feedback</string>

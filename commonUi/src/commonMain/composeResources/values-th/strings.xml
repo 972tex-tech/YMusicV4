@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">ไม่มีรายการดาวน์โหลดที่หยุดชั่วคราว</string>
     <string name="downloads_empty_completed">ยังไม่มีรายการดาวน์โหลดที่เสร็จสิ้น</string>
     <string name="downloads_empty_error">ไม่มีรายการดาวน์โหลดที่ล้มเหลว</string>
+    <string name="downloads_pause_all">หยุดทั้งหมดชั่วคราว</string>
+    <string name="downloads_resume_all">ดาวน์โหลดต่อทั้งหมด</string>
+    <string name="downloads_unavailable">อุปกรณ์นี้ใช้การดาวน์โหลดไม่ได้</string>
+    <string name="downloads_none_title">ยังไม่มีการดาวน์โหลด</string>
+    <string name="downloads_none_message">เพลงและวิดีโอที่ดาวน์โหลดเล่นแบบออฟไลน์ได้</string>
+    <string name="downloads_failed">ดาวน์โหลดไม่สำเร็จ</string>
     <string name="section_settings">การตั้งค่า</string>
     <string name="section_donate">บริจาค</string>
     <string name="section_feedback">ส่งความคิดเห็น</string>

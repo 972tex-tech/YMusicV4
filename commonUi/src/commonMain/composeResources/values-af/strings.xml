@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Geen onderbreekte aflaaie nie</string>
     <string name="downloads_empty_completed">Nog geen voltooide aflaaie nie</string>
     <string name="downloads_empty_error">Geen mislukte aflaaie nie</string>
+    <string name="downloads_pause_all">Pouseer alles</string>
+    <string name="downloads_resume_all">Hervat alles</string>
+    <string name="downloads_unavailable">Aflaaie is nie op hierdie toestel beskikbaar nie.</string>
+    <string name="downloads_none_title">Nog geen aflaaie nie</string>
+    <string name="downloads_none_message">Afgelaaide liedjies en video’s speel aflyn.</string>
+    <string name="downloads_failed">Aflaai het misluk</string>
     <string name="section_settings">Instellings</string>
     <string name="section_donate">Skenk</string>
     <string name="section_feedback">Terugvoer</string>

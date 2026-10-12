@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Hakuna vipakuliwa vilivyositishwa</string>
     <string name="downloads_empty_completed">Bado hakuna vipakuliwa vilivyokamilika</string>
     <string name="downloads_empty_error">Hakuna vipakuliwa vilivyoshindikana</string>
+    <string name="downloads_pause_all">Sitisha zote</string>
+    <string name="downloads_resume_all">Endelea zote</string>
+    <string name="downloads_unavailable">Vipakuliwa havipatikani kwenye kifaa hiki.</string>
+    <string name="downloads_none_title">Bado hakuna vipakuliwa</string>
+    <string name="downloads_none_message">Nyimbo na video zilizopakuliwa hucheza nje ya mtandao.</string>
+    <string name="downloads_failed">Imeshindwa kupakua</string>
     <string name="section_settings">Mipangilio</string>
     <string name="section_donate">Changia</string>
     <string name="section_feedback">Maoni</string>

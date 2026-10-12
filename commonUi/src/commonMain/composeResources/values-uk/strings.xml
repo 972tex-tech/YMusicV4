@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Немає призупинених завантажень</string>
     <string name="downloads_empty_completed">Поки немає завершених завантажень</string>
     <string name="downloads_empty_error">Немає невдалих завантажень</string>
+    <string name="downloads_pause_all">Призупинити всі</string>
+    <string name="downloads_resume_all">Відновити всі</string>
+    <string name="downloads_unavailable">Завантаження недоступні на цьому пристрої.</string>
+    <string name="downloads_none_title">Завантажень поки немає</string>
+    <string name="downloads_none_message">Завантажені пісні й відео відтворюються офлайн.</string>
+    <string name="downloads_failed">Не вдалося завантажити</string>
     <string name="section_settings">Налаштування</string>
     <string name="section_donate">Підтримати</string>
     <string name="section_feedback">Зворотний зв’язок</string>

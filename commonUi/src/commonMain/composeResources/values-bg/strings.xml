@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Няма изтегляния на пауза</string>
     <string name="downloads_empty_completed">Още няма завършени изтегляния</string>
     <string name="downloads_empty_error">Няма неуспешни изтегляния</string>
+    <string name="downloads_pause_all">Пауза на всички</string>
+    <string name="downloads_resume_all">Продължаване на всички</string>
+    <string name="downloads_unavailable">Изтеглянията не са налични на това устройство.</string>
+    <string name="downloads_none_title">Все още няма изтегляния</string>
+    <string name="downloads_none_message">Изтеглените песни и видеоклипове се пускат офлайн.</string>
+    <string name="downloads_failed">Изтеглянето не бе успешно</string>
     <string name="section_settings">Настройки</string>
     <string name="section_donate">Дарение</string>
     <string name="section_feedback">Обратна връзка</string>

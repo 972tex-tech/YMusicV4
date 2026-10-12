@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Դադարեցված ներբեռնումներ չկան</string>
     <string name="downloads_empty_completed">Ավարտված ներբեռնումներ դեռ չկան</string>
     <string name="downloads_empty_error">Ձախողված ներբեռնումներ չկան</string>
+    <string name="downloads_pause_all">Դադարեցնել բոլորը</string>
+    <string name="downloads_resume_all">Շարունակել բոլորը</string>
+    <string name="downloads_unavailable">Ներբեռնումներն այս սարքում հասանելի չեն։</string>
+    <string name="downloads_none_title">Դեռ ներբեռնումներ չկան</string>
+    <string name="downloads_none_message">Ներբեռնված երգերն ու տեսանյութերը նվագարկվում են անցանց։</string>
+    <string name="downloads_failed">Ներբեռնումը ձախողվեց</string>
     <string name="section_settings">Կարգավորումներ</string>
     <string name="section_donate">Նվիրաբերել</string>
     <string name="section_feedback">Հետադարձ կապ</string>

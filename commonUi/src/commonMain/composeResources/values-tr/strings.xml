@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Duraklatılmış indirme yok</string>
     <string name="downloads_empty_completed">Henüz tamamlanmış indirme yok</string>
     <string name="downloads_empty_error">Başarısız indirme yok</string>
+    <string name="downloads_pause_all">Tümünü duraklat</string>
+    <string name="downloads_resume_all">Tümünü sürdür</string>
+    <string name="downloads_unavailable">İndirmeler bu cihazda kullanılamıyor.</string>
+    <string name="downloads_none_title">Henüz indirme yok</string>
+    <string name="downloads_none_message">İndirilen şarkılar ve videolar çevrimdışı çalar.</string>
+    <string name="downloads_failed">İndirme başarısız</string>
     <string name="section_settings">Ayarlar</string>
     <string name="section_donate">Bağış yap</string>
     <string name="section_feedback">Geri bildirim</string>

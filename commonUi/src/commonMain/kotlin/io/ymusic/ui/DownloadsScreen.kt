@@ -57,12 +57,19 @@ import io.ymusic.ui.resources.downloads_empty_error
 import io.ymusic.ui.resources.downloads_empty_paused
 import io.ymusic.ui.resources.downloads_empty_running
 import io.ymusic.ui.resources.downloads_empty_waiting
+import io.ymusic.ui.resources.downloads_failed
 import io.ymusic.ui.resources.downloads_filter_all
 import io.ymusic.ui.resources.downloads_filter_completed
 import io.ymusic.ui.resources.downloads_filter_error
 import io.ymusic.ui.resources.downloads_filter_paused
 import io.ymusic.ui.resources.downloads_filter_running
 import io.ymusic.ui.resources.downloads_filter_waiting
+import io.ymusic.ui.resources.downloads_none_message
+import io.ymusic.ui.resources.downloads_none_title
+import io.ymusic.ui.resources.downloads_pause_all
+import io.ymusic.ui.resources.downloads_resume_all
+import io.ymusic.ui.resources.downloads_unavailable
+import io.ymusic.ui.resources.retry
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
@@ -81,7 +88,7 @@ import org.jetbrains.compose.resources.stringResource
 fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val service = graph.downloads
     if (service == null) {
-        CenteredBox { Text("Downloads aren't available on this device.") }
+        CenteredBox { Text(stringResource(Res.string.downloads_unavailable)) }
         return
     }
     // Own the aggregator for as long as this screen is composed: it seeds once and folds change events,
@@ -93,9 +100,9 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     if (visible.isEmpty()) {
         CenteredBox {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("No downloads yet", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(Res.string.downloads_none_title), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Downloaded songs and videos play offline.",
+                    stringResource(Res.string.downloads_none_message),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -188,7 +195,7 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         if (running || paused) {
             ExtendedFloatingActionButton(
                 onClick = { if (running) service.pauseAll() else service.resumeAll() },
-                text = { Text(if (running) "Pause all" else "Resume all") },
+                text = { Text(stringResource(if (running) Res.string.downloads_pause_all else Res.string.downloads_resume_all)) },
                 icon = { Icon(if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow, null) },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = LocalMiniPlayerInset.current).padding(DesignSpacing.Space16),
             )
@@ -278,13 +285,13 @@ private fun DownloadCard(
                             Text(formatDownloadDate(task.updatedAt), style = MaterialTheme.typography.labelSmall, color = c.inkMuted)
                         }
                         DownloadState.FAILED -> {
-                            Text(task.errorMessage ?: "Download failed", style = MaterialTheme.typography.bodySmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(task.errorMessage ?: stringResource(Res.string.downloads_failed), style = MaterialTheme.typography.bodySmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             Button(
                                 onClick = { service.retry(task.id) },
                                 shape = RoundedCornerShape(percent = 50),
                                 colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                                 contentPadding = PaddingValues(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space4),
-                            ) { Text("Retry", style = MaterialTheme.typography.labelMedium) }
+                            ) { Text(stringResource(Res.string.retry), style = MaterialTheme.typography.labelMedium) }
                         }
                         else -> {}
                     }

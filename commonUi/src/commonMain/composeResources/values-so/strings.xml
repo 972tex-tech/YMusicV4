@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Majiraan dajin la hakiyay</string>
     <string name="downloads_empty_completed">Weli majiraan dajin dhamaystirmay</string>
     <string name="downloads_empty_error">Majiraan dajin guuldaraystay</string>
+    <string name="downloads_pause_all">Haki dhammaan</string>
+    <string name="downloads_resume_all">Sii wad dhammaan</string>
+    <string name="downloads_unavailable">Soo dejintu kuma jirto qalabkan.</string>
+    <string name="downloads_none_title">Weli wax la soo dejiyay ma jiraan</string>
+    <string name="downloads_none_message">Heesaha iyo fiidiyowyada la soo dejiyay waxay ku shaqeeyaan khadka la’aan.</string>
+    <string name="downloads_failed">Soo dejintu way guuldareysatay</string>
     <string name="section_settings">Fadhiga</string>
     <string name="section_donate">Ugu deeq</string>
     <string name="section_feedback">Warcelin</string>

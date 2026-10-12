@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">일시정지된 다운로드가 없습니다</string>
     <string name="downloads_empty_completed">아직 완료된 다운로드가 없습니다</string>
     <string name="downloads_empty_error">실패한 다운로드가 없습니다</string>
+    <string name="downloads_pause_all">모두 일시중지</string>
+    <string name="downloads_resume_all">모두 재개</string>
+    <string name="downloads_unavailable">이 기기에서는 다운로드를 사용할 수 없습니다.</string>
+    <string name="downloads_none_title">아직 다운로드가 없습니다</string>
+    <string name="downloads_none_message">다운로드한 노래와 동영상은 오프라인으로 재생됩니다.</string>
+    <string name="downloads_failed">다운로드 실패</string>
     <string name="section_settings">설정</string>
     <string name="section_donate">후원하기</string>
     <string name="section_feedback">피드백</string>

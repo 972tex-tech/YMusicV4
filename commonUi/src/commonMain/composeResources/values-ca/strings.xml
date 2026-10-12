@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">No hi ha descàrregues en pausa</string>
     <string name="downloads_empty_completed">Encara no hi ha descàrregues completades</string>
     <string name="downloads_empty_error">No hi ha descàrregues fallides</string>
+    <string name="downloads_pause_all">Posa-ho tot en pausa</string>
+    <string name="downloads_resume_all">Reprèn-ho tot</string>
+    <string name="downloads_unavailable">Les baixades no estan disponibles en aquest dispositiu.</string>
+    <string name="downloads_none_title">Encara no hi ha baixades</string>
+    <string name="downloads_none_message">Les cançons i els vídeos baixats es reprodueixen sense connexió.</string>
+    <string name="downloads_failed">La baixada ha fallat</string>
     <string name="section_settings">Configuració</string>
     <string name="section_donate">Fes una donació</string>
     <string name="section_feedback">Comentaris</string>

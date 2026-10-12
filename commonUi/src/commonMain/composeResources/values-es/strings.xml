@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">No hay descargas en pausa</string>
     <string name="downloads_empty_completed">Aún no hay descargas completadas</string>
     <string name="downloads_empty_error">No hay descargas fallidas</string>
+    <string name="downloads_pause_all">Pausar todo</string>
+    <string name="downloads_resume_all">Reanudar todo</string>
+    <string name="downloads_unavailable">Las descargas no están disponibles en este dispositivo.</string>
+    <string name="downloads_none_title">Aún no hay descargas</string>
+    <string name="downloads_none_message">Las canciones y los vídeos descargados se reproducen sin conexión.</string>
+    <string name="downloads_failed">Error en la descarga</string>
     <string name="section_settings">Ajustes</string>
     <string name="section_donate">Donar</string>
     <string name="section_feedback">Comentarios</string>

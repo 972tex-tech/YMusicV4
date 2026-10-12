@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Ez dago pausatutako deskargarik</string>
     <string name="downloads_empty_completed">Oraindik ez dago osatutako deskargarik</string>
     <string name="downloads_empty_error">Ez dago huts egindako deskargarik</string>
+    <string name="downloads_pause_all">Pausatu guztiak</string>
+    <string name="downloads_resume_all">Berrekin guztiei</string>
+    <string name="downloads_unavailable">Deskargak ez daude erabilgarri gailu honetan.</string>
+    <string name="downloads_none_title">Oraindik ez dago deskargarik</string>
+    <string name="downloads_none_message">Deskargatutako abestiak eta bideoak konexiorik gabe erreproduzitzen dira.</string>
+    <string name="downloads_failed">Deskargak huts egin du</string>
     <string name="section_settings">Ezarpenak</string>
     <string name="section_donate">Egin dohaintza</string>
     <string name="section_feedback">Iritzia</string>

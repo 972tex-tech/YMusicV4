@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Нема паузирани преземања</string>
     <string name="downloads_empty_completed">Сè уште нема завршени преземања</string>
     <string name="downloads_empty_error">Нема неуспешни преземања</string>
+    <string name="downloads_pause_all">Паузирај ги сите</string>
+    <string name="downloads_resume_all">Продолжи ги сите</string>
+    <string name="downloads_unavailable">Преземањата не се достапни на овој уред.</string>
+    <string name="downloads_none_title">Сè уште нема преземања</string>
+    <string name="downloads_none_message">Преземените песни и видеа се пуштаат офлајн.</string>
+    <string name="downloads_failed">Преземањето не успеа</string>
     <string name="section_settings">Поставки</string>
     <string name="section_donate">Донирај</string>
     <string name="section_feedback">Повратни информации</string>

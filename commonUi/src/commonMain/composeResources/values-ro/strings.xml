@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Nicio descărcare întreruptă</string>
     <string name="downloads_empty_completed">Încă nicio descărcare finalizată</string>
     <string name="downloads_empty_error">Nicio descărcare eșuată</string>
+    <string name="downloads_pause_all">Întrerupe tot</string>
+    <string name="downloads_resume_all">Reia tot</string>
+    <string name="downloads_unavailable">Descărcările nu sunt disponibile pe acest dispozitiv.</string>
+    <string name="downloads_none_title">Încă nu există descărcări</string>
+    <string name="downloads_none_message">Melodiile și videoclipurile descărcate rulează offline.</string>
+    <string name="downloads_failed">Descărcarea nu a reușit</string>
     <string name="section_settings">Setări</string>
     <string name="section_donate">Donează</string>
     <string name="section_feedback">Feedback</string>

@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Peatatud allalaadimisi pole</string>
     <string name="downloads_empty_completed">Lõpetatud allalaadimisi veel pole</string>
     <string name="downloads_empty_error">Ebaõnnestunud allalaadimisi pole</string>
+    <string name="downloads_pause_all">Peata kõik</string>
+    <string name="downloads_resume_all">Jätka kõiki</string>
+    <string name="downloads_unavailable">Allalaadimised pole selles seadmes saadaval.</string>
+    <string name="downloads_none_title">Allalaadimisi veel pole</string>
+    <string name="downloads_none_message">Allalaaditud lood ja videod mängivad võrguühenduseta.</string>
+    <string name="downloads_failed">Allalaadimine ebaõnnestus</string>
     <string name="section_settings">Sätted</string>
     <string name="section_donate">Anneta</string>
     <string name="section_feedback">Tagasiside</string>

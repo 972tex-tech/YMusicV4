@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">இடைநிறுத்தப்பட்ட பதிவிறக்கங்கள் இல்லை</string>
     <string name="downloads_empty_completed">இதுவரை எந்தப் பதிவிறக்கமும் முடியவில்லை</string>
     <string name="downloads_empty_error">தோல்வியடைந்த பதிவிறக்கங்கள் இல்லை</string>
+    <string name="downloads_pause_all">அனைத்தையும் இடைநிறுத்து</string>
+    <string name="downloads_resume_all">அனைத்தையும் தொடர்</string>
+    <string name="downloads_unavailable">இந்தச் சாதனத்தில் பதிவிறக்கங்கள் கிடைக்கவில்லை.</string>
+    <string name="downloads_none_title">இதுவரை பதிவிறக்கங்கள் இல்லை</string>
+    <string name="downloads_none_message">பதிவிறக்கிய பாடல்களும் வீடியோக்களும் ஆஃப்லைனில் இயங்கும்.</string>
+    <string name="downloads_failed">பதிவிறக்கம் தோல்வியடைந்தது</string>
     <string name="section_settings">அமைப்புகள்</string>
     <string name="section_donate">நன்கொடை அளி</string>
     <string name="section_feedback">கருத்து</string>

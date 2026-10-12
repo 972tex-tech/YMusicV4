@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Dayandırılmış yükləmə yoxdur</string>
     <string name="downloads_empty_completed">Hələ tamamlanmış yükləmə yoxdur</string>
     <string name="downloads_empty_error">Uğursuz yükləmə yoxdur</string>
+    <string name="downloads_pause_all">Hamısını dayandır</string>
+    <string name="downloads_resume_all">Hamısını davam etdir</string>
+    <string name="downloads_unavailable">Bu cihazda endirmələr mövcud deyil.</string>
+    <string name="downloads_none_title">Hələ endirmə yoxdur</string>
+    <string name="downloads_none_message">Endirilmiş mahnı və videolar oflayn oxunur.</string>
+    <string name="downloads_failed">Endirmə alınmadı</string>
     <string name="section_settings">Tənzimləmələr</string>
     <string name="section_donate">İanə et</string>
     <string name="section_feedback">Rəy</string>

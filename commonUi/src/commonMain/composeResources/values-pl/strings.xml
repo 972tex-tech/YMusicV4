@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">Brak wstrzymanych pobrań</string>
     <string name="downloads_empty_completed">Brak ukończonych pobrań</string>
     <string name="downloads_empty_error">Brak nieudanych pobrań</string>
+    <string name="downloads_pause_all">Wstrzymaj wszystkie</string>
+    <string name="downloads_resume_all">Wznów wszystkie</string>
+    <string name="downloads_unavailable">Pobieranie nie jest dostępne na tym urządzeniu.</string>
+    <string name="downloads_none_title">Brak pobranych plików</string>
+    <string name="downloads_none_message">Pobrane utwory i filmy działają offline.</string>
+    <string name="downloads_failed">Pobieranie nie powiodło się</string>
     <string name="section_settings">Ustawienia</string>
     <string name="section_donate">Wesprzyj</string>
     <string name="section_feedback">Opinie</string>

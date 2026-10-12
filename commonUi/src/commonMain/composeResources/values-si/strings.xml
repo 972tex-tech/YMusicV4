@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">විරාම කළ බාගැනීම් නැත</string>
     <string name="downloads_empty_completed">තවම සම්පූර්ණ කළ බාගැනීම් නැත</string>
     <string name="downloads_empty_error">අසාර්ථක බාගැනීම් නැත</string>
+    <string name="downloads_pause_all">සියල්ල විරාම කරන්න</string>
+    <string name="downloads_resume_all">සියල්ල නැවත අරඹන්න</string>
+    <string name="downloads_unavailable">මෙම උපාංගයේ බාගැනීම් නොමැත.</string>
+    <string name="downloads_none_title">තවම බාගැනීම් නැත</string>
+    <string name="downloads_none_message">බාගත් ගීත සහ වීඩියෝ නොබැඳිව වාදනය වේ.</string>
+    <string name="downloads_failed">බාගැනීම අසාර්ථකයි</string>
     <string name="section_settings">සැකසීම්</string>
     <string name="section_donate">පරිත්‍යාග කරන්න</string>
     <string name="section_feedback">ප්‍රතිපෝෂණ</string>

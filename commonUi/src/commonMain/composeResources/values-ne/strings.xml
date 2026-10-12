@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">रोकिएको कुनै डाउनलोड छैन</string>
     <string name="downloads_empty_completed">अहिलेसम्म कुनै डाउनलोड पूरा भएको छैन</string>
     <string name="downloads_empty_error">असफल कुनै डाउनलोड छैन</string>
+    <string name="downloads_pause_all">सबै रोक्नुहोस्</string>
+    <string name="downloads_resume_all">सबै पुनः सुरु गर्नुहोस्</string>
+    <string name="downloads_unavailable">यो डिभाइसमा डाउनलोड उपलब्ध छैन।</string>
+    <string name="downloads_none_title">अहिलेसम्म कुनै डाउनलोड छैन</string>
+    <string name="downloads_none_message">डाउनलोड गरिएका गीत र भिडियो अफलाइन चल्छन्।</string>
+    <string name="downloads_failed">डाउनलोड असफल भयो</string>
     <string name="section_settings">सेटिङ</string>
     <string name="section_donate">सहयोग गर्नुहोस्</string>
     <string name="section_feedback">प्रतिक्रिया</string>

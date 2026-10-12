@@ -16,6 +16,12 @@
     <string name="downloads_empty_paused">Không có bản tải xuống tạm dừng</string>
     <string name="downloads_empty_completed">Chưa có bản tải xuống hoàn tất</string>
     <string name="downloads_empty_error">Không có bản tải xuống bị lỗi</string>
+    <string name="downloads_pause_all">Tạm dừng tất cả</string>
+    <string name="downloads_resume_all">Tiếp tục tất cả</string>
+    <string name="downloads_unavailable">Thiết bị này không hỗ trợ tải xuống.</string>
+    <string name="downloads_none_title">Chưa có bản tải xuống nào</string>
+    <string name="downloads_none_message">Bài hát và video đã tải phát được khi không có mạng.</string>
+    <string name="downloads_failed">Tải xuống thất bại</string>
     <string name="section_settings">Cài đặt</string>
     <string name="section_donate">Ủng hộ</string>
     <string name="section_telegram">Thông báo trên Telegram</string>

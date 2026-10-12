@@ -17,6 +17,12 @@
     <string name="downloads_empty_paused">دانلود متوقف‌شده‌ای وجود ندارد</string>
     <string name="downloads_empty_completed">هنوز دانلود تکمیل‌شده‌ای وجود ندارد</string>
     <string name="downloads_empty_error">دانلود ناموفقی وجود ندارد</string>
+    <string name="downloads_pause_all">توقف همه</string>
+    <string name="downloads_resume_all">ادامهٔ همه</string>
+    <string name="downloads_unavailable">دانلود در این دستگاه در دسترس نیست.</string>
+    <string name="downloads_none_title">هنوز دانلودی نیست</string>
+    <string name="downloads_none_message">آهنگ‌ها و ویدیوهای دانلودشده آفلاین پخش می‌شوند.</string>
+    <string name="downloads_failed">دانلود ناموفق بود</string>
     <string name="section_settings">تنظیمات</string>
     <string name="section_donate">حمایت مالی</string>
     <string name="section_feedback">بازخورد</string>
