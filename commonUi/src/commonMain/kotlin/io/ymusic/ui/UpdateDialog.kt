@@ -33,6 +33,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
@@ -80,8 +83,12 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
         is AppUpdateStatus.Ready -> s.versionCode
         else -> -1
     }
-    LaunchedEffect(status, installRequested) {
-        if (installRequested && status is AppUpdateStatus.Ready) {
+    // The installer only ever opens in the foreground: a download finishing while the app is in the
+    // background waits here and installs when the user is back.
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val foreground = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    LaunchedEffect(status, installRequested, foreground) {
+        if (installRequested && foreground && status is AppUpdateStatus.Ready) {
             installRequested = false
             updates.installAndRestart()
         }
