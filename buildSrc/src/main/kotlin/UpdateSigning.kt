@@ -46,7 +46,7 @@ fun Project.bundleSigningPublicKey(): String =
     System.getenv("YMUSIC_BUNDLE_PUBLIC_KEY") ?: localProp("bundle.signing.public.key") ?: ""
 
 /** Base url of the remote config service (`remote.config.url`), e.g. https://api.example.com. Empty
- *  leaves the app on its compiled-in defaults and makes no request. A dev server on this machine:
- *  `http://{localIp}:8787` (see [localIPv4]). */
+ *  leaves the app on its compiled-in defaults and makes no request. `-PuseLocalServerIp` overrides
+ *  it with the server on this machine (see [localServerUrl]). */
 fun Project.remoteConfigUrl(): String =
-    withLocalIp(System.getenv("YMUSIC_REMOTE_CONFIG_URL") ?: localProp("remote.config.url") ?: "")
+    localServerUrl() ?: System.getenv("YMUSIC_REMOTE_CONFIG_URL") ?: localProp("remote.config.url") ?: ""

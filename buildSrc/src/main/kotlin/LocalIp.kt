@@ -1,8 +1,6 @@
+import org.gradle.api.Project
 import java.net.Inet4Address
 import java.net.NetworkInterface
-
-/** Stands for [localIPv4] in a dev service url: `remote.config.url=http://{localIp}:8787`. */
-const val LOCAL_IP_PLACEHOLDER = "{localIp}"
 
 /**
  * This machine's IPv4 address on the local network — where a phone or emulator on the same network
@@ -22,6 +20,17 @@ fun localIPv4(): String {
     return addresses.firstOrNull { it.startsWith("192.168.") } ?: addresses.firstOrNull() ?: "127.0.0.1"
 }
 
-/** [url] with [LOCAL_IP_PLACEHOLDER] resolved; looks up the network only when it is there. */
-fun withLocalIp(url: String): String =
-    if (LOCAL_IP_PLACEHOLDER in url) url.replace(LOCAL_IP_PLACEHOLDER, localIPv4()) else url
+/**
+ * `-PuseLocalServerIp`: point the build at the YMusic server running on this machine,
+ * `http://<localIPv4>:<-PlocalServerPort, default 8787>`, instead of `remote.config.url`. Off by
+ * default; a release is never built with it.
+ */
+fun Project.useLocalServerIp(): Boolean =
+    providers.gradleProperty("useLocalServerIp").orNull?.let { it != "false" } ?: false
+
+/** The build machine's LAN address with [useLocalServerIp], else "" — the `LOCAL_IP` constant. */
+fun Project.localServerIp(): String = if (useLocalServerIp()) localIPv4() else ""
+
+/** The dev server's url with [useLocalServerIp], else null. */
+fun Project.localServerUrl(): String? =
+    if (useLocalServerIp()) "http://${localIPv4()}:${providers.gradleProperty("localServerPort").orNull ?: "8787"}" else null

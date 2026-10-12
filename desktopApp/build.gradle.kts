@@ -50,12 +50,13 @@ val bundlePublicKeyValue: String = providers.gradleProperty("ymusic.bundlePublic
     ?: bundleSigningPublicKey()
 
 // Base url of the remote config service. Empty leaves the app on its compiled-in defaults.
-val remoteConfigBaseUrl: String = providers.gradleProperty("ymusic.remoteConfigUrl").orNull?.let(::withLocalIp)
+val remoteConfigBaseUrl: String = localServerUrl()
+    ?: providers.gradleProperty("ymusic.remoteConfigUrl").orNull
     ?: remoteConfigUrl()
 
-// This machine's LAN address, only for a build pointed at a dev server here: a released build must
-// not depend on (or reveal) where it was built.
-val localIp: String = if (remoteConfigBaseUrl.startsWith("http://")) localIPv4() else ""
+// This machine's LAN address with -PuseLocalServerIp, else "": a released build must not depend on
+// (or reveal) where it was built.
+val localIp: String = localServerIp()
 
 // Dev and test runs exec the prebuilt ffmpeg from the latest ffmpeg-build release through
 // -Dio.ymusic.ffmpeg. A packaged build never sees this property: it uses the copy packed next to
@@ -186,7 +187,7 @@ val generateBuildConfig by tasks.registering {
             // Base url of the remote config service. Empty = no request, compiled-in defaults.
             internal const val REMOTE_CONFIG_URL = "$remoteConfigBaseUrl"
 
-            // The build machine's LAN address when built against a dev server ("" otherwise).
+            // The build machine's LAN address with -PuseLocalServerIp ("" otherwise).
             internal const val LOCAL_IP = "$localIp"
 
             // The key remote engine/player bundles must be signed with. Empty = shipped bundles only.

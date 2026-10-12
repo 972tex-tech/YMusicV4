@@ -57,11 +57,10 @@ android {
         // Base url of the remote config service. Empty = no request, compiled-in defaults.
         val configUrl = remoteConfigUrl()
         buildConfigField("String", "REMOTE_CONFIG_URL", "\"$configUrl\"")
-        // A dev server here is plain http on the LAN: allow cleartext only for such a build, and
-        // expose the build machine's LAN address to it. A release (https) gets neither.
-        val devServer = configUrl.startsWith("http://")
-        buildConfigField("String", "LOCAL_IP", "\"${if (devServer) localIPv4() else ""}\"")
-        manifestPlaceholders["usesCleartextTraffic"] = devServer.toString()
+        // The build machine's LAN address with -PuseLocalServerIp ("" otherwise). A dev server is
+        // plain http: cleartext is allowed only for a build whose service url is http.
+        buildConfigField("String", "LOCAL_IP", "\"${localServerIp()}\"")
+        manifestPlaceholders["usesCleartextTraffic"] = configUrl.startsWith("http://").toString()
         // The key remote engine/player bundles must be signed with. Empty = shipped bundles only.
         buildConfigField("String", "BUNDLE_PUBLIC_KEY", "\"${bundleSigningPublicKey()}\"")
         // The shipped engine_ymusic.js asset's revision (Versions.engineJsBackendVersion).
