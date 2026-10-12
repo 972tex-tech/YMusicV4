@@ -2,10 +2,10 @@ package io.ymusic.desktop.update
 
 import io.ymusic.dynamicengine.verifyBundleSignature
 import io.ymusic.remoteconfig.AppUpdate
+import io.ymusic.remoteconfig.DownloadMismatchException
+import io.ymusic.remoteconfig.downloadResumable
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
-import kmphttp.RequestBuilder
-import kmphttp.asyncSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,11 +13,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import okio.Buffer
 import okio.FileSystem
-import okio.HashingSink
 import okio.Path.Companion.toOkioPath
-import okio.buffer
 import java.io.File
 
 /** What the UI shows. A verified download survives a restart, so [Ready] can be the first state. */
@@ -122,7 +119,7 @@ class UpdateService internal constructor(
         } catch (cancel: CancellationException) {
             _state.value = UpdateState.Available(update)
             throw cancel
-        } catch (error: InstallerMismatchException) {
+        } catch (error: DownloadMismatchException) {
             log?.captureError(error, "update ${update.versionCode} failed verification")
             _state.value = UpdateState.Failed("E91002", update.url)
         } catch (error: Exception) {
@@ -134,34 +131,12 @@ class UpdateService internal constructor(
     private suspend fun fetch(update: AppUpdate): File {
         downloadDir.mkdirs()
         val target = installerFile(update)
-        val part = File(downloadDir, target.name + ".part")
-        try {
-            // no-store: the shared client's disk cache must not keep a copy of the installer.
-            val response = client.execute(RequestBuilder().url(update.url).header("Cache-Control", "no-store").get().build())
-            val sha256 = try {
-                check(response.isSuccessful) { "HTTP ${response.code} fetching ${update.url}" }
-                val body = response.body.asyncSource()
-                val hashing = HashingSink.sha256(FileSystem.SYSTEM.sink(part.toOkioPath()))
-                hashing.buffer().use { out ->
-                    val chunk = Buffer()
-                    var done = 0L
-                    while (true) {
-                        val read = body.read(chunk, 64 * 1024L)
-                        if (read == -1L) break
-                        out.write(chunk, read)
-                        done += read
-                        if (done > update.size) throw InstallerMismatchException("more than the signed ${update.size} bytes")
-                        _state.value = UpdateState.Downloading(update, done, update.size)
-                    }
-                }
-                hashing.hash.hex()
-            } finally {
-                response.close()
-            }
-            if (sha256 != update.sha256) throw InstallerMismatchException("hashed $sha256, signed ${update.sha256}")
-        } catch (error: Throwable) {
-            part.delete()
-            throw error
+        // Named after the version AND hash: a re-published release must not continue the old bytes.
+        val part = File(downloadDir, "YMusic-${update.versionCode}-${update.sha256.take(16)}.${installer.extension}.part")
+        // Another release's leftovers can never be resumed into this one.
+        downloadDir.listFiles().orEmpty().filter { it.name.endsWith(".part") && it != part }.forEach { it.deleteRecursively() }
+        downloadResumable(client, update.url, part.toOkioPath(), FileSystem.SYSTEM, update.size, update.sha256) { done ->
+            _state.value = UpdateState.Downloading(update, done, update.size)
         }
         check(part.renameTo(target)) { "could not move the installer into place" }
         return target
@@ -184,13 +159,12 @@ class UpdateService internal constructor(
         }
     }
 
-    /** Remove installers this version has caught up with, and abandoned partial downloads. */
+    /** Remove installers and partial downloads this version has caught up with; a newer release's
+     *  partial download stays for the next attempt to resume. */
     fun pruneDownloads() {
         downloadDir.listFiles().orEmpty().forEach { file ->
-            val versionCode = file.name.removePrefix("YMusic-").substringBefore('.').toIntOrNull()
-            if (versionCode == null || versionCode <= currentVersionCode || file.name.endsWith(".part")) {
-                file.deleteRecursively()
-            }
+            val versionCode = file.name.removePrefix("YMusic-").substringBefore('.').substringBefore('-').toIntOrNull()
+            if (versionCode == null || versionCode <= currentVersionCode) file.deleteRecursively()
         }
     }
 
@@ -199,5 +173,3 @@ class UpdateService internal constructor(
 }
 
 class UpdateVerificationException(message: String) : Exception(message)
-
-private class InstallerMismatchException(message: String) : Exception(message)

@@ -7,13 +7,13 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.net.Uri
 import io.ymusic.remoteconfig.AppUpdate
+import io.ymusic.remoteconfig.DownloadMismatchException
+import io.ymusic.remoteconfig.downloadResumable
 import io.ymusic.ui.AppUpdateStatus
 import io.ymusic.ui.AppUpdates
 import io.ymusic.ui.UpdateCheck
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
-import kmphttp.RequestBuilder
-import kmphttp.asyncSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,7 +23,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import okio.Buffer
 import okio.FileSystem
 import okio.HashingSink
 import okio.Path.Companion.toOkioPath
@@ -90,11 +89,12 @@ class AndroidAppUpdates(
         if (status is AppUpdateStatus.Available && status.installInApp && autoDownload()) download()
     }
 
-    /** Remove APKs this version has caught up with, and abandoned partial downloads. */
+    /** Remove APKs and partial downloads this version has caught up with; a newer release's
+     *  partial download stays for the next attempt to resume. */
     fun pruneDownloads() {
         downloadDir.listFiles().orEmpty().forEach { file ->
-            val versionCode = file.name.removePrefix("YMusic-").substringBefore('.').toIntOrNull()
-            if (versionCode == null || versionCode <= currentVersionCode || file.name.endsWith(".part")) file.delete()
+            val versionCode = file.name.removePrefix("YMusic-").substringBefore('.').substringBefore('-').toIntOrNull()
+            if (versionCode == null || versionCode <= currentVersionCode) file.delete()
         }
     }
 
@@ -112,7 +112,7 @@ class AndroidAppUpdates(
                 _status.value = AppUpdateStatus.Ready(update.versionCode, update.versionName, update.notes, update.changelogUrl)
             } catch (cancel: CancellationException) {
                 throw cancel
-            } catch (error: ApkMismatchException) {
+            } catch (error: DownloadMismatchException) {
                 log?.captureError(error, "update ${update.versionCode} failed verification")
                 _status.value = AppUpdateStatus.Failed("E91011")
             } catch (error: Exception) {
@@ -124,34 +124,11 @@ class AndroidAppUpdates(
 
     private suspend fun fetch(update: AppUpdate) {
         downloadDir.mkdirs()
-        val part = File(downloadDir, apkFile(update).name + ".part")
-        try {
-            // no-store: the shared client's disk cache must not keep a copy of the APK.
-            val response = client.execute(RequestBuilder().url(update.url).header("Cache-Control", "no-store").get().build())
-            val sha256 = try {
-                check(response.isSuccessful) { "HTTP ${response.code} fetching ${update.url}" }
-                val body = response.body.asyncSource()
-                val hashing = HashingSink.sha256(FileSystem.SYSTEM.sink(part.toOkioPath()))
-                hashing.buffer().use { out ->
-                    val chunk = Buffer()
-                    var done = 0L
-                    while (true) {
-                        val read = body.read(chunk, 64 * 1024L)
-                        if (read == -1L) break
-                        out.write(chunk, read)
-                        done += read
-                        if (done > update.size) throw ApkMismatchException("more than the published ${update.size} bytes")
-                        _status.value = AppUpdateStatus.Downloading(update.versionCode, update.versionName, done, update.size)
-                    }
-                }
-                hashing.hash.hex()
-            } finally {
-                response.close()
-            }
-            if (sha256 != update.sha256) throw ApkMismatchException("hashed $sha256, published ${update.sha256}")
-        } catch (error: Throwable) {
-            part.delete()
-            throw error
+        val part = partFile(update)
+        // Another release's leftovers can never be resumed into this one.
+        downloadDir.listFiles().orEmpty().filter { it.name.endsWith(".part") && it != part }.forEach { it.delete() }
+        downloadResumable(client, update.url, part.toOkioPath(), FileSystem.SYSTEM, update.size, update.sha256) { done ->
+            _status.value = AppUpdateStatus.Downloading(update.versionCode, update.versionName, done, update.size)
         }
         check(part.renameTo(apkFile(update))) { "could not move the APK into place" }
     }
@@ -215,6 +192,9 @@ class AndroidAppUpdates(
         return if (_status.value is AppUpdateStatus.None) UpdateCheck.UpToDate else UpdateCheck.Found
     }
 
+    /** Named after the version AND hash: a re-published release must not continue the old bytes. */
+    private fun partFile(update: AppUpdate) = File(downloadDir, "YMusic-${update.versionCode}-${update.sha256.take(16)}.apk.part")
+
     private fun apkFile(update: AppUpdate) = File(downloadDir, "YMusic-${update.versionCode}.apk")
 }
 
@@ -235,8 +215,6 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         }
     }
 }
-
-private class ApkMismatchException(message: String) : Exception(message)
 
 private fun sha256Of(file: File): String {
     val hashing = HashingSink.sha256(blackholeSink())
