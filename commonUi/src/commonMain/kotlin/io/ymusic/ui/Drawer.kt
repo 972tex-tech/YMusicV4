@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalDrawerSheet
@@ -66,7 +64,7 @@ fun AppDrawer(
         drawerShape = RoundedCornerShape(0.dp),
     ) {
         Column(Modifier.fillMaxHeight()) {
-            DrawerHeader(appVersion, premium)
+            DrawerHeader(appVersion, premium, onCheckUpdate)
             HorizontalDivider(color = DesignColors.Divider)
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                 AppSection.entries
@@ -83,17 +81,13 @@ fun AppDrawer(
                             DrawerItem(s, active = s == section) { onSelect(s) }
                         }
                     }
-                if (onCheckUpdate != null) {
-                    HorizontalDivider(color = DesignColors.Divider, modifier = Modifier.padding(vertical = 4.dp))
-                    DrawerRow(Icons.Outlined.SystemUpdate, stringResource(Res.string.update_check), active = false, onClick = onCheckUpdate)
-                }
             }
         }
     }
 }
 
 @Composable
-private fun DrawerHeader(appVersion: String?, premium: Boolean) {
+private fun DrawerHeader(appVersion: String?, premium: Boolean, onCheckUpdate: (() -> Unit)?) {
     Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 13.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(
@@ -131,6 +125,18 @@ private fun DrawerHeader(appVersion: String?, premium: Boolean) {
                     )
                 }
             }
+        }
+        // A text button under the logo, as in YMusicLegacy's drawer header.
+        if (onCheckUpdate != null) {
+            Text(
+                stringResource(Res.string.update_check),
+                style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkSecondary),
+                modifier = Modifier
+                    .padding(top = DesignSpacing.Space8)
+                    .clip(RoundedCornerShape(DesignSpacing.Space4))
+                    .clickable(onClick = onCheckUpdate)
+                    .padding(vertical = DesignSpacing.Space4, horizontal = DesignSpacing.Space4),
+            )
         }
     }
 }
