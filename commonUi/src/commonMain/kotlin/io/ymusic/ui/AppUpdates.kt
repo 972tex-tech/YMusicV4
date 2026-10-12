@@ -23,9 +23,6 @@ interface AppUpdates {
      *  this release cannot be installed in place, self-update is blocked, or it has failed. */
     fun openDownloadPage()
 
-    /** "Ask later": hide this version's prompt for the rest of this run; the next cold start asks again. */
-    fun dismiss(versionCode: Int)
-
     /**
      * "Check for update": ask the service now, ignoring the refresh throttle and any earlier "Ask
      * later". A found update lands in [status] as usual, so the update prompt shows it.

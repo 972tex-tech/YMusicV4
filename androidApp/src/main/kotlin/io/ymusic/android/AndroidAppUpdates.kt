@@ -64,7 +64,6 @@ class AndroidAppUpdates(
 
     @Volatile private var pending: AppUpdate? = null
 
-    @Volatile private var dismissed = -1
     private val log get() = logger?.fork("update")
 
     /** Take the config's latest answer. */
@@ -82,7 +81,6 @@ class AndroidAppUpdates(
             _status.value = when {
                 downloaded && update.installInApp ->
                     AppUpdateStatus.Ready(update.versionCode, update.versionName, update.notes, update.changelogUrl)
-                update.versionCode == dismissed -> AppUpdateStatus.None
                 else -> AppUpdateStatus.Available(
                     update.versionCode, update.versionName, update.notes, update.size, update.changelogUrl, update.installInApp,
                 )
@@ -202,17 +200,8 @@ class AndroidAppUpdates(
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    override fun dismiss(versionCode: Int) {
-        dismissed = versionCode
-        if (_status.value is AppUpdateStatus.Available) _status.value = AppUpdateStatus.None
-    }
-
     override suspend fun checkNow(): UpdateCheck {
         if (!refreshConfig()) return UpdateCheck.Failed
-        dismissed = -1
-        // A release the user asked about later sits as None with [pending] still set, which offer()
-        // would skip as already handled.
-        mutex.withLock { if (_status.value is AppUpdateStatus.None) pending = null }
         offer(latestUpdate())
         return if (_status.value is AppUpdateStatus.None) UpdateCheck.UpToDate else UpdateCheck.Found
     }

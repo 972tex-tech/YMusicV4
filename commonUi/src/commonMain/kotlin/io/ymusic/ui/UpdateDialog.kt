@@ -62,7 +62,8 @@ import org.jetbrains.compose.resources.stringResource
  * - Ready: "Ready to install" beside the version; "Ask later" / "Install now". A download hidden or
  *   finished in the background brings the dialog back here — nothing installs without a tap.
  *
- * "Ask later" ([AppUpdates.dismiss]) hides it for the rest of this run; the next cold start asks again.
+ * "Ask later" hides it for the rest of this run (the update itself stays offered: the drawer still
+ * flags it); the next cold start or a "Check for update" asks again.
  */
 @Composable
 fun UpdateDialog(graph: AppGraph, recheck: Int = 0, showMessage: (String) -> Unit = {}) {
@@ -115,7 +116,6 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0, showMessage: (String) -> Uni
     val askLater: () -> Unit = {
         if (status is AppUpdateStatus.Failed) failureDismissed = true else dismissedVersion = versionCode
         watching = false
-        if (versionCode != null) updates.dismiss(versionCode)
     }
     val background: () -> Unit = {
         watching = false

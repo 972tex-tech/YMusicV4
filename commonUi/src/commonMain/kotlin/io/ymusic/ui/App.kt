@@ -750,6 +750,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                 },
                                 premium = premium,
                                 showDonate = graph.openDonation != null,
+                                updates = graph.updates,
                                 onCheckUpdate = graph.updates?.let {
                                     {
                                         checkingUpdate = true

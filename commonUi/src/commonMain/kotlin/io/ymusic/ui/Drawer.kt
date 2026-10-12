@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -21,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +53,8 @@ fun AppDrawer(
     onSelect: (AppSection) -> Unit,
     showCatalogue: Boolean = DEBUG_BUILD,
     guest: Boolean = false,
+    /** The updater: "Check for update" is highlighted while it has an update waiting. */
+    updates: AppUpdates? = null,
     /** "Check for update", or null where the app cannot update itself (iOS). */
     onCheckUpdate: (() -> Unit)? = null,
     /** Shows the PREMIUM badge. */
@@ -64,7 +68,11 @@ fun AppDrawer(
         drawerShape = RoundedCornerShape(0.dp),
     ) {
         Column(Modifier.fillMaxHeight()) {
-            DrawerHeader(appVersion, premium, onCheckUpdate)
+            val updateStatus = updates?.status?.collectAsState()?.value
+            val updateWaiting = updateStatus is AppUpdateStatus.Available ||
+                updateStatus is AppUpdateStatus.Downloading ||
+                updateStatus is AppUpdateStatus.Ready
+            DrawerHeader(appVersion, premium, onCheckUpdate, updateWaiting)
             HorizontalDivider(color = DesignColors.Divider)
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                 AppSection.entries
@@ -87,7 +95,7 @@ fun AppDrawer(
 }
 
 @Composable
-private fun DrawerHeader(appVersion: String?, premium: Boolean, onCheckUpdate: (() -> Unit)?) {
+private fun DrawerHeader(appVersion: String?, premium: Boolean, onCheckUpdate: (() -> Unit)?, updateWaiting: Boolean) {
     Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 13.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(
@@ -126,17 +134,30 @@ private fun DrawerHeader(appVersion: String?, premium: Boolean, onCheckUpdate: (
                 }
             }
         }
-        // A text button under the logo, as in YMusicLegacy's drawer header.
+        // A text button under the logo, as in YMusicLegacy's drawer header; accent and a dot while an
+        // update is waiting.
         if (onCheckUpdate != null) {
-            Text(
-                stringResource(Res.string.update_check),
-                style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkSecondary),
-                modifier = Modifier
+            Row(
+                Modifier
                     .padding(top = DesignSpacing.Space8)
                     .clip(RoundedCornerShape(DesignSpacing.Space4))
                     .clickable(onClick = onCheckUpdate)
                     .padding(vertical = DesignSpacing.Space4, horizontal = DesignSpacing.Space4),
-            )
+                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (updateWaiting) {
+                    Box(Modifier.size(DesignSpacing.Space8).background(DesignColors.Accent, CircleShape))
+                }
+                Text(
+                    stringResource(Res.string.update_check),
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (updateWaiting) DesignColors.Accent else DesignColors.InkSecondary,
+                    ),
+                )
+            }
         }
     }
 }

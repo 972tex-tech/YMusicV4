@@ -31,8 +31,6 @@ class DesktopAppUpdates(
     override val status: StateFlow<AppUpdateStatus> = _status
     override val blockedReason: String? get() = service.selfUpdateBlockedReason
 
-    private var dismissed: Int = -1
-
     init {
         scope.launch {
             service.state.collect { s -> _status.value = statusOf(s) }
@@ -41,16 +39,13 @@ class DesktopAppUpdates(
 
     private fun statusOf(s: UpdateState): AppUpdateStatus = when (s) {
         is UpdateState.Available ->
-            if (s.update.versionCode == dismissed) AppUpdateStatus.None
-            else AppUpdateStatus.Available(
+            AppUpdateStatus.Available(
                 s.update.versionCode, s.update.versionName, s.update.notes, s.update.size,
                 s.update.changelogUrl, s.update.installInApp,
             )
         is UpdateState.Downloading ->
             AppUpdateStatus.Downloading(s.update.versionCode, s.update.versionName, s.done, s.total)
         is UpdateState.Ready ->
-            // A ready update is always announced, even if the prompt was dismissed
-            // earlier: it is one click from applying and cost nothing more to offer.
             AppUpdateStatus.Ready(s.update.versionCode, s.update.versionName, s.update.notes, s.update.changelogUrl)
         is UpdateState.Failed -> AppUpdateStatus.Failed(s.code)
         UpdateState.Idle -> AppUpdateStatus.None
@@ -58,7 +53,6 @@ class DesktopAppUpdates(
 
     override suspend fun checkNow(): UpdateCheck {
         if (!refreshConfig()) return UpdateCheck.Failed
-        dismissed = -1
         service.offer(latestUpdate())
         _status.value = statusOf(service.state.value)
         return if (_status.value is AppUpdateStatus.None) UpdateCheck.UpToDate else UpdateCheck.Found
@@ -79,10 +73,5 @@ class DesktopAppUpdates(
             ?: service.pendingUpdate?.let { it.downloadPage ?: it.url }
             ?: return
         runCatching { Desktop.getDesktop().browse(URI(url)) }
-    }
-
-    override fun dismiss(versionCode: Int) {
-        dismissed = versionCode
-        if (_status.value is AppUpdateStatus.Available) _status.value = AppUpdateStatus.None
     }
 }
