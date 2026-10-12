@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalDrawerSheet
@@ -25,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.app_name
 import io.ymusic.ui.resources.badge_premium
+import io.ymusic.ui.resources.update_check
 import io.ymusic.ui.resources.ymusic_logo
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -49,6 +53,8 @@ fun AppDrawer(
     onSelect: (AppSection) -> Unit,
     showCatalogue: Boolean = DEBUG_BUILD,
     guest: Boolean = false,
+    /** "Check for update", or null where the app cannot update itself (iOS). */
+    onCheckUpdate: (() -> Unit)? = null,
 ) {
     ModalDrawerSheet(
         modifier = Modifier.width(300.dp),
@@ -72,6 +78,10 @@ fun AppDrawer(
                             DrawerItem(s, active = s == section) { onSelect(s) }
                         }
                     }
+                if (onCheckUpdate != null) {
+                    HorizontalDivider(color = DesignColors.Divider, modifier = Modifier.padding(vertical = 4.dp))
+                    DrawerRow(Icons.Outlined.SystemUpdate, stringResource(Res.string.update_check), active = false, onClick = onCheckUpdate)
+                }
             }
         }
     }
@@ -119,7 +129,11 @@ private fun DrawerHeader(appVersion: String?) {
 }
 
 @Composable
-private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit) {
+private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit) =
+    DrawerRow(section.icon, stringResource(section.label), active, onClick)
+
+@Composable
+private fun DrawerRow(icon: ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
     val scheme = androidx.compose.material3.MaterialTheme.colorScheme
     Box(Modifier.fillMaxWidth().clickable(onClick = onClick).background(if (active) scheme.primaryContainer else Color.Transparent)) {
         if (active) {
@@ -137,7 +151,7 @@ private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                section.icon,
+                icon,
                 null,
                 Modifier.size(23.dp),
                 tint = when {
@@ -149,7 +163,7 @@ private fun DrawerItem(section: AppSection, active: Boolean, onClick: () -> Unit
                 active -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold, color = scheme.onPrimaryContainer)
                 else -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkStrong)
             }
-            Text(stringResource(section.label), style = labelStyle, modifier = Modifier.weight(1f))
+            Text(label, style = labelStyle, modifier = Modifier.weight(1f))
         }
     }
 }

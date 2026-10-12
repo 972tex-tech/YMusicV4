@@ -154,6 +154,19 @@ class RemoteConfig(
         return checkNotNull(latest)
     }
 
+    /**
+     * Fetch now, ignoring the throttle, and wait — for an explicit user request ("Check for
+     * update"), never for background refreshes. False when there is no service or the fetch
+     * failed; the last good value stays published either way.
+     */
+    suspend fun refreshNow(): Boolean {
+        initIfNotYet()
+        if (api == null) return false
+        val before = latest?.updatedAt
+        fetch().join()
+        return latest?.updatedAt != before
+    }
+
     private suspend fun fetch(): Job {
         // fetch update is app scope, not callable by caller
         check(initialized) { "Do init first" }

@@ -1,7 +1,9 @@
 package io.ymusic.desktop.update
 
+import io.ymusic.remoteconfig.AppUpdate
 import io.ymusic.ui.AppUpdateStatus
 import io.ymusic.ui.AppUpdates
+import io.ymusic.ui.UpdateCheck
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +21,10 @@ import kotlin.system.exitProcess
 class DesktopAppUpdates(
     private val service: UpdateService,
     private val scope: CoroutineScope,
+    /** Fetch the config now, ignoring its throttle; false when that failed. */
+    private val refreshConfig: suspend () -> Boolean,
+    /** The config's current update entry. */
+    private val latestUpdate: suspend () -> AppUpdate?,
 ) : AppUpdates {
 
     private val _status = MutableStateFlow<AppUpdateStatus>(AppUpdateStatus.None)
@@ -29,25 +35,33 @@ class DesktopAppUpdates(
 
     init {
         scope.launch {
-            service.state.collect { s ->
-                _status.value = when (s) {
-                    is UpdateState.Available ->
-                        if (s.update.versionCode == dismissed) AppUpdateStatus.None
-                        else AppUpdateStatus.Available(
-                            s.update.versionCode, s.update.versionName, s.update.notes, s.update.size,
-                            s.update.changelogUrl, s.update.installInApp,
-                        )
-                    is UpdateState.Downloading ->
-                        AppUpdateStatus.Downloading(s.update.versionName, s.done, s.total)
-                    is UpdateState.Ready ->
-                        // A ready update is always announced, even if the prompt was dismissed
-                        // earlier: it is one click from applying and cost nothing more to offer.
-                        AppUpdateStatus.Ready(s.update.versionCode, s.update.versionName, s.update.notes, s.update.changelogUrl)
-                    is UpdateState.Failed -> AppUpdateStatus.Failed(s.code)
-                    UpdateState.Idle -> AppUpdateStatus.None
-                }
-            }
+            service.state.collect { s -> _status.value = statusOf(s) }
         }
+    }
+
+    private fun statusOf(s: UpdateState): AppUpdateStatus = when (s) {
+        is UpdateState.Available ->
+            if (s.update.versionCode == dismissed) AppUpdateStatus.None
+            else AppUpdateStatus.Available(
+                s.update.versionCode, s.update.versionName, s.update.notes, s.update.size,
+                s.update.changelogUrl, s.update.installInApp,
+            )
+        is UpdateState.Downloading ->
+            AppUpdateStatus.Downloading(s.update.versionName, s.done, s.total)
+        is UpdateState.Ready ->
+            // A ready update is always announced, even if the prompt was dismissed
+            // earlier: it is one click from applying and cost nothing more to offer.
+            AppUpdateStatus.Ready(s.update.versionCode, s.update.versionName, s.update.notes, s.update.changelogUrl)
+        is UpdateState.Failed -> AppUpdateStatus.Failed(s.code)
+        UpdateState.Idle -> AppUpdateStatus.None
+    }
+
+    override suspend fun checkNow(): UpdateCheck {
+        if (!refreshConfig()) return UpdateCheck.Failed
+        dismissed = -1
+        service.offer(latestUpdate())
+        _status.value = statusOf(service.state.value)
+        return if (_status.value is AppUpdateStatus.None) UpdateCheck.UpToDate else UpdateCheck.Found
     }
 
     override fun download() {

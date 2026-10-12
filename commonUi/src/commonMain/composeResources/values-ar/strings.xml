@@ -364,6 +364,11 @@
     <string name="update_auto_checkbox">تنزيل التحديثات المستقبلية تلقائيًا</string>
     <string name="update_manual_hint">هذه النسخة لا يمكنها تحديث نفسها (%1$s). نزّل الإصدار الجديد يدويًا.</string>
     <string name="update_failed">فشل التحديث: %1$s</string>
+    <string name="update_check">التحقق من التحديثات</string>
+    <string name="update_checking">جارٍ التحقق من التحديثات…</string>
+    <string name="update_up_to_date">أنت تستخدم أحدث إصدار</string>
+    <string name="update_check_failed">تعذّر التحقق من التحديثات. حاول مرة أخرى لاحقًا.</string>
+    <string name="update_close">إغلاق</string>
     <string name="download_title">تنزيل</string>
     <string name="download_audio_only">صوت فقط</string>
     <string name="download_video">فيديو</string>

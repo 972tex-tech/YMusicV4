@@ -6,9 +6,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,6 +40,10 @@ import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.update_ask_later
 import io.ymusic.ui.resources.update_auto_checkbox
 import io.ymusic.ui.resources.update_available_title
+import io.ymusic.ui.resources.update_check
+import io.ymusic.ui.resources.update_check_failed
+import io.ymusic.ui.resources.update_checking
+import io.ymusic.ui.resources.update_close
 import io.ymusic.ui.resources.update_download
 import io.ymusic.ui.resources.update_downloading
 import io.ymusic.ui.resources.update_failed
@@ -42,6 +51,7 @@ import io.ymusic.ui.resources.update_full_changelog
 import io.ymusic.ui.resources.update_install_now
 import io.ymusic.ui.resources.update_manual_hint
 import io.ymusic.ui.resources.update_ready
+import io.ymusic.ui.resources.update_up_to_date
 import io.ymusic.ui.resources.update_version
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -56,13 +66,14 @@ import org.jetbrains.compose.resources.stringResource
  * straight to the installer; a background download stays silent until it is Ready.
  */
 @Composable
-fun UpdateDialog(graph: AppGraph) {
+fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
     val updates = graph.updates ?: return
     val status by updates.status.collectAsState()
     val scope = rememberCoroutineScope()
     val uriHandler = LocalUriHandler.current
-    var dismissedVersion by remember { mutableStateOf(-1) }
-    var installRequested by remember { mutableStateOf(false) }
+    // Keyed on [recheck]: a manual "Check for update" brings back a release asked about later.
+    var dismissedVersion by remember(recheck) { mutableStateOf(-1) }
+    var installRequested by remember(recheck) { mutableStateOf(false) }
 
     val versionCode = when (val s = status) {
         is AppUpdateStatus.Available -> s.versionCode
@@ -203,6 +214,50 @@ fun UpdateDialog(graph: AppGraph) {
                         style = TextStyle(fontSize = 13.sp, color = DesignColors.Ink),
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * "Check for update" from the drawer: checking, then up to date or failed. A found update closes
+ * this ([onDone] true) and the update prompt takes over.
+ */
+@Composable
+fun CheckUpdateDialog(graph: AppGraph, onDone: (found: Boolean) -> Unit) {
+    val updates = graph.updates ?: return
+    var result by remember { mutableStateOf<UpdateCheck?>(null) }
+    LaunchedEffect(Unit) {
+        val check = updates.checkNow()
+        if (check == UpdateCheck.Found) onDone(true) else result = check
+    }
+    ElevatedBarDialog(
+        title = stringResource(Res.string.update_check),
+        onDismiss = { onDone(false) },
+        canScrollBackward = false,
+        canScrollForward = false,
+        buttons = {
+            DialogSecondaryButton(stringResource(Res.string.update_close)) { onDone(false) }
+        },
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            when (result) {
+                null -> {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text(stringResource(Res.string.update_checking), style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink))
+                }
+                UpdateCheck.UpToDate -> {
+                    Icon(Icons.Rounded.CheckCircle, null, Modifier.size(22.dp), tint = DesignColors.BrandGreen)
+                    Text(stringResource(Res.string.update_up_to_date), style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink))
+                }
+                else -> Text(
+                    stringResource(Res.string.update_check_failed),
+                    style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary),
+                )
             }
         }
     }

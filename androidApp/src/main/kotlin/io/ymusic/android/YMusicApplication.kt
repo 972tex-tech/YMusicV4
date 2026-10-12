@@ -343,6 +343,8 @@ class YMusicApplication : Application() {
             scope = scope,
             logger = rootLogger,
             autoDownload = { settings.flow(AppSettings.autoDownloadUpdates).value },
+            refreshConfig = { remoteConfig.refreshNow() },
+            latestUpdate = { remoteConfig.getConfig().appUpdate },
         )
         updates.pruneDownloads()
         scope.launch { remoteConfig.config.collect { updates.offer(it.appUpdate) } }

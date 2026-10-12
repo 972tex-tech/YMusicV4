@@ -612,6 +612,10 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             discover.add(layer)
         }
 
+        // "Check for update" from the drawer; a found update bumps [updateRecheck] so the prompt
+        // shows it even after an earlier "Ask later".
+        var checkingUpdate by remember { mutableStateOf(false) }
+        var updateRecheck by remember { mutableStateOf(0) }
         // The system back gesture/button walks the same path as the in-app back arrows: overlays
         // close first (drawer, Now Playing); the search input steps back to its results; then one
         // layer of the CURRENT section's stack pops. A lateral section with nothing left to unwind
@@ -672,6 +676,12 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                 onSelect = { s ->
                                     onSection(s)
                                     scope.launch { drawer.close() }
+                                },
+                                onCheckUpdate = graph.updates?.let {
+                                    {
+                                        checkingUpdate = true
+                                        scope.launch { drawer.close() }
+                                    }
                                 },
                             )
                         },
@@ -937,7 +947,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         }
                     }
                 }
-                UpdateDialog(graph)
+                UpdateDialog(graph, recheck = updateRecheck)
+                if (checkingUpdate) {
+                    CheckUpdateDialog(graph) { found ->
+                        checkingUpdate = false
+                        if (found) updateRecheck++
+                    }
+                }
             }
             CompositionLocalProvider(
                 LocalSnackbar provides showSnackbar,

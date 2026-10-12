@@ -359,6 +359,11 @@
     <string name="update_auto_checkbox">Tự động tải các bản cập nhật sau</string>
     <string name="update_manual_hint">Bản này không thể tự cập nhật (%1$s). Hãy tải bản mới theo cách thủ công.</string>
     <string name="update_failed">Cập nhật thất bại: %1$s</string>
+    <string name="update_check">Kiểm tra cập nhật</string>
+    <string name="update_checking">Đang kiểm tra cập nhật…</string>
+    <string name="update_up_to_date">Bạn đang dùng phiên bản mới nhất</string>
+    <string name="update_check_failed">Không thể kiểm tra cập nhật. Hãy thử lại sau.</string>
+    <string name="update_close">Đóng</string>
     <string name="download_title">Tải xuống</string>
     <string name="download_audio_only">Chỉ âm thanh</string>
     <string name="download_video">Video</string>

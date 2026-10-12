@@ -25,7 +25,15 @@ interface AppUpdates {
 
     /** Dismiss this version's prompt; it must not nag again for the same release. */
     fun dismiss(versionCode: Int)
+
+    /**
+     * "Check for update": ask the service now, ignoring the refresh throttle and any earlier "Ask
+     * later". A found update lands in [status] as usual, so the update prompt shows it.
+     */
+    suspend fun checkNow(): UpdateCheck
 }
+
+enum class UpdateCheck { UpToDate, Found, Failed }
 
 /** What the UI renders. Mirrors the shell's state machine without exposing its internals. */
 sealed interface AppUpdateStatus {

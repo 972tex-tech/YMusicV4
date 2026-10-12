@@ -797,7 +797,12 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         updateScope.launch {
             remoteConfig?.config?.collect { updateService.offer(it.appUpdate) }
         }
-        DesktopAppUpdates(updateService, updateScope)
+        DesktopAppUpdates(
+            updateService,
+            updateScope,
+            refreshConfig = { remoteConfig?.refreshNow() ?: false },
+            latestUpdate = { remoteConfig?.getConfig()?.appUpdate },
+        )
     } else {
         null
     }

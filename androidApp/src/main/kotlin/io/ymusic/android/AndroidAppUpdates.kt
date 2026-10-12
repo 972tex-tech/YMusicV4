@@ -9,6 +9,7 @@ import android.net.Uri
 import io.ymusic.remoteconfig.AppUpdate
 import io.ymusic.ui.AppUpdateStatus
 import io.ymusic.ui.AppUpdates
+import io.ymusic.ui.UpdateCheck
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import kmphttp.RequestBuilder
@@ -46,6 +47,10 @@ class AndroidAppUpdates(
     private val logger: Logger?,
     /** Download as soon as an update is offered, without asking. Mirrors the user's setting. */
     private val autoDownload: () -> Boolean,
+    /** Fetch the config now, ignoring its throttle; false when that failed. */
+    private val refreshConfig: suspend () -> Boolean,
+    /** The config's current update entry. */
+    private val latestUpdate: suspend () -> AppUpdate?,
 ) : AppUpdates {
 
     private val _status = MutableStateFlow<AppUpdateStatus>(AppUpdateStatus.None)
@@ -198,6 +203,16 @@ class AndroidAppUpdates(
     override fun dismiss(versionCode: Int) {
         dismissed = versionCode
         if (_status.value is AppUpdateStatus.Available) _status.value = AppUpdateStatus.None
+    }
+
+    override suspend fun checkNow(): UpdateCheck {
+        if (!refreshConfig()) return UpdateCheck.Failed
+        dismissed = -1
+        // A release the user asked about later sits as None with [pending] still set, which offer()
+        // would skip as already handled.
+        mutex.withLock { if (_status.value is AppUpdateStatus.None) pending = null }
+        offer(latestUpdate())
+        return if (_status.value is AppUpdateStatus.None) UpdateCheck.UpToDate else UpdateCheck.Found
     }
 
     private fun apkFile(update: AppUpdate) = File(downloadDir, "YMusic-${update.versionCode}.apk")
