@@ -34,6 +34,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -381,6 +382,7 @@ fun FeedList(
                                 s.emptyMessage ?: emptyMessage,
                                 title = s.emptyTitle,
                                 actionLabel = emptyAction.label,
+                                onSecondaryReload = { pager.refresh(s.selectedChipToken) },
                                 onReload = emptyAction.onClick,
                             )
                         } else {
@@ -398,7 +400,8 @@ fun FeedList(
     }
 }
 
-/** Replaces an empty feed's reload button, for a surface whose emptiness a reload can't fix. */
+/** Leads an empty feed's actions, for a surface whose emptiness a reload rarely fixes; reload stays
+ *  beside it, outlined. */
 class EmptyAction(val label: String, val onClick: () -> Unit)
 
 /** Touch platforms wrap the feed in Material's pull-to-refresh; desktop reloads via F5/Cmd+R
@@ -425,6 +428,7 @@ internal fun EmptyState(
     modifier: Modifier = Modifier,
     title: String? = null,
     actionLabel: String = stringResource(Res.string.reload),
+    onSecondaryReload: (() -> Unit)? = null,
     onReload: () -> Unit,
 ) {
     CenteredBox(modifier) {
@@ -448,8 +452,14 @@ internal fun EmptyState(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-            Button(onClick = onReload, modifier = Modifier.padding(top = 8.dp)) {
-                Text(actionLabel)
+            Row(
+                Modifier.padding(top = DesignSpacing.Space8),
+                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+            ) {
+                if (onSecondaryReload != null) {
+                    OutlinedButton(onClick = onSecondaryReload) { Text(stringResource(Res.string.reload)) }
+                }
+                Button(onClick = onReload) { Text(actionLabel) }
             }
         }
     }
