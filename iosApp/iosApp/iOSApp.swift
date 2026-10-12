@@ -31,6 +31,7 @@ struct iOSApp: App {
         WindowGroup {
             ComposeView().ignoresSafeArea()
                 .onAppear { IosPip.shared.prepare() }
+                .onOpenURL { url in IosLinksKt.iosOpenUrl(url: url.absoluteString) }
                 .onChange(of: scenePhase) { phase in
                     switch phase {
                     case .inactive:

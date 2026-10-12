@@ -10,6 +10,14 @@
     <key>CFBundleShortVersionString</key><string>1.0.0</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSRequiresIPhoneOS</key><true/>
+    <!-- ymusic:// links open the app at the matching page (iOSApp.swift onOpenURL). -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+            <key>CFBundleURLSchemes</key><array><string>ymusic</string></array>
+        </dict>
+    </array>
     <!-- Plain http to the local network only: a dev build talks to the YMusic server on the build
          machine (-PuseLocalServerIp). Everything else stays https-only. -->
     <key>NSLocalNetworkUsageDescription</key><string>YMusic connects to a development server on your local network.</string>
