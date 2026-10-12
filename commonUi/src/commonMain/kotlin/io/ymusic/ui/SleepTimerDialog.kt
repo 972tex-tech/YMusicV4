@@ -15,8 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,6 +48,7 @@ import io.ymusic.ui.resources.sleep_stops_at
 import io.ymusic.ui.resources.sleep_turn_off
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.roundToInt
 import kotlin.time.Clock
 
 /** What the sleep-timer dialog asks the player for. */
@@ -168,21 +167,22 @@ internal fun SleepTimerDialog(
                     textAlign = TextAlign.Center,
                 )
             }
-            Slider(
-                value = minutes.toFloat(),
-                onValueChange = {
-                    minutes = it.toInt()
-                    endOfTrack = false
-                },
-                valueRange = MIN_MINUTES.toFloat()..MAX_MINUTES.toFloat(),
-                steps = (MAX_MINUTES - MIN_MINUTES) / STEP_MINUTES - 1,
-                colors = SliderDefaults.colors(
-                    thumbColor = if (endOfTrack) DesignColors.InkFaint else DesignColors.Accent,
-                    activeTrackColor = if (endOfTrack) DesignColors.InkFaint else DesignColors.Accent,
-                    inactiveTrackColor = DesignColors.OutlineSoft,
-                    activeTickColor = androidx.compose.ui.graphics.Color.Transparent,
-                    inactiveTickColor = androidx.compose.ui.graphics.Color.Transparent,
-                ),
+            val pickMinutes = { fraction: Float ->
+                minutes = MIN_MINUTES + (fraction * (MAX_MINUTES - MIN_MINUTES) / STEP_MINUTES).roundToInt() * STEP_MINUTES
+                endOfTrack = false
+            }
+            SlimSeekBar(
+                fraction = (minutes - MIN_MINUTES).toFloat() / (MAX_MINUTES - MIN_MINUTES),
+                enabled = true,
+                onSeek = pickMinutes,
+                onScrub = { fraction -> fraction?.let(pickMinutes) },
+                trackColor = DesignColors.OutlineSoft,
+                fillColor = if (endOfTrack) DesignColors.InkFaint else DesignColors.Accent,
+                thumbColor = if (endOfTrack) DesignColors.InkFaint else DesignColors.Accent,
+                thumbSize = 16.dp,
+                trackHeight = 4.dp,
+                barHeight = 32.dp,
+                modifier = Modifier.fillMaxWidth(),
             )
             FlowRow(
                 Modifier.fillMaxWidth(),
