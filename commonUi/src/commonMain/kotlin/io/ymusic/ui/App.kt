@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import io.ymusic.download.DownloadFormat
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtFeedPage
 import io.ymusic.dynamicengine.yt.YtLinkTarget
@@ -109,6 +110,8 @@ import io.ymusic.ui.resources.discover_no_top_tracks
 import io.ymusic.ui.resources.discover_no_trending
 import io.ymusic.ui.resources.error_generic
 import io.ymusic.ui.resources.error_network
+import io.ymusic.ui.resources.link_queued_last
+import io.ymusic.ui.resources.link_queued_next
 import io.ymusic.ui.resources.link_unsupported
 import io.ymusic.ui.resources.search_videos
 import io.ymusic.ui.resources.section_catalogue
@@ -182,6 +185,10 @@ val LocalLibraryFolderReveal =
 fun App(graph: AppGraph) {
     App(graph, rememberStartSection(graph))
 }
+
+private val QueueActions = setOf(LinkAction.QUEUE_NEXT, LinkAction.QUEUE_LAST)
+
+private val DownloadActions = setOf(LinkAction.DOWNLOAD, LinkAction.DOWNLOAD_M4A, LinkAction.DOWNLOAD_MP3)
 
 /** The sections a restart resumes; anything else (Settings, Downloads, …) resumes the last of these. */
 private val ResumableSections = setOf(AppSection.Discover, AppSection.Library, AppSection.YtMusic)
@@ -380,6 +387,8 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // them too. Null launcher when there is no download service.
         var pendingDownload by remember { mutableStateOf<io.ymusic.dynamicengine.yt.YtFeedItem?>(null) }
         var pendingQuickDownload by remember { mutableStateOf<io.ymusic.dynamicengine.yt.YtFeedItem?>(null) }
+        // A shared link's "M4A/MP3 download": a Quick download in that format.
+        var pendingFormatDownload by remember { mutableStateOf<Pair<io.ymusic.dynamicengine.yt.YtFeedItem, DownloadFormat>?>(null) }
         val downloadLauncher = remember(graph) {
             graph.downloads?.let {
                 object : DownloadLauncher {
@@ -624,6 +633,8 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // Outside links (youtube.com / youtu.be / the app's own scheme): the engine says what each
         // opens; pages land on Discover's stack, a video starts playing in Now Playing.
         val linkUnsupported = stringResource(Res.string.link_unsupported)
+        val linkQueuedNext = stringResource(Res.string.link_queued_next)
+        val linkQueuedLast = stringResource(Res.string.link_queued_last)
         val latestOnSection by androidx.compose.runtime.rememberUpdatedState(onSection)
         fun openPage(link: String) {
             graph.pip.nowPlayingOpen.value = false
@@ -631,8 +642,8 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
             openDeeplinkIn(sectionLayers.getOrPut(AppSection.Discover) { mutableStateListOf() }, link, null)
         }
         LaunchedEffect(graph, coordinator) {
-            IncomingLinks.links.collect { url ->
-                val log = graph.logger?.fork("IncomingLink")
+            IncomingLinks.links.collect { (url, action) ->
+                val log = graph.logger?.fork("IncomingLink", mapOf("action" to action.name))
                 val target = try {
                     graph.engines.resolveLink(url, log)
                 } catch (c: kotlinx.coroutines.CancellationException) {
@@ -649,17 +660,39 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 }
                 when (target) {
                     is YtLinkTarget.Video -> {
-                        val playlist = target.playlistUrl
-                        coordinator.player.setQueue(
-                            listOf(target.item.toYtMedia()),
-                            startPositionMs = target.startMs ?: 0L,
-                            source = if (playlist != null) {
-                                NextQueueSource.playlist(graph.engines, playlist, listOf(target.item), null, log?.fork("queue-source"))
-                            } else {
-                                NextQueueSource.radio(graph.engines, target.item.id, log?.fork("queue-source"))
-                            },
-                        )
-                        graph.pip.nowPlayingOpen.value = true
+                        val video = target.item
+                        val queueEmpty = coordinator.player.queue.value.items.isEmpty()
+                        val downloads = graph.downloads
+                        when {
+                            action == LinkAction.PLAY_SINGLE || (queueEmpty && action in QueueActions) ->
+                                coordinator.player.setQueue(listOf(video.toYtMedia()), startPositionMs = target.startMs ?: 0L)
+                            action == LinkAction.QUEUE_NEXT -> {
+                                coordinator.playNext(video)
+                                showSnackbar(linkQueuedNext)
+                            }
+                            action == LinkAction.QUEUE_LAST -> {
+                                coordinator.playLater(video)
+                                showSnackbar(linkQueuedLast)
+                            }
+                            action == LinkAction.DOWNLOAD_M4A && downloads != null ->
+                                pendingFormatDownload = video to DownloadFormat.M4A
+                            action == LinkAction.DOWNLOAD_MP3 && downloads != null && downloads.ffmpegAvailable ->
+                                pendingFormatDownload = video to DownloadFormat.MP3
+                            action in DownloadActions && downloads != null -> pendingDownload = video
+                            else -> {
+                                val playlist = target.playlistUrl
+                                coordinator.player.setQueue(
+                                    listOf(video.toYtMedia()),
+                                    startPositionMs = target.startMs ?: 0L,
+                                    source = if (playlist != null) {
+                                        NextQueueSource.playlist(graph.engines, playlist, listOf(video), null, log?.fork("queue-source"))
+                                    } else {
+                                        NextQueueSource.radio(graph.engines, video.id, log?.fork("queue-source"))
+                                    },
+                                )
+                                graph.pip.nowPlayingOpen.value = true
+                            }
+                        }
                     }
                     is YtLinkTarget.Search -> {
                         graph.pip.nowPlayingOpen.value = false
@@ -1061,6 +1094,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 }
                 DownloadDialogHost(graph, pendingDownload) { pendingDownload = null }
                 QuickDownloadHost(graph, pendingQuickDownload) { pendingQuickDownload = null }
+                QuickDownloadHost(graph, pendingFormatDownload?.first, pendingFormatDownload?.second) { pendingFormatDownload = null }
                 YtPlaylistHost(graph, ytPlaylistRequest) { ytPlaylistRequest = null }
             }
             // Last, so messages land over everything — the shell, Now Playing — whichever screen is up.

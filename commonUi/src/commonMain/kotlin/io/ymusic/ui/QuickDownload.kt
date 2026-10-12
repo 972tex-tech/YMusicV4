@@ -103,13 +103,15 @@ data class QuickDownloadPreset(
 
 /**
  * Runs a Quick download for the [pending] video: straight into the download folder when one is set, else
- * through the folder picker first (a cancel drops the download). No options dialog.
+ * through the folder picker first (a cancel drops the download). No options dialog. [format] overrides
+ * the preset's (its languages still apply).
  */
 @Composable
-internal fun QuickDownloadHost(graph: AppGraph, pending: YtFeedItem?, onDone: () -> Unit) {
+internal fun QuickDownloadHost(graph: AppGraph, pending: YtFeedItem?, format: DownloadFormat? = null, onDone: () -> Unit) {
     val downloads = graph.downloads ?: return
     val video = pending ?: return
-    val preset = graph.quickDownload.collectAsState().value
+    val saved = graph.quickDownload.collectAsState().value
+    val preset = if (format != null && format != saved.format) saved.copy(format = format, height = null) else saved
     val snackbar = LocalSnackbar.current
     val added = stringResource(Res.string.download_added)
     val alreadyDownloaded = video.id in LocalAvailableOffline.current
