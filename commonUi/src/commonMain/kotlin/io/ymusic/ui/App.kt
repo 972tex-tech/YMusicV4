@@ -94,6 +94,7 @@ import io.ymusic.dynamicengine.yt.getRecommendedFeed
 import io.ymusic.dynamicengine.yt.handleWebViewPlayNext
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.VideoQualityState
+import io.ymusic.remoteconfig.RemoteConfigData
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
@@ -138,9 +139,6 @@ import kotlin.math.roundToInt
 
 /** App-level sections — the drawer's three groups (design/final/drawer.html). */
 /** [id] is persisted (the section a restart resumes): stable, never reused, independent of entry order. */
-/** YMusic's announcement channel, the drawer's "Telegram announcements", until the config names one. */
-private const val TELEGRAM_CHANNEL_URL = "https://t.me/ymusic_io"
-
 enum class AppSection(val id: Int, val label: StringResource, val icon: ImageVector, val group: Int) {
     Discover(1, Res.string.section_discover, Icons.Outlined.OndemandVideo, 0),
     YtMusic(2, Res.string.section_yt_music, Icons.Default.PlayCircleOutline, 0),
@@ -684,7 +682,9 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                     // Donate and Telegram are actions, not screens.
                                     when (s) {
                                         AppSection.Donate -> graph.openDonation?.invoke()
-                                        AppSection.Telegram -> uriHandler.openUri(config?.telegramUrl ?: TELEGRAM_CHANNEL_URL)
+                                        AppSection.Telegram -> uriHandler.openUri(
+                                            (config ?: RemoteConfigData.DEFAULTS).telegramUrl,
+                                        )
                                         else -> onSection(s)
                                     }
                                     scope.launch { drawer.close() }

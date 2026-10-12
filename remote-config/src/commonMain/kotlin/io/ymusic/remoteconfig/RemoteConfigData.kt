@@ -120,8 +120,8 @@ data class AppUpdate(
 data class RemoteConfigData(
     val variableA: Int = 0,
     val featureX: Boolean = false,
-    /** The drawer's "Telegram announcements" link; null = the app's built-in one. */
-    val telegramUrl: String? = null,
+    /** The drawer's "Telegram announcements" link. */
+    val telegramUrl: String = "https://t.me/ymusic_io",
     val appUpdate: AppUpdate? = null,
     val engineJs: BundleVersion? = null,
     val playerJs: BundleVersion? = null,
@@ -153,7 +153,7 @@ data class RemoteConfigData(
             return RemoteConfigData(
                 variableA = features?.intOrNull(KEY_VARIABLE_A) ?: DEFAULTS.variableA,
                 featureX = features?.boolOrNull(KEY_FEATURE_X) ?: DEFAULTS.featureX,
-                telegramUrl = features?.stringOrNull(KEY_TELEGRAM_URL),
+                telegramUrl = features?.stringOrNull(KEY_TELEGRAM_URL) ?: DEFAULTS.telegramUrl,
                 appUpdate = root.objectOrNull(KEY_APP_UPDATE)?.let(AppUpdate::from),
                 engineJs = root.objectOrNull(KEY_ENGINE_JS)?.let(BundleVersion::from),
                 playerJs = root.objectOrNull(KEY_PLAYER_JS)?.let(BundleVersion::from),
@@ -166,7 +166,7 @@ data class RemoteConfigData(
             name(KEY_FEATURES).beginObject()
             name(KEY_VARIABLE_A).value(data.variableA)
             name(KEY_FEATURE_X).value(data.featureX)
-            data.telegramUrl?.let { name(KEY_TELEGRAM_URL).value(it) }
+            name(KEY_TELEGRAM_URL).value(data.telegramUrl)
             endObject()
             data.appUpdate?.let { name(KEY_APP_UPDATE).value(it) }
             data.engineJs?.let { name(KEY_ENGINE_JS).value(it) }
