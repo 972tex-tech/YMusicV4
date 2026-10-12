@@ -29,8 +29,7 @@ class FileAvNativeTest {
 
     @Test
     fun playsAndSeeksDjiHevc4kHeadless() {
-        val path = DJI_4K
-        assertTrue(java.io.File(path).isFile, "missing $path")
+        val path = sample(DJI_4K) ?: return
         val h = FileAvNative.create()
         assertTrue(h != 0L, "file_av_create")
         val frames = AtomicInteger(0)
@@ -94,8 +93,7 @@ class FileAvNativeTest {
 
     @Test
     fun audioOnlyOpenThenEnableVideoDoesNotEndDji() {
-        val path = DJI_4K
-        assertTrue(java.io.File(path).isFile, "missing $path")
+        val path = sample(DJI_4K) ?: return
         val h = FileAvNative.create()
         assertTrue(h != 0L, "file_av_create")
         val frames = AtomicInteger(0)
@@ -142,8 +140,7 @@ class FileAvNativeTest {
 
     @Test
     fun presentsVtOnHeavyweightCanvasWithoutBgra() {
-        val path = H264_4K
-        if (!java.io.File(path).isFile) return
+        val path = sample(H264_4K) ?: return
         if (GraphicsEnvironment.isHeadless()) return
         val h = FileAvNative.create()
         assertTrue(h != 0L, "file_av_create")
@@ -283,12 +280,17 @@ class FileAvNativeTest {
     }
 
     companion object {
-        const val DJI_4K = "/path/to/4kvideo/hevc_4k60P_main_dji_mavic3.mov"
-        const val H264_4K = "/path/to/4kvideo/4K_UHD_60_FPS_1.mp4"
+        /** The 4K samples are too big to commit; these tests run when YM_4K_DIR holds them. */
+        val SAMPLES_4K: java.io.File? = System.getenv("YM_4K_DIR")?.let { java.io.File(it) }
+        const val DJI_4K = "hevc_4k60P_main_dji_mavic3.mov"
+        const val H264_4K = "4K_UHD_60_FPS_1.mp4"
     }
 
+    private fun sample(name: String): String? =
+        SAMPLES_4K?.resolve(name)?.takeIf { it.isFile }?.absolutePath
+
     private fun jackPath(): String? =
-        java.io.File("/path/to/4kvideo").listFiles()
+        SAMPLES_4K?.listFiles()
             ?.firstOrNull { it.name.contains("boKJ5XDs_mY") }
             ?.absolutePath
 }
