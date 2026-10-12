@@ -1,5 +1,6 @@
 package io.ymusic.android
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -23,22 +24,23 @@ internal object SupportApp {
         false
     }
 
-    /** Its donation screen; or, when it is missing or too old to have one, its Play Store page. */
-    fun openDonation(context: Context) {
-        val donate = Intent(ACTION_DONATE).setPackage(PACKAGE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (donate.resolveActivity(context.packageManager) != null) {
-            context.startActivity(donate)
+    /**
+     * Its donation screen; or, when it is missing or too old to have one, its Play Store page.
+     * Started from [activity], in YMusic's own task: the dialog is translucent and sits over the app.
+     */
+    fun openDonation(activity: Activity) {
+        // Its intent filter has no CATEGORY_DEFAULT, so neither resolveActivity nor an implicit
+        // start finds it: query without that requirement and start it by class name.
+        val donation = activity.packageManager.queryIntentActivities(Intent(ACTION_DONATE).setPackage(PACKAGE), 0).firstOrNull()
+        if (donation != null) {
+            activity.startActivity(Intent(ACTION_DONATE).setClassName(donation.activityInfo.packageName, donation.activityInfo.name))
             return
         }
-        val store = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$PACKAGE")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
-            context.startActivity(store)
+            activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$PACKAGE")))
         } catch (_: ActivityNotFoundException) {
             // No Play Store app on this device: its web page instead.
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$PACKAGE"))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
+            activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$PACKAGE")))
         }
     }
 }

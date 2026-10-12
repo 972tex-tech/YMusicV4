@@ -1,5 +1,6 @@
 package io.ymusic.android
 
+import android.app.Activity
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Intent
@@ -110,6 +111,7 @@ import okio.Path.Companion.toPath
 import projectcommon.log.FileLogger
 import projectcommon.log.LoggingWorker
 import java.io.File
+import java.lang.ref.WeakReference
 
 /**
  * The PROCESS-scoped half of the app graph: everything that must exist exactly once no matter how
@@ -146,6 +148,9 @@ class YMusicApplication : Application() {
     fun refreshPremium() {
         _premium.value = SupportApp.installed(this)
     }
+
+    /** The resumed MainActivity, for launches that must stay in YMusic's task (Donate). */
+    var resumedActivity: WeakReference<Activity>? = null
 
     /** Rotating file sink (`filesDir/logs/ymusic.log`, 5 MiB × 3). Lazy: needs [filesDir]. */
     val logWorker: LoggingWorker by lazy { LoggingWorker(File(filesDir, "logs").toOkioPath()) }
@@ -562,7 +567,7 @@ class YMusicApplication : Application() {
             stats = shared.stats,
             updates = shared.updates,
             premium = premium,
-            openDonation = { SupportApp.openDonation(this) },
+            openDonation = { resumedActivity?.get()?.let(SupportApp::openDonation) },
             api = shared.api,
             mediaStore = shared.mediaStore,
             playHistory = PlayHistoryStore(playHistoryAndroidDriver(this)),

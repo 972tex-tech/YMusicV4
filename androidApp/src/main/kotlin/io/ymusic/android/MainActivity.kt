@@ -51,6 +51,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.lang.ref.WeakReference
 
 /**
  * The Android UI shell: boots the shared :commonUi [App] over the application-scoped [AppGraph]
@@ -316,12 +317,19 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        val app = application as YMusicApplication
+        if (app.resumedActivity?.get() === this) app.resumedActivity = null
+    }
+
     override fun onResume() {
         super.onResume()
         // Covers 13+ permission AND the pre-13 app-level notification toggle.
         notificationsEnabled.value = NotificationManagerCompat.from(this).areNotificationsEnabled()
         // The Support Development app may have been installed or removed while we were away.
         (application as YMusicApplication).refreshPremium()
+        (application as YMusicApplication).resumedActivity = WeakReference(this)
         val g = appGraph
         if (pipExitPending) {
             pipExitPending = false
