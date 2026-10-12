@@ -188,7 +188,6 @@
     <string name="remove_from_queue">Treu de la cua</string>
     <string name="sleep_minutes">%1$d min</string>
     <string name="sleep_end_of_track">Final de la pista</string>
-    <string name="sleep_finish_track">Deixa acabar l'última pista</string>
     <string name="sleep_stops_at">S'atura a les %1$s</string>
     <string name="sleep_pausing_in">Pausa d'aquí a %1$s</string>
     <string name="sleep_pausing_after_track">Pausa després d'aquesta pista</string>

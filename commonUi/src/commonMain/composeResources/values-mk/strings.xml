@@ -187,7 +187,6 @@
     <string name="remove_from_queue">Отстрани од редицата</string>
     <string name="sleep_minutes">%1$d мин</string>
     <string name="sleep_end_of_track">Крај на песната</string>
-    <string name="sleep_finish_track">Последната песна да заврши</string>
     <string name="sleep_stops_at">Запира во %1$s</string>
     <string name="sleep_pausing_in">Пауза за %1$s</string>
     <string name="sleep_pausing_after_track">Пауза по оваа песна</string>

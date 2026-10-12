@@ -187,7 +187,6 @@
     <string name="remove_from_queue">Ondoa kwenye foleni</string>
     <string name="sleep_minutes">Dak %1$d</string>
     <string name="sleep_end_of_track">Mwisho wa wimbo</string>
-    <string name="sleep_finish_track">Acha wimbo wa mwisho umalizike</string>
     <string name="sleep_stops_at">Itasimama saa %1$s</string>
     <string name="sleep_pausing_in">Itasitishwa baada ya %1$s</string>
     <string name="sleep_pausing_after_track">Itasitishwa baada ya wimbo huu</string>

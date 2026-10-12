@@ -187,7 +187,6 @@
     <string name="remove_from_queue">Alisin sa queue</string>
     <string name="sleep_minutes">%1$d min</string>
     <string name="sleep_end_of_track">Dulo ng track</string>
-    <string name="sleep_finish_track">Hayaang matapos ang huling track</string>
     <string name="sleep_stops_at">Hihinto sa %1$s</string>
     <string name="sleep_pausing_in">Magpo-pause sa loob ng %1$s</string>
     <string name="sleep_pausing_after_track">Magpo-pause pagkatapos ng track na ito</string>

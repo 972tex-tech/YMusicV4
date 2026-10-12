@@ -138,9 +138,6 @@ object AppSettings {
     /** The sleep-timer dialog's last chosen duration, its starting value next time. */
     val sleepTimerMinutes = IntSetting("playback.sleepTimerMinutes", 30)
 
-    /** Sleep timers let the playing track end instead of pausing mid-way. */
-    val sleepFinishTrack = BoolSetting("playback.sleepFinishTrack", false)
-
     /**
      * Where finished downloads are written — a media-store bucket uri (the folder is also a Library
      * bucket, since downloads land inside the local library). Empty = not chosen yet: the download

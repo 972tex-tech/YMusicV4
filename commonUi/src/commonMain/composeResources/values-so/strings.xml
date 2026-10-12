@@ -187,7 +187,6 @@
     <string name="remove_from_queue">Ka saar hormada</string>
     <string name="sleep_minutes">%1$d daqiiqo</string>
     <string name="sleep_end_of_track">Dhammaadka heesta</string>
-    <string name="sleep_finish_track">U oggolow heesta ugu dambeysa inay dhammaato</string>
     <string name="sleep_stops_at">Wuxuu joogsanayaa %1$s</string>
     <string name="sleep_pausing_in">Hakin %1$s kadib</string>
     <string name="sleep_pausing_after_track">Hakin heestan kadib</string>

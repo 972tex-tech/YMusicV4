@@ -187,7 +187,6 @@
     <string name="remove_from_queue">வரிசையிலிருந்து அகற்று</string>
     <string name="sleep_minutes">%1$d நிமி</string>
     <string name="sleep_end_of_track">டிராக்கின் முடிவில்</string>
-    <string name="sleep_finish_track">கடைசி டிராக் முடியட்டும்</string>
     <string name="sleep_stops_at">%1$s க்கு நிற்கும்</string>
     <string name="sleep_pausing_in">%1$s இல் இடைநிறுத்தம்</string>
     <string name="sleep_pausing_after_track">இந்த டிராக்கிற்குப் பிறகு இடைநிறுத்தம்</string>

@@ -186,7 +186,6 @@
     <string name="remove_from_queue">キューから削除</string>
     <string name="sleep_minutes">%1$d 分</string>
     <string name="sleep_end_of_track">曲の終わり</string>
-    <string name="sleep_finish_track">最後の曲を最後まで再生</string>
     <string name="sleep_stops_at">%1$s に停止</string>
     <string name="sleep_pausing_in">%1$s 後に一時停止</string>
     <string name="sleep_pausing_after_track">この曲の後に一時停止</string>

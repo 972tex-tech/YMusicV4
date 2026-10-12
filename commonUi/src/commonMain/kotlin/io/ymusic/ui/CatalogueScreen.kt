@@ -270,7 +270,7 @@ private fun CatalogueList() {
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
                 OutlinedButton(onClick = {}) { Text("Retry") }
-                SleepTimerButton(sleepMs, afterCurrent = false, lastMinutes = 30, lastFinishTrack = false) { choice ->
+                SleepTimerButton(sleepMs, afterCurrent = false, lastMinutes = 30) { choice ->
                     sleepMs = (choice as? SleepChoice.Timer)?.let { it.minutes * 60_000L }
                 }
             }

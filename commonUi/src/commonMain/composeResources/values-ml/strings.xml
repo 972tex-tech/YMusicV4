@@ -187,7 +187,6 @@
     <string name="remove_from_queue">ക്യൂവിൽ നിന്ന് നീക്കം ചെയ്യുക</string>
     <string name="sleep_minutes">%1$d മിനിറ്റ്</string>
     <string name="sleep_end_of_track">ട്രാക്കിന്റെ അവസാനം</string>
-    <string name="sleep_finish_track">അവസാന ട്രാക്ക് പൂർത്തിയാകട്ടെ</string>
     <string name="sleep_stops_at">%1$s-ന് നിർത്തും</string>
     <string name="sleep_pausing_in">%1$s-ൽ താൽക്കാലികമായി നിർത്തും</string>
     <string name="sleep_pausing_after_track">ഈ ട്രാക്കിന് ശേഷം നിർത്തും</string>

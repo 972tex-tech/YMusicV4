@@ -187,7 +187,6 @@
     <string name="remove_from_queue">Növbədən sil</string>
     <string name="sleep_minutes">%1$d dəq</string>
     <string name="sleep_end_of_track">Trekin sonu</string>
-    <string name="sleep_finish_track">Son trek bitsin</string>
     <string name="sleep_stops_at">%1$s-da dayanır</string>
     <string name="sleep_pausing_in">%1$s sonra fasilə</string>
     <string name="sleep_pausing_after_track">Bu trekdən sonra fasilə</string>

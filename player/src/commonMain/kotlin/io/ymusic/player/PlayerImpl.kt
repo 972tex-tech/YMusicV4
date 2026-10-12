@@ -364,7 +364,7 @@ internal class PlayerImpl(
         (_currentEngine.value as? AudioTrackSelectable)?.selectAudioTrack(id)
     }
 
-    override fun setSleepTimer(durationMs: Long?, finishTrack: Boolean) {
+    override fun setSleepTimer(durationMs: Long?) {
         if (released) return
         sleepJob?.cancel()
         sleepJob = null
@@ -383,7 +383,7 @@ internal class PlayerImpl(
                 _sleepTimerMs.value = remaining
             }
             _sleepTimerMs.value = null
-            if (finishTrack && _status.value.playWhenReady) setSleepAfterCurrent(true) else pause()
+            pause()
         }
     }
 

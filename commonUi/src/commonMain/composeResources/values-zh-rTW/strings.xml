@@ -186,7 +186,6 @@
     <string name="remove_from_queue">從佇列中移除</string>
     <string name="sleep_minutes">%1$d 分鐘</string>
     <string name="sleep_end_of_track">目前曲目結束時</string>
-    <string name="sleep_finish_track">讓最後一首播完</string>
     <string name="sleep_stops_at">將於 %1$s 停止</string>
     <string name="sleep_pausing_in">%1$s 後暫停</string>
     <string name="sleep_pausing_after_track">本曲結束後暫停</string>

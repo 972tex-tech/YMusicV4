@@ -188,7 +188,6 @@
     <string name="remove_from_queue">Retirer de la file d'attente</string>
     <string name="sleep_minutes">%1$d min</string>
     <string name="sleep_end_of_track">Fin du titre</string>
-    <string name="sleep_finish_track">Laisser finir le dernier titre</string>
     <string name="sleep_stops_at">S'arrête à %1$s</string>
     <string name="sleep_pausing_in">Pause dans %1$s</string>
     <string name="sleep_pausing_after_track">Pause après ce titre</string>

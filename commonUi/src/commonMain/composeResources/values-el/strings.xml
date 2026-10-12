@@ -187,7 +187,6 @@
     <string name="remove_from_queue">Αφαίρεση από την ουρά</string>
     <string name="sleep_minutes">%1$d λεπ.</string>
     <string name="sleep_end_of_track">Τέλος κομματιού</string>
-    <string name="sleep_finish_track">Να ολοκληρωθεί το τελευταίο κομμάτι</string>
     <string name="sleep_stops_at">Διακοπή στις %1$s</string>
     <string name="sleep_pausing_in">Παύση σε %1$s</string>
     <string name="sleep_pausing_after_track">Παύση μετά από αυτό το κομμάτι</string>

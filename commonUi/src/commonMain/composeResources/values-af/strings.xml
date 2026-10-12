@@ -187,7 +187,6 @@
     <string name="remove_from_queue">Verwyder uit tou</string>
     <string name="sleep_minutes">%1$d min.</string>
     <string name="sleep_end_of_track">Einde van snit</string>
-    <string name="sleep_finish_track">Laat die laaste snit klaarspeel</string>
     <string name="sleep_stops_at">Stop om %1$s</string>
     <string name="sleep_pausing_in">Pouseer oor %1$s</string>
     <string name="sleep_pausing_after_track">Pouseer ná hierdie snit</string>

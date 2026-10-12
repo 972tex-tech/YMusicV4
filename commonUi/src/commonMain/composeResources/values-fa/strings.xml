@@ -187,7 +187,6 @@
     <string name="remove_from_queue">حذف از صف</string>
     <string name="sleep_minutes">%1$d دقیقه</string>
     <string name="sleep_end_of_track">پایان قطعه</string>
-    <string name="sleep_finish_track">اجازه بده آخرین قطعه تمام شود</string>
     <string name="sleep_stops_at">توقف در %1$s</string>
     <string name="sleep_pausing_in">مکث تا %1$s دیگر</string>
     <string name="sleep_pausing_after_track">مکث بعد از این قطعه</string>

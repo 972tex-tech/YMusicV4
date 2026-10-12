@@ -186,7 +186,6 @@
     <string name="remove_from_queue">Hapus dari antrean</string>
     <string name="sleep_minutes">%1$d mnt</string>
     <string name="sleep_end_of_track">Akhir lagu</string>
-    <string name="sleep_finish_track">Biarkan lagu terakhir selesai</string>
     <string name="sleep_stops_at">Berhenti pukul %1$s</string>
     <string name="sleep_pausing_in">Jeda dalam %1$s</string>
     <string name="sleep_pausing_after_track">Jeda setelah lagu ini</string>

@@ -178,7 +178,6 @@
     <string name="remove_from_queue">Xóa khỏi hàng đợi</string>
     <string name="sleep_minutes">%1$d phút</string>
     <string name="sleep_end_of_track">Hết bài</string>
-    <string name="sleep_finish_track">Cho phát hết bài cuối</string>
     <string name="sleep_stops_at">Dừng lúc %1$s</string>
     <string name="sleep_pausing_in">Tạm dừng sau %1$s</string>
     <string name="sleep_pausing_after_track">Tạm dừng sau bài này</string>

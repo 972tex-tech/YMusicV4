@@ -189,7 +189,6 @@
     <string name="remove_from_queue">Удалить из очереди</string>
     <string name="sleep_minutes">%1$d мин</string>
     <string name="sleep_end_of_track">Конец трека</string>
-    <string name="sleep_finish_track">Дать доиграть последнему треку</string>
     <string name="sleep_stops_at">Остановится в %1$s</string>
     <string name="sleep_pausing_in">Пауза через %1$s</string>
     <string name="sleep_pausing_after_track">Пауза после этого трека</string>

@@ -187,7 +187,6 @@
     <string name="remove_from_queue">সারি থেকে সরান</string>
     <string name="sleep_minutes">%1$d মিনিট</string>
     <string name="sleep_end_of_track">ট্র্যাকের শেষে</string>
-    <string name="sleep_finish_track">শেষ ট্র্যাকটি শেষ হতে দিন</string>
     <string name="sleep_stops_at">%1$s-এ থামবে</string>
     <string name="sleep_pausing_in">%1$s পরে বিরতি</string>
     <string name="sleep_pausing_after_track">এই ট্র্যাকের পরে বিরতি</string>

@@ -187,7 +187,6 @@
     <string name="remove_from_queue">Հեռացնել հերթից</string>
     <string name="sleep_minutes">%1$d րոպե</string>
     <string name="sleep_end_of_track">Թրեքի ավարտին</string>
-    <string name="sleep_finish_track">Թող վերջին թրեքն ավարտվի</string>
     <string name="sleep_stops_at">Կկանգնի %1$s-ին</string>
     <string name="sleep_pausing_in">Դադար %1$s հետո</string>
     <string name="sleep_pausing_after_track">Դադար այս թրեքից հետո</string>

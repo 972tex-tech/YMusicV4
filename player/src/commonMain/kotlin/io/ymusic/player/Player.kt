@@ -156,9 +156,8 @@ interface Player {
     /** The one immediate action — forwarded to the active engine when it is [AudioTrackSelectable]. */
     fun selectAudioTrack(id: String)
 
-    /** Pause automatically after [durationMs]; null disarms. With [finishTrack] the expiry arms
-     *  [sleepAfterCurrent] instead of cutting the track off. Disarms [sleepAfterCurrent]. */
-    fun setSleepTimer(durationMs: Long?, finishTrack: Boolean = false)
+    /** Pause automatically after [durationMs]; null disarms. Disarms [sleepAfterCurrent]. */
+    fun setSleepTimer(durationMs: Long?)
 
     /** Arms/disarms [sleepAfterCurrent]; arming disarms a running [sleepTimerMs]. */
     fun setSleepAfterCurrent(enabled: Boolean)

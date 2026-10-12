@@ -193,7 +193,6 @@
     <string name="remove_from_queue">Remove from queue</string>
     <string name="sleep_minutes">%1$d min</string>
     <string name="sleep_end_of_track">End of track</string>
-    <string name="sleep_finish_track">Let the last track finish</string>
     <string name="sleep_stops_at">Stops at %1$s</string>
     <string name="sleep_pausing_in">Pausing in %1$s</string>
     <string name="sleep_pausing_after_track">Pausing after this track</string>

@@ -187,7 +187,6 @@
     <string name="remove_from_queue">පෝලිමෙන් ඉවත් කරන්න</string>
     <string name="sleep_minutes">මිනි. %1$d</string>
     <string name="sleep_end_of_track">ගීතයේ අවසානයේ</string>
-    <string name="sleep_finish_track">අවසාන ගීතය අවසන් වීමට ඉඩ දෙන්න</string>
     <string name="sleep_stops_at">%1$s ට නවතී</string>
     <string name="sleep_pausing_in">%1$s කින් විරාම වේ</string>
     <string name="sleep_pausing_after_track">මෙම ගීතයෙන් පසු විරාම වේ</string>

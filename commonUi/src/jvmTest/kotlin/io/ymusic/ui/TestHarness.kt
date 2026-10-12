@@ -218,7 +218,7 @@ internal class StubPlayer : Player {
 
     override fun selectAudioTrack(id: String) {}
 
-    override fun setSleepTimer(durationMs: Long?, finishTrack: Boolean) {}
+    override fun setSleepTimer(durationMs: Long?) {}
 
     override fun setSleepAfterCurrent(enabled: Boolean) {}
 

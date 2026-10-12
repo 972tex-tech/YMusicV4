@@ -187,7 +187,6 @@
     <string name="remove_from_queue">ಸರದಿಯಿಂದ ತೆಗೆದುಹಾಕಿ</string>
     <string name="sleep_minutes">%1$d ನಿಮಿಷ</string>
     <string name="sleep_end_of_track">ಟ್ರ್ಯಾಕ್‌ನ ಕೊನೆಯಲ್ಲಿ</string>
-    <string name="sleep_finish_track">ಕೊನೆಯ ಟ್ರ್ಯಾಕ್ ಮುಗಿಯಲು ಬಿಡಿ</string>
     <string name="sleep_stops_at">%1$s ಕ್ಕೆ ನಿಲ್ಲುತ್ತದೆ</string>
     <string name="sleep_pausing_in">%1$s ನಲ್ಲಿ ವಿರಾಮ</string>
     <string name="sleep_pausing_after_track">ಈ ಟ್ರ್ಯಾಕ್ ನಂತರ ವಿರಾಮ</string>

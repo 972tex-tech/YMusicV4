@@ -187,7 +187,6 @@
     <string name="remove_from_queue">रांगेतून काढा</string>
     <string name="sleep_minutes">%1$d मिनिटे</string>
     <string name="sleep_end_of_track">ट्रॅकच्या शेवटी</string>
-    <string name="sleep_finish_track">शेवटचा ट्रॅक पूर्ण होऊ द्या</string>
     <string name="sleep_stops_at">%1$s वाजता थांबेल</string>
     <string name="sleep_pausing_in">%1$s मध्ये थांबेल</string>
     <string name="sleep_pausing_after_track">या ट्रॅकनंतर थांबेल</string>

@@ -1,7 +1,6 @@
 package io.ymusic.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -37,7 +36,6 @@ import io.ymusic.ui.resources.cd_sleep_timer
 import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.sleep_add_minutes
 import io.ymusic.ui.resources.sleep_end_of_track
-import io.ymusic.ui.resources.sleep_finish_track
 import io.ymusic.ui.resources.sleep_hours
 import io.ymusic.ui.resources.sleep_hours_minutes
 import io.ymusic.ui.resources.sleep_minutes
@@ -53,7 +51,7 @@ import kotlin.time.Clock
 
 /** What the sleep-timer dialog asks the player for. */
 internal sealed interface SleepChoice {
-    data class Timer(val minutes: Int, val finishTrack: Boolean) : SleepChoice
+    data class Timer(val minutes: Int) : SleepChoice
 
     data object EndOfTrack : SleepChoice
 
@@ -73,7 +71,6 @@ internal fun SleepTimerButton(
     sleepMs: Long?,
     afterCurrent: Boolean,
     lastMinutes: Int,
-    lastFinishTrack: Boolean,
     onChoose: (SleepChoice) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -89,7 +86,6 @@ internal fun SleepTimerButton(
             sleepMs = sleepMs,
             afterCurrent = afterCurrent,
             lastMinutes = lastMinutes,
-            lastFinishTrack = lastFinishTrack,
             onDismiss = { open = false },
             onChoose = { choice ->
                 open = false
@@ -105,13 +101,11 @@ internal fun SleepTimerDialog(
     sleepMs: Long?,
     afterCurrent: Boolean,
     lastMinutes: Int,
-    lastFinishTrack: Boolean,
     onDismiss: () -> Unit,
     onChoose: (SleepChoice) -> Unit,
 ) {
     var minutes by remember { mutableStateOf(lastMinutes.coerceIn(MIN_MINUTES, MAX_MINUTES)) }
     var endOfTrack by remember { mutableStateOf(false) }
-    var finishTrack by remember { mutableStateOf(lastFinishTrack) }
     var nowMs by remember { mutableLongStateOf(Clock.System.now().toEpochMilliseconds()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -129,7 +123,7 @@ internal fun SleepTimerDialog(
             DialogSecondaryButton(stringResource(Res.string.dialog_cancel), onClick = onDismiss)
             TextButton(
                 onClick = {
-                    onChoose(if (endOfTrack) SleepChoice.EndOfTrack else SleepChoice.Timer(minutes, finishTrack))
+                    onChoose(if (endOfTrack) SleepChoice.EndOfTrack else SleepChoice.Timer(minutes))
                 },
             ) { Text(stringResource(Res.string.sleep_start), color = DesignColors.Accent) }
         },
@@ -145,7 +139,7 @@ internal fun SleepTimerDialog(
                     onExtend = sleepMs?.let {
                         {
                             val extended = ((it + 59_999) / 60_000).toInt() + EXTEND_MINUTES
-                            onChoose(SleepChoice.Timer(extended, lastFinishTrack))
+                            onChoose(SleepChoice.Timer(extended))
                         }
                     },
                     onTurnOff = { onChoose(SleepChoice.Off) },
@@ -196,21 +190,6 @@ internal fun SleepTimerDialog(
                     }
                 }
                 LibraryChip(stringResource(Res.string.sleep_end_of_track), selected = endOfTrack) { endOfTrack = true }
-            }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(enabled = !endOfTrack) { finishTrack = !finishTrack }
-                    .padding(vertical = DesignSpacing.Space4),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    stringResource(Res.string.sleep_finish_track),
-                    style = TextStyle(fontSize = 14.sp, color = if (endOfTrack) DesignColors.InkFaint else DesignColors.Ink),
-                    modifier = Modifier.weight(1f),
-                )
-                CompactSwitch(checked = finishTrack || endOfTrack)
             }
         }
     }

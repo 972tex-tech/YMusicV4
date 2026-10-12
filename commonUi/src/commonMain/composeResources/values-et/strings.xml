@@ -187,7 +187,6 @@
     <string name="remove_from_queue">Eemalda järjekorrast</string>
     <string name="sleep_minutes">%1$d min</string>
     <string name="sleep_end_of_track">Loo lõpus</string>
-    <string name="sleep_finish_track">Lase viimasel lool lõpuni mängida</string>
     <string name="sleep_stops_at">Peatub kell %1$s</string>
     <string name="sleep_pausing_in">Paus %1$s pärast</string>
     <string name="sleep_pausing_after_track">Paus pärast seda lugu</string>

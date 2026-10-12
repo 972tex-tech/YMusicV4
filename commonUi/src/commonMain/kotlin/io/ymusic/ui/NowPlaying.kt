@@ -974,20 +974,15 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
         val sleepAfterCurrent by player.sleepAfterCurrent.collectAsState()
         val settings = coordinator.graph.settings
         val lastSleepMinutes by remember(settings) { settings.flow(AppSettings.sleepTimerMinutes) }.collectAsState()
-        val lastSleepFinishTrack by remember(settings) { settings.flow(AppSettings.sleepFinishTrack) }.collectAsState()
         SleepTimerButton(
             sleepMs = sleepMs,
             afterCurrent = sleepAfterCurrent,
             lastMinutes = lastSleepMinutes,
-            lastFinishTrack = lastSleepFinishTrack,
         ) { choice ->
             when (choice) {
                 is SleepChoice.Timer -> {
-                    player.setSleepTimer(choice.minutes * 60_000L, finishTrack = choice.finishTrack)
-                    scope.launch {
-                        settings.put(AppSettings.sleepTimerMinutes, choice.minutes)
-                        settings.put(AppSettings.sleepFinishTrack, choice.finishTrack)
-                    }
+                    player.setSleepTimer(choice.minutes * 60_000L)
+                    scope.launch { settings.put(AppSettings.sleepTimerMinutes, choice.minutes) }
                 }
                 SleepChoice.EndOfTrack -> player.setSleepAfterCurrent(true)
                 SleepChoice.Off -> player.setSleepTimer(null)

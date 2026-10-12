@@ -183,7 +183,6 @@
     <string name="remove_from_queue">إزالة من قائمة الانتظار</string>
     <string name="sleep_minutes">%1$d دقيقة</string>
     <string name="sleep_end_of_track">نهاية المقطع</string>
-    <string name="sleep_finish_track">السماح بإنهاء المقطع الأخير</string>
     <string name="sleep_stops_at">يتوقف في %1$s</string>
     <string name="sleep_pausing_in">إيقاف مؤقت خلال %1$s</string>
     <string name="sleep_pausing_after_track">إيقاف مؤقت بعد هذا المقطع</string>

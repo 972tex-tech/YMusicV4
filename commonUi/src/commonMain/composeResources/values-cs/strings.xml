@@ -189,7 +189,6 @@
     <string name="remove_from_queue">Odebrat z fronty</string>
     <string name="sleep_minutes">%1$d min</string>
     <string name="sleep_end_of_track">Konec skladby</string>
-    <string name="sleep_finish_track">Nechat poslední skladbu dohrát</string>
     <string name="sleep_stops_at">Zastaví se v %1$s</string>
     <string name="sleep_pausing_in">Pozastavení za %1$s</string>
     <string name="sleep_pausing_after_track">Pozastavení po této skladbě</string>

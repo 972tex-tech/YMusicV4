@@ -188,7 +188,6 @@
     <string name="remove_from_queue">Elimină din coadă</string>
     <string name="sleep_minutes">%1$d min</string>
     <string name="sleep_end_of_track">Sfârșitul piesei</string>
-    <string name="sleep_finish_track">Lasă ultima piesă să se termine</string>
     <string name="sleep_stops_at">Se oprește la %1$s</string>
     <string name="sleep_pausing_in">Pauză în %1$s</string>
     <string name="sleep_pausing_after_track">Pauză după această piesă</string>

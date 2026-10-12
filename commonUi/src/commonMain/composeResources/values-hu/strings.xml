@@ -187,7 +187,6 @@
     <string name="remove_from_queue">Eltávolítás a sorból</string>
     <string name="sleep_minutes">%1$d perc</string>
     <string name="sleep_end_of_track">Szám vége</string>
-    <string name="sleep_finish_track">Az utolsó szám végigszólhat</string>
     <string name="sleep_stops_at">Leáll ekkor: %1$s</string>
     <string name="sleep_pausing_in">Szünet ennyi múlva: %1$s</string>
     <string name="sleep_pausing_after_track">Szünet e szám után</string>

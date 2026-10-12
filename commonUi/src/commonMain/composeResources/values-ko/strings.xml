@@ -186,7 +186,6 @@
     <string name="remove_from_queue">대기열에서 삭제</string>
     <string name="sleep_minutes">%1$d분</string>
     <string name="sleep_end_of_track">트랙 종료 시</string>
-    <string name="sleep_finish_track">마지막 트랙은 끝까지 재생</string>
     <string name="sleep_stops_at">%1$s에 중지</string>
     <string name="sleep_pausing_in">%1$s 후 일시중지</string>
     <string name="sleep_pausing_after_track">이 트랙 후 일시중지</string>

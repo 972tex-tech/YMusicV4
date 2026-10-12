@@ -187,7 +187,6 @@
     <string name="remove_from_queue">क्युबाट हटाउनुहोस्</string>
     <string name="sleep_minutes">%1$d मिनेट</string>
     <string name="sleep_end_of_track">ट्र्याकको अन्त्यमा</string>
-    <string name="sleep_finish_track">अन्तिम ट्र्याक सकिन दिनुहोस्</string>
     <string name="sleep_stops_at">%1$s मा रोकिन्छ</string>
     <string name="sleep_pausing_in">%1$s मा पज हुन्छ</string>
     <string name="sleep_pausing_after_track">यो ट्र्याकपछि पज हुन्छ</string>
