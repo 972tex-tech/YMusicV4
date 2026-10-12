@@ -1,10 +1,27 @@
 import org.gradle.api.Project
 import java.util.Properties
 
-internal fun Project.localProp(name: String): String? =
-    rootProject.file("local.properties").takeIf { it.exists() }?.let { file ->
-        Properties().apply { file.inputStream().use { load(it) } }.getProperty(name)
+private const val BUILD_SETTINGS = "ymusic.buildSettings"
+
+/**
+ * A build setting from local.properties (this machine: sdk.dir, dev server) or secrets.properties
+ * (keys and passwords, sealed into secrets.enc); both gitignored, local.properties wins. Both are
+ * read once per build, on the root project — not in a static, which the daemon would keep stale.
+ */
+internal fun Project.localProp(name: String): String? {
+    val extra = rootProject.extensions.extraProperties
+    if (!extra.has(BUILD_SETTINGS)) {
+        extra.set(
+            BUILD_SETTINGS,
+            Properties().apply {
+                for (fileName in listOf("secrets.properties", "local.properties")) {
+                    rootProject.file(fileName).takeIf { it.isFile }?.inputStream()?.use { load(it) }
+                }
+            },
+        )
     }
+    return (extra.get(BUILD_SETTINGS) as Properties).getProperty(name)
+}
 
 /**
  * The ECDSA P-256 PUBLIC key app updates are signed with (base64 SubjectPublicKeyInfo), from
@@ -17,7 +34,7 @@ fun Project.updatePublicKey(): String =
 
 /**
  * The macOS code-signing identity, e.g. `Developer ID Application: NAME (TEAMID)`, from
- * YMUSIC_MAC_IDENTITY or `mac.signing.identity` in local.properties. Empty leaves builds unsigned
+ * YMUSIC_MAC_IDENTITY or `mac.signing.identity` in secrets.properties. Empty leaves builds unsigned
  * — which is fine for local runs and impossible to ship, so it is never defaulted to a guess.
  */
 fun Project.macSigningIdentity(): String =

@@ -43,6 +43,9 @@ androidApp/src/main/assets/composeResources/
 
 # machine-local config + Sentry DSN/auth token (see buildSrc SentryProps)
 local.properties
+# build keys and passwords, and the Android keystore: sealed into secrets.enc by ./encrypt.sh
+secrets.properties
+/signing/
 
 # legacy app sources, kept locally for reference only
 /YMusicLegacy

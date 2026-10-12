@@ -82,14 +82,23 @@ android {
         }
     }
 
+    val releaseSigning = androidReleaseSigning()?.let { signing ->
+        signingConfigs.create("release") {
+            storeFile = signing.storeFile
+            storePassword = signing.storePassword
+            keyAlias = signing.keyAlias
+            keyPassword = signing.keyPassword
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Debug-signed so the release build installs for on-device testing; a real release
-            // keystore replaces this before any distribution.
-            signingConfig = signingConfigs.getByName("debug")
+            // Without android.signing.* the release build is debug-signed: installable for
+            // on-device testing, never distributable.
+            signingConfig = releaseSigning ?: signingConfigs.getByName("debug")
         }
     }
 
