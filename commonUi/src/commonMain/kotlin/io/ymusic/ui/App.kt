@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtFeedPage
+import io.ymusic.dynamicengine.yt.YtLinkTarget
 import io.ymusic.dynamicengine.yt.YtSection
 import io.ymusic.dynamicengine.yt.extractAccountLibrary
 import io.ymusic.dynamicengine.yt.extractHomeFeed
@@ -92,6 +93,7 @@ import io.ymusic.dynamicengine.yt.extractMusicBrowse
 import io.ymusic.dynamicengine.yt.extractTrendingMusicFeed
 import io.ymusic.dynamicengine.yt.getRecommendedFeed
 import io.ymusic.dynamicengine.yt.handleWebViewPlayNext
+import io.ymusic.dynamicengine.yt.resolveLink
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.VideoQualityState
 import io.ymusic.remoteconfig.RemoteConfigData
@@ -105,6 +107,9 @@ import io.ymusic.ui.resources.discover_no_anonymous_home
 import io.ymusic.ui.resources.discover_no_recommendations
 import io.ymusic.ui.resources.discover_no_top_tracks
 import io.ymusic.ui.resources.discover_no_trending
+import io.ymusic.ui.resources.error_generic
+import io.ymusic.ui.resources.error_network
+import io.ymusic.ui.resources.link_unsupported
 import io.ymusic.ui.resources.search_videos
 import io.ymusic.ui.resources.section_catalogue
 import io.ymusic.ui.resources.section_discover
@@ -132,7 +137,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.errorCode
 import projectcommon.error.runSuspendCatching
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -489,23 +496,23 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         }
         // Engine-composed deeplinks (a shelf's "View all"): the link decides the surface, the
         // header title seeds the page while it loads.
-        val openDeeplink: (String, String?) -> Unit = { link, title ->
+        fun openDeeplinkIn(stack: MutableList<AppLayer>, link: String, title: String?) {
             val seed = { kind: String ->
                 io.ymusic.dynamicengine.yt.YtFeedItem(kind = kind, id = link, title = title.orEmpty(), url = link)
             }
             if (link.startsWith(MusicBrowsePrefix)) {
-                layers.add(
+                stack.add(
                     AppLayer.MusicBrowse(
                         MusicBrowseSession(graph, scope, link, seed(io.ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST), parentLog()),
                     ),
                 )
             } else when (val target = parseDeeplink(link)) {
-                is Deeplink.Playlist -> layers.add(
+                is Deeplink.Playlist -> stack.add(
                     AppLayer.Playlist(
                         PlaylistSession(graph, scope, target.url, seed(io.ymusic.dynamicengine.yt.YtFeedItem.KIND_PLAYLIST), parentLog()),
                     ),
                 )
-                is Deeplink.Channel -> layers.add(
+                is Deeplink.Channel -> stack.add(
                     AppLayer.Channel(
                         ChannelSession(
                             graph,
@@ -516,12 +523,13 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                         ),
                     ),
                 )
-                is Deeplink.Feed -> layers.add(
+                is Deeplink.Feed -> stack.add(
                     AppLayer.Feed(FeedDetailSession(graph, scope, target.url, title, parentLog())),
                 )
                 null -> Unit // an older app meeting a newer bundle's scheme — the CTA is inert
             }
         }
+        val openDeeplink: (String, String?) -> Unit = { link, title -> openDeeplinkIn(layers, link, title) }
         // Search is single-instance (Android's SINGLE_TOP + BRING_TO_FRONT): reopening search from
         // anywhere raises the existing layer — with its query, results and scroll — to the top
         // instead of stacking a fresh one.
@@ -612,6 +620,57 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                 pager.refresh()
             }
             discover.add(layer)
+        }
+        // Outside links (youtube.com / youtu.be / the app's own scheme): the engine says what each
+        // opens; pages land on Discover's stack, a video starts playing in Now Playing.
+        val linkUnsupported = stringResource(Res.string.link_unsupported)
+        val latestOnSection by androidx.compose.runtime.rememberUpdatedState(onSection)
+        fun openPage(link: String) {
+            graph.pip.nowPlayingOpen.value = false
+            latestOnSection(AppSection.Discover)
+            openDeeplinkIn(sectionLayers.getOrPut(AppSection.Discover) { mutableStateListOf() }, link, null)
+        }
+        LaunchedEffect(graph, coordinator) {
+            IncomingLinks.links.collect { url ->
+                val log = graph.logger?.fork("IncomingLink")
+                val target = try {
+                    graph.engines.resolveLink(url, log)
+                } catch (c: kotlinx.coroutines.CancellationException) {
+                    throw c
+                } catch (e: Exception) {
+                    log?.log(kmpcommon.log.Logger.Level.WARN, "resolve link failed", e)
+                    showSnackbar(
+                        when (val code = e.errorCode() ?: "E20113") {
+                            "network" -> getString(Res.string.error_network)
+                            else -> getString(Res.string.error_generic, code)
+                        },
+                    )
+                    return@collect
+                }
+                when (target) {
+                    is YtLinkTarget.Video -> {
+                        val playlist = target.playlistUrl
+                        coordinator.player.setQueue(
+                            listOf(target.item.toYtMedia()),
+                            startPositionMs = target.startMs ?: 0L,
+                            source = if (playlist != null) {
+                                NextQueueSource.playlist(graph.engines, playlist, listOf(target.item), null, log?.fork("queue-source"))
+                            } else {
+                                NextQueueSource.radio(graph.engines, target.item.id, log?.fork("queue-source"))
+                            },
+                        )
+                        graph.pip.nowPlayingOpen.value = true
+                    }
+                    is YtLinkTarget.Search -> {
+                        graph.pip.nowPlayingOpen.value = false
+                        searchOnline(target.query)
+                    }
+                    is YtLinkTarget.Playlist -> openPage(target.url)
+                    is YtLinkTarget.Channel -> openPage(target.url)
+                    is YtLinkTarget.MusicBrowse -> openPage(target.url)
+                    null -> showSnackbar(linkUnsupported)
+                }
+            }
         }
 
         // "Check for update" from the drawer; a found update bumps [updateRecheck] so the prompt

@@ -489,4 +489,5 @@
     <string name="video_details_delete_title">حذف التعليق</string>
     <string name="video_details_delete_message">هل تريد حذف تعليقك وجميع الردود عليه نهائيًا؟</string>
     <string name="video_details_deleted">تم حذف التعليق</string>
+    <string name="link_unsupported">لا يمكن لـ YMusic فتح هذا الرابط</string>
 </resources>

@@ -22,6 +22,13 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
   + `confirmDeviceOwner`) so the phone can confirm a matching code, unlock, encrypt the jar, and POST it to that
   inbox. The desktop deletes the inbox as soon as it receives the payload.
 
+- **Outside links** — shells hand every url they are opened with to `IncomingLinks.open` (Android VIEW intents for
+  youtube.com / youtu.be / ymusic.io / ymusicapp.com / `ymusic://`; desktop macOS + iOS `ymusic://` only — no
+  universal links, and Windows/Linux have no protocol registration or single-instance hand-off yet). `AppRoot`
+  drains it and asks the engine (`resolveLink` → engine-js `yt/resolve-link`, which owns every YouTube url shape and
+  the handle → channel lookup) what it opens: a video plays with its radio (or the link's playlist) in Now Playing,
+  a playlist/channel/music page lands on Discover's stack, a search runs there.
+
 - **PlaybackCoordinator** — play actions + display metadata for queue items. Play-now starts the video's
   radio and a playlist page's Play continues past the loaded page, both as a `NextQueueSource` (the engine's
   `yt/queue` = /next playlist panel; a video with no radio gets its related videos and stops).
