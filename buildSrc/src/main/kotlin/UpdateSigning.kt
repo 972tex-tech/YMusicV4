@@ -45,7 +45,8 @@ fun Project.macTeamId(): String =
 fun Project.bundleSigningPublicKey(): String =
     System.getenv("YMUSIC_BUNDLE_PUBLIC_KEY") ?: localProp("bundle.signing.public.key") ?: ""
 
-/** Base url of the remote config service (`remote.config.url`), e.g. https://cfg.ymusic.io. Empty
- *  leaves the app on its compiled-in defaults and makes no request. */
+/** Base url of the remote config service (`remote.config.url`), e.g. https://api.example.com. Empty
+ *  leaves the app on its compiled-in defaults and makes no request. A dev server on this machine:
+ *  `http://{localIp}:8787` (see [localIPv4]). */
 fun Project.remoteConfigUrl(): String =
-    System.getenv("YMUSIC_REMOTE_CONFIG_URL") ?: localProp("remote.config.url") ?: ""
+    withLocalIp(System.getenv("YMUSIC_REMOTE_CONFIG_URL") ?: localProp("remote.config.url") ?: "")
