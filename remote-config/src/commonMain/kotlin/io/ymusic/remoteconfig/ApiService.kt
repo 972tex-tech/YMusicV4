@@ -41,4 +41,10 @@ interface ApiService {
 
     /** Give slot [id] up. */
     suspend fun closeDeviceLink(id: String)
+
+    /**
+     * The SponsorBlock spans to skip in YouTube video [videoId], sorted; empty when it has none.
+     * Throws [kmphttp.HttpStatusException] 503 while the service has no SponsorBlock data yet.
+     */
+    suspend fun getSkipSegments(videoId: String): List<SkipSegment>
 }

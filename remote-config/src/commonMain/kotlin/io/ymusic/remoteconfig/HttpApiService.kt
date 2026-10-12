@@ -18,6 +18,7 @@ import kmphttp.json.JsonWriter
 import kmphttp.toHttpUrlOrNull
 import kmphttp.utf8String
 import okio.use
+import projectcommon.json.objects
 import projectcommon.json.string
 
 /**
@@ -106,6 +107,15 @@ class HttpApiService(
     override suspend fun closeDeviceLink(id: String) {
         client.execute(request(linkUrl(id)).deleteWithoutBody().build()).use { response ->
             if (!response.isSuccessful) throw HttpStatusException(response.code)
+        }
+    }
+
+    override suspend fun getSkipSegments(videoId: String): List<SkipSegment> {
+        val url = url().addPathSegment("v1").addPathSegment("sponsorblock").addPathSegment("segments")
+            .addQueryParameter("v", videoId).build()
+        return client.execute(request(url).get().build()).use { response ->
+            if (!response.isSuccessful) throw HttpStatusException(response.code)
+            JsonReader(response.body.asyncSource().buffer()).readObject().objects("segments").map(SkipSegment::from)
         }
     }
 

@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 
@@ -23,6 +24,10 @@ fun JsonObject.int(key: String): Int = intOrNull(key) ?: error("Missing int key 
 fun JsonObject.longOrNull(key: String): Long? = primitiveOrNull(key)?.longOrNull
 
 fun JsonObject.long(key: String): Long = longOrNull(key) ?: error("Missing long key $key")
+
+fun JsonObject.doubleOrNull(key: String): Double? = primitiveOrNull(key)?.doubleOrNull
+
+fun JsonObject.double(key: String): Double = doubleOrNull(key) ?: error("Missing double key $key")
 
 fun JsonObject.boolOrNull(key: String): Boolean? = primitiveOrNull(key)?.booleanOrNull
 

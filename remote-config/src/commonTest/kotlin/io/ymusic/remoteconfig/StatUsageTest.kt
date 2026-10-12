@@ -31,6 +31,8 @@ private class FakePulseApi : ApiService {
     override suspend fun takeDeviceLink(id: String): String? = throw UnsupportedOperationException()
 
     override suspend fun closeDeviceLink(id: String) = throw UnsupportedOperationException()
+
+    override suspend fun getSkipSegments(videoId: String): List<SkipSegment> = throw UnsupportedOperationException()
 }
 
 class StatUsageTest {
