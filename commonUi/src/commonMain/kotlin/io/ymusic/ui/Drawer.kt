@@ -51,7 +51,7 @@ fun AppDrawer(
     section: AppSection,
     appVersion: String?,
     onSelect: (AppSection) -> Unit,
-    showCatalogue: Boolean = DEBUG_BUILD,
+    showCatalogue: Boolean = false,
     guest: Boolean = false,
     /** The updater: "Check for update" is highlighted while it has an update waiting. */
     updates: AppUpdates? = null,

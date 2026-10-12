@@ -182,8 +182,8 @@ val LocalLibraryFolderReveal =
  * language switch doesn't navigate away from Settings.
  */
 @Composable
-fun App(graph: AppGraph) {
-    App(graph, rememberStartSection(graph))
+fun App(graph: AppGraph, catalogue: (@Composable () -> Unit)? = null) {
+    App(graph, rememberStartSection(graph), catalogue)
 }
 
 private val QueueActions = setOf(LinkAction.QUEUE_NEXT, LinkAction.QUEUE_LAST)
@@ -203,9 +203,14 @@ fun rememberStartSection(graph: AppGraph): androidx.compose.runtime.MutableState
 /** [sectionState] hoisted for tests and for shells that deep-link from platform surfaces (a
  *  download notification tap lands on Downloads): flipping it is exactly what a drawer selection
  *  does (on touch platforms the drawer edge-swipes open over ANY screen, which a headless jvm rig
- *  can't drive). */
+ *  can't drive). [catalogue] is the dev "UI catalogue" screen; shells pass it only in debug builds
+ *  so a release binary never references [CatalogueScreen] and the shrinker drops it. */
 @Composable
-fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<AppSection>) {
+fun App(
+    graph: AppGraph,
+    sectionState: androidx.compose.runtime.MutableState<AppSection>,
+    catalogue: (@Composable () -> Unit)? = null,
+) {
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
     // ONE language, decided ONCE: the shell seeded the setting before the engine started
     // (ensureAppLanguage), so this is a concrete tag — the blank fallback only covers unseeded
@@ -271,7 +276,7 @@ fun App(graph: AppGraph, sectionState: androidx.compose.runtime.MutableState<App
                     LocalImageLoader provides graph.imageLoader,
                     LocalRefreshRequests provides graph.refreshRequests,
                 ) {
-                    AppRoot(graph, section, onSection = { section = it })
+                    AppRoot(graph, section, catalogue, onSection = { section = it })
                 }
             }
         }
@@ -326,7 +331,12 @@ private val AppLayer.log: kmpcommon.log.Logger?
     }
 
 @Composable
-private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection) -> Unit) {
+private fun AppRoot(
+    graph: AppGraph,
+    section: AppSection,
+    catalogue: (@Composable () -> Unit)?,
+    onSection: (AppSection) -> Unit,
+) {
     run {
         val scope = rememberCoroutineScope()
         val coordinator = remember { PlaybackCoordinator(graph, scope) }
@@ -359,7 +369,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // App-level so a scan started in Library keeps running (and still notifies) across sections.
         val scanController = remember { ScanController(scope, graph.logger?.fork("library-scan")) }
         val drawer = rememberDrawerState(DrawerValue.Closed)
-        if (!DEBUG_BUILD) {
+        if (catalogue == null) {
             LaunchedEffect(section) {
                 if (section == AppSection.Catalogue) onSection(AppSection.Discover)
             }
@@ -770,6 +780,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                 section = section,
                                 appVersion = graph.appVersion,
                                 guest = graph.guest,
+                                showCatalogue = catalogue != null,
                                 onSelect = { s ->
                                     // Donate and Telegram are actions, not screens.
                                     when (s) {
@@ -1019,7 +1030,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                                     if (graph.sendFeedback != null) FeedbackScreen(graph, feedbackSession)
                                                     else ComingSoon(section)
                                                 AppSection.Catalogue ->
-                                                    if (DEBUG_BUILD) CatalogueScreen() else ComingSoon(section)
+                                                    if (catalogue != null) catalogue() else ComingSoon(section)
                                                 else -> ComingSoon(section)
                                             }
                                         }

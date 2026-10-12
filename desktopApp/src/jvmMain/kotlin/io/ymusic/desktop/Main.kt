@@ -122,6 +122,7 @@ import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
+import io.ymusic.ui.CatalogueScreen
 import io.ymusic.ui.DarkDesignColors
 import io.ymusic.ui.IncomingLinks
 import io.ymusic.ui.LightDesignColors
@@ -497,7 +498,7 @@ fun main() {
                             // No spinner while the graph builds: the window paints the app's own ground until
                             // the first frame has something in it.
                             graph == null -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
-                            else -> App(graph!!)
+                            else -> App(graph!!, catalogue = if (DEBUG_BUILD) ({ CatalogueScreen() }) else null)
                         }
                     }
                 }

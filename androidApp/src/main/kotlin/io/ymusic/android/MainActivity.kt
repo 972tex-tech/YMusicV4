@@ -306,7 +306,7 @@ class MainActivity : FragmentActivity() {
                             pendingSection.value = null
                         }
                     }
-                    App(graph!!, section)
+                    App(graph!!, section, catalogueScreen)
                 }
             }
             val notificationsOk = notificationsEnabled.value

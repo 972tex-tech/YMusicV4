@@ -57,16 +57,11 @@ import io.ymusic.dynamicengine.yt.YtThumb
  * Development-only component catalogue (a Storybook, not a product screen): every shared UI
  * component rendered on mock data, for design iteration and feedback. Reached from the drawer
  * ("UI catalogue") or standalone via `./gradlew :desktopApp:catalogue` — the standalone window
- * skips the whole engine boot, so the design loop is seconds. Compiled out when
- * [DEBUG_BUILD] is false (`-Pymusic.debugLogs=false`).
+ * skips the whole engine boot, so the design loop is seconds. Only debug shells reference it, so
+ * release binaries shrink it away.
  */
 @Composable
 fun CatalogueScreen(modifier: Modifier = Modifier) {
-    if (DEBUG_BUILD) CatalogueScreenContent(modifier)
-}
-
-@Composable
-private fun CatalogueScreenContent(modifier: Modifier) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val width = maxWidth
         val height = maxHeight

@@ -37,6 +37,7 @@ import io.ymusic.settings.flow
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
+import io.ymusic.ui.CatalogueScreen
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.playhistory.playHistoryNativeDriver
@@ -118,7 +119,7 @@ private fun IosAppRoot() {
                     .combine(g.player.config) { _, _ -> }
                     .collect { iosNotifyPipPrepare() }
             }
-            App(g)
+            App(g, catalogue = if (DEBUG_BUILD) ({ CatalogueScreen() }) else null)
         }
     }
 }
