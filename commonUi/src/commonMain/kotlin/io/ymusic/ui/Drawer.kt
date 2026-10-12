@@ -134,8 +134,8 @@ private fun DrawerHeader(appVersion: String?, premium: Boolean, onCheckUpdate: (
                 }
             }
         }
-        // A text button under the logo, as in YMusicLegacy's drawer header; accent and a dot while an
-        // update is waiting.
+        // A text button under the logo, as in YMusicLegacy's drawer header; accent and a trailing dot
+        // while an update is waiting.
         if (onCheckUpdate != null) {
             Row(
                 Modifier
@@ -146,9 +146,6 @@ private fun DrawerHeader(appVersion: String?, premium: Boolean, onCheckUpdate: (
                 horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (updateWaiting) {
-                    Box(Modifier.size(DesignSpacing.Space8).background(DesignColors.Accent, CircleShape))
-                }
                 Text(
                     stringResource(Res.string.update_check),
                     style = TextStyle(
@@ -157,6 +154,9 @@ private fun DrawerHeader(appVersion: String?, premium: Boolean, onCheckUpdate: (
                         color = if (updateWaiting) DesignColors.Accent else DesignColors.InkSecondary,
                     ),
                 )
+                if (updateWaiting) {
+                    Box(Modifier.size(DesignSpacing.Space8).background(DesignColors.Accent, CircleShape))
+                }
             }
         }
     }
