@@ -546,6 +546,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
             os = desktopOsKey(),
             osVersion = System.getProperty("os.version") ?: "",
             appVersionCode = APP_VERSION_CODE,
+            appVersionName = APP_VERSION_NAME,
             deviceId = deviceId,
             baseUrl = baseUrl,
             now = { System.currentTimeMillis() },

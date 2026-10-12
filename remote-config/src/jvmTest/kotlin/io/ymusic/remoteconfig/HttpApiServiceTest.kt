@@ -93,6 +93,7 @@ class HttpApiServiceTest {
         os = "windows",
         osVersion = "11",
         appVersionCode = 1233,
+        appVersionName = "1.0.0",
         deviceId = deviceId,
         baseUrl = baseUrl,
         now = { clock },
@@ -123,6 +124,7 @@ class HttpApiServiceTest {
         assertEquals("windows", request.header(HttpApiService.HEADER_OS))
         assertEquals("11", request.header(HttpApiService.HEADER_OS_VER))
         assertEquals("1233", request.header(HttpApiService.HEADER_APP_VER))
+        assertEquals("1.0.0", request.header(HttpApiService.HEADER_APP_VER_NAME))
         assertEquals("device-1", request.header(HttpApiService.HEADER_DEVICE_ID))
         assertEquals("k-123", request.header(HttpApiService.HEADER_API_KEY))
         assertEquals("https://cfg.example/v1/config", client.lastUrl)

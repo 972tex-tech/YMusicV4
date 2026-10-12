@@ -37,6 +37,8 @@ class HttpApiService(
     /** The platform's own version string: Android release ("15"), macOS/Windows version, etc. */
     private val osVersion: String,
     private val appVersionCode: Int,
+    /** The human-readable version ("1.0.0"), for the dashboard; [appVersionCode] decides updates. */
+    private val appVersionName: String,
     private val deviceId: String,
     private val baseUrl: String,
     private val now: () -> Long,
@@ -122,6 +124,7 @@ class HttpApiService(
             .header(HEADER_OS, os)
             .header(HEADER_OS_VER, osVersion)
             .header(HEADER_APP_VER, appVersionCode.toString())
+            .header(HEADER_APP_VER_NAME, appVersionName)
             .header(HEADER_DEVICE_ID, deviceId)
         arch?.let { request.header(HEADER_ARCH, it) }
         apiKey?.let { request.header(HEADER_API_KEY, it) }
@@ -132,6 +135,7 @@ class HttpApiService(
         const val HEADER_OS = "x-os"
         const val HEADER_OS_VER = "x-os-ver"
         const val HEADER_APP_VER = "x-app-ver"
+        const val HEADER_APP_VER_NAME = "x-app-ver-name"
         const val HEADER_DEVICE_ID = "x-device-id"
         const val HEADER_ARCH = "x-arch"
         const val HEADER_API_KEY = "x-api-key"

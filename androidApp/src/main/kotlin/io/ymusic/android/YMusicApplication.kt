@@ -217,6 +217,7 @@ class YMusicApplication : Application() {
                 os = "android",
                 osVersion = android.os.Build.VERSION.RELEASE ?: "",
                 appVersionCode = BuildConfig.VERSION_CODE,
+                appVersionName = BuildConfig.VERSION_NAME,
                 deviceId = deviceId,
                 baseUrl = baseUrl,
                 now = { System.currentTimeMillis() },
