@@ -40,6 +40,7 @@ import io.ymusic.ui.resources.update_check_failed
 import io.ymusic.ui.resources.update_checking
 import io.ymusic.ui.resources.update_close
 import io.ymusic.ui.resources.update_download
+import io.ymusic.ui.resources.update_download_failed
 import io.ymusic.ui.resources.update_downloading
 import io.ymusic.ui.resources.update_failed
 import io.ymusic.ui.resources.update_full_changelog
@@ -64,7 +65,7 @@ import org.jetbrains.compose.resources.stringResource
  * "Ask later" ([AppUpdates.dismiss]) hides it for the rest of this run; the next cold start asks again.
  */
 @Composable
-fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
+fun UpdateDialog(graph: AppGraph, recheck: Int = 0, showMessage: (String) -> Unit = {}) {
     val updates = graph.updates ?: return
     val status by updates.status.collectAsState()
     val uriHandler = LocalUriHandler.current
@@ -73,6 +74,20 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
     var failureDismissed by remember(recheck) { mutableStateOf(false) }
     // The download was started here and not sent to the background: show its progress.
     var watching by remember(recheck) { mutableStateOf(false) }
+    // Sent to the background: a failure there is a short message, not this dialog; the next launch
+    // offers the update afresh.
+    var backgrounded by remember(recheck) { mutableStateOf(false) }
+    val failedMessage = stringResource(Res.string.update_download_failed)
+    LaunchedEffect(status) {
+        when {
+            status is AppUpdateStatus.Ready -> backgrounded = false
+            backgrounded && status is AppUpdateStatus.Failed -> {
+                backgrounded = false
+                failureDismissed = true
+                showMessage(failedMessage)
+            }
+        }
+    }
 
     val versionCode = when (val s = status) {
         is AppUpdateStatus.Available -> s.versionCode
@@ -82,7 +97,7 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
     }
     when (status) {
         AppUpdateStatus.None -> return
-        is AppUpdateStatus.Failed -> if (failureDismissed) return
+        is AppUpdateStatus.Failed -> if (failureDismissed || backgrounded) return
         is AppUpdateStatus.Downloading -> if (!watching || versionCode == dismissedVersion) return
         else -> if (versionCode == dismissedVersion) return
     }
@@ -99,7 +114,10 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
         watching = false
         if (versionCode != null) updates.dismiss(versionCode)
     }
-    val background: () -> Unit = { watching = false }
+    val background: () -> Unit = {
+        watching = false
+        backgrounded = true
+    }
 
     ElevatedBarDialog(
         title = stringResource(Res.string.update_available_title),

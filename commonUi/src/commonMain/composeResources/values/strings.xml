@@ -380,6 +380,7 @@
     <string name="update_ready">Ready to install</string>
     <string name="update_manual_hint">This copy cannot update itself (%1$s). Download the new version instead.</string>
     <string name="update_failed">Update failed: %1$s</string>
+    <string name="update_download_failed">Update download failed</string>
     <string name="update_check">Check for update</string>
     <string name="update_checking">Checking for update…</string>
     <string name="update_up_to_date">You’re on the latest version</string>

@@ -54,6 +54,7 @@ import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.anonymousDeviceId
 import io.ymusic.settings.flow
+import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.bindCrashReporting
@@ -343,6 +344,8 @@ class YMusicApplication : Application() {
             scope = scope,
             logger = rootLogger,
             autoDownload = { settings.flow(AppSettings.autoDownloadUpdates).value },
+            autoDownloadFailed = { settings.flow(AppSettings.updateAutoDownloadFailed).value },
+            rememberAutoDownloadFailed = { settings.put(AppSettings.updateAutoDownloadFailed, it) },
             refreshConfig = { remoteConfig.refreshNow() },
             latestUpdate = { remoteConfig.getConfig().appUpdate },
         )

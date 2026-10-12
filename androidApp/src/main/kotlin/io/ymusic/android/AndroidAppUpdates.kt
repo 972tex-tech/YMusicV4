@@ -46,6 +46,9 @@ class AndroidAppUpdates(
     private val logger: Logger?,
     /** Download as soon as an update is offered, without asking. Mirrors the user's setting. */
     private val autoDownload: () -> Boolean,
+    /** The sha256 of the release whose automatic download failed ("" for none), and its setter. */
+    private val autoDownloadFailed: () -> String,
+    private val rememberAutoDownloadFailed: suspend (sha256: String) -> Unit,
     /** Fetch the config now, ignoring its throttle; false when that failed. */
     private val refreshConfig: suspend () -> Boolean,
     /** The config's current update entry. */
@@ -85,8 +88,13 @@ class AndroidAppUpdates(
                 )
             }
         }
+        // Automatically: once per release. A release that already failed that way waits for a tap.
         val status = _status.value
-        if (status is AppUpdateStatus.Available && status.installInApp && autoDownload()) download()
+        if (status is AppUpdateStatus.Available && status.installInApp && autoDownload() &&
+            pending?.sha256 != autoDownloadFailed()
+        ) {
+            start(auto = true)
+        }
     }
 
     /** Remove APKs and partial downloads this version has caught up with; a newer release's
@@ -98,7 +106,15 @@ class AndroidAppUpdates(
         }
     }
 
-    override fun download() {
+    override fun download() = start(auto = false)
+
+    /**
+     * Fetch [pending]. Any failure deletes the partial file: the next attempt starts fresh (only a
+     * process killed mid-download resumes). An automatic download that fails is remembered and the
+     * release offered the normal way — no error for something the user never asked for; one the
+     * user started reports Failed.
+     */
+    private fun start(auto: Boolean) {
         scope.launch {
             val update = mutex.withLock {
                 val update = pending ?: return@launch
@@ -112,12 +128,21 @@ class AndroidAppUpdates(
                 _status.value = AppUpdateStatus.Ready(update.versionCode, update.versionName, update.notes, update.changelogUrl)
             } catch (cancel: CancellationException) {
                 throw cancel
-            } catch (error: DownloadMismatchException) {
-                log?.captureError(error, "update ${update.versionCode} failed verification")
-                _status.value = AppUpdateStatus.Failed("E91011")
             } catch (error: Exception) {
-                log?.captureError(error, "downloading update ${update.versionCode} failed")
-                _status.value = AppUpdateStatus.Failed("E91012")
+                withContext(Dispatchers.IO) { partFile(update).delete() }
+                if (auto) {
+                    log?.log(Logger.Level.WARN, "automatic download of update ${update.versionCode} failed; offering it instead", error)
+                    rememberAutoDownloadFailed(update.sha256)
+                    _status.value = AppUpdateStatus.Available(
+                        update.versionCode, update.versionName, update.notes, update.size, update.changelogUrl, update.installInApp,
+                    )
+                } else if (error is DownloadMismatchException) {
+                    log?.captureError(error, "update ${update.versionCode} failed verification")
+                    _status.value = AppUpdateStatus.Failed("E91011")
+                } else {
+                    log?.captureError(error, "downloading update ${update.versionCode} failed")
+                    _status.value = AppUpdateStatus.Failed("E91012")
+                }
             }
         }
     }

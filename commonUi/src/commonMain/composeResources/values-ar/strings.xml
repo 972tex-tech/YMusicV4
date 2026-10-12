@@ -364,6 +364,7 @@
     <string name="update_ready">جاهز للتثبيت</string>
     <string name="update_manual_hint">هذه النسخة لا يمكنها تحديث نفسها (%1$s). نزّل الإصدار الجديد يدويًا.</string>
     <string name="update_failed">فشل التحديث: %1$s</string>
+    <string name="update_download_failed">فشل تنزيل التحديث</string>
     <string name="update_check">التحقق من التحديثات</string>
     <string name="update_checking">جارٍ التحقق من التحديثات…</string>
     <string name="update_up_to_date">أنت تستخدم أحدث إصدار</string>

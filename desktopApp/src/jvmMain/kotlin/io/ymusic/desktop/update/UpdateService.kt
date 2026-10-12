@@ -50,6 +50,9 @@ class UpdateService internal constructor(
     private val logger: Logger? = null,
     /** Download as soon as an update is offered, without asking. Mirrors the user's setting. */
     private val autoDownload: () -> Boolean = { false },
+    /** The sha256 of the release whose automatic download failed ("" for none), and its setter. */
+    private val autoDownloadFailed: () -> String = { "" },
+    private val rememberAutoDownloadFailed: suspend (sha256: String) -> Unit = {},
 ) {
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = _state
@@ -98,13 +101,21 @@ class UpdateService internal constructor(
             val downloaded = withContext(Dispatchers.IO) { file.isFile && sha256Of(file) == update.sha256 }
             _state.value = if (downloaded && update.installInApp) UpdateState.Ready(update, file) else UpdateState.Available(update)
         }
-        if (_state.value is UpdateState.Available && update?.installInApp == true && autoDownload() && selfUpdateBlockedReason == null) {
-            download()
+        // Automatically: once per release. A release that already failed that way waits for a tap.
+        if (_state.value is UpdateState.Available && update?.installInApp == true && autoDownload() &&
+            selfUpdateBlockedReason == null && update.sha256 != autoDownloadFailed()
+        ) {
+            download(auto = true)
         }
     }
 
-    /** Fetch [pendingUpdate]'s installer and verify it against the signed hash. */
-    suspend fun download() {
+    /**
+     * Fetch [pendingUpdate]'s installer and verify it against the signed hash. Any failure deletes
+     * the partial file: the next attempt starts fresh (only a process killed mid-download resumes).
+     * An [auto]matic download that fails is remembered and the release offered the normal way; one
+     * the user started reports Failed.
+     */
+    suspend fun download(auto: Boolean = false) {
         val update = mutex.withLock {
             val update = pendingUpdate ?: return
             if (!update.installInApp) return
@@ -119,20 +130,26 @@ class UpdateService internal constructor(
         } catch (cancel: CancellationException) {
             _state.value = UpdateState.Available(update)
             throw cancel
-        } catch (error: DownloadMismatchException) {
-            log?.captureError(error, "update ${update.versionCode} failed verification")
-            _state.value = UpdateState.Failed("E91002", update.url)
         } catch (error: Exception) {
-            log?.captureError(error, "downloading update ${update.versionCode} failed")
-            _state.value = UpdateState.Failed("E91003", update.url)
+            withContext(Dispatchers.IO) { partFile(update).delete() }
+            if (auto) {
+                log?.log(Logger.Level.WARN, "automatic download of update ${update.versionCode} failed; offering it instead", error)
+                rememberAutoDownloadFailed(update.sha256)
+                _state.value = UpdateState.Available(update)
+            } else if (error is DownloadMismatchException) {
+                log?.captureError(error, "update ${update.versionCode} failed verification")
+                _state.value = UpdateState.Failed("E91002", update.url)
+            } else {
+                log?.captureError(error, "downloading update ${update.versionCode} failed")
+                _state.value = UpdateState.Failed("E91003", update.url)
+            }
         }
     }
 
     private suspend fun fetch(update: AppUpdate): File {
         downloadDir.mkdirs()
         val target = installerFile(update)
-        // Named after the version AND hash: a re-published release must not continue the old bytes.
-        val part = File(downloadDir, "YMusic-${update.versionCode}-${update.sha256.take(16)}.${installer.extension}.part")
+        val part = partFile(update)
         // Another release's leftovers can never be resumed into this one.
         downloadDir.listFiles().orEmpty().filter { it.name.endsWith(".part") && it != part }.forEach { it.deleteRecursively() }
         downloadResumable(client, update.url, part.toOkioPath(), FileSystem.SYSTEM, update.size, update.sha256) { done ->
@@ -167,6 +184,10 @@ class UpdateService internal constructor(
             if (versionCode == null || versionCode <= currentVersionCode) file.deleteRecursively()
         }
     }
+
+    /** Named after the version AND hash: a re-published release must not continue the old bytes. */
+    private fun partFile(update: AppUpdate) =
+        File(downloadDir, "YMusic-${update.versionCode}-${update.sha256.take(16)}.${installer.extension}.part")
 
     private fun installerFile(update: AppUpdate) =
         File(downloadDir, "YMusic-${update.versionCode}.${installer.extension}")

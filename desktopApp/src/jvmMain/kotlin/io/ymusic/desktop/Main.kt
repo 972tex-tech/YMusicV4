@@ -111,6 +111,7 @@ import io.ymusic.settings.AppSettings
 import io.ymusic.settings.FileSettingsStore
 import io.ymusic.settings.anonymousDeviceId
 import io.ymusic.settings.flow
+import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.bindCrashReporting
@@ -786,6 +787,8 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         installer = installerFor(desktopOsKey()),
         logger = rootLogger,
         autoDownload = { autoDownloadUpdates },
+        autoDownloadFailed = { settings.flow(AppSettings.updateAutoDownloadFailed).value },
+        rememberAutoDownloadFailed = { settings.put(AppSettings.updateAutoDownloadFailed, it) },
     )
     // Mirrored into a field: the service asks synchronously, mid-offer, and a suspending read
     // there would either block the offer or race it.

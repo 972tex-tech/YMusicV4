@@ -359,6 +359,7 @@
     <string name="update_ready">Sẵn sàng cài đặt</string>
     <string name="update_manual_hint">Bản này không thể tự cập nhật (%1$s). Hãy tải bản mới theo cách thủ công.</string>
     <string name="update_failed">Cập nhật thất bại: %1$s</string>
+    <string name="update_download_failed">Tải bản cập nhật thất bại</string>
     <string name="update_check">Kiểm tra cập nhật</string>
     <string name="update_checking">Đang kiểm tra cập nhật…</string>
     <string name="update_up_to_date">Bạn đang dùng phiên bản mới nhất</string>

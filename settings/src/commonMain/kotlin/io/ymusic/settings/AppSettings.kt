@@ -97,6 +97,13 @@ object AppSettings {
      */
     val autoDownloadUpdates = BoolSetting("update.autoDownload", true)
 
+    /**
+     * The sha256 of the release whose automatic download failed. That release is never fetched
+     * automatically again — the user downloads it from the update dialog — while a corrected one
+     * (a new hash) is.
+     */
+    val updateAutoDownloadFailed = StringSetting("update.autoDownloadFailed", "")
+
     /** Anonymous stable device id — a random UUID minted on first launch by [anonymousDeviceId],
      *  never derived from hardware identity. Empty = unseeded. */
     val deviceId = StringSetting("telemetry.deviceId", "")
