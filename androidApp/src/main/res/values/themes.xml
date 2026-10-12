@@ -3,4 +3,8 @@
     <style name="Theme.YMusicV4" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@android:color/transparent</item>
     </style>
+    <!-- The share targets: no window of their own, only the Play chooser dialog. -->
+    <style name="Theme.YMusicV4.Share" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>

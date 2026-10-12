@@ -90,6 +90,64 @@
             </intent-filter>
         </activity>
 
+        <!-- Share targets (a link shared from YouTube): one per action, like legacy; see ShareActivity. Its own
+             empty affinity: never part of (or the root of) YMusic's task, or a repeat share only raises it. -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.YMusicV4.Share" />
+
+        <activity-alias
+            android:name=".SharePlay"
+            android:exported="true"
+            android:label="@string/share_play"
+            android:targetActivity=".ShareActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ShareDownloadMp3"
+            android:exported="true"
+            android:label="@string/share_download_mp3"
+            android:targetActivity=".ShareActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ShareDownloadM4a"
+            android:exported="true"
+            android:label="@string/share_download_m4a"
+            android:targetActivity=".ShareActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ShareDownload"
+            android:exported="true"
+            android:label="@string/share_download"
+            android:targetActivity=".ShareActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+        </activity-alias>
+
         <activity
             android:name=".QrScanActivity"
             android:exported="false"

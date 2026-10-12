@@ -34,4 +34,9 @@
     <string name="downloads_summary_failed">%1$d failed</string>
     <string name="downloads_summary_paused">%1$d paused</string>
     <string name="downloads_pause_all">Pause all</string>
+    <string name="share_play">Play</string>
+    <string name="share_download_mp3">MP3 Download</string>
+    <string name="share_download_m4a">M4A Download</string>
+    <string name="share_download">Other Download</string>
+    <string name="share_no_link">No link to open in what was shared</string>
 </resources>

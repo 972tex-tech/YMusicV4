@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="share_play">Phát</string>
+    <string name="share_download_mp3">Tải MP3</string>
+    <string name="share_download_m4a">Tải M4A</string>
+    <string name="share_download">Tải định dạng khác</string>
+    <string name="share_no_link">Không có liên kết nào để mở trong nội dung được chia sẻ</string>
+</resources>

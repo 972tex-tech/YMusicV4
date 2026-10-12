@@ -45,6 +45,7 @@ import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppSection
 import io.ymusic.ui.FeedbackFile
 import io.ymusic.ui.IncomingLinks
+import io.ymusic.ui.LinkAction
 import io.ymusic.ui.rememberStartSection
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CompletableDeferred
@@ -425,10 +426,12 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun openLink(intent: Intent?) {
-        if (intent?.action != Intent.ACTION_VIEW) return
+        if (intent?.action != Intent.ACTION_VIEW && intent?.action != ACTION_OPEN_LINK) return
         // Reopened from Recents: the task's original link intent comes back, already handled.
         if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return
-        intent.dataString?.let(IncomingLinks::open)
+        val url = intent.dataString ?: return
+        val action = intent.getStringExtra(EXTRA_LINK_ACTION)?.let { name -> LinkAction.entries.firstOrNull { it.name == name } }
+        IncomingLinks.open(url, action ?: LinkAction.OPEN)
     }
 
     @Deprecated("Deprecated in Java")
@@ -451,6 +454,10 @@ class MainActivity : FragmentActivity() {
     companion object {
         /** Launch intent action landing on the Download manager (the download notifications). */
         const val ACTION_OPEN_DOWNLOADS = "io.ymusic.android.action.OPEN_DOWNLOADS"
+
+        /** A shared link ([ShareActivity]): the url as data, the [LinkAction] name in [EXTRA_LINK_ACTION]. */
+        const val ACTION_OPEN_LINK = "io.ymusic.android.action.OPEN_LINK"
+        const val EXTRA_LINK_ACTION = "io.ymusic.android.extra.LINK_ACTION"
 
         /** FragmentActivity rejects Activity Result request codes above 16 bits. */
         private const val REQ_QR_SCAN = 0x51
