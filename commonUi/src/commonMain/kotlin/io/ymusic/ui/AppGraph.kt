@@ -163,6 +163,11 @@ class AppGraph(
      * has none — the update prompt and its setting then never appear.
      */
     val updates: AppUpdates? = null,
+    /** Premium: on Android, the "Support Development" app is installed. Shows the drawer's badge. */
+    val premium: StateFlow<Boolean> = MutableStateFlow(false),
+    /** Opens the donation screen; null where there is none (only Android has one) — the drawer's
+     *  Donate item then hides. */
+    val openDonation: (() -> Unit)? = null,
     /**
      * Anonymous usage stats — `stats?.record("play")` from any screen. The consent gate and the
      * no-service case are its own business ([StatUsage.record] returns before doing any work);

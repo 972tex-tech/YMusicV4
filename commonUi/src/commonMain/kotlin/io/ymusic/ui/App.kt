@@ -615,6 +615,7 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
         // "Check for update" from the drawer; a found update bumps [updateRecheck] so the prompt
         // shows it even after an earlier "Ask later".
         var checkingUpdate by remember { mutableStateOf(false) }
+        val premium by graph.premium.collectAsState()
         var updateRecheck by remember { mutableStateOf(0) }
         // The system back gesture/button walks the same path as the in-app back arrows: overlays
         // close first (drawer, Now Playing); the search input steps back to its results; then one
@@ -674,9 +675,12 @@ private fun AppRoot(graph: AppGraph, section: AppSection, onSection: (AppSection
                                 appVersion = graph.appVersion,
                                 guest = graph.guest,
                                 onSelect = { s ->
-                                    onSection(s)
+                                    // Donate is an action, not a screen: it opens the donation screen.
+                                    if (s == AppSection.Donate) graph.openDonation?.invoke() else onSection(s)
                                     scope.launch { drawer.close() }
                                 },
+                                premium = premium,
+                                showDonate = graph.openDonation != null,
                                 onCheckUpdate = graph.updates?.let {
                                     {
                                         checkingUpdate = true

@@ -320,6 +320,8 @@ class MainActivity : FragmentActivity() {
         super.onResume()
         // Covers 13+ permission AND the pre-13 app-level notification toggle.
         notificationsEnabled.value = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        // The Support Development app may have been installed or removed while we were away.
+        (application as YMusicApplication).refreshPremium()
         val g = appGraph
         if (pipExitPending) {
             pipExitPending = false

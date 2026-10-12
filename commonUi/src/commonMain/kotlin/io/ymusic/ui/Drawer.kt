@@ -55,6 +55,10 @@ fun AppDrawer(
     guest: Boolean = false,
     /** "Check for update", or null where the app cannot update itself (iOS). */
     onCheckUpdate: (() -> Unit)? = null,
+    /** Shows the PREMIUM badge. */
+    premium: Boolean = false,
+    /** Lists Donate (only where a donation screen exists). */
+    showDonate: Boolean = false,
 ) {
     ModalDrawerSheet(
         modifier = Modifier.width(300.dp),
@@ -62,12 +66,13 @@ fun AppDrawer(
         drawerShape = RoundedCornerShape(0.dp),
     ) {
         Column(Modifier.fillMaxHeight()) {
-            DrawerHeader(appVersion)
+            DrawerHeader(appVersion, premium)
             HorizontalDivider(color = DesignColors.Divider)
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                 AppSection.entries
                     .filter { it != AppSection.Catalogue || showCatalogue }
                     .filter { it != AppSection.PlayAgain || !guest }
+                    .filter { it != AppSection.Donate || showDonate }
                     .groupBy { it.group }
                     .entries
                     .forEachIndexed { index, (_, sections) ->
@@ -88,7 +93,7 @@ fun AppDrawer(
 }
 
 @Composable
-private fun DrawerHeader(appVersion: String?) {
+private fun DrawerHeader(appVersion: String?, premium: Boolean) {
     Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 13.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(
@@ -102,19 +107,21 @@ private fun DrawerHeader(appVersion: String?) {
                         stringResource(Res.string.app_name),
                         style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = DesignColors.InkStrong),
                     )
-                    Text(
-                        stringResource(Res.string.badge_premium),
-                        style = TextStyle(
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 0.54.sp,
-                            color = BrandGreenInk,
-                        ),
-                        modifier = Modifier
-                            .background(BrandGreenBg, RoundedCornerShape(5.dp))
-                            .border(1.dp, BrandGreenBorder, RoundedCornerShape(5.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
+                    if (premium) {
+                        Text(
+                            stringResource(Res.string.badge_premium),
+                            style = TextStyle(
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 0.54.sp,
+                                color = BrandGreenInk,
+                            ),
+                            modifier = Modifier
+                                .background(BrandGreenBg, RoundedCornerShape(5.dp))
+                                .border(1.dp, BrandGreenBorder, RoundedCornerShape(5.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
                 }
                 appVersion?.let {
                     Text(

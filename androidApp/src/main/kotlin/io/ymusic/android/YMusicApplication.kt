@@ -95,6 +95,8 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -135,6 +137,15 @@ class SharedServices(
 )
 
 class YMusicApplication : Application() {
+
+    private val _premium = MutableStateFlow(false)
+
+    /** The Support Development app is installed ([SupportApp]); re-checked on every resume. */
+    val premium: StateFlow<Boolean> = _premium
+
+    fun refreshPremium() {
+        _premium.value = SupportApp.installed(this)
+    }
 
     /** Rotating file sink (`filesDir/logs/ymusic.log`, 5 MiB × 3). Lazy: needs [filesDir]. */
     val logWorker: LoggingWorker by lazy { LoggingWorker(File(filesDir, "logs").toOkioPath()) }
@@ -550,6 +561,8 @@ class YMusicApplication : Application() {
             playerCache = playerCache,
             stats = shared.stats,
             updates = shared.updates,
+            premium = premium,
+            openDonation = { SupportApp.openDonation(this) },
             api = shared.api,
             mediaStore = shared.mediaStore,
             playHistory = PlayHistoryStore(playHistoryAndroidDriver(this)),

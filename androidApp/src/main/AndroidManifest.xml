@@ -12,6 +12,12 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- Android 11+ package visibility: premium is "the Support Development app is installed", and
+         Donate starts its donation screen. -->
+    <queries>
+        <package android:name="com.kdev.ymusic.support" />
+    </queries>
+
     <application
         android:name=".YMusicApplication"
         android:allowBackup="true"
