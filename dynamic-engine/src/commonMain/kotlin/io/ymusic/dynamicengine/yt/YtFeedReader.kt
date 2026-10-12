@@ -608,3 +608,32 @@ internal suspend fun readCreatedPlaylistId(r: JsonReader): String {
     r.endObject()
     return playlistId
 }
+
+/** The `yt/resolve-link` result; null for "none" or a kind this app version doesn't know. */
+internal suspend fun readLinkTarget(r: JsonReader): YtLinkTarget? {
+    var kind = ""
+    var item: YtFeedItem? = null
+    var url: String? = null
+    var startMs: Long? = null
+    var query: String? = null
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "kind" -> kind = r.stringOrNull() ?: ""
+            "item" -> item = readItem(r)
+            "url" -> url = r.stringOrNull()
+            "startMs" -> startMs = r.longOrNull()
+            "query" -> query = r.stringOrNull()
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return when (kind) {
+        "video" -> item?.let { YtLinkTarget.Video(it, url, startMs) }
+        "playlist" -> url?.let(YtLinkTarget::Playlist)
+        "channel" -> url?.let(YtLinkTarget::Channel)
+        "music" -> url?.let(YtLinkTarget::MusicBrowse)
+        "search" -> query?.let(YtLinkTarget::Search)
+        else -> null
+    }
+}
