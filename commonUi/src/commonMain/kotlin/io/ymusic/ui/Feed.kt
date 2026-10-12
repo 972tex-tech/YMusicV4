@@ -1,5 +1,6 @@
 package io.ymusic.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,9 +25,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -457,7 +460,16 @@ internal fun EmptyState(
                 horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
             ) {
                 if (onSecondaryReload != null) {
-                    OutlinedButton(onClick = onSecondaryReload) { Text(stringResource(Res.string.reload)) }
+                    OutlinedButton(
+                        onClick = onSecondaryReload,
+                        border = BorderStroke(1.dp, DesignColors.Outline),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DesignColors.Ink),
+                        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+                    ) {
+                        Icon(Icons.Default.Refresh, null, Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(stringResource(Res.string.reload))
+                    }
                 }
                 Button(onClick = onReload) { Text(actionLabel) }
             }
