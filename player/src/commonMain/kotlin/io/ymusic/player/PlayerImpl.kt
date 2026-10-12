@@ -111,6 +111,8 @@ internal class PlayerImpl(
 
     private val _sleepTimerMs = MutableStateFlow<Long?>(null)
     override val sleepTimerMs: StateFlow<Long?> = _sleepTimerMs.asStateFlow()
+    private val _sleepAfterCurrent = MutableStateFlow(false)
+    override val sleepAfterCurrent: StateFlow<Boolean> = _sleepAfterCurrent.asStateFlow()
 
     @OptIn(ExperimentalUuidApi::class)
     override fun setQueue(
@@ -296,7 +298,7 @@ internal class PlayerImpl(
         controller.setLoopMode(mode)
         // UniPlayer: loop-one is engine-native (YouTube setLoopVideo / Exo REPEAT_MODE_ONE),
         // not a facade seek-to-0 on ended.
-        pushConfig(currentConfig.copy(loop = mode == LoopMode.One))
+        syncEngineLoop()
         publishQueue()
     }
 
@@ -362,10 +364,14 @@ internal class PlayerImpl(
         (_currentEngine.value as? AudioTrackSelectable)?.selectAudioTrack(id)
     }
 
-    override fun setSleepTimer(durationMs: Long?) {
+    override fun setSleepTimer(durationMs: Long?, finishTrack: Boolean) {
         if (released) return
         sleepJob?.cancel()
         sleepJob = null
+        if (_sleepAfterCurrent.value) {
+            _sleepAfterCurrent.value = false
+            syncEngineLoop()
+        }
         _sleepTimerMs.value = durationMs
         if (durationMs == null) return
         sleepJob = scope.launch {
@@ -377,8 +383,20 @@ internal class PlayerImpl(
                 _sleepTimerMs.value = remaining
             }
             _sleepTimerMs.value = null
-            pause()
+            if (finishTrack && _status.value.playWhenReady) setSleepAfterCurrent(true) else pause()
         }
+    }
+
+    override fun setSleepAfterCurrent(enabled: Boolean) {
+        if (released) return
+        if (enabled) setSleepTimer(null)
+        _sleepAfterCurrent.value = enabled
+        syncEngineLoop()
+    }
+
+    /** Engine-native loop-one never reports Ended, so it is lifted while end-of-track sleep is armed. */
+    private fun syncEngineLoop() {
+        pushConfig(currentConfig.copy(loop = controller.state.loopMode == LoopMode.One && !_sleepAfterCurrent.value))
     }
 
     override fun refreshOnNext() {
@@ -711,6 +729,16 @@ internal class PlayerImpl(
 
     private fun onTrackEnded() {
         if (advancedGeneration == loadGeneration) return
+        if (_sleepAfterCurrent.value) {
+            _sleepAfterCurrent.value = false
+            syncEngineLoop()
+            setPlayWhenReadyIntent(false)
+            if (controller.state.loopMode == LoopMode.One) {
+                advancedGeneration = loadGeneration
+                loadCurrent(0L)
+                return
+            }
+        }
         val current = controller.state.currentItem
         if (controller.state.loopMode == LoopMode.One &&
             (current as? PlayableItem.YtMedia)?.live != true

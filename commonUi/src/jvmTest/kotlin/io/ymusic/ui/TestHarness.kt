@@ -114,6 +114,7 @@ internal class StubPlayer : Player {
     override val audioTracks: StateFlow<AudioTrackState> = MutableStateFlow(AudioTrackState.DEFAULT)
     override val config: StateFlow<PlaybackConfig> = MutableStateFlow(PlaybackConfig())
     override val sleepTimerMs: StateFlow<Long?> = MutableStateFlow(null)
+    override val sleepAfterCurrent: StateFlow<Boolean> = MutableStateFlow(false)
 
     /** Tests drive the harvest by emitting here — no YouTube engine is involved. */
     val watchNextReports = MutableSharedFlow<io.ymusic.player.WatchNextSeen>(extraBufferCapacity = 8)
@@ -217,7 +218,9 @@ internal class StubPlayer : Player {
 
     override fun selectAudioTrack(id: String) {}
 
-    override fun setSleepTimer(durationMs: Long?) {}
+    override fun setSleepTimer(durationMs: Long?, finishTrack: Boolean) {}
+
+    override fun setSleepAfterCurrent(enabled: Boolean) {}
 
     override fun refreshOnNext() {}
 

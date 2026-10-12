@@ -39,6 +39,9 @@ interface Player {
     /** Remaining sleep-timer time (ticked ~1 Hz), or null when no timer is armed. */
     val sleepTimerMs: StateFlow<Long?>
 
+    /** Playback pauses when the current track ends (the queue still moves on to the next item). */
+    val sleepAfterCurrent: StateFlow<Boolean>
+
     /**
      * Watch-next payloads reported while a YouTube item plays — the app forwards each to the scraping
      * engine, which builds the Recommended feed out of them. Not playback state: a side channel.
@@ -153,8 +156,12 @@ interface Player {
     /** The one immediate action — forwarded to the active engine when it is [AudioTrackSelectable]. */
     fun selectAudioTrack(id: String)
 
-    /** Pause automatically after [durationMs]; null disarms. */
-    fun setSleepTimer(durationMs: Long?)
+    /** Pause automatically after [durationMs]; null disarms. With [finishTrack] the expiry arms
+     *  [sleepAfterCurrent] instead of cutting the track off. Disarms [sleepAfterCurrent]. */
+    fun setSleepTimer(durationMs: Long?, finishTrack: Boolean = false)
+
+    /** Arms/disarms [sleepAfterCurrent]; arming disarms a running [sleepTimerMs]. */
+    fun setSleepAfterCurrent(enabled: Boolean)
 
     /**
      * Mark the YouTube engine stale so the NEXT track re-inits under the current cookie identity —
