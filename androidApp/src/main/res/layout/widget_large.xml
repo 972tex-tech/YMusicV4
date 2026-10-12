@@ -95,11 +95,25 @@
             </LinearLayout>
         </LinearLayout>
 
-        <ImageView
-            android:id="@+id/widget_art"
-            android:layout_width="130dp"
-            android:layout_height="match_parent"
-            android:importantForAccessibility="no"
-            android:scaleType="centerCrop" />
+        <FrameLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent">
+
+            <ImageView
+                android:id="@+id/widget_art"
+                android:layout_width="130dp"
+                android:layout_height="match_parent"
+                android:importantForAccessibility="no"
+                android:scaleType="centerCrop" />
+
+            <ImageView
+                android:id="@+id/widget_art_fade"
+                android:layout_width="64dp"
+                android:layout_height="match_parent"
+                android:importantForAccessibility="no"
+                android:scaleType="fitXY"
+                android:src="@drawable/widget_fade_edge"
+                android:tint="@color/widget_card_fallback" />
+        </FrameLayout>
     </LinearLayout>
 </FrameLayout>

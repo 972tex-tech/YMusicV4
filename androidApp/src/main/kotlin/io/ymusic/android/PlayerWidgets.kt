@@ -11,10 +11,7 @@ import android.graphics.BitmapFactory
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
@@ -104,7 +101,8 @@ private data class WidgetPalette(val card: Int, val title: Int, val subtitle: In
 private class WidgetArt(
     val url: String,
     val backdrop: Bitmap,
-    val fade: Bitmap,
+    val softBackdrop: Bitmap,
+    val panel: Bitmap,
     val cover: Bitmap,
     val palette: WidgetPalette,
 )
@@ -242,7 +240,7 @@ class PlayerWidgets(
         when (kind) {
             WidgetKind.SMALL, WidgetKind.COMPACT -> {
                 if (art != null) {
-                    views.setImageViewBitmap(R.id.widget_backdrop, art.backdrop)
+                    views.setImageViewBitmap(R.id.widget_backdrop, art.softBackdrop)
                 } else {
                     views.setImageViewResource(R.id.widget_backdrop, 0)
                 }
@@ -266,13 +264,14 @@ class PlayerWidgets(
                         views.setImageViewResource(R.id.widget_backdrop, 0)
                     }
                 }
-                val bitmap = if (kind == WidgetKind.LARGE) art?.fade else art?.cover
+                val bitmap = if (kind == WidgetKind.LARGE) art?.panel else art?.cover
                 val roomForArt = kind == WidgetKind.SQUARE || minWidthDp == 0 || minWidthDp >= LARGE_ART_MIN_DP
-                if (bitmap != null && roomForArt) {
-                    views.setImageViewBitmap(R.id.widget_art, bitmap)
-                    views.setViewVisibility(R.id.widget_art, View.VISIBLE)
-                } else {
-                    views.setViewVisibility(R.id.widget_art, View.GONE)
+                val showArt = bitmap != null && roomForArt
+                if (showArt) views.setImageViewBitmap(R.id.widget_art, bitmap)
+                views.setViewVisibility(R.id.widget_art, visibleIf(showArt))
+                if (kind == WidgetKind.LARGE) {
+                    views.setInt(R.id.widget_art_fade, "setColorFilter", palette.card)
+                    views.setViewVisibility(R.id.widget_art_fade, visibleIf(showArt))
                 }
             }
         }
@@ -310,9 +309,13 @@ class PlayerWidgets(
 
 private const val BACKDROP_PX = 64
 private const val BLUR_RADIUS = 4
+private const val BLUR_PASSES = 3
+private const val SOFT_BACKDROP_PX = 128
+private const val SOFT_BLUR_RADIUS = 3
+private const val SOFT_BLUR_PASSES = 2
 private const val BACKDROP_DIM = 0.58f
-private const val FADE_W = 208
-private const val FADE_H = 240
+private const val PANEL_W = 208
+private const val PANEL_H = 320
 private const val COVER_PX = 192
 private const val COVER_RADIUS_PX = 32f
 
@@ -325,8 +328,9 @@ private fun deriveArt(url: String, source: Bitmap): WidgetArt {
     }
     return WidgetArt(
         url = url,
-        backdrop = blurredBackdrop(src),
-        fade = fadedArt(src),
+        backdrop = blurredBackdrop(src, BACKDROP_PX, BLUR_RADIUS, BLUR_PASSES),
+        softBackdrop = blurredBackdrop(src, SOFT_BACKDROP_PX, SOFT_BLUR_RADIUS, SOFT_BLUR_PASSES),
+        panel = centerCrop(src, PANEL_W, PANEL_H),
         cover = roundedCover(src),
         palette = Palette.from(src).generate().toWidgetPalette(),
     )
@@ -379,14 +383,14 @@ private fun centerCrop(src: Bitmap, width: Int, height: Int): Bitmap {
 }
 
 /** RemoteViews can't blur or dim, so both are baked: a small box-blurred copy the launcher scales up. */
-private fun blurredBackdrop(src: Bitmap): Bitmap {
-    val small = centerCrop(src, BACKDROP_PX, BACKDROP_PX)
-    val pixels = IntArray(BACKDROP_PX * BACKDROP_PX)
-    small.getPixels(pixels, 0, BACKDROP_PX, 0, 0, BACKDROP_PX, BACKDROP_PX)
+private fun blurredBackdrop(src: Bitmap, size: Int, radius: Int, passes: Int): Bitmap {
+    val small = centerCrop(src, size, size)
+    val pixels = IntArray(size * size)
+    small.getPixels(pixels, 0, size, 0, 0, size, size)
     val scratch = IntArray(pixels.size)
-    repeat(3) {
-        boxBlurPass(pixels, scratch, BACKDROP_PX, BACKDROP_PX, BLUR_RADIUS, horizontal = true)
-        boxBlurPass(scratch, pixels, BACKDROP_PX, BACKDROP_PX, BLUR_RADIUS, horizontal = false)
+    repeat(passes) {
+        boxBlurPass(pixels, scratch, size, size, radius, horizontal = true)
+        boxBlurPass(scratch, pixels, size, size, radius, horizontal = false)
     }
     for (i in pixels.indices) {
         val color = pixels[i]
@@ -396,7 +400,7 @@ private fun blurredBackdrop(src: Bitmap): Bitmap {
             (Color.blue(color) * BACKDROP_DIM).toInt(),
         )
     }
-    return Bitmap.createBitmap(pixels, BACKDROP_PX, BACKDROP_PX, Bitmap.Config.ARGB_8888)
+    return Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
 }
 
 private fun boxBlurPass(src: IntArray, dst: IntArray, width: Int, height: Int, radius: Int, horizontal: Boolean) {
@@ -429,17 +433,6 @@ private fun boxBlurPass(src: IntArray, dst: IntArray, width: Int, height: Int, r
     }
 }
 
-/** The Large card's cover: its leading edge faded to transparent so the palette card shows through. */
-private fun fadedArt(src: Bitmap): Bitmap {
-    val out = centerCrop(src, FADE_W, FADE_H)
-    val mask = Paint().apply {
-        shader = LinearGradient(0f, 0f, FADE_W * 0.45f, 0f, Color.TRANSPARENT, Color.BLACK, Shader.TileMode.CLAMP)
-        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
-    }
-    Canvas(out).drawRect(0f, 0f, FADE_W.toFloat(), FADE_H.toFloat(), mask)
-    return out
-}
-
 /** RemoteViews can't clip a child to rounded corners, so the Square's cover is pre-rounded. */
 private fun roundedCover(src: Bitmap): Bitmap {
     val square = centerCrop(src, COVER_PX, COVER_PX)
@@ -461,7 +454,8 @@ private class WidgetSnapshotStore(context: Context) {
         if (art != null) {
             dir.mkdirs()
             writePng(BACKDROP_FILE, art.backdrop)
-            writePng(FADE_FILE, art.fade)
+            writePng(SOFT_BACKDROP_FILE, art.softBackdrop)
+            writePng(PANEL_FILE, art.panel)
             writePng(COVER_FILE, art.cover)
         }
         prefs.edit().apply {
@@ -485,9 +479,10 @@ private class WidgetSnapshotStore(context: Context) {
         val track = WidgetTrack(title, prefs.getString(KEY_SUBTITLE, null), prefs.getString(KEY_ART_URL, null))
         val artFor = prefs.getString(KEY_ART_FOR, null)?.takeIf { it == track.artUrl } ?: return track to null
         val backdrop = readPng(BACKDROP_FILE)
-        val fade = readPng(FADE_FILE)
+        val softBackdrop = readPng(SOFT_BACKDROP_FILE)
+        val panel = readPng(PANEL_FILE)
         val cover = readPng(COVER_FILE)
-        if (backdrop == null || fade == null || cover == null) return track to null
+        if (backdrop == null || softBackdrop == null || panel == null || cover == null) return track to null
         val palette = WidgetPalette(
             card = prefs.getInt(KEY_CARD, 0),
             title = prefs.getInt(KEY_TITLE_COLOR, 0),
@@ -495,7 +490,7 @@ private class WidgetSnapshotStore(context: Context) {
             playBg = prefs.getInt(KEY_PLAY_BG, 0),
             playIcon = prefs.getInt(KEY_PLAY_ICON, 0),
         )
-        return track to WidgetArt(artFor, backdrop, fade, cover, palette)
+        return track to WidgetArt(artFor, backdrop, softBackdrop, panel, cover, palette)
     }
 
     private fun writePng(name: String, bitmap: Bitmap) {
@@ -506,7 +501,8 @@ private class WidgetSnapshotStore(context: Context) {
 
     private companion object {
         const val BACKDROP_FILE = "backdrop.png"
-        const val FADE_FILE = "fade.png"
+        const val SOFT_BACKDROP_FILE = "soft_backdrop.png"
+        const val PANEL_FILE = "panel.png"
         const val COVER_FILE = "cover.png"
         const val KEY_TITLE = "title"
         const val KEY_SUBTITLE = "subtitle"
