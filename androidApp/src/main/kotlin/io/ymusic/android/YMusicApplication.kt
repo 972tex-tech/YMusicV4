@@ -239,6 +239,9 @@ class YMusicApplication : Application() {
                     it.dsn = BuildConfig.SENTRY_DSN
                     // The commit in the release traces an event to git history (no source upload).
                     it.release = "${BuildConfig.APPLICATION_ID}@${BuildConfig.VERSION_NAME}+${BuildConfig.GIT_COMMIT}"
+                    // Explicit and persisted: without it, ANR/tombstone events replayed by the next
+                    // process take dist from the text after '+' in the release (the commit).
+                    it.dist = BuildConfig.VERSION_CODE.toString()
                     it.environment = if (BuildConfig.DEBUG) "debug" else "production"
                 }
                 installSentryDeviceId(deviceId)
