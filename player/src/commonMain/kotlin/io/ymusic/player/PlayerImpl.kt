@@ -413,7 +413,7 @@ internal class PlayerImpl(
         if (controller.state.currentItem == null) return
         val resumeMs = _progress.value.positionMs
         if (_currentEngine.value === ytEngine) ytEngine?.refreshOnNext()
-        _currentEngine.value?.reset()
+        _currentEngine.value?.reset("reload")
         loadCurrent(resumeMs)
     }
 
@@ -628,7 +628,7 @@ internal class PlayerImpl(
         val error = (engine.status.value.state as? PlaybackState.Error)?.error ?: return
         if (!error.canRetry || !error.needReset) return
         if (engine is YtEngine) ytResetOnNext = false
-        engine.reset()
+        engine.reset("unshown error ${error.code}")
     }
 
     private fun requestLoad(
@@ -692,7 +692,7 @@ internal class PlayerImpl(
     private suspend fun tryMakePlayerReady(engine: MediaEngine<*>): PlayerError? {
         if (ytResetOnNext && engine is YtEngine) {
             ytResetOnNext = false
-            engine.reset()
+            engine.reset("refresh requested")
         }
         val first = engine.status.value.state
         if (first.readyToLoad) return null
@@ -702,7 +702,7 @@ internal class PlayerImpl(
             }
             is PlaybackState.Error -> {
                 if (!first.error.canRetry) return first.error
-                if (first.error.needReset) engine.reset() else return null
+                if (first.error.needReset) engine.reset("error ${first.error.code} needs reset") else return null
             }
             else -> return null
         }

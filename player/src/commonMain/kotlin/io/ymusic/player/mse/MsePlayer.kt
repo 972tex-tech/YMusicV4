@@ -121,6 +121,7 @@ class MsePlayer internal constructor(
     private class Session(val job: Job) {
         val scope = CoroutineScope(Dispatchers.Main.immediate + job)
         val commands = Channel<suspend (DynamicEnginePlayer) -> Unit>(Channel.UNLIMITED)
+        val startedAt = TimeSource.Monotonic.markNow()
         var player: DynamicEnginePlayer? = null
         var captionJob: Job? = null
 
@@ -163,14 +164,16 @@ class MsePlayer internal constructor(
     override fun init() {
         requireMainThread()
         if (released || session != null) return
-        startSession()
+        startSession("init")
     }
 
-    override fun reset() {
+    override fun reset() = reset("unspecified")
+
+    override fun reset(reason: String) {
         requireMainThread()
         if (released) return
-        tearDownSession()
-        startSession()
+        tearDownSession("reset: $reason")
+        startSession("reset: $reason")
     }
 
     override fun load(
@@ -245,7 +248,7 @@ class MsePlayer internal constructor(
                 queuedNow = session?.queued,
             )
             loadLog?.log(Logger.Level.WARN, "E60051 load stalled $stalled")
-            tearDownSession()
+            tearDownSession("load timeout")
             val timeout = TechnicalException("E60051", "load timeout ${source.videoId}")
                 .markTrail(loadLog)
             fail(timeout, "load timeout", needReset = true)
@@ -283,7 +286,7 @@ class MsePlayer internal constructor(
         when (_status.value.state) {
             is PlaybackState.Uninitialized -> return
             is PlaybackState.Error -> {
-                tearDownSession()
+                tearDownSession("stop in error")
                 return
             }
             else -> Unit
@@ -371,7 +374,7 @@ class MsePlayer internal constructor(
         requireMainThread()
         if (released) return
         released = true
-        tearDownSession()
+        tearDownSession("release")
         val lastClose = closing
         mainScope.launch {
             lastClose?.join()
@@ -395,8 +398,9 @@ class MsePlayer internal constructor(
         }
     }
 
-    private fun startSession() {
+    private fun startSession(reason: String) {
         check(session == null) { "mse session already running" }
+        log?.log(Logger.Level.INFO, "mse session start ($reason) freshConfig=$freshConfigNext")
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true), videoSize = null) }
         val newSession = Session(SupervisorJob(mainScope.coroutineContext[Job]))
         session = newSession
@@ -489,7 +493,14 @@ class MsePlayer internal constructor(
     }
 
     /** Legacy `resetInternal(loadBlank = true)`: kill the session, leave [status] as is. */
-    private fun tearDownSession() {
+    private fun tearDownSession(reason: String) {
+        session?.let {
+            log?.log(
+                Logger.Level.INFO,
+                "mse session teardown ($reason) age=${it.startedAt.elapsedNow().inWholeMilliseconds}ms " +
+                    "loaded=${loadedVideoId ?: "-"} loading=${loadingVideoId ?: "-"}",
+            )
+        }
         loadingVideoId = null
         loadedVideoId = null
         loadTimeoutJob?.cancel()
