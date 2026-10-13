@@ -607,6 +607,11 @@ class YMusicApplication : Application() {
                         android.provider.DocumentsContract.deleteDocument(contentResolver, uri)
                     } catch (e: java.io.FileNotFoundException) {
                         true
+                    } catch (e: IllegalArgumentException) {
+                        // ExternalStorageProvider reports a missing file as an IllegalArgumentException
+                        // (the FileNotFoundException only survives the binder as message text).
+                        if (documentExists(uri)) throw e
+                        true
                     }
                     check(deleted) { "Android refused to delete this document" }
                 }
@@ -672,6 +677,17 @@ class YMusicApplication : Application() {
                 },
             )
         }
+    }
+
+    /** Whether the provider still resolves [uri]; a provider that answers a missing document by
+     *  throwing is a "no". */
+    private fun documentExists(uri: android.net.Uri): Boolean = try {
+        contentResolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
+            ?.use { it.moveToFirst() } == true
+    } catch (e: java.io.FileNotFoundException) {
+        false
+    } catch (e: IllegalArgumentException) {
+        false
     }
 
     /** SAF folder pick + full scan into [store]; returns the summary line, or null when canceled. */
