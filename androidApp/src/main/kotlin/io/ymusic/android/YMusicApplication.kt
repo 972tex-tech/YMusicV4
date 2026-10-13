@@ -67,7 +67,7 @@ import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
-import io.ymusic.ui.WebViewSabrSpecResolver
+import io.ymusic.ui.YtEngineSabrSpecResolver
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.loaderYoutubeArt
@@ -534,7 +534,7 @@ class YMusicApplication : Application() {
                 resolver = io.ymusic.download.SabrSpecResolver { videoId ->
                     withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
                     val yt = ytEngine ?: error("youtube engine missing")
-                    WebViewSabrSpecResolver(yt).resolve(videoId)
+                    YtEngineSabrSpecResolver(yt).resolve(videoId)
                 },
                 client = sabrClient,
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),
@@ -561,7 +561,7 @@ class YMusicApplication : Application() {
                 playerResponse = { videoId ->
                     withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
                     val yt = ytEngine ?: error("youtube engine missing")
-                    WebViewSabrSpecResolver(yt).playerResponse(videoId)
+                    YtEngineSabrSpecResolver(yt).playerResponse(videoId)
                 },
             )
         }

@@ -127,7 +127,7 @@ import io.ymusic.ui.DarkDesignColors
 import io.ymusic.ui.IncomingLinks
 import io.ymusic.ui.LightDesignColors
 import io.ymusic.ui.VideoOverlayNative
-import io.ymusic.ui.WebViewSabrSpecResolver
+import io.ymusic.ui.YtEngineSabrSpecResolver
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.importSessionCookies
@@ -760,7 +760,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         val resolver = io.ymusic.download.SabrSpecResolver { videoId ->
             withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
             val yt = ytEngine ?: error("youtube engine missing")
-            WebViewSabrSpecResolver(yt).resolve(videoId)
+            YtEngineSabrSpecResolver(yt).resolve(videoId)
         }
         // Own segment index (byte range per segment) → SABR resume across pause/re-attest. Separate from
         // the player cache DB: downloads store bytes in their own file, not the player blob cache.
@@ -790,7 +790,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
             playerResponse = { videoId ->
                 withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
                 val yt = ytEngine ?: error("youtube engine missing")
-                WebViewSabrSpecResolver(yt).playerResponse(videoId)
+                YtEngineSabrSpecResolver(yt).playerResponse(videoId)
             },
         )
     }

@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
  * `requestPlayerResponse` returns cached `/player` + a decoded SABR URL the player already
  * fetched, or preloads the video so those requests fire. `requestPoToken` mints a content PO.
  */
-class WebViewSabrSpecResolver(
+class YtEngineSabrSpecResolver(
     private val player: YtEngine,
 ) : SabrSpecResolver {
 
