@@ -102,19 +102,18 @@ jobs:
           node-version: 22
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
 
-      # secrets.enc → secrets.properties + signing/ (release keystore, remote config url, Sentry DSN,
-      # bundle/update public keys). Without SECRETS_PASSPHRASE (e.g. a fork's PR) the step is skipped
-      # and the build runs on defaults: debug-signed APKs, no remote config.
+      # The shipping build: secrets.enc → secrets.properties + signing/. Pull requests never decrypt
+      # (nor does a run without SECRETS_PASSPHRASE); they build on defaults — unsigned, no Sentry
+      # upload, no remote config — to prove the change compiles, not to ship.
       - name: Restore secrets
-        if: env.SECRETS_PASSPHRASE != ''
+        if: env.SECRETS_PASSPHRASE != '' && github.event_name != 'pull_request'
         working-directory: YMusicV4
         run: ./decrypt.sh
 
+      # With the decrypted sentry.auth.token the Sentry plugin uploads the ProGuard mapping and
+      # source context for this build, so crashes from the shipped APKs symbolicate.
       - name: Assemble release APKs
         working-directory: YMusicV4
-        env:
-          # Empty overrides the decrypted sentry.auth.token: CI builds do not upload mappings.
-          SENTRY_AUTH_TOKEN: ""
         run: ./gradlew :androidApp:assembleRelease
 
       - name: Discard secrets
@@ -161,27 +160,57 @@ jobs:
           node-version: 22
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
 
-      # secrets.enc → secrets.properties + signing/ (release keystore, remote config url, Sentry DSN,
-      # bundle/update public keys). Without SECRETS_PASSPHRASE (e.g. a fork's PR) the step is skipped
-      # and the build runs on defaults: debug-signed APKs, no remote config.
+      # The shipping build: secrets.enc → secrets.properties + signing/. Pull requests never decrypt
+      # (nor does a run without SECRETS_PASSPHRASE); they build on defaults — unsigned, no Sentry
+      # upload, no remote config — to prove the change compiles, not to ship.
       - name: Restore secrets
-        if: env.SECRETS_PASSPHRASE != ''
+        if: env.SECRETS_PASSPHRASE != '' && github.event_name != 'pull_request'
         working-directory: YMusicV4
         run: ./decrypt.sh
 
+      # The Developer ID identity (MACOS_CERT_P12, base64, + MACOS_CERT_PASSWORD from the decrypted
+      # secrets.properties) goes into a throwaway keychain the build's codesign can reach.
+      - name: Import signing identity
+        if: hashFiles('YMusicV4/secrets.properties') != ''
+        working-directory: YMusicV4
+        run: |
+          set -euo pipefail
+          prop() { sed -n "s/^$1=//p" secrets.properties | head -n 1; }
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          CERT="$RUNNER_TEMP/cert.p12"
+          prop MACOS_CERT_P12 | base64 --decode > "$CERT"
+          [ -s "$CERT" ] || { echo "MACOS_CERT_P12 in secrets.properties is empty or not base64" >&2; exit 1; }
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # Without this the keychain relocks mid-build and codesign waits on a UI prompt.
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT" -P "$(prop MACOS_CERT_PASSWORD)" -A -f pkcs12 -k "$KEYCHAIN"
+          rm -f "$CERT"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          # Appended: the runner's own keychains carry the Apple intermediates the chain needs.
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychain -d user | tr -d ' "')
+          security find-identity -v -p codesigning "$KEYCHAIN" | grep -q "Developer ID Application" ||
+            { echo "no valid Developer ID Application identity in MACOS_CERT_P12" >&2; exit 1; }
+
+      # Signed with mac.signing.identity and notarized + stapled with the mac.notarization.* account
+      # when secrets were restored; otherwise an unsigned DMG.
       - name: Package DMG
         working-directory: YMusicV4
-        env:
-          # Unsigned: the runner's keychain has no Developer ID identity, so the decrypted
-          # mac.signing.identity is overridden empty. Signing and notarization stay on the release machine.
-          YMUSIC_MAC_IDENTITY: ""
-          SENTRY_AUTH_TOKEN: ""
-        run: ./gradlew :desktopApp:packageReleaseDmg
+        run: |
+          if [ -f secrets.properties ]; then
+            ./gradlew :desktopApp:packageReleaseDmg :desktopApp:notarizeReleaseDmg
+          else
+            ./gradlew :desktopApp:packageReleaseDmg
+          fi
 
       - name: Discard secrets
         if: always()
         working-directory: YMusicV4
-        run: rm -rf secrets.properties signing
+        run: |
+          rm -rf secrets.properties signing
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
