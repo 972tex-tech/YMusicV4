@@ -104,6 +104,9 @@ struct MseHost {
     struct AqFadeJob *aq_fade;
 #endif
 #ifdef __ANDROID__
+    /* Serializes host-side calls on the OpenSL objects against their Destroy. Never taken by
+       sl_callback; never acquired while holding mu. */
+    pthread_mutex_t sl_mu;
     SLObjectItf sl_engine;
     SLObjectItf sl_mix;
     SLObjectItf sl_player;
@@ -550,6 +553,7 @@ static void sl_destroy(MseHost *h)
     h->sl_nbufs = 0;
     h->sl_i = 0;
     pthread_mutex_unlock(&h->mu);
+    pthread_mutex_lock(&h->sl_mu);
     if (play)
         (*play)->SetPlayState(play, SL_PLAYSTATE_STOPPED);
     if (bq)
@@ -560,6 +564,7 @@ static void sl_destroy(MseHost *h)
         (*mix)->Destroy(mix);
     if (eng)
         (*eng)->Destroy(eng);
+    pthread_mutex_unlock(&h->sl_mu);
     free(bufs);
     pthread_mutex_lock(&h->mu);
 }
@@ -601,11 +606,13 @@ static void sl_callback(SLAndroidSimpleBufferQueueItf bq, void *user)
 static void sl_set_playing(MseHost *h, int playing)
 {
     SLPlayItf play;
+    pthread_mutex_lock(&h->sl_mu);
     pthread_mutex_lock(&h->mu);
     play = h->sl_play;
     pthread_mutex_unlock(&h->mu);
     if (play)
         (*play)->SetPlayState(play, playing ? SL_PLAYSTATE_PLAYING : SL_PLAYSTATE_PAUSED);
+    pthread_mutex_unlock(&h->sl_mu);
 }
 
 static int start_sl(MseHost *h, int rate, int ch)
@@ -678,9 +685,11 @@ static int start_sl(MseHost *h, int rate, int ch)
         pthread_mutex_lock(&h->mu);
         return -1;
     }
+    pthread_mutex_lock(&h->sl_mu);
     pthread_mutex_lock(&h->mu);
     if (h->sl_player || h->released) {
         pthread_mutex_unlock(&h->mu);
+        pthread_mutex_unlock(&h->sl_mu);
         free(ring);
         free(bufs);
         (*player)->Destroy(player);
@@ -711,6 +720,7 @@ static int start_sl(MseHost *h, int rate, int ch)
         memset(p, 0, (size_t)buf_bytes);
         (*bq)->Enqueue(bq, p, (SLuint32)buf_bytes);
     }
+    pthread_mutex_unlock(&h->sl_mu);
     pthread_mutex_lock(&h->mu);
     return 0;
 }
@@ -1010,12 +1020,18 @@ MseHost *mse_host_create(void)
     pthread_mutex_init(&h->mu, NULL);
     pthread_mutex_init(&h->frame_mu, NULL);
     pthread_cond_init(&h->cv, NULL);
+#ifdef __ANDROID__
+    pthread_mutex_init(&h->sl_mu, NULL);
+#endif
     h->av = mse_av_create();
     h->fx = audio_fx_create();
     h->speed = 1.f;
     h->playing = 0;
     h->vpts = -1;
     if (!h->av) {
+#ifdef __ANDROID__
+        pthread_mutex_destroy(&h->sl_mu);
+#endif
         free(h);
         return NULL;
     }
@@ -1185,6 +1201,9 @@ void mse_host_destroy(MseHost *h)
     free(h->fx_pcm);
     pthread_mutex_destroy(&h->frame_mu);
     pthread_mutex_destroy(&h->mu);
+#ifdef __ANDROID__
+    pthread_mutex_destroy(&h->sl_mu);
+#endif
     pthread_cond_destroy(&h->cv);
     free(h);
 }
