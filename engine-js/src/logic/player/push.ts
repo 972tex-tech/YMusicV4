@@ -1,5 +1,5 @@
 // Host opens listen/player/status or listen/player/catalog to subscribe.
-// Status is event-driven (webview-js): each message is only the group that changed.
+// Status is event-driven: each message is only the group that changed.
 //   progress — onVideoProgress: position, buffer, duration, seek window
 //   state    — onStateChange: newState, playWhenReady, live, error extras
 //   picture  — onVideoDataChange: videoWidth, videoHeight

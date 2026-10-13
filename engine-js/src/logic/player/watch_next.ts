@@ -1,5 +1,5 @@
 // base.js's own watch-page /next feeds the Recommended feed: its end screen and related column are
-// reported up the status pipe (`watchNext`) for music videos only — webview-js's category gate.
+// reported up the status pipe (`watchNext`) for music videos only.
 // The /next and /player calls race, so whichever lands second makes the report.
 
 import { stringifyJson, utf8Decode } from "../../transport";

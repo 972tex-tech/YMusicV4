@@ -66,7 +66,7 @@ class DownloadedStreams(
  *  3. streams each audio/video track to its own scratch file over SABR — resumable (the scratch's
  *     on-disk length is the resume point), re-attesting once if the PO token is rejected mid-stream.
  *  4. fetches each selected caption over plain HTTP (its baseUrl is already signature-decoded + pot-bound
- *     by webview-js) into a scratch file.
+ *     by the MSE player) into a scratch file.
  *
  * Scratch files live in app-private storage ([DownloadStorage.scratch]) — unrelated to the user's
  * download-location setting, which only governs where the *final* file is published.

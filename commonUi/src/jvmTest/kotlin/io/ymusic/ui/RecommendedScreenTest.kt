@@ -31,7 +31,7 @@ class RecommendedScreenTest {
         return desktopEngineCacheStore(dir)
     }
 
-    /** The page's report: YouTube's related-items array, exactly as webview-js forwards it. */
+    /** The page's report: YouTube's related-items array, exactly as the MSE player reports it. */
     private val watchNextContents = """
         [{"endScreenVideoRenderer":{"videoId":"N30CFk9fHwg","title":{"simpleText":"A related song"},
         "shortBylineText":{"runs":[{"text":"Trạm Acoustic"}]},"lengthText":{"simpleText":"52:30"},

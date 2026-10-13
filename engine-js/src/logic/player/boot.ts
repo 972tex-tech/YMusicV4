@@ -114,7 +114,7 @@ function moviePlayer(): MoviePlayer | null {
 let pictureW = 0;
 let pictureH = 0;
 
-/** First adaptiveFormats width/height — same as webview-js onVideoDataChange → `_aspect_ratio`. */
+/** First adaptiveFormats width/height. */
 function applyPictureFromResponse(): boolean {
   const player = moviePlayer();
   if (!player) return false;

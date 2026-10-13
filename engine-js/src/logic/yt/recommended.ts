@@ -4,8 +4,8 @@
 // played, kept locally and replayed as a feed. Everything is offline — reading it makes no network
 // call at all, so the tab works on a plane.
 //
-// Harvest: while a music video plays, the WebView page reports its watch-next payload (webview-js
-// gates on the video's "music" category); the app forwards it verbatim and this parses + stores it.
+// Harvest: while a music video plays, the MSE player reports its watch-next payload (music-category
+// videos only); the app forwards it verbatim and this parses + stores it.
 // One cache entry per SOURCE video, so replaying a song refreshes its entry instead of consuming a
 // slot, and the scope's keepCount evictor drops the oldest play — the ring buffer legacy hand-rolled
 // over a key-value store, for free.

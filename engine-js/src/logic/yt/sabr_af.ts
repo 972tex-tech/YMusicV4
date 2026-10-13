@@ -1,6 +1,6 @@
 // A cacheable SABR /videoplayback carries the /player adaptiveFormats catalog as X-Ym-Af (base64url
 // JSON array). The host routes only requests with it through the media cache, and strips it before
-// googlevideo. Cacheable matches webview-js skip_ads canCache: SABR, not a probe, not live.
+// googlevideo. Cacheable: SABR, not a probe, not live.
 
 import { utf8Encode } from "../../transport";
 import { addInterceptor } from "../../protocol/http/intercept";

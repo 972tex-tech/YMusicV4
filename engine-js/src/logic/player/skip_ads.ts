@@ -1,5 +1,4 @@
-// Strip ads config from InnerTube /player JSON (webview-js yt/skip_ads.ts
-// transformPlayerRequest / transformPlayerResponse). No PO inject — OWL mints.
+// Strip ads config from InnerTube /player JSON. No PO inject — OWL mints.
 // Hooked as an HttpCall interceptor so fetch/XHR stay thin HttpRequest wrappers.
 
 import { stringifyJson, utf8Decode } from "../../transport";

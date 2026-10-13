@@ -1,6 +1,6 @@
 // App-facing player commands. init warms the singleton WEB player; load stamps the video id and
 // calls loadVideoById (returns immediately). Host observes:
-//   listen/player/status  — event groups: progress | state | picture (webview-js split)
+//   listen/player/status  — event groups: progress | state | picture
 //   listen/player/catalog — qualities
 // play/pause/seek/stop are playVideo/pauseVideo/seekTo/stopVideo.
 

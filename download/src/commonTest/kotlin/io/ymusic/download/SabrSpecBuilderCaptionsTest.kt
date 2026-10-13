@@ -6,7 +6,8 @@ import kotlin.test.assertTrue
 
 /**
  * The player-response → [io.ymusic.ytmedia.sabr.SabrStreamSpec] mapping for captions. Mirrors the flattened
- * `captionTracks` array webview-js emits (baseUrls already signature-decoded + pot-bound there).
+ * `captionTracks` array the MSE player's player response carries (baseUrls already signature-decoded +
+ * pot-bound there).
  */
 class SabrSpecBuilderCaptionsTest {
 

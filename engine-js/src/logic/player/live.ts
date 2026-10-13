@@ -1,5 +1,4 @@
-// movie_player.getPlayerResponse() is the playing video (webview-js
-// skip_ads.ts isLive, webview_api.ts getCurrentPlayerRes).
+// movie_player.getPlayerResponse() is the playing video.
 //
 // isLiveContent stays true after the broadcast ends (post-live VOD,
 // e.g. 0_LTL7O1xX0). Only videoDetails.isLive is on-air. Ended streams
