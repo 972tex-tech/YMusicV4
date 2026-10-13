@@ -144,6 +144,8 @@ import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.ic_sponsor_block
 import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.playback_failed
+import io.ymusic.ui.resources.playback_sign_in_required
+import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.queue_end
 import io.ymusic.ui.resources.queue_load_failed
 import io.ymusic.ui.resources.queue_load_more
@@ -882,12 +884,16 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
 /** Engine track kind for YouTube auto-translate languages (clones of a source track, one per language). */
 private const val AUTO_TRANSLATE_KIND = "asrt"
 
-/** "Failed (code)" + a Retry action when the error is retryable. */
+/** A playability verdict as its own message, else "Failed (code)"; + a Retry action when retryable. */
 @Composable
 private fun PlaybackErrorRow(player: io.ymusic.player.Player, error: io.ymusic.player.PlayerError) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
-            stringResource(Res.string.playback_failed, error.code),
+            when (error.playability()) {
+                Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
+                Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
+                null -> stringResource(Res.string.playback_failed, error.code)
+            },
             color = MaterialTheme.colorScheme.error,
             fontSize = 12.sp,
         )

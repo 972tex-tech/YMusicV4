@@ -208,6 +208,8 @@
     <string name="sleep_hours_minutes">%1$d h %2$d min</string>
     <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Failed (%1$s)</string>
+    <string name="playback_sign_in_required">YouTube asks you to sign in to play this video</string>
+    <string name="playback_unavailable">This video is unavailable</string>
 
 
     <!-- Settings -->

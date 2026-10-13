@@ -43,7 +43,8 @@ class PlaybackCoordinator(
 
     init {
         // The player surfaces failure as state, not a throw — this transition IS the job-death
-        // frame, so the one crash record per playback failure is captured here.
+        // frame, so the one crash record per technical playback failure is captured here. A
+        // playability verdict is the user's to act on: a warning, not a crash.
         if (log != null) {
             scope.launch {
                 combine(player.status, player.queue, player.config) { status, queue, config ->
@@ -52,7 +53,9 @@ class PlaybackCoordinator(
             }
             scope.launch {
                 player.status.map { it.error }.distinctUntilChanged().collect { err ->
-                    if (err != null) {
+                    if (err != null && err.playability() != null) {
+                        log.log(Logger.Level.WARN, "playability ${err.code}: ${err.message}")
+                    } else if (err != null) {
                         log.captureError(
                             TechnicalException(err.code, err.message ?: "player error", cause = err.cause),
                             prop = mapOf("canRetry" to err.canRetry, "needReset" to err.needReset),

@@ -198,6 +198,8 @@
     <string name="sleep_hours_minutes">%1$d س %2$d دقيقة</string>
     <string name="sleep_add_minutes">+%1$d دقيقة</string>
     <string name="playback_failed">فشل التشغيل (%1$s)</string>
+    <string name="playback_sign_in_required">يطلب YouTube تسجيل الدخول لتشغيل هذا الفيديو</string>
+    <string name="playback_unavailable">هذا الفيديو غير متاح</string>
 
 
     <string name="settings_language">اللغة</string>
