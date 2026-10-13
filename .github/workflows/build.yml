@@ -50,13 +50,28 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      # Pinned, not the runner's moving ANDROID_NDK_LATEST_HOME: r28c is what the packs are known to
+      # build with on every ABI.
+      - if: steps.cache.outputs.cache-hit != 'true' && startsWith(matrix.slug, 'android-')
+        id: ndk
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
+        with:
+          ndk-version: r28c
+
       - if: steps.cache.outputs.cache-hit != 'true' && startsWith(matrix.slug, 'android-')
         working-directory: ffmpeg-build
         run: |
           sudo apt-get update && sudo apt-get install -y nasm automake autoconf libtool pkg-config patchelf
-          ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME" scripts/build-android.sh "${SLUG#android-}"
+          scripts/build-android.sh "${SLUG#android-}" || {
+            # A dependency's configure failure prints only its verdict; the reason is in its log.
+            for log in .deps-$SLUG/.build/*/config.log; do
+              [ -f "$log" ] && { echo "::group::$log"; tail -n 80 "$log"; echo "::endgroup::"; }
+            done
+            exit 1
+          }
         env:
           SLUG: ${{ matrix.slug }}
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
 
       - if: steps.cache.outputs.cache-hit != 'true' && startsWith(matrix.slug, 'macos-')
         working-directory: ffmpeg-build
