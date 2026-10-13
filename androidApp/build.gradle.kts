@@ -172,20 +172,6 @@ dependencies {
     implementation(Libs.Zxing.core)
 }
 
-// The injected YouTube player script rides as an asset — copied from the built webview-js bundle
-// (npm run build there) rather than checked in. Absent bundle = absent asset: YouTube items then
-// surface E60050 at runtime.
-val copyWebViewJs by tasks.registering(Copy::class) {
-    val src = rootProject.file("webview-js/dist/webview_ymusic.js")
-    from(src)
-    into(layout.projectDirectory.dir("src/main/assets"))
-    doFirst {
-        check(src.isFile) {
-            "webview_ymusic.js missing — run (cd webview-js && npm install && npm run build)"
-        }
-    }
-}
-
 // The engine bundle ships as an ASSET, not a compiled-in constant (its version is the
 // generated ENGINE_JS_EMBED_VERSION const) — the
 // JsSourceProvider reads it lazily and a cached remote update supersedes it at boot.
@@ -212,10 +198,10 @@ val copyComposeResources by tasks.registering(Copy::class) {
     into(layout.projectDirectory.dir("src/main/assets/composeResources/io.ymusic.ui.resources"))
 }
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
-    dependsOn(copyWebViewJs, copyComposeResources, copyEngineJs)
+    dependsOn(copyComposeResources, copyEngineJs)
 }
 
 // Release builds also read src/main/assets from lintVital's model writer — same staged inputs.
 tasks.matching { it.name.contains("lint", ignoreCase = true) }.configureEach {
-    dependsOn(copyWebViewJs, copyComposeResources, copyEngineJs)
+    dependsOn(copyComposeResources, copyEngineJs)
 }

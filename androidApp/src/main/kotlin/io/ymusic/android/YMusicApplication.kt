@@ -129,8 +129,6 @@ class SharedServices(
     val engines: DynamicEngineManager,
     val cacheStore: CacheStore,
     val mediaStore: BetterMediaStore,
-    /** Bundled `webview_ymusic.js` (player-cache gate). Null disables [LocalMediaProxy]. */
-    val webViewJs: String?,
     /** The MSE player bundle, upgraded between player sessions. */
     val playerJs: JsSourceProvider,
     val imageLoader: ImageLoader,
@@ -322,12 +320,6 @@ class YMusicApplication : Application() {
 
         val mediaStore = BetterMediaStore.create(mediaStoreAndroidDriver(this))
 
-        // The player-cache script ships in the APK and is not remotely updated. A missing asset
-        // silently disables the whole player-cache path — a packaging bug, not a soft toggle.
-        val webViewJs = runCatching { assets.open("webview_ymusic.js").readBytes().decodeToString() }
-            .onFailure { rootLogger.fork("boot").captureError(it, "webview_ymusic.js asset unreadable — player cache disabled") }
-            .getOrNull()
-
         // Thumbnails: everything is a fetcher — http on a cache-less client (originals stream to
         // the fetcher's disk cache, decode from file) + local files + art:// embedded covers via
         // the bundled ffmpeg (absent binary keeps art:// unresolved → placeholders). Memory budget
@@ -387,7 +379,7 @@ class YMusicApplication : Application() {
         )
         updates.pruneDownloads()
         scope.launch { remoteConfig.config.collect { updates.offer(it.appUpdate) } }
-        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, webViewJs, playerJs, imageLoader, stats, updates, api, remoteConfig)
+        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, playerJs, imageLoader, stats, updates, api, remoteConfig)
     }
 
     private suspend fun buildGraph(): AppGraph {
@@ -478,22 +470,20 @@ class YMusicApplication : Application() {
                 SqlDelightCacheStats(driver),
             )
         }
-        val mediaProxy = shared.webViewJs?.let {
-            val client = KmpHttpClient.create {
-                defaultExecuteTimeout = APP_HTTP_TIMEOUT
-                logger = rootLogger.fork("kmphttp")
-                cookieJar = shared.cookies
-                defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
-            }
-            LocalMediaProxy(
-                playerCache,
-                client,
-                userAgent = WebSettings.getDefaultUserAgent(applicationContext),
-                logger = rootLogger,
-                // Per-request media-path logging — debug builds only, it narrates the hot path.
-                verbose = BuildConfig.DEBUG,
-            )
+        val mediaProxyClient = KmpHttpClient.create {
+            defaultExecuteTimeout = APP_HTTP_TIMEOUT
+            logger = rootLogger.fork("kmphttp")
+            cookieJar = shared.cookies
+            defaultRedirectOptions = RedirectOptions(followRedirects = true, followSslRedirects = true)
         }
+        val mediaProxy = LocalMediaProxy(
+            playerCache,
+            mediaProxyClient,
+            userAgent = WebSettings.getDefaultUserAgent(applicationContext),
+            logger = rootLogger,
+            // Per-request media-path logging — debug builds only, it narrates the hot path.
+            verbose = BuildConfig.DEBUG,
+        )
 
         var ytEngine: io.ymusic.player.YtEngine? = null
         var msePlayer: MsePlayer? = null
@@ -740,8 +730,6 @@ class YMusicApplication : Application() {
         }
     }
 }
-
-/** Cadence of the webview-js remote-update check (a saved copy applies at the next boot). */
 
 /**
  * Hands the TextureView window to [MsePlayer]. MiniPlayer ↔ Now Playing re-parents the same

@@ -16,7 +16,6 @@ you need there first (see its README): `scripts/build-desktop.sh` for the deskto
 ```sh
 # one-time
 git clone --recursive --shallow-submodules https://github.com/ymusic-io/ffmpeg-build ../ffmpeg-build
-(cd webview-js && npm install && npm run build)
 
 # desktop app
 ./gradlew :desktopApp:run

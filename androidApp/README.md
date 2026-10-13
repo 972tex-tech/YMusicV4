@@ -9,6 +9,4 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
 
 - **compileSdk** — 36 (okhttp 5.4 demands it for app modules).
 
-- **Assets** — `webview_ymusic.js` rides as an asset (absent → YouTube items surface E60050).
-
 - **Not wired yet** — media store/SAF scanner.
