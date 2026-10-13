@@ -549,6 +549,8 @@ class YMusicApplication : Application() {
                 withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
                 ytEngine ?: error("youtube engine missing")
             }
+            // Leftover scratch root of beta builds; best-effort, the OS may trim it anyway.
+            File(cacheDir, "download-work").deleteRecursively()
             io.ymusic.download.DownloadService(
                 store = io.ymusic.download.DownloadStore(io.ymusic.download.downloadDatabaseAndroidDriver(applicationContext), rootLogger),
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + uncaught("downloads")),
@@ -558,10 +560,12 @@ class YMusicApplication : Application() {
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),
                 ffmpeg = ffmpegBin?.let { bin -> io.ymusic.download.Ffmpeg(bin) },
                 // Handles file:// (app dirs) via okio and user-picked SAF folders (content://) via SAF.
+                // App data, not cacheDir (trimmed mid-download under storage pressure); no_backup keeps
+                // multi-MB scratch out of Auto Backup's quota.
                 storage = AndroidDownloadStorage(
                     applicationContext,
                     FileSystem.SYSTEM,
-                    File(cacheDir, "download-work").absolutePath.toPath(),
+                    File(noBackupFilesDir, "download-work").absolutePath.toPath(),
                 ),
                 mediaCache = playerCache, // read-only (see YtStreamDownloader): reuse cached playback bytes
                 // Own segment index for SABR resume (byte range per segment), separate from the player cache DB.
