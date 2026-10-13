@@ -286,7 +286,8 @@ class DownloadService(
             withContext(NonCancellable) {
                 gate.withLock {
                     val target = interrupts.remove(task.id)
-                    if (interrupted) {
+                    val completed = store.get(task.id)?.state == DownloadState.COMPLETED
+                    if (interrupted && !completed) {
                         val state = target ?: DownloadState.PAUSED
                         if (state == DownloadState.CANCELED) cleanupTemp(task.id)
                         setState(task.id, state)
@@ -315,11 +316,14 @@ class DownloadService(
                 onProcessing = { updates.trySend { setState(task.id, DownloadState.PROCESSING) } },
                 onProgress = { done, total -> updates.trySend { setProgress(task.id, done, total) } },
             )
-            updates.close()
-            writer.join()
-            store.updateCompleted(task.id, result.uri, result.bytes, now())
-            _changes.emit(DownloadChange.Completed(task.id, result.uri, result.bytes))
-            store.get(task.id)?.let { onCompleted?.invoke(it, result) }
+            // The file is published: record it even if a pause/cancel lands now.
+            withContext(NonCancellable) {
+                updates.close()
+                writer.join()
+                store.updateCompleted(task.id, result.uri, result.bytes, now())
+                _changes.emit(DownloadChange.Completed(task.id, result.uri, result.bytes))
+                store.get(task.id)?.let { onCompleted?.invoke(it, result) }
+            }
             null
         } catch (c: CancellationException) {
             throw c

@@ -6,6 +6,8 @@ import io.ymusic.ytmedia.sabr.AdaptiveFormat
 import io.ymusic.ytmedia.sabr.SabrStreamSpec
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import okio.buffer
 import okio.use
 import projectcommon.error.TechnicalException
@@ -154,13 +156,16 @@ class DownloadPipeline(
 
     /** Publish [ready]'s scratch into [destinationFolder], then drop the task's whole scratch folder —
      *  elementary streams, captions and the marker in one delete. */
-    private suspend fun publish(task: DownloadTask, ready: ReadyOutput, destinationFolder: String): Result {
-        val scratch = storage.scratch(task.id, ready.scratchName)
-        val bytes = scratch.length()
-        val uri = storage.publish(scratch, "${baseName(task)}.${task.format.fileExtension}", destinationFolder)
-        storage.deleteScratch(task.id)
-        return Result(uri, bytes, ready.durationMs, ready.width, ready.height)
-    }
+    // Not cancellable: a pause landing mid-copy would leave the file published but the task resumable,
+    // and its resume would publish a second copy.
+    private suspend fun publish(task: DownloadTask, ready: ReadyOutput, destinationFolder: String): Result =
+        withContext(NonCancellable) {
+            val scratch = storage.scratch(task.id, ready.scratchName)
+            val bytes = scratch.length()
+            val uri = storage.publish(scratch, "${baseName(task)}.${task.format.fileExtension}", destinationFolder)
+            storage.deleteScratch(task.id)
+            Result(uri, bytes, ready.durationMs, ready.width, ready.height)
+        }
 
     /** Run [convert] with the cover art's path; a cover ffmpeg rejects is dropped and the conversion rerun
      *  without it, so the song still publishes — cover art is best-effort like lyrics. */
