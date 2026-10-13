@@ -78,6 +78,8 @@ E20142 - music.youtube.com youtubei/v1 call answered a non-transient non-2xx (4x
 E20143 - charts.youtube.com browse answered a non-transient non-2xx (engine-js logic/yt/charts.ts)
 E20144 - search suggest (suggestqueries) answered a non-transient non-2xx (engine-js logic/yt/commands.ts)
 E20145 - youtube.com homepage session scrape answered a non-transient non-2xx (engine-js logic/yt/session.ts)
+E20148 - BotGuard interpreter script fetch answered a non-transient non-2xx (engine-js logic/player/pot.ts buildMinter)
+E20149 - BotGuard GenerateIT (integrity token) answered a non-transient non-2xx (engine-js logic/player/pot.ts waaJson)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 
