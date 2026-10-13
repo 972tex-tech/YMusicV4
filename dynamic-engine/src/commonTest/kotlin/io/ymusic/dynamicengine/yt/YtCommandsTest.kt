@@ -734,10 +734,10 @@ class YtCommandsTest {
     }
 
     @Test
-    fun upstream_http_status_error_is_a_network_error() = runTest {
+    fun upstream_client_error_carries_its_site_code() = runTest {
         val (m, _) = manager { CannedResponse.ofText("""{"error":{"code":400}}""", status = 400).build(it) }
         try {
-            assertFailsWith<EngineError.Network> { m.extractHomeFeed() }
+            assertEquals("E20140", assertFailsWith<EngineError.Technical> { m.extractHomeFeed() }.code)
         } finally {
             m.close()
         }
