@@ -233,15 +233,26 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
             // so a RESET (the client's cancel) is observable at EVERY stage, even a transport
             // parked before pulling the body. Clean EOF = the client closed after consuming the
             // response. Any data is a protocol violation that throws to the backstop.
+            var clientCancelled = false
+            var exchangeEnd: Throwable? = null
+            exchange.invokeOnCompletion { exchangeEnd = it }
             val watcher = launch {
                 try {
                     if (src.request(1)) error("E20010 unexpected data on the control pipe")
                 } catch (_: PipeResetException) {
+                    clientCancelled = true
                     exchange.cancel()
                 }
             }
             exchange.join()
             watcher.cancel()
+            // A CancellationException the client didn't ask for (e.g. a timeout surfacing as one)
+            // ends the exchange quietly; the clean END below would hand JS a truncated body.
+            val abort = exchangeEnd
+            if (abort is CancellationException && !clientCancelled) {
+                log?.log(Logger.Level.WARN, "E20154 exchange aborted: ${abort.message}", abort)
+                pipe.sink.close(errorReason("E20154", "exchange aborted: ${abort.message}"))
+            }
         }
         pipe.sink.close() // clean END on every deliberate exit (no-op after an in-place RESET)
     } finally {

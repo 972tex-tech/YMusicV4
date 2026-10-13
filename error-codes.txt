@@ -87,6 +87,7 @@ E20150 - player/init has no player config after the minter step (engine-js logic
 E20151 - player/init player config carries no jsUrl (engine-js logic/player/boot.ts)
 E20152 - player/init base.js failed to evaluate (truncated/corrupt body or YouTube JS change) (engine-js logic/player/boot.ts)
 E20153 - player/init ytcfg lacks WEB_PLAYER_CONTEXT_CONFIG_ID_KEVLAR_WATCH after base.js eval (engine-js logic/player/boot.ts)
+E20154 - http exchange ended by a cancellation the JS client did not request, after or before the head (dynamic-engine internal/HttpProtocol.kt serveHttp)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 
