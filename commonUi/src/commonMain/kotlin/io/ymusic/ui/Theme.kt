@@ -1,6 +1,7 @@
 package io.ymusic.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -36,6 +37,8 @@ class DesignPalette(
     val IconDots: Color,
     /** Text/icons on an [InkStrong]-filled control (the play button, selected pills). */
     val OnInk: Color,
+    /** Text/icons on an [Accent]-filled control (Sign in, Send, Retry). */
+    val OnAccent: Color,
     val Placeholder: Color,
     val PlaceholderDim: Color,
     val PlaceholderIcon: Color,
@@ -73,6 +76,7 @@ val LightDesignColors = DesignPalette(
     InkFaint = Color(0xFF9A9A9A),
     IconDots = Color(0xFF999999),
     OnInk = Color.White,
+    OnAccent = Color.White,
     Placeholder = Color(0xFFE3E3E3),
     PlaceholderDim = Color(0xFFE0E0E0),
     PlaceholderIcon = Color(0xFFB3B3B3),
@@ -102,6 +106,7 @@ val DarkDesignColors = DesignPalette(
     InkFaint = Color(0xFF7E7E7E),
     IconDots = Color(0xFF8E8E8E),
     OnInk = Color(0xFF141414),
+    OnAccent = Color.White,
     // The legacy YMusic grounds (#303030 / #343434 / #383838, from the v3 app) and their
     // companions, each keeping roughly the lift it had over the old near-black trio
     // (0xFF121212 / 0xFF171717 / 0xFF1F1F1F): placeholders/stacks/pills sit clearly above the
@@ -207,7 +212,7 @@ private fun schemeFor(c: DesignPalette) = with(c) {
     val base = if (isDark) darkColorScheme() else lightColorScheme()
     base.copy(
         primary = Accent,
-        onPrimary = Color.White,
+        onPrimary = OnAccent,
         secondary = Ink,
         onSecondary = OnInk,
         tertiary = BrandGreen,
@@ -238,7 +243,10 @@ fun YMusicTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -
     val palette = if (dark) DarkDesignColors else LightDesignColors
     CompositionLocalProvider(LocalDesignColors provides palette) {
         SyncSystemBars(dark)
-        MaterialTheme(colorScheme = if (dark) DarkScheme else LightScheme) { AccentRipple(palette.Accent, content) }
+        MaterialTheme(colorScheme = if (dark) DarkScheme else LightScheme) {
+            // No root Surface sets it, so an uncolored Text would fall back to black in dark theme.
+            CompositionLocalProvider(LocalContentColor provides palette.Ink) { AccentRipple(palette.Accent, content) }
+        }
     }
 }
 
