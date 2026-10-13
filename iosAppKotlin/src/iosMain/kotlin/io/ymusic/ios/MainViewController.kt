@@ -224,7 +224,12 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     FileSystem.SYSTEM.createDirectories(playerCacheRoot)
     val cacheDriver = nativeSegmentDatabaseDriver()
     val playerCache = MediaCache(
-        DiskMediaBlobCache(playerCacheRoot, FileSystem.SYSTEM, SqlDelightBlobIndex(cacheDriver, now = { (NSDate().timeIntervalSince1970 * 1000).toLong() })),
+        DiskMediaBlobCache(
+            playerCacheRoot,
+            FileSystem.SYSTEM,
+            SqlDelightBlobIndex(cacheDriver, now = { (NSDate().timeIntervalSince1970 * 1000).toLong() }),
+            logger = rootLogger.fork("player-cache"),
+        ),
         SqlDelightSegmentIndex(
             cacheDriver,
             now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },

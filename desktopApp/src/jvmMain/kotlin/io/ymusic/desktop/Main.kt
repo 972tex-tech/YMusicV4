@@ -681,7 +681,12 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         // One persistent DB for both the blob-span index and the segment index.
         val driver = jvmSegmentDatabaseDriver("jdbc:sqlite:${File(cacheRoot, "cache-index.db").absolutePath}")
         MediaCache(
-            DiskMediaBlobCache(cacheRoot.absolutePath.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
+            DiskMediaBlobCache(
+                cacheRoot.absolutePath.toPath(),
+                FileSystem.SYSTEM,
+                SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() }),
+                logger = rootLogger.fork("player-cache"),
+            ),
             SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
             SqlDelightCacheStats(driver),
         )

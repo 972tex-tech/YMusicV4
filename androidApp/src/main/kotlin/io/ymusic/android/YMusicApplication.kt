@@ -471,7 +471,12 @@ class YMusicApplication : Application() {
             val cacheRoot = File(applicationContext.cacheDir, "player-cache").apply { mkdirs() }
             val driver = androidSegmentDatabaseDriver(applicationContext) // shared: span index + segment index
             MediaCache(
-                DiskMediaBlobCache(cacheRoot.toOkioPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
+                DiskMediaBlobCache(
+                    cacheRoot.toOkioPath(),
+                    FileSystem.SYSTEM,
+                    SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() }),
+                    logger = rootLogger.fork("player-cache"),
+                ),
                 SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
                 SqlDelightCacheStats(driver),
             )
