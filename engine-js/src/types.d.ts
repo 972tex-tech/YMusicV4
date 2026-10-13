@@ -186,6 +186,8 @@ interface HttpResponse {
     get(name: string): string | null;
     has(name: string): boolean;
   };
+  /** Host disk-cache provenance: "hit" | "conditional"; undefined = network. */
+  readonly cache?: string | undefined;
   text(): Promise<string>;
   bytes(): Promise<Uint8Array>;
   jsonObject(): Promise<Record<string, unknown>>;

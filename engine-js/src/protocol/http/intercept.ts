@@ -62,6 +62,7 @@ export class BufferedResponse implements HttpResponse {
   readonly url: string;
   readonly ok: boolean;
   readonly headers: HttpResponse["headers"];
+  readonly cache: string | undefined;
   private _inner: HttpResponse;
   private _body: Uint8Array | null;
 
@@ -72,6 +73,7 @@ export class BufferedResponse implements HttpResponse {
     this.url = inner.url;
     this.ok = inner.ok;
     this.headers = inner.headers;
+    this.cache = inner.cache;
     this._body = body;
   }
 

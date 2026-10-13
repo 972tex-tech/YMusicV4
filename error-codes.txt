@@ -35,7 +35,7 @@ E20070 - mse-player request has a missing/invalid field or malformed head (dynam
 E20071 - MsePlayer threw while serving mse-player (dynamic-engine MsePlayerProtocol)
 E20072 - player/load missing videoId (engine-js logic/player.ts)
 E20074 - player/mintPo BotGuard VM or integrity-token mint failed (engine-js logic/player/pot.ts)
-E20075 - player/init could not fetch base.js (engine-js logic/player/boot.ts)
+E20075 - player/init base.js fetch failed or answered non-2xx (engine-js logic/player/boot.ts)
 E20076 - player/init yt.player.Application.create missing or threw (engine-js logic/player/boot.ts)
 E20077 - player/load loadVideoById threw or API missing (engine-js logic/player/boot.ts)
 E20078 - player main-proxy has no current main engine (dynamic-engine MainProxy)
@@ -83,6 +83,10 @@ E20146 - player/playerResponse missing videoId (engine-js logic/player.ts)
 E20147 - fetching the captcha verify target (yt/verify/target) failed with an uncoded error (commonUi YtLoginScreen.kt YtVerifyScreen)
 E20148 - BotGuard interpreter script fetch answered a non-transient non-2xx (engine-js logic/player/pot.ts buildMinter)
 E20149 - BotGuard GenerateIT (integrity token) answered a non-transient non-2xx (engine-js logic/player/pot.ts waaJson)
+E20150 - player/init has no player config after the minter step (engine-js logic/player/boot.ts)
+E20151 - player/init player config carries no jsUrl (engine-js logic/player/boot.ts)
+E20152 - player/init base.js failed to evaluate (truncated/corrupt body or YouTube JS change) (engine-js logic/player/boot.ts)
+E20153 - player/init ytcfg lacks WEB_PLAYER_CONTEXT_CONFIG_ID_KEVLAR_WATCH after base.js eval (engine-js logic/player/boot.ts)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 

@@ -49,7 +49,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * ```
  * control  JS→K: {"method":"POST","url":…,"headers":[["k","v"],…],"opts":{…},"bodyCmd":"http/body/8"}
  *                …then nothing: END = done, RESET = cancel
- * control  K→JS: {"status":…,"message":…,"url":"<final URL>","headers":[…]} + raw body bytes to EOF
+ * control  K→JS: {"status":…,"message":…,"url":"<final URL>","headers":[…],"cache":"hit"?} + raw body bytes to EOF
  * body     K opens `bodyCmd` lazily on the transport's FIRST pull; JS writes raw bytes, END = done
  * ```
  * Both heads are compact JSON (self-framing — [JsonReader] stops at the value's end); both bodies
@@ -192,6 +192,11 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                             put("status", response.code)
                             put("message", response.message)
                             put("url", response.request.url.toString()) // final URL after redirects
+                            when {
+                                response.cacheResponse == null -> {}
+                                response.networkResponse == null -> put("cache", "hit")
+                                else -> put("cache", "conditional")
+                            }
                             putJsonArray("headers") {
                                 for ((name, value) in response.headers) {
                                     addJsonArray {

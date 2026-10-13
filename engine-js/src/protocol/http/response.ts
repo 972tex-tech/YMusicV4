@@ -76,6 +76,7 @@ export class Response implements HttpResponse {
   readonly url: string; // final URL, after redirects
   readonly ok: boolean;
   readonly headers: ReturnType<typeof buildHeaders>;
+  readonly cache: string | undefined;
   private _io: Pipe;
   private _life: HttpLife;
   private _consumed = false;
@@ -89,12 +90,14 @@ export class Response implements HttpResponse {
     io: Pipe,
     onFinished: (reason: string) => void,
     timeoutMs?: number,
+    cache?: string,
   ) {
     this.status = status;
     this.statusText = statusText;
     this.url = url;
     this.ok = status >= 200 && status < 300;
     this.headers = buildHeaders(headers);
+    this.cache = cache;
     this._io = io;
     const life = httpLife(io, onFinished, timeoutMs !== undefined ? timeoutMs : UNUSED_BODY_MS);
     this._life = life;

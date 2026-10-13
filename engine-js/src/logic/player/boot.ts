@@ -13,7 +13,8 @@ import {
 } from "../../protocol/mse";
 import { installOrigEnv } from "./env";
 import { installXhr } from "../yt/xhr";
-import { installFetch } from "../yt/fetch";
+import { fetchCacheState, installFetch } from "../yt/fetch";
+import { utf8Encode } from "../../transport";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
 import { installSabrIntercept } from "../yt/sabr_http";
@@ -643,6 +644,22 @@ export function requireFreshPlayerConfig(fresh: boolean): void {
   freshPlayerConfig = fresh;
 }
 
+/** The base.js response head for diagnostics. Content-Length/-Encoding are as the host relayed
+ *  them: a transport that transparently gunzips (OkHttp) drops both. */
+function baseJsHead(res: FetchResponse): string {
+  const headers = res["headers"];
+  return (
+    "status=" +
+    res["status"] +
+    " contentLength=" +
+    (headers["get"]("content-length") ?? "-") +
+    " encoding=" +
+    (headers["get"]("content-encoding") ?? "-") +
+    " cache=" +
+    fetchCacheState(res)
+  );
+}
+
 async function fetchPlayerConfig(): Promise<Record<string, unknown>> {
   return callMain("get_player_config", async (pipe) => {
     const w = pipe.sink.writeObjectAsJson(freshPlayerConfig ? { "maxAge": 0 } : {});
@@ -729,9 +746,9 @@ class Player {
   private async doInit(): Promise<Record<string, unknown>> {
     const out = await this.ensureMinter();
     const cfg = this.config;
-    if (!cfg) throw new JsEngineErrorImpl("player config missing", "E20075");
+    if (!cfg) throw new JsEngineErrorImpl("player config missing", "E20150");
     const jsUrlRaw = typeof cfg["jsUrl"] === "string" ? (cfg["jsUrl"] as string) : "";
-    if (!jsUrlRaw) throw new JsEngineErrorImpl("player config has no jsUrl", "E20075");
+    if (!jsUrlRaw) throw new JsEngineErrorImpl("player config has no jsUrl", "E20151");
 
     installPlayerTree();
     installPlayerAdStrip();
@@ -744,28 +761,44 @@ class Player {
     out["jsUrl"] = jsUrl;
     out["step"] = "basejs";
     let baseJs: string;
+    let head = "status=none";
     try {
       const res = await fetch(jsUrl);
+      if (res) head = baseJsHead(res);
       if (!res || !res["ok"])
         throw new Error("GET " + jsUrl + " status=" + (res ? res["status"] : "no response"));
       baseJs = await (res as { text(): Promise<string> })["text"]();
     } catch (e) {
-      throw new JsEngineErrorImpl(
-        "base.js fetch: " + (e instanceof Error ? e.message : String(e)),
-        "E20075",
-        { cause: e instanceof Error ? e : undefined },
-      );
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("base.js fetch failed " + head + " err=" + msg + " jsUrl=" + jsUrl);
+      throw new JsEngineErrorImpl("base.js fetch: " + msg + " (" + head + ")", "E20075", {
+        cause: e instanceof Error ? e : undefined,
+      });
     }
     out["baseJsSrc"] = "cdn";
     out["baseJsLen"] = baseJs.length;
-    console.info("base.js source=cdn len=" + baseJs.length + " jsUrl=" + jsUrl);
+    console.info("base.js source=cdn " + head + " len=" + baseJs.length + " jsUrl=" + jsUrl);
     try {
       (0, eval)(baseJs);
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
+      const body =
+        head +
+        " len=" +
+        baseJs.length +
+        " bytes=" +
+        utf8Encode(baseJs).length +
+        " tail=" +
+        JSON.stringify(baseJs.slice(-80));
+      console.warn("base.js eval failed " + body + " err=" + err.message + " jsUrl=" + jsUrl);
       throw new JsEngineErrorImpl(
-        "base.js eval: " + err.message + (typeof err.stack === "string" ? "\n" + err.stack : ""),
-        "E20075",
+        "base.js eval: " +
+          err.message +
+          " (" +
+          body +
+          ")" +
+          (typeof err.stack === "string" ? "\n" + err.stack : ""),
+        "E20152",
         { cause: err },
       );
     }
@@ -783,7 +816,7 @@ class Player {
     const ctxs = get ? asRec(get("WEB_PLAYER_CONTEXT_CONFIGS")) : null;
     const ctx = ctxs ? asRec(ctxs["WEB_PLAYER_CONTEXT_CONFIG_ID_KEVLAR_WATCH"]) : null;
     if (!ctx)
-      throw new JsEngineErrorImpl("missing WEB_PLAYER_CONTEXT_CONFIG_ID_KEVLAR_WATCH", "E20075");
+      throw new JsEngineErrorImpl("missing WEB_PLAYER_CONTEXT_CONFIG_ID_KEVLAR_WATCH", "E20153");
     enableSharedOwlFlag();
     if (typeof ctx["serializedExperimentFlags"] === "string") {
       ctx["serializedExperimentFlags"] = patchFlags(ctx["serializedExperimentFlags"] as string, {

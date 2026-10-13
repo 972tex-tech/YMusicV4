@@ -182,9 +182,12 @@ JS → K:  {"method":"POST","url":"https://…","headers":[["k","v"],…],
           "opts":{"timeoutMs":5000,"followRedirects":false},"bodyCmd":"http/body/8",
           "log":{"key":3,"trail":[["js:yt-home"],["js:browse"]]}}
          …then NOTHING; END = done, RESET = cancel                   (write side stays open)
-K → JS:  {"status":200,"message":"OK","url":"<final URL after redirects>","headers":[["k","v"],…]}
+K → JS:  {"status":200,"message":"OK","url":"<final URL after redirects>","headers":[["k","v"],…],
+          "cache":"hit"|"conditional"?}
          <raw response body bytes> … then close() (END)
 ```
+- `"cache"` (diagnostic, optional): `"hit"` = served from the host's HTTP disk cache without the
+  network, `"conditional"` = a revalidated cache entry; absent = a plain network response.
 - The server's cancel **watcher arms right after the head** — the JS→K direction is otherwise
   empty, so a RESET of that direction is observable at **every** stage, including a
   transport parked in `execute` with the body never pulled. Clean EOF = the client closed after
