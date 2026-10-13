@@ -456,9 +456,6 @@ class YMusicApplication : Application() {
     ): AppGraph {
         val shared = services.await()
 
-        // Player cache: the WebView bridge intercepts the bundle's /ymusicForward (rewritten from
-        // /videoplayback) and serves it from this router — hit → synthesized bytes, miss → forwarded and
-        // teed to disk. Its client carries the persistent jar (shared.cookies) + the WebView UA.
         // The player cache; shared read-only with the download stack so a download reuses segments already
         // cached from playback (never writing into it).
         val playerCache = run {

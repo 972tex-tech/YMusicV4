@@ -44,20 +44,17 @@ import okio.Buffer
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import java.io.File
-import java.net.URLEncoder
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 
-/** The shared router: `serve()` maps a rewritten `/ymusicForward` request to a cache hit (the platform
- *  adapters — CefResourceHandler / shouldInterceptRequest / iOS message channel — all just call this). */
+/** The media router: [LocalMediaProxy.serveRequest] answers a cached request without the network. */
 class LocalMediaProxyTest {
 
     private val dir = File(System.getProperty("java.io.tmpdir"), "ymusic-router-test").absolutePath
     private fun bytes(n: Int) = ByteArray(n) { (it and 0xFF).toByte() }
-    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     private suspend fun drain(body: AsyncSource): ByteArray {
         val out = Buffer()
@@ -83,11 +80,8 @@ class LocalMediaProxyTest {
         }
         val proxy = LocalMediaProxy(cache, KmpHttpClient.create {}, userAgent = "ymusic-test")
 
-        val health = proxy.serve("/health")
-        assertEquals(200, health.status)
-
         val progUrl = "https://r1.googlevideo.com/videoplayback?itag=251&lmt=100&clen=40&range=0-39"
-        val hit = proxy.serve("/ymusicForward?url=${enc(progUrl)}&method=GET")
+        val hit = proxy.serveRequest(progUrl, "GET", body = null)
         assertEquals(200, hit.status)
         assertContentEquals(bytes(40), drain(hit.body))
     }

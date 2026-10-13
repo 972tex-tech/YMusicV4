@@ -25,14 +25,11 @@ import okio.Buffer
 import okio.BufferedSource
 import okio.ForwardingSource
 import okio.Source
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.TimeSource
 
 /**
- * One response the platform adapter writes back to the WebView. [body] streams until EOF (bytes pulled in a
- * loop by the adapter); [contentLength] is null when unknown. [url] is the effective request URL (the final
- * one after any followed redirect) — carried so an adapter can surface it.
+ * One response handed back to the player's HTTP client. [body] streams until EOF; [contentLength] is null
+ * when unknown. [url] is the effective request URL (the final one after any followed redirect).
  *
  * **The consumer owns [body] and must close it** when done: that releases the upstream network response —
  * the SABR tee / progressive caching source forward `close()` down to it, and a cache-hit body has no
@@ -48,24 +45,15 @@ class ProxyResponse(
 )
 
 /**
- * The platform-agnostic media router behind the player cache (see `docs/player/youtube-playback.md`).
- * webview-js turns a googlevideo `/videoplayback` request into `/ymusicForward?url=…&method=…&body=<base64>`
- * (the original method + body packed in the query); [serve] reconstructs it, tries the player [cache]
- * first (a hit → synthesized bytes, zero network), and on a miss forwards through [client] **while teeing
- * the response back into the cache** so a later request is a hit.
+ * The media router behind the player cache (see `docs/player/youtube-playback.md`). [serveRequest] tries the
+ * player [cache] first (a hit → synthesized bytes, zero network) and on a miss forwards through [client]
+ * **while teeing the response back into the cache** so a later request is a hit. MsePlayer reaches it
+ * through [SabrProxyHttpClient], which hands over each googlevideo request's url, method and body.
  *
- * This is the **shared** half. Delivery is per-platform and calls straight into [serve] — native request
- * interception on desktop (`CefResourceHandler`) and Android (`shouldInterceptRequest`), and the JS↔native
- * message channel on iOS (`WKScriptMessageHandlerWithReply`). Each adapter pumps [ProxyResponse.body] into
- * its platform response type. No socket/loopback server involved. The player cache is a hard dependency —
- * when there is no cache there is nothing to serve, so the interception adapter simply isn't installed.
- *
- * **[client] must share the WebView's cookie store** (VISITOR_INFO1_LIVE / YSC / consent, and the matching
- * User-Agent): googlevideo + BotGuard reject a forward whose cookies/UA don't match the WebView's own
- * requests (see the "request headers must be consistent" rule). Wire it with the platform cookie jar
- * (`CefCookieManager` on desktop, `CookieManager` on Android, `WKHTTPCookieStore` on iOS).
+ * **[client] must carry the same cookie identity and User-Agent as the rest of the YouTube session**:
+ * googlevideo + BotGuard reject a request whose cookies/UA don't match (see the "request headers must be
+ * consistent" rule).
  */
-@OptIn(ExperimentalEncodingApi::class)
 class LocalMediaProxy(
     private val cache: MediaCache,
     private val client: KmpHttpClient,
@@ -101,28 +89,9 @@ class LocalMediaProxy(
             "avail=${r.adaptiveFormats.size} buffered=[$buffered]"
     }
 
-    suspend fun serve(target: String): ProxyResponse {
-        if (target.startsWith(HEALTH_PATH)) return text(200, "OK", "ymusic-proxy")
-        if (!target.startsWith(FORWARD_PATH)) return text(404, "Not Found", "no route")
-
-        val params = parseQuery(target.substringAfter('?', ""))
-        val url = params["url"] ?: return text(400, "Bad Request", "missing url")
-        val method = params["method"] ?: "GET"
-        // A body that fails to decode must not silently forward the request bodiless — a SABR POST
-        // without its proto answers with a mystery failure downstream.
-        val body = params["body"]?.let {
-            runCatching { Buffer().write(Base64.decode(it)) }
-                .onFailure { e -> log?.log(Logger.Level.WARN, "forward body base64 decode failed", e) }
-                .getOrNull()
-        }
-        return serveRequest(url, method, body)
-    }
-
     /**
-     * Serve one reconstructed request: a cache hit → synthesized bytes (zero network), a miss →
-     * forwarded through [client] and teed back into the cache. The native-interception adapters reach
-     * this via [serve] (parsing the `/ymusicForward` query); the iOS message-channel adapter, which
-     * receives the url/method/body as fields, calls it directly.
+     * Serve one request: a cache hit → synthesized bytes (zero network), a miss → forwarded through
+     * [client] and teed back into the cache.
      *
      * [body] is taken. A SABR parse reads a [Buffer.peek] so the cursor stays at 0; a network miss
      * then drains the same buffer into the forwarded request. A cache hit never reads it. The caller
@@ -310,15 +279,6 @@ class LocalMediaProxy(
         return if (formats.isNullOrEmpty()) this else withAdaptiveFormats(formats)
     }
 
-    private fun text(status: Int, reason: String, body: String): ProxyResponse {
-        val bytes = body.encodeToByteArray()
-        return ProxyResponse(
-            status, reason,
-            listOf("Content-Type" to "text/plain; charset=utf-8", "Content-Length" to "${bytes.size}"),
-            Buffer().write(bytes).asAsyncSource(), bytes.size.toLong(), url = "",
-        )
-    }
-
     private fun parseQuery(query: String): Map<String, String> = query.split('&').mapNotNull { pair ->
         val i = pair.indexOf('=')
         if (i < 0) null else {
@@ -331,8 +291,6 @@ class LocalMediaProxy(
     private fun queryOf(url: String): Map<String, String> = parseQuery(url.substringAfter('?', ""))
 
     companion object {
-        const val FORWARD_PATH = "/ymusicForward"
-        const val HEALTH_PATH = "/health"
         private val SKIP_FORWARD_HEADERS =
             setOf("host", "content-length", "transfer-encoding", "connection", ADAPTIVE_FORMATS_HEADER.lowercase())
     }
