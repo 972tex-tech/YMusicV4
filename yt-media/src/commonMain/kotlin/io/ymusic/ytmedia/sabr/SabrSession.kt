@@ -149,7 +149,7 @@ class SabrSession(
                 // the network resends it and writeMediaData skips the prefix already written.
                 val outcome = try {
                     BufferedAsyncSource(served.ump.asAsyncSource()).use {
-                        readResponse(it, audio, video, mediaCache, cacheReadOnly, segmentIndex, onProgress = { emitProgress() })
+                        readResponse(it, audio, video, mediaCache, cacheReadOnly, segmentIndex, fromCache = true, onProgress = { emitProgress() })
                     }
                 } catch (e: IOException) {
                     logger?.log(Logger.Level.WARN, "cache-served round failed, continuing from network", e)
@@ -293,6 +293,7 @@ class SabrSession(
         mediaCache: MediaCache? = null,
         cacheReadOnly: Boolean = false,
         segmentIndex: SegmentIndex? = null,
+        fromCache: Boolean = false,
         onProgress: () -> Unit = {},
     ): RoundOutcome {
         val open = mutableMapOf<Int, PartState>()
@@ -348,7 +349,7 @@ class SabrSession(
                         val dataSize = partSize - 1
                         val wasBeyond = state.beyondFileEnd
                         writeMediaData(body, state, dataSize)
-                        if (state.beyondFileEnd && !wasBeyond) reseedCursor(state, audio, video, segmentIndex)
+                        if (state.beyondFileEnd && !wasBeyond) reseedCursor(state, audio, video, segmentIndex, fromCache)
                         state.totalRead += dataSize
                         onProgress() // throttled by the caller; reflects the growing file length
                     }
@@ -468,7 +469,7 @@ class SabrSession(
     }
 
     /** Data arrived past the file end, so the cursor claims bytes the file lacks: rebuild it from the file. */
-    private fun reseedCursor(state: PartState, audio: SabrTrack, video: SabrTrack?, segmentIndex: SegmentIndex?) {
+    private fun reseedCursor(state: PartState, audio: SabrTrack, video: SabrTrack?, segmentIndex: SegmentIndex?, fromCache: Boolean) {
         val header = state.header
         val track = if (header.cacheKey == audio.format.cacheKey) audio else video ?: return
         val cursor = if (track === audio) audioSegment else videoSegment
@@ -476,7 +477,8 @@ class SabrSession(
         logger?.log(
             Logger.Level.WARN,
             "itag ${header.itag} seg ${header.segmentIndex} [${header.startRange}+${header.contentLength}] past file end " +
-                "${track.file.length()}; cursor seg ${cursor?.segmentIndex} reseeded to ${seeded?.segmentIndex}",
+                "${track.file.length()} (${if (fromCache) "cache" else "network"} round); cursor seg ${cursor?.segmentIndex} " +
+                "reseeded to ${seeded?.segmentIndex}",
         )
         if (track === audio) audioSegment = seeded else videoSegment = seeded
     }
