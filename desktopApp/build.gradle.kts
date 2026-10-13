@@ -87,6 +87,8 @@ val mseJniName: String = System.mapLibraryName("mseffmpegjni")
 val stagePackedFfmpeg by tasks.registering(Copy::class) {
     dependsOn(rootProject.tasks.named("syncFfmpegHost"), ":mse:bundleMseJniLib")
     val stagedDir = ffmpegAppResources.map { it.dir("common") }
+    val ffmpegSigningIdentity = macSigningIdentity()
+    inputs.property("ffmpegSigningIdentity", ffmpegSigningIdentity)
     // A stale stage would keep names this one no longer produces.
     doFirst { stagedDir.get().asFile.deleteRecursively() }
     if (FfmpegBuild.hostSlug() != null) {
@@ -109,9 +111,20 @@ val stagePackedFfmpeg by tasks.registering(Copy::class) {
         into(stagedDir)
         doLast {
             val dir = stagedDir.get().asFile
-            dir.resolve(ffmpegPackedName).setExecutable(true)
+            val cli = dir.resolve(ffmpegPackedName)
+            cli.setExecutable(true)
             val jni = dir.resolve(mseJniName)
             if (org.gradle.internal.os.OperatingSystem.current().isMacOsX && jni.isFile) relinkMacJni(jni)
+            // Compose signs the .dylib resources but not an extension-less executable, and notarization
+            // rejects an unsigned one: sign the CLI with the app's identity, hardened runtime + timestamp.
+            if (org.gradle.internal.os.OperatingSystem.current().isMacOsX && ffmpegSigningIdentity.isNotBlank()) {
+                val codesign = ProcessBuilder(
+                    "codesign", "--force", "--options", "runtime", "--timestamp",
+                    "--sign", ffmpegSigningIdentity, cli.absolutePath,
+                ).redirectErrorStream(true).start()
+                val output = codesign.inputStream.bufferedReader().readText()
+                check(codesign.waitFor() == 0) { "codesign $cli failed: $output" }
+            }
         }
     }
 }
