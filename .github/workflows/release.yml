@@ -146,13 +146,22 @@ jobs:
           path: YMusicV4/androidApp/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
-      # The scrape engine and MSE player bundles this release ships, for publishing as remote updates.
+      # The scrape engine and MSE player bundles this release ships, for publishing as remote updates,
+      # named by the revision the build stamped into both (Versions.engineJsBackendVersion).
+      - name: Name the JS bundles by version
+        working-directory: YMusicV4
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/.*const val engineJsBackendVersion = \([0-9][0-9]*\)L.*/\1/p' buildSrc/src/main/kotlin/Dependencies.kt)"
+          [ -n "$version" ] || { echo "engineJsBackendVersion not found in buildSrc Dependencies.kt" >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/js-bundles"
+          cp engine-js/build/dist/engine.js "$RUNNER_TEMP/js-bundles/engine.$version.js"
+          cp engine-js/build/dist/player.js "$RUNNER_TEMP/js-bundles/player.$version.js"
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: js-bundles
-          path: |
-            YMusicV4/engine-js/build/dist/engine.js
-            YMusicV4/engine-js/build/dist/player.js
+          path: ${{ runner.temp }}/js-bundles/*.js
           if-no-files-found: error
 
   macos:
@@ -297,7 +306,7 @@ jobs:
           cp "$(one 'artifacts/android-apks/*-universal-release.apk')" release/android-universal.apk
           cp "$(one 'artifacts/macos-arm64-dmg/*.dmg')" release/macos-arm64.dmg
           cp "$(one 'artifacts/macos-x86_64-dmg/*.dmg')" release/macos-intel.dmg
-          cp artifacts/js-bundles/engine.js artifacts/js-bundles/player.js release/
+          cp "$(one 'artifacts/js-bundles/engine.*.js')" "$(one 'artifacts/js-bundles/player.*.js')" release/
           (cd release && sha256sum * > SHA256SUMS)
           ls -l release
 
