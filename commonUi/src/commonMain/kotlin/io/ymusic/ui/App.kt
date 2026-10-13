@@ -345,7 +345,7 @@ private fun AppRoot(
 ) {
     run {
         val scope = rememberCoroutineScope()
-        val coordinator = remember { PlaybackCoordinator(graph, scope) }
+        val coordinator = graph.playback
         remember { SponsorBlockCoordinator(graph, scope) }
         val inPip by graph.pip.inPip.collectAsState()
         if (inPip) {

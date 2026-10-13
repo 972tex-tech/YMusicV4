@@ -209,6 +209,9 @@ class AppGraph(
      */
     val pip = PipCoordinator(player, settings)
 
+    /** One per process — a second instance double-captures playback failures and double-credits watch time. */
+    val playback = PlaybackCoordinator(this, CoroutineScope(SupervisorJob() + Dispatchers.Default))
+
     init {
         // Process-lifetime like the graph itself: every queue is recorded, whatever screen is up.
         playHistory?.takeUnless { guest }?.let {

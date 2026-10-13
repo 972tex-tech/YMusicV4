@@ -108,7 +108,7 @@ class PlaybackService : MediaLibraryService() {
     private fun init(graph: AppGraph) {
         val player = graph.player.also { this.player = it }
         val tree = MediaBrowseTree(this, graph).also { this.tree = it }
-        coordinator = io.ymusic.ui.PlaybackCoordinator(graph, serviceScope)
+        coordinator = graph.playback
         playAgain = graph.playHistory?.playAgain
         val adapter = Media3PlayerAdapter(
             player,
