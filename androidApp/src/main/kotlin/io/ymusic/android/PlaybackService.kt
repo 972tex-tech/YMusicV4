@@ -343,10 +343,7 @@ class PlaybackService : MediaLibraryService() {
      *  the same notification. */
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         if (startInForegroundRequired) {
-            if (!foreground) {
-                startForeground(NOTIFICATION_ID, buildNotification())
-                foreground = true
-            }
+            if (!foreground) foreground = promote(buildNotification())
         } else if (foreground && player?.let { isPlaying(it.status.value, it.queue.value) } != true) {
             // The contract-promotion that never became playback (media-button start on a dead
             // process, nothing restored): no (playing × item) transition will ever fire the
@@ -409,13 +406,25 @@ class PlaybackService : MediaLibraryService() {
         if (playing) {
             // Repeat startForeground while already foreground is the content refresh, not a
             // state change; the flag only records that the promotion happened.
-            startForeground(NOTIFICATION_ID, notification)
-            foreground = true
+            foreground = promote(notification)
         } else {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
             foreground = false
         }
+    }
+
+    /** startForeground, or the notification alone when Android 12+ refuses a promotion from the
+     *  background (playback resumed by Bluetooth, a car, or audio focus coming back while the app is
+     *  backgrounded). Playback continues; the service stays background until a later promotion. */
+    private fun promote(notification: android.app.Notification): Boolean = try {
+        startForeground(NOTIFICATION_ID, notification)
+        true
+    } catch (e: IllegalStateException) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || e !is android.app.ForegroundServiceStartNotAllowedException) throw e
+        log?.log(Logger.Level.WARN, "foreground start refused in background", e)
+        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+        false
     }
 
     private fun buildNotification(): android.app.Notification {
