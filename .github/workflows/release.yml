@@ -281,13 +281,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          cp artifacts/android-apks/*.apk release/
-          # Both macOS jobs name their DMG YMusic-<version>.dmg; the asset name carries the arch.
-          for arch in arm64 x86_64; do
-            for dmg in artifacts/macos-$arch-dmg/*.dmg; do
-              cp "$dmg" "release/$(basename "$dmg" .dmg)-$arch.dmg"
-            done
-          done
+          # Fixed, version-free asset names. Each glob must match exactly one build output.
+          one() { set -- $1; [ $# -eq 1 ] && [ -f "$1" ] || { echo "expected one file for: $*" >&2; exit 1; }; echo "$1"; }
+          cp "$(one 'artifacts/android-apks/*-arm64-v8a-release.apk')" release/android-arm64.apk
+          cp "$(one 'artifacts/android-apks/*-x86_64-release.apk')" release/android-x86_64.apk
+          cp "$(one 'artifacts/android-apks/*-universal-release.apk')" release/android-universal.apk
+          cp "$(one 'artifacts/macos-arm64-dmg/*.dmg')" release/macos-arm64.dmg
+          cp "$(one 'artifacts/macos-x86_64-dmg/*.dmg')" release/macos-intel.dmg
           (cd release && sha256sum * > SHA256SUMS)
           ls -l release
 
@@ -300,7 +300,7 @@ jobs:
           draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null || true)"
           case "$draft" in
             "")    gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --draft \
-                     --title "${TAG#release-}" --generate-notes ;;
+                     --title "$TAG" --generate-notes ;;
             # A re-run of the tag refreshes its draft's files.
             true)  gh release upload "$TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber ;;
             *)     echo "release $TAG is already published; not touching it" >&2; exit 1 ;;
