@@ -608,9 +608,7 @@ class YMusicApplication : Application() {
                     } catch (e: java.io.FileNotFoundException) {
                         true
                     } catch (e: IllegalArgumentException) {
-                        // ExternalStorageProvider reports a missing file as an IllegalArgumentException
-                        // (the FileNotFoundException only survives the binder as message text).
-                        if (documentExists(uri)) throw e
+                        if (!isConfirmedMissing(uri, e)) throw e
                         true
                     }
                     check(deleted) { "Android refused to delete this document" }
@@ -679,15 +677,20 @@ class YMusicApplication : Application() {
         }
     }
 
-    /** Whether the provider still resolves [uri]; a provider that answers a missing document by
-     *  throwing is a "no". */
-    private fun documentExists(uri: android.net.Uri): Boolean = try {
-        contentResolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
-            ?.use { it.moveToFirst() } == true
-    } catch (e: java.io.FileNotFoundException) {
-        false
-    } catch (e: IllegalArgumentException) {
-        false
+    /** Whether [error] from deleting [uri] proves the file is gone. ExternalStorageProvider's tree
+     *  check carries the cause only as message text; just "Missing file for <this docId>" means absent
+     *  ("No root for" is an unmounted volume). Any other provider must answer a query with zero rows. */
+    private fun isConfirmedMissing(uri: android.net.Uri, error: IllegalArgumentException): Boolean {
+        val documentId = android.provider.DocumentsContract.getDocumentId(uri)
+        if (error.message?.contains("FileNotFoundException: Missing file for $documentId at ") == true) return true
+        val cursor = try {
+            contentResolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
+        } catch (probe: Exception) {
+            error.addSuppressed(probe)
+            return false
+        }
+        // A null cursor is no evidence: the resolver also returns null when the provider is unavailable.
+        return cursor?.use { it.count == 0 } == true
     }
 
     /** SAF folder pick + full scan into [store]; returns the summary line, or null when canceled. */
