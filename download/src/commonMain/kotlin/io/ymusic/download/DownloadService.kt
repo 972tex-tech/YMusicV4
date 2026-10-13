@@ -11,6 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -253,43 +255,74 @@ class DownloadService(
                 if (queuePaused) return@withLock
                 while (active.size < maxConcurrent) {
                     val next = store.nextQueued() ?: break
+                    // Unreachable by construction (see runTask); never start a second run on one scratch dir.
+                    if (next.id in active) break
                     setState(next.id, DownloadState.PREPARING)
-                    val job = scope.launch { execute(next) }
-                    active[next.id] = job
-                    job.invokeOnCompletion {
-                        scope.launch {
-                            gate.withLock { active.remove(next.id); interrupts.remove(next.id) }
-                            fillSlots()
-                        }
-                    }
+                    active[next.id] = scope.launch { runTask(next) }
                 }
             }
         }
     }
 
-    private suspend fun execute(task: DownloadTask) {
+    /**
+     * One run of [task]. It holds its slot until it has fully unwound, and writes its end state
+     * (PAUSED / CANCELED / FAILED) in the same locked step that frees the slot: a task is only
+     * resumable once nothing of its previous run can still touch its scratch files or its row.
+     */
+    private suspend fun runTask(task: DownloadTask) {
+        var failure: DownloadError? = null
+        var interrupted = false
+        try {
+            failure = execute(task)
+        } catch (c: CancellationException) {
+            interrupted = true
+            throw c
+        } finally {
+            withContext(NonCancellable) {
+                gate.withLock {
+                    val target = interrupts.remove(task.id)
+                    if (interrupted) {
+                        val state = target ?: DownloadState.PAUSED
+                        if (state == DownloadState.CANCELED) cleanupTemp(task.id)
+                        setState(task.id, state)
+                    } else if (failure != null) {
+                        setState(task.id, DownloadState.FAILED, error = failure)
+                    }
+                    active.remove(task.id)
+                }
+                fillSlots()
+            }
+        }
+    }
+
+    /** Runs the pipeline; returns null on success, the user-facing error on failure (already logged). */
+    private suspend fun execute(task: DownloadTask): DownloadError? = coroutineScope {
+        // Pipeline callbacks fire from any thread: one writer applies them in order, and all of them have
+        // landed (or been dropped, on cancel) before the run's final state is written.
+        val updates = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+        val writer = launch { for (update in updates) update() }
         try {
             val result = pipeline.run(
                 task,
                 destinationFolder = downloadFolder(),
-                onPreparing = { setStateAsync(task.id, DownloadState.PREPARING) },
-                onDownloading = { setStateAsync(task.id, DownloadState.DOWNLOADING) },
-                onProcessing = { setStateAsync(task.id, DownloadState.PROCESSING) },
-                onProgress = { done, total -> setProgressAsync(task.id, done, total) },
+                onPreparing = { updates.trySend { setState(task.id, DownloadState.PREPARING) } },
+                onDownloading = { updates.trySend { setState(task.id, DownloadState.DOWNLOADING) } },
+                onProcessing = { updates.trySend { setState(task.id, DownloadState.PROCESSING) } },
+                onProgress = { done, total -> updates.trySend { setProgress(task.id, done, total) } },
             )
+            updates.close()
+            writer.join()
             store.updateCompleted(task.id, result.uri, result.bytes, now())
             _changes.emit(DownloadChange.Completed(task.id, result.uri, result.bytes))
             store.get(task.id)?.let { onCompleted?.invoke(it, result) }
+            null
         } catch (c: CancellationException) {
-            withContext(NonCancellable) {
-                val target = gate.withLock { interrupts[task.id] } ?: DownloadState.PAUSED
-                if (target == DownloadState.CANCELED) cleanupTemp(task.id)
-                setState(task.id, target)
-            }
-            throw c // let the job complete as cancelled; invokeOnCompletion decides whether to advance
+            throw c
         } catch (e: Throwable) {
+            updates.close()
+            writer.join()
             // Log the full technical failure here; the user sees only a code. An uncoded exception
-            // (network, SABR, …) gets the E70001 fallback so every failure is reportable.
+            // (SABR, disk, …) gets the E70001 fallback so every failure is reportable.
             val taskLog = log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))
             val code = e.errorCode()
             when {
@@ -297,7 +330,7 @@ class DownloadService(
                 code == DownloadFolderAccessException.CODE -> taskLog?.log(Logger.Level.WARN, "download folder not writable", e)
                 else -> taskLog?.captureError(e, "download failed")
             }
-            setState(task.id, DownloadState.FAILED, error = downloadError(e))
+            downloadError(e)
         }
     }
 
@@ -308,15 +341,9 @@ class DownloadService(
         _changes.emit(DownloadChange.StateChanged(id, state, error))
     }
 
-    private fun setStateAsync(id: String, state: DownloadState) {
-        scope.launch { setState(id, state) }
-    }
-
-    private fun setProgressAsync(id: String, done: Long, total: Long) {
-        scope.launch {
-            store.updateProgress(id, done, total, now())
-            _changes.emit(DownloadChange.ProgressChanged(id, done, total))
-        }
+    private suspend fun setProgress(id: String, done: Long, total: Long) {
+        store.updateProgress(id, done, total, now())
+        _changes.emit(DownloadChange.ProgressChanged(id, done, total))
     }
 
     private fun downloadError(e: Throwable): DownloadError {
