@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -269,7 +270,7 @@ internal fun PlaylistHeader(
             ActionIcon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), enabled = onDownload != null, onClick = { onDownload?.invoke() })
             Box(Modifier.weight(1f))
             Box(
-                Modifier.size(46.dp).clip(CircleShape).background(DesignColors.InkStrong).clickable(onClick = onShuffle),
+                Modifier.size(46.dp).clip(CircleShape).background(DesignColors.InkStrong).clickable(role = Role.Button, onClick = onShuffle),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Default.Shuffle, stringResource(Res.string.cd_shuffle), Modifier.size(20.dp), tint = DesignColors.OnInk)
