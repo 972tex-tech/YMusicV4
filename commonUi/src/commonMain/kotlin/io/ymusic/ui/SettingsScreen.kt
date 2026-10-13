@@ -247,8 +247,6 @@ private fun ToggleRow(graph: AppGraph, setting: BoolSetting, title: StringResour
     }
 }
 
-/** Settings → Open source licenses: the shipped third-party components ([OssComponents]) in the
- *  ElevatedBarDialog idiom (see [LocalePickerDialog]). */
 @Composable
 private fun ChangelogRow(url: String) {
     val uriHandler = LocalUriHandler.current
@@ -262,6 +260,8 @@ private fun ChangelogRow(url: String) {
     )
 }
 
+/** Settings → Open source licenses: the shipped third-party components ([OssComponents]) in the
+ *  ElevatedBarDialog idiom (see [LocalePickerDialog]). */
 @Composable
 private fun LicensesRow() {
     var open by remember { mutableStateOf(false) }
@@ -275,6 +275,7 @@ private fun LicensesRow() {
     )
     if (open) {
         val listState = rememberLazyListState()
+        val uriHandler = LocalUriHandler.current
         ElevatedBarDialog(
             title = stringResource(Res.string.settings_licenses),
             onDismiss = { open = false },
@@ -292,7 +293,10 @@ private fun LicensesRow() {
                 }
                 items(OssComponents, key = { it.name }) { c ->
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { uriHandler.openUri(c.url) }
+                            .padding(horizontal = 24.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
