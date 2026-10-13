@@ -274,7 +274,7 @@ private fun AccentButton(text: String, enabled: Boolean, onClick: () -> Unit) {
     ) {
         Text(
             text.uppercase(),
-            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.OnInk),
+            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.OnAccent),
         )
     }
 }

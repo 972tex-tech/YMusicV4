@@ -470,7 +470,7 @@ private fun downloadColors(): DownloadColors {
         inkMuted = d.InkMuted,
         accent = d.Accent,
         accentSoft = d.Accent.copy(alpha = 0.16f),
-        onAccent = Color.White,
+        onAccent = d.OnAccent,
         warning = amber,
         warningSoft = amber.copy(alpha = if (d.isDark) 0.16f else 0.14f),
         success = green,

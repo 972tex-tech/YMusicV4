@@ -222,11 +222,11 @@ private fun SendButton(session: FeedbackSession, enabled: Boolean, onSend: () ->
         contentAlignment = Alignment.Center,
     ) {
         if (session.sending) {
-            CircularProgressIndicator(Modifier.size(18.dp), color = DesignColors.OnInk, strokeWidth = 2.dp)
+            CircularProgressIndicator(Modifier.size(18.dp), color = DesignColors.OnAccent, strokeWidth = 2.dp)
         } else {
             Text(
                 stringResource(Res.string.feedback_send).uppercase(),
-                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.OnInk),
+                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.OnAccent),
             )
         }
     }
