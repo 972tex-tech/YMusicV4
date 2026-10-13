@@ -360,6 +360,7 @@
     <string name="signin_paste_guide_network">Open the Network panel</string>
     <string name="signin_paste_guide_request">Reload, then click a Fetch/XHR request</string>
     <string name="signin_paste_guide_copy">Right-click → Copy as cURL, then paste here</string>
+    <string name="signin_paste_guide_right_click">Right click</string>
     <string name="cd_signin_paste_guide">Animation showing how to copy YouTube cookies from a browser</string>
     <string name="cd_signin_paste_pause">Pause the guide</string>
     <string name="cd_signin_paste_play">Play the guide</string>

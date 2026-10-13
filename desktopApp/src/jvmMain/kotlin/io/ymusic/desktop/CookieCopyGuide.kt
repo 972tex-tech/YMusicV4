@@ -88,6 +88,7 @@ import io.ymusic.ui.resources.signin_paste_guide_f12
 import io.ymusic.ui.resources.signin_paste_guide_inspector
 import io.ymusic.ui.resources.signin_paste_guide_network
 import io.ymusic.ui.resources.signin_paste_guide_request
+import io.ymusic.ui.resources.signin_paste_guide_right_click
 import io.ymusic.ui.resources.signin_paste_hint
 import io.ymusic.ui.resources.signin_paste_hint_firefox
 import io.ymusic.ui.resources.signin_paste_hint_safari
@@ -453,7 +454,7 @@ private fun CookieCopyWindow(
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 12.dp),
         )
         KeyChip(
-            label = "Right click",
+            label = stringResource(Res.string.signin_paste_guide_right_click),
             visible = showCopyCurl,
             modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 28.dp, end = 12.dp),
         )

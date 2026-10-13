@@ -361,6 +361,7 @@
     <string name="signin_paste_guide_network">افتح لوحة Network</string>
     <string name="signin_paste_guide_request">أعد التحميل ثم انقر طلب Fetch/XHR</string>
     <string name="signin_paste_guide_copy">انقر بزر الماوس الأيمن ← Copy as cURL ثم الصق هنا</string>
+    <string name="signin_paste_guide_right_click">انقر بزر الماوس الأيمن</string>
     <string name="cd_signin_paste_guide">رسم متحرك يوضح كيفية نسخ ملفات تعريف ارتباط YouTube من المتصفح</string>
     <string name="cd_signin_paste_pause">إيقاف الدليل مؤقتًا</string>
     <string name="cd_signin_paste_play">تشغيل الدليل</string>

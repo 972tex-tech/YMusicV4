@@ -356,6 +356,7 @@
     <string name="signin_paste_guide_network">Mở bảng Network</string>
     <string name="signin_paste_guide_request">Tải lại, rồi bấm request Fetch/XHR</string>
     <string name="signin_paste_guide_copy">Nhấp phải → Copy as cURL, rồi dán vào đây</string>
+    <string name="signin_paste_guide_right_click">Nhấp phải</string>
     <string name="cd_signin_paste_guide">Hoạt ảnh hướng dẫn sao chép cookie YouTube từ trình duyệt</string>
     <string name="cd_signin_paste_pause">Tạm dừng hướng dẫn</string>
     <string name="cd_signin_paste_play">Phát hướng dẫn</string>
