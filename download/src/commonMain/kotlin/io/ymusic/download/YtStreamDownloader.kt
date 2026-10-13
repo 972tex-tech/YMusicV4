@@ -97,7 +97,7 @@ class YtStreamDownloader(
         val (audioFmt, videoFmt) = selectFormats(task, spec.formats)
         val captionPicks = captionsToDownload(spec.captionTracks, task.captions, task.captionLanguage)
 
-        val audioScratch = storage.scratch(task.id, "audio")
+        val audioScratch = storage.scratch(task.id, AUDIO_SCRATCH)
         val videoScratch = if (videoFmt != null) storage.scratch(task.id, "video") else null
 
         onDownloading()

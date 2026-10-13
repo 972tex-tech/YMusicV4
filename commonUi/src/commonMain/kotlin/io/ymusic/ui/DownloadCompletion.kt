@@ -49,9 +49,9 @@ suspend fun registerCompletedDownload(
             fileSize = result.bytes,
             lastModified = task.updatedAt,
             artist = task.artist,
-            durationMs = result.audio.approxDurationMs.toLong().takeIf { it > 0 },
-            width = result.video?.width,
-            height = result.video?.height,
+            durationMs = result.durationMs,
+            width = result.width,
+            height = result.height,
             youtubeVid = task.videoId,
         ),
     )
