@@ -116,6 +116,12 @@ jobs:
         with:
           node-version: 22
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+      # The ffmpeg packs' NDK, for :quickjs and :mse's CMake builds (they honor ANDROID_NDK_ROOT).
+      - id: ndk
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
+        with:
+          ndk-version: r28c
+      - run: echo "ANDROID_NDK_ROOT=${{ steps.ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
 
       # The shipping build: secrets.enc → secrets.properties + signing/. Pull requests never decrypt
       # (nor does a run without SECRETS_PASSPHRASE); they build on defaults — unsigned, no Sentry
