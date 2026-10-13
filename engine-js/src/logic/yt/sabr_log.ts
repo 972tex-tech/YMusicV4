@@ -417,7 +417,8 @@ const UMP_NAME: Record<number, string> = {
 
 function spsLabel(v: number): string {
   if (v === 1) return "ok";
-  if (v === 2 || v === 3) return "po-rejected";
+  if (v === 2) return "pending";
+  if (v === 3) return "po-invalid";
   return "?";
 }
 

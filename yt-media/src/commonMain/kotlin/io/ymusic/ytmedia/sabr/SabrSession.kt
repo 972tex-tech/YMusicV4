@@ -38,8 +38,8 @@ import kotlin.time.TimeSource
 /** One format stream to download and where its bytes go. */
 class SabrTrack(val format: AdaptiveFormat, val file: DownloadFile)
 
-/** Thrown when the server rejects the PO token (STREAM_PROTECTION_STATUS 2/3). Caller re-attests. */
-class SabrPoTokenExpired(message: String) : IOException(message)
+/** The session stalled after googlevideo answered STREAM_PROTECTION_STATUS 3 (invalid PO token). Caller re-attests. */
+class SabrPoTokenInvalid(message: String) : IOException(message)
 
 /** Thrown on UMP part 44. */
 class SabrServerError(message: String) : IOException(message)
@@ -134,7 +134,7 @@ class SabrSession(
         try {
             while (true) {
                 if (retryCount > maxConsecutiveEmptyRounds) {
-                    if (!poTokenValid) throw SabrPoTokenExpired("PO token rejected; re-attest and retry")
+                    if (!poTokenValid) throw SabrPoTokenInvalid("PO token invalid (StreamProtectionStatus=3); re-attest and retry")
                     throw IOException("SABR exceeded max retries, last: $lastError")
                 }
 
@@ -398,7 +398,8 @@ class SabrSession(
                     UmpPart.STREAM_PROTECTION_STATUS -> {
                         val status = SabrParts.parseStreamProtectionStatus(body.readBytesFully(partSize))
                         protectionStatus = status
-                        if (status != null) poTokenValid = status != 2 && status != 3
+                        // 1 = ok, 2 = attestation pending (a verdict follows), 3 = invalid PO token.
+                        if (status != null && status != 2) poTokenValid = status != 3
                     }
 
                     UmpPart.SABR_CONTEXT_UPDATE -> {

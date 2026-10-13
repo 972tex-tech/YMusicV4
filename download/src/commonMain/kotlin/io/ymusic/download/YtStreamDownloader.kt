@@ -5,7 +5,7 @@ import io.ymusic.ytmedia.cache.SegmentIndex
 import io.ymusic.ytmedia.sabr.AdaptiveFormat
 import io.ymusic.ytmedia.sabr.CaptionTrack
 import io.ymusic.ytmedia.sabr.DownloadFile
-import io.ymusic.ytmedia.sabr.SabrPoTokenExpired
+import io.ymusic.ytmedia.sabr.SabrPoTokenInvalid
 import io.ymusic.ytmedia.sabr.SabrProgress
 import io.ymusic.ytmedia.sabr.SabrSession
 import io.ymusic.ytmedia.sabr.SabrStreamSpec
@@ -183,7 +183,7 @@ class YtStreamDownloader(
     ) {
         val progress = SabrProgress { aDone, aLen, vDone, vLen -> onProgress(aDone + vDone, aLen + vLen) }
         var current = spec
-        var expired: SabrPoTokenExpired? = null
+        var invalid: SabrPoTokenInvalid? = null
         while (true) {
             try {
                 SabrSession(logger = log).download(
@@ -198,13 +198,13 @@ class YtStreamDownloader(
                     segmentIndex = segmentIndex,
                 )
                 return
-            } catch (e: SabrPoTokenExpired) {
-                expired?.let {
+            } catch (e: SabrPoTokenInvalid) {
+                invalid?.let {
                     e.addSuppressed(it)
                     throw e
                 }
-                expired = e
-                log?.log(Logger.Level.WARN, "PO token rejected, re-attesting: ${e.message}")
+                invalid = e
+                log?.log(Logger.Level.WARN, "PO token invalid, re-attesting: ${e.message}")
                 current = try {
                     reAttest()
                 } catch (error: Throwable) {

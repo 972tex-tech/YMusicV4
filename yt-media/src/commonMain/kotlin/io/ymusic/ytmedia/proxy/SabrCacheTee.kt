@@ -325,8 +325,8 @@ internal class SabrCacheTee(
 
             UmpPart.STREAM_PROTECTION_STATUS -> {
                 val s = SabrParts.parseStreamProtectionStatus(payload)
-                if (s == 2 || s == 3) { // PO token rejected → media will stop — always warn
-                    log.log(Logger.Level.WARN, "stream-protection-status=$s (PO token rejected — media will stop)")
+                if (s == 3) {
+                    log.log(Logger.Level.WARN, "stream-protection-status=3 (invalid PO token — media will stop)")
                 } else {
                     logVerbose { "stream-protection-status=$s" }
                 }
