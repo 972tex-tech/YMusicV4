@@ -116,8 +116,14 @@ class SafDocumentsProvider(
         )
     }
 
+    // Some providers (seen on Android 8.1 for a tree's root) answer a null display name.
+    private fun nameFromDocumentId(uri: Uri): String {
+        val id = AndroidUri.parse(uri.toString()).lastPathSegment.orEmpty()
+        return id.substringAfterLast('/').substringAfterLast(':')
+    }
+
     private fun Cursor.toDocumentInfo(uri: Uri): DocumentInfo {
-        val name = getString(getColumnIndexOrThrow(COLUMN_DISPLAY_NAME))
+        val name = getString(getColumnIndexOrThrow(COLUMN_DISPLAY_NAME)) ?: nameFromDocumentId(uri)
         val mimeType = getString(getColumnIndexOrThrow(COLUMN_MIME_TYPE))
         val flags = runCatching { getInt(getColumnIndexOrThrow(COLUMN_FLAGS)) }.getOrDefault(0)
         val isVirtual = flags and FLAG_VIRTUAL_DOCUMENT != 0
