@@ -144,6 +144,7 @@ import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.error_captcha
 import io.ymusic.ui.resources.ic_sponsor_block
 import io.ymusic.ui.resources.menu_add_to_playlist
+import io.ymusic.ui.resources.menu_reload_player
 import io.ymusic.ui.resources.playback_failed
 import io.ymusic.ui.resources.playback_sign_in_required
 import io.ymusic.ui.resources.playback_unavailable
@@ -1133,10 +1134,8 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
                 text = { Text(stringResource(Res.string.sound_eq)) },
                 onClick = { eqOpen = true; open = false },
             )
-            // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
-            // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
             DropdownMenuItem(
-                text = { Text("Reload player") },
+                text = { Text(stringResource(Res.string.menu_reload_player)) },
                 onClick = { player.reload(); open = false },
             )
             if (audioTracks.tracks.size > 1) {

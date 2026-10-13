@@ -235,6 +235,7 @@
     <string name="playback_failed">فشل التشغيل (%1$s)</string>
     <string name="playback_sign_in_required">يطلب YouTube تسجيل الدخول لتشغيل هذا الفيديو</string>
     <string name="playback_unavailable">هذا الفيديو غير متاح</string>
+    <string name="menu_reload_player">إعادة تحميل المشغّل</string>
 
 
     <string name="settings_language">اللغة</string>

@@ -246,6 +246,7 @@
     <string name="playback_failed">Failed (%1$s)</string>
     <string name="playback_sign_in_required">YouTube asks you to sign in to play this video</string>
     <string name="playback_unavailable">This video is unavailable</string>
+    <string name="menu_reload_player">Reload player</string>
 
 
     <!-- Settings -->
