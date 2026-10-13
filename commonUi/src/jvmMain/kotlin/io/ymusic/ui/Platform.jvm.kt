@@ -24,4 +24,7 @@ internal actual fun SyncSensorRotation(enabled: Boolean) = Unit
 internal actual fun SyncImmersiveSystemBars(immersive: Boolean) = Unit
 
 @Composable
+internal actual fun KeepScreenOn(enabled: Boolean) = Unit
+
+@Composable
 internal actual fun Modifier.keepBelowStatusBar(): Modifier = this

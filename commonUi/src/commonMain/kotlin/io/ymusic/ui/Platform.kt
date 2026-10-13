@@ -29,6 +29,10 @@ internal expect fun SyncImmersiveSystemBars(immersive: Boolean)
 @Composable
 internal expect fun SyncSensorRotation(enabled: Boolean)
 
+/** Holds the display awake (no idle dim/lock) while [enabled]. No-op on desktop. */
+@Composable
+internal expect fun KeepScreenOn(enabled: Boolean)
+
 /** Status-bar height even while bars are hidden (fullscreen overlay title). No-op on desktop. */
 @Composable
 internal expect fun Modifier.keepBelowStatusBar(): Modifier

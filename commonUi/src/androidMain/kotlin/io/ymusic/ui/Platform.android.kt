@@ -80,6 +80,15 @@ internal actual fun SyncImmersiveSystemBars(immersive: Boolean) {
     }
 }
 
+@Composable
+internal actual fun KeepScreenOn(enabled: Boolean) {
+    val view = LocalView.current
+    DisposableEffect(view, enabled) {
+        view.keepScreenOn = enabled
+        onDispose { view.keepScreenOn = false }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal actual fun Modifier.keepBelowStatusBar(): Modifier =

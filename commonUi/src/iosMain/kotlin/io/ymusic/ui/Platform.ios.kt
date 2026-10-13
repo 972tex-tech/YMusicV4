@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
+import platform.UIKit.UIApplication
 
 internal actual val platformUsesTouch: Boolean = true
 
@@ -29,6 +31,14 @@ internal actual fun SyncSensorRotation(enabled: Boolean) {
 @Composable
 internal actual fun SyncImmersiveSystemBars(immersive: Boolean) {
     // UIApplication.setStatusBarHidden is not in the iOS 26 Kotlin bindings.
+}
+
+@Composable
+internal actual fun KeepScreenOn(enabled: Boolean) {
+    DisposableEffect(enabled) {
+        UIApplication.sharedApplication.idleTimerDisabled = enabled
+        onDispose { UIApplication.sharedApplication.idleTimerDisabled = false }
+    }
 }
 
 @Composable

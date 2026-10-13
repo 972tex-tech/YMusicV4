@@ -115,6 +115,8 @@ import io.ymusic.player.QueueMore
 import io.ymusic.player.QueueState
 import io.ymusic.player.VideoQualityOption
 import io.ymusic.player.VideoQualityState
+import io.ymusic.player.isEnded
+import io.ymusic.player.isPlaying
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
@@ -318,7 +320,10 @@ fun NowPlayingScreen(
             graph.videoFillScreen.value = false
         }
     }
-    val playWhenReady = coordinator.player.status.collectAsState().value.playWhenReady
+    val status by coordinator.player.status.collectAsState()
+    val playWhenReady = status.playWhenReady
+    val audioOnly = showsAudioOnly(coordinator.player)
+    KeepScreenOn(status.state.isPlaying() && !status.state.isEnded() && !audioOnly && status.videoSize != null)
     val armed = VideoOverlayNative.armed
     val overlayVisible = VideoOverlayNative.visible
     val showGen = VideoOverlayNative.showGen
