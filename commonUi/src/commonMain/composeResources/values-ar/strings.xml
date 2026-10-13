@@ -175,6 +175,10 @@
     <string name="library_scanning">جارٍ الفحص…</string>
     <string name="library_scanning_count">جارٍ فحص %1$d…</string>
     <string name="library_scan_failed">فشل الفحص (%1$s)</string>
+    <string name="library_scan_summary">تم فحص %1$d: أُضيف %2$d، وحُدِّث %3$d، وأُزيل %4$d</string>
+    <string name="library_scan_summary_failed">تم فحص %1$d: أُضيف %2$d، وحُدِّث %3$d، وأُزيل %4$d، وفشل %5$d</string>
+    <string name="library_scan_no_folders">لا توجد مجلدات لإعادة فحصها — أضف مجلدًا أولًا</string>
+    <string name="library_scan_ffmpeg_missing">لم يتم العثور على ffmpeg</string>
     <string name="library_empty_folder">مجلد فارغ</string>
     <string name="library_crumb_root">المكتبة</string>
     <string name="library_folder">مجلد</string>

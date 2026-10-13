@@ -47,10 +47,10 @@ class ScanNotificationTest {
                     player = StubPlayer(),
                     playerSurface = {},
                     mediaStore = store,
-                    scanLibraryFolder = { "picked" },
+                    scanLibraryFolder = { ScanResult.NoFolders },
                     // Report progress, then block until the test lets it finish — so it is still
                     // in-flight when we navigate away.
-                    rescanLibrary = { _, onProgress -> onProgress(5); gate.await(); "RESCAN_ELSEWHERE" },
+                    rescanLibrary = { _, onProgress -> onProgress(5); gate.await(); ScanResult.Done(5, 2, 1, 0, 0) },
                 )
                 val section = mutableStateOf(AppSection.Library)
                 setContent { App(graph, section) }
@@ -65,7 +65,7 @@ class ScanNotificationTest {
 
                 // Let the scan finish now that we're on Discover; its summary must still notify here.
                 gate.complete(Unit)
-                waitUntilAtLeastOneExists(hasText("RESCAN_ELSEWHERE"), 10_000)
+                waitUntilAtLeastOneExists(hasText("Scanned 5: 2 added, 1 updated, 0 removed"), 10_000)
             }
         } finally {
             gate.complete(Unit)

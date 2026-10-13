@@ -175,6 +175,10 @@
     <string name="library_scanning">Đang quét…</string>
     <string name="library_scanning_count">Đang quét %1$d…</string>
     <string name="library_scan_failed">Quét thất bại (%1$s)</string>
+    <string name="library_scan_summary">Đã quét %1$d: thêm %2$d, cập nhật %3$d, xóa %4$d</string>
+    <string name="library_scan_summary_failed">Đã quét %1$d: thêm %2$d, cập nhật %3$d, xóa %4$d, lỗi %5$d</string>
+    <string name="library_scan_no_folders">Không có thư mục nào để quét lại — hãy thêm một thư mục trước</string>
+    <string name="library_scan_ffmpeg_missing">Không tìm thấy ffmpeg</string>
     <string name="library_empty_folder">Thư mục trống</string>
     <string name="library_crumb_root">Thư viện</string>
     <string name="library_folder">Thư mục</string>

@@ -189,6 +189,10 @@
     <string name="library_scanning">Scanning…</string>
     <string name="library_scanning_count">Scanning %1$d…</string>
     <string name="library_scan_failed">Scan failed (%1$s)</string>
+    <string name="library_scan_summary">Scanned %1$d: %2$d added, %3$d updated, %4$d removed</string>
+    <string name="library_scan_summary_failed">Scanned %1$d: %2$d added, %3$d updated, %4$d removed, %5$d failed</string>
+    <string name="library_scan_no_folders">No folders to rescan — add one first</string>
+    <string name="library_scan_ffmpeg_missing">ffmpeg not found</string>
     <string name="library_empty_folder">Empty folder</string>
     <string name="library_crumb_root">Library</string>
     <string name="library_folder">Folder</string>

@@ -40,18 +40,29 @@ const val PlaybackSpeedKey = "player.speed"
 const val PlaybackPitchKey = "player.pitch"
 const val PlaybackEqKey = "player.eq"
 
+/** How a shell scan ended; the shared UI renders it as the user-facing summary. */
+sealed interface ScanResult {
+    data class Done(val scanned: Int, val added: Int, val updated: Int, val removed: Int, val failed: Int) : ScanResult
+
+    /** A rescan of every library root found none to rescan. */
+    data object NoFolders : ScanResult
+
+    /** The metadata extractor (ffmpeg) is missing from this install. */
+    data object ExtractorMissing : ScanResult
+}
+
 /**
  * A shell scan/rescan action: reports the running scanned-file count through [onProgress] while it
- * works, and returns a user-facing summary line (or null when a folder pick was canceled).
+ * works, and returns how it ended (or null when a folder pick was canceled).
  */
-typealias ScanAction = suspend (onProgress: (scanned: Int) -> Unit) -> String?
+typealias ScanAction = suspend (onProgress: (scanned: Int) -> Unit) -> ScanResult?
 
 /**
  * Re-scan already-indexed folders. [folderUri] null means every library root; otherwise only that
  * folder and its children. Reports the running scanned-file count through [onProgress] and returns
- * a user-facing summary line.
+ * how it ended.
  */
-typealias RescanAction = suspend (folderUri: String?, onProgress: (scanned: Int) -> Unit) -> String?
+typealias RescanAction = suspend (folderUri: String?, onProgress: (scanned: Int) -> Unit) -> ScanResult?
 
 /**
  * Everything the shared UI needs, built once by the platform shell (the composition root): the

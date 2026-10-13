@@ -6,6 +6,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.library_scan_failed
+import io.ymusic.ui.resources.library_scan_ffmpeg_missing
+import io.ymusic.ui.resources.library_scan_no_folders
+import io.ymusic.ui.resources.library_scan_summary
+import io.ymusic.ui.resources.library_scan_summary_failed
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -39,7 +43,7 @@ internal class ScanController(private val scope: CoroutineScope, private val log
         scanned = null
         scope.launch {
             try {
-                action { count -> scanned = count }?.let { _summaries.tryEmit(it) }
+                action { count -> scanned = count }?.let { _summaries.tryEmit(summaryOf(it)) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -51,6 +55,16 @@ internal class ScanController(private val scope: CoroutineScope, private val log
             }
         }
     }
+}
+
+private suspend fun summaryOf(result: ScanResult): String = when (result) {
+    is ScanResult.Done -> if (result.failed > 0) {
+        getString(Res.string.library_scan_summary_failed, result.scanned, result.added, result.updated, result.removed, result.failed)
+    } else {
+        getString(Res.string.library_scan_summary, result.scanned, result.added, result.updated, result.removed)
+    }
+    ScanResult.NoFolders -> getString(Res.string.library_scan_no_folders)
+    ScanResult.ExtractorMissing -> getString(Res.string.library_scan_ffmpeg_missing)
 }
 
 /** The app-level [ScanController], provided by [AppRoot]. */

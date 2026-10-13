@@ -69,6 +69,7 @@ import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
+import io.ymusic.ui.ScanResult
 import io.ymusic.ui.YtEngineSabrSpecResolver
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
@@ -700,8 +701,8 @@ class YMusicApplication : Application() {
         return cursor?.use { it.count == 0 } == true
     }
 
-    /** SAF folder pick + full scan into [store]; returns the summary line, or null when canceled. */
-    private suspend fun scanPickedFolder(store: BetterMediaStore, onProgress: (Int) -> Unit): String? {
+    /** SAF folder pick + full scan into [store]; returns how it ended, or null when canceled. */
+    private suspend fun scanPickedFolder(store: BetterMediaStore, onProgress: (Int) -> Unit): ScanResult? {
         val treeUri = folderPicker?.invoke() ?: return null
         return scanUris(store, listOf(treeUri), onProgress)
     }
@@ -716,20 +717,20 @@ class YMusicApplication : Application() {
     }
 
     /** Re-scans [folderUri] (and its children) in place, or every already-added root when null. */
-    private suspend fun rescanKnownRoots(store: BetterMediaStore, folderUri: String?, onProgress: (Int) -> Unit): String? {
+    private suspend fun rescanKnownRoots(store: BetterMediaStore, folderUri: String?, onProgress: (Int) -> Unit): ScanResult? {
         val uris = if (folderUri != null) {
             listOf(Uri.parse(folderUri))
         } else {
             val roots = store.childBuckets(null)
-            if (roots.isEmpty()) return "No folders to rescan — add one first"
+            if (roots.isEmpty()) return ScanResult.NoFolders
             roots.map { it.uri }
         }
         return scanUris(store, uris, onProgress)
     }
 
     /** Scans each root [uris] into [store] via SAF + the bundled ffmpeg (content:// proxied over ymix),
-     *  reporting the running file count and returning one combined summary line. */
-    private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgress: (Int) -> Unit): String {
+     *  reporting the running file count and returning the combined result. */
+    private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgress: (Int) -> Unit): ScanResult {
         val ffmpeg = File(applicationInfo.nativeLibraryDir, "libffmpeg.so").absolutePath
         val scanner = MediaScanner.create(
             store,
@@ -750,10 +751,7 @@ class YMusicApplication : Application() {
             deleted += progress.deleted
             failed += progress.errors.size
         }
-        return buildString {
-            append("Scanned $scanned: $added added, $updated updated, $deleted removed")
-            if (failed > 0) append(", $failed failed")
-        }
+        return ScanResult.Done(scanned, added, updated, deleted, failed)
     }
 
     override fun onTrimMemory(level: Int) {
