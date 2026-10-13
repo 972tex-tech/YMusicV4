@@ -194,8 +194,9 @@ internal class AccountController(
     }
 
     /** After the login screen's cookie gate passed: pull the account card, reload every feed, and
-     *  stale the player's page so the next track re-fetches /embed authenticated. */
-    fun onLoginComplete() {
+     *  stale the player's page so the next track re-fetches /embed authenticated. [then] runs last,
+     *  under the refreshed session. */
+    fun onLoginComplete(then: (() -> Unit)? = null) {
         scope.launch {
             _profileReady.value = false
             _signedIn.value = true
@@ -216,6 +217,7 @@ internal class AccountController(
                 graph.player.play()
             }
             graph.requestRefresh()
+            then?.invoke()
         }
     }
 

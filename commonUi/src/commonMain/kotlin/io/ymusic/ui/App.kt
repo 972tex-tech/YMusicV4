@@ -302,6 +302,13 @@ internal class CaptchaResolver(val label: StringResource, val resolve: (retry: (
 /** Null outside the app shell: a captcha error then shows its message with no action. */
 internal val LocalCaptchaResolver = compositionLocalOf<CaptchaResolver?> { null }
 
+/** Opens the YouTube sign-in; [signIn]'s `onSignedIn` runs once the gate passed and the session is
+ *  re-scraped, never when the user backs out of the browser. */
+internal class SignInResolver(val signedIn: Boolean, val signIn: (onSignedIn: () -> Unit) -> Unit)
+
+/** Null outside the app shell: a sign-in-required failure then offers no sign-in action. */
+internal val LocalSignInResolver = compositionLocalOf<SignInResolver?> { null }
+
 /** Height of the mini player overlaid on the screens' bottom edge (0 when hidden or docked below them):
  *  scrolling content adds it as bottom padding so its last rows can scroll clear of the bar. */
 internal val LocalMiniPlayerInset = compositionLocalOf { 0.dp }
@@ -594,6 +601,8 @@ private fun AppRoot(
         val openPlaylistDownload: ((title: String, pager: Pager) -> Unit)? = graph.downloads?.let {
             { title, pager -> layers.add(AppLayer.PlaylistDownload(PlaylistDownloadSession(title, pager, graph.quickDownload.value))) }
         }
+        // What a SignInResolver caller resumes after the sign-in browser's gate passes.
+        var afterSignIn by remember { mutableStateOf<(() -> Unit)?>(null) }
         val popLayer = {
             val top = layers.removeAt(layers.lastIndex)
             when (top) {
@@ -604,6 +613,7 @@ private fun AppRoot(
                 is AppLayer.MusicBrowse -> top.session.close()
                 is AppLayer.LibrarySearch, is AppLayer.Login, is AppLayer.Verify, is AppLayer.PlaylistDownload -> Unit
             }
+            if (top is AppLayer.Login) afterSignIn = null
             // Closing the account-switcher browser IS its completion (no cookie gate flips while
             // switching): refresh session + account + feeds under whatever identity was picked.
             if (top is AppLayer.Login && top.switchAccount) accountController.onLoginComplete()
@@ -627,6 +637,12 @@ private fun AppRoot(
                 existing >= 0 -> layers.add(layers.removeAt(existing))
                 else -> layers.add(AppLayer.Login(LoginWebViewState(), switchAccount = true))
             }
+        }
+        val signInResolver = SignInResolver(signedIn) { onSignedIn ->
+            graph.pip.nowPlayingOpen.value = false
+            nowPlayingPeeking = false
+            afterSignIn = onSignedIn
+            openLogin()
         }
         // A "captcha" failure's action: the in-app browser where a shell has one, else sign-in (the
         // desktop has no WebView; onLoginComplete refreshes the session and retries what failed).
@@ -882,6 +898,7 @@ private fun AppRoot(
                             LocalNavigateToSection provides { onSection(it) },
                             LocalLibraryFolderReveal provides libraryReveal,
                             LocalCaptchaResolver provides captchaResolver,
+                            LocalSignInResolver provides signInResolver,
                         ) {
                             DefaultDownloadLocationPrompt(graph)
                             Scaffold(
@@ -1013,8 +1030,9 @@ private fun AppRoot(
                                                 // the account card, reload feeds, and stale the player page.
                                                 // (The switcher never fires this — popLayer is its signal.)
                                                 onComplete = {
+                                                    val resume = afterSignIn
                                                     popLayer()
-                                                    accountController.onLoginComplete()
+                                                    accountController.onLoginComplete(resume)
                                                 },
                                                 switchAccount = top.switchAccount,
                                             )
@@ -1133,6 +1151,7 @@ private fun AppRoot(
                 LocalAvailableOffline provides availableOffline,
                 LocalYtPlaylistActions provides ytPlaylistActions,
                 LocalCaptchaResolver provides captchaResolver,
+                LocalSignInResolver provides signInResolver,
             ) {
                 if (nowPlayingOpen) {
                     NowPlayingScreen(
