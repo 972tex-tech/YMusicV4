@@ -1,5 +1,6 @@
 package io.ymusic.android
 
+import android.app.ActivityManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -82,6 +83,10 @@ class PlaybackService : MediaLibraryService() {
      *  service, so the flag is authoritative: promotes are skipped when already foreground, and
      *  a media3-triggered promotion that never leads to playback can be detected and demoted. */
     private var foreground = false
+
+    /** Android 12+ refused the last background promotion: media3 asks again on every player event
+     *  while playing, so retries wait for a start that can succeed ([canRetryPromotion]). */
+    private var foregroundRefused = false
     // Set in onCreate — getApplication() is null until the service is attached.
     private var log: Logger? = null
 
@@ -370,6 +375,7 @@ class PlaybackService : MediaLibraryService() {
         // The startForegroundService contract: enter foreground now; the collector demotes on pause.
         startForeground(NOTIFICATION_ID, buildNotification())
         foreground = true
+        foregroundRefused = false
         return result
     }
 
@@ -417,14 +423,29 @@ class PlaybackService : MediaLibraryService() {
     /** startForeground, or the notification alone when Android 12+ refuses a promotion from the
      *  background (playback resumed by Bluetooth, a car, or audio focus coming back while the app is
      *  backgrounded). Playback continues; the service stays background until a later promotion. */
-    private fun promote(notification: android.app.Notification): Boolean = try {
-        startForeground(NOTIFICATION_ID, notification)
-        true
-    } catch (e: IllegalStateException) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || e !is android.app.ForegroundServiceStartNotAllowedException) throw e
-        log?.log(Logger.Level.WARN, "foreground start refused in background", e)
-        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
-        false
+    private fun promote(notification: android.app.Notification): Boolean {
+        if (foregroundRefused && !canRetryPromotion()) {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+            return false
+        }
+        return try {
+            startForeground(NOTIFICATION_ID, notification)
+            foregroundRefused = false
+            true
+        } catch (e: IllegalStateException) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || e !is android.app.ForegroundServiceStartNotAllowedException) throw e
+            foregroundRefused = true
+            log?.log(Logger.Level.WARN, "foreground start refused in background", e)
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+            false
+        }
+    }
+
+    /** A top (resumed) activity exempts the process from the background FGS-start restriction. */
+    private fun canRetryPromotion(): Boolean {
+        val state = ActivityManager.RunningAppProcessInfo()
+        ActivityManager.getMyMemoryState(state)
+        return state.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
     }
 
     private fun buildNotification(): android.app.Notification {
