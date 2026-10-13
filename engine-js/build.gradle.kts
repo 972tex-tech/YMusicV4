@@ -27,20 +27,22 @@ plugins {
     base
 }
 
-// The bundle's own revision — Versions.engineJsBackendVersion (buildSrc), BUMP THERE on every
-// remote push. Inlined by esbuild --define (`declare const` in types.d.ts): the "init" health
-// check reports it; the host logs it on swaps and stamps it into error reports.
-val backendVersion = Versions.engineJsBackendVersion
+// Each bundle's own revision — Versions.engineJsVersion / playerJsVersion (buildSrc), bumped there
+// on every remote push of that bundle. Inlined by esbuild --define as BACKEND_VERSION (`declare
+// const` in types.d.ts): the "init" health check reports it; the host logs it on swaps and stamps
+// it into error reports. The test bundle carries the engine's.
 
 // Compile-time defines: bare `declare const` identifiers substituted inline at bundle time —
 // no runtime global, no extern. PRODUCTION is the same -Pproduction bake as Kotlin
 // BuildFlags.PRODUCTION: `debug(function () { return concat; })` does not call the thunk
 // when true (esbuild inlines; Closure DCE drops the dead branch).
 val production = providers.gradleProperty("production").map(String::toBoolean).getOrElse(false)
-val esbuildDefines = arrayOf(
+fun esbuildDefines(backendVersion: Long) = arrayOf(
     "--define:BACKEND_VERSION=$backendVersion",
     "--define:PRODUCTION=$production",
 )
+val engineDefines = esbuildDefines(Versions.engineJsVersion)
+val playerDefines = esbuildDefines(Versions.playerJsVersion)
 
 val srcDir = layout.projectDirectory.dir("src")
 val tsconfig = layout.projectDirectory.file("tsconfig.json")
@@ -81,7 +83,7 @@ val typecheckJs by tasks.registering(Exec::class) {
 val bundleRawJs by tasks.registering(Exec::class) {
     dependsOn(typecheckJs)
     inputs.dir(srcDir)
-    inputs.property("defines", esbuildDefines.joinToString(" ")) // Exec doesn't track commandLine
+    inputs.property("defines", engineDefines.joinToString(" ")) // Exec doesn't track commandLine
     outputs.files(rawBundleFile, rawBundleMeta)
     workingDir = projectDir
     unixPath()
@@ -90,7 +92,7 @@ val bundleRawJs by tasks.registering(Exec::class) {
         "src/index.ts", "--bundle",
         "--format=iife", "--target=esnext", "--charset=utf8",
         "--loader:.raw.js=text",
-        *esbuildDefines,
+        *engineDefines,
         "--metafile=${rawBundleMeta.get().asFile.absolutePath}",
         "--outfile=${rawBundleFile.get().asFile.absolutePath}",
     )
@@ -190,7 +192,7 @@ val closureJs by tasks.registering {
 val bundleRawPlayerJs by tasks.registering(Exec::class) {
     dependsOn(typecheckJs)
     inputs.dir(srcDir)
-    inputs.property("defines", esbuildDefines.joinToString(" "))
+    inputs.property("defines", playerDefines.joinToString(" "))
     outputs.files(rawPlayerBundleFile, rawPlayerBundleMeta)
     workingDir = projectDir
     unixPath()
@@ -199,7 +201,7 @@ val bundleRawPlayerJs by tasks.registering(Exec::class) {
         "src/player-index.ts", "--bundle",
         "--format=iife", "--target=esnext", "--charset=utf8",
         "--loader:.raw.js=text",
-        *esbuildDefines,
+        *playerDefines,
         "--metafile=${rawPlayerBundleMeta.get().asFile.absolutePath}",
         "--outfile=${rawPlayerBundleFile.get().asFile.absolutePath}",
     )
@@ -230,7 +232,7 @@ val testBundleMapFile = layout.buildDirectory.file("dist/engine-test.js.map")
 val bundleRawTestJs by tasks.registering(Exec::class) {
     dependsOn(typecheckJs)
     inputs.dir(srcDir)
-    inputs.property("defines", esbuildDefines.joinToString(" ")) // Exec doesn't track commandLine
+    inputs.property("defines", engineDefines.joinToString(" ")) // Exec doesn't track commandLine
     outputs.files(rawTestBundleFile, rawTestBundleMeta)
     workingDir = projectDir
     unixPath()
@@ -239,7 +241,7 @@ val bundleRawTestJs by tasks.registering(Exec::class) {
         "src/test/index.ts", "--bundle",
         "--format=iife", "--target=esnext", "--charset=utf8",
         "--loader:.raw.js=text",
-        *esbuildDefines,
+        *engineDefines,
         "--metafile=${rawTestBundleMeta.get().asFile.absolutePath}",
         "--outfile=${rawTestBundleFile.get().asFile.absolutePath}",
     )

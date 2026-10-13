@@ -77,8 +77,8 @@ tasks.matching { it.name == "clean" }.configureEach {
 }
 
 // ONE command refreshes everything derived from the engine-js bundle after a source edit or a
-// backendVersion bump: build the bundle, restage the Android asset + desktop jar resource, and
-// regenerate the embedded const + ENGINE_JS_EMBED_VERSION. (Consumers also pull all of this on
+// engineJsVersion / playerJsVersion bump: build the bundles, restage the Android asset + desktop jar
+// resource, and regenerate the embedded consts + their versions. (Consumers also pull all of this on
 // their own builds — this exists so `./gradlew syncEngineJs` refreshes every copy in one go.)
 tasks.register("syncEngineJs") {
     dependsOn(

@@ -30,8 +30,9 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
   and `TextEncoder`/`TextDecoder`. WHATWG `fetch` is the bundle wrapping `HttpRequest`:
   [`../quickjs/JS_FEATURES.md`](../quickjs/JS_FEATURES.md).
 
-- **`BACKEND_VERSION`** — the manually-bumped bundle revision, in build.gradle.kts; an esbuild `--define`
-  compile-time const — `declare const`, inlined, never a runtime global.
+- **`BACKEND_VERSION`** — the bundle's manually-bumped revision: `Versions.engineJsVersion` for engine.js,
+  `Versions.playerJsVersion` for player.js (buildSrc `Dependencies.kt`, independent — bump the one you push);
+  an esbuild `--define` compile-time const — `declare const`, inlined, never a runtime global.
 
 - **PRODUCTION** — esbuild `--define` from `-Pproduction` (same bake as Kotlin
   `BuildFlags.PRODUCTION`, default false). Chatty logs use `debug(function () { return concat; })`

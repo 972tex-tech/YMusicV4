@@ -168,7 +168,7 @@ val generateBuildConfig by tasks.registering {
     val outDir = layout.buildDirectory.dir("generated/buildconfig/kotlin")
     inputs.property("dsn", dsn)
     inputs.property("release", release)
-    inputs.property("engineJsVersion", Versions.engineJsBackendVersion)
+    inputs.property("engineJsVersion", Versions.engineJsVersion)
     inputs.property("versionCode", desktopVersionCode)
     inputs.property("updatePublicKey", updatePublicKeyValue)
     inputs.property("remoteConfigBaseUrl", remoteConfigBaseUrl)
@@ -185,8 +185,8 @@ val generateBuildConfig by tasks.registering {
             internal const val SENTRY_DSN = "$dsn"
             internal const val SENTRY_RELEASE = "$release"
 
-            // The jar's engine_ymusic.js resource revision (Versions.engineJsBackendVersion).
-            internal const val ENGINE_JS_VERSION: Long = ${Versions.engineJsBackendVersion}L
+            // The jar's engine_ymusic.js resource revision (Versions.engineJsVersion).
+            internal const val ENGINE_JS_VERSION: Long = ${Versions.engineJsVersion}L
 
             // What the update check compares against the config's appUpdate.versionCode.
             internal const val APP_VERSION_CODE: Int = $desktopVersionCode

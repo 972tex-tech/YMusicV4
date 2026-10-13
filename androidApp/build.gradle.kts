@@ -63,8 +63,8 @@ android {
         manifestPlaceholders["usesCleartextTraffic"] = configUrl.startsWith("http://").toString()
         // The key remote engine/player bundles must be signed with. Empty = shipped bundles only.
         buildConfigField("String", "BUNDLE_PUBLIC_KEY", "\"${bundleSigningPublicKey()}\"")
-        // The shipped engine_ymusic.js asset's revision (Versions.engineJsBackendVersion).
-        buildConfigField("long", "ENGINE_JS_VERSION", "${Versions.engineJsBackendVersion}L")
+        // The shipped engine_ymusic.js asset's revision (Versions.engineJsVersion).
+        buildConfigField("long", "ENGINE_JS_VERSION", "${Versions.engineJsVersion}L")
     }
 
     buildFeatures {

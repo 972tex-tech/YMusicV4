@@ -147,16 +147,21 @@ jobs:
           if-no-files-found: error
 
       # The scrape engine and MSE player bundles this release ships, for publishing as remote updates,
-      # named by the revision the build stamped into both (Versions.engineJsBackendVersion).
+      # each named by the revision the build stamped into it (Versions.engineJsVersion / playerJsVersion).
       - name: Name the JS bundles by version
         working-directory: YMusicV4
         run: |
           set -euo pipefail
-          version="$(sed -n 's/.*const val engineJsBackendVersion = \([0-9][0-9]*\)L.*/\1/p' buildSrc/src/main/kotlin/Dependencies.kt)"
-          [ -n "$version" ] || { echo "engineJsBackendVersion not found in buildSrc Dependencies.kt" >&2; exit 1; }
+          version() {
+            v="$(sed -n "s/.*const val $1 = \([0-9][0-9]*\)L.*/\1/p" buildSrc/src/main/kotlin/Dependencies.kt)"
+            [ -n "$v" ] || { echo "$1 not found in buildSrc Dependencies.kt" >&2; exit 1; }
+            echo "$v"
+          }
+          engine="$(version engineJsVersion)"
+          player="$(version playerJsVersion)"
           mkdir -p "$RUNNER_TEMP/js-bundles"
-          cp engine-js/build/dist/engine.js "$RUNNER_TEMP/js-bundles/engine.$version.js"
-          cp engine-js/build/dist/player.js "$RUNNER_TEMP/js-bundles/player.$version.js"
+          cp engine-js/build/dist/engine.js "$RUNNER_TEMP/js-bundles/engine.$engine.js"
+          cp engine-js/build/dist/player.js "$RUNNER_TEMP/js-bundles/player.$player.js"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

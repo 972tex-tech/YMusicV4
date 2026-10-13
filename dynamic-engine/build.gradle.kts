@@ -106,7 +106,7 @@ kotlin {
 
 // The :engine-js bundles, embedded as consts: ENGINE_JS (scrape), PLAYER_JS (MSE player),
 // ENGINE_TEST_JS (both + fixtures) for tests.
-fun embedBundle(configName: String, projectConfig: String, constName: String, ktFile: String, sourceSet: String) {
+fun embedBundle(configName: String, projectConfig: String, constName: String, ktFile: String, sourceSet: String, version: Long) {
     val config = configurations.create(configName) {
         isCanBeConsumed = false
         isCanBeResolved = true
@@ -116,7 +116,7 @@ fun embedBundle(configName: String, projectConfig: String, constName: String, kt
     val taskName = "generate" + configName.replaceFirstChar { it.uppercase() } + "Kt"
     val task = tasks.register(taskName) {
         inputs.files(config)
-        inputs.property("backendVersion", Versions.engineJsBackendVersion)
+        inputs.property("backendVersion", version)
         outputs.dir(ktDir)
         doLast {
             val bundle = config.singleFile.readText()
@@ -148,8 +148,8 @@ fun embedBundle(configName: String, projectConfig: String, constName: String, kt
                 |
                 |internal val $constName: String = ${chunks.indices.joinToString(" + ") { "${constName}_$it" }}
                 |
-                |// The bundle's self-declared revision (Versions.engineJsBackendVersion, buildSrc).
-                |internal const val ${constName}_VERSION: Long = ${Versions.engineJsBackendVersion}L
+                |// The bundle's self-declared revision (Versions in buildSrc).
+                |internal const val ${constName}_VERSION: Long = ${version}L
                 |""".trimMargin(),
             )
         }
@@ -157,6 +157,6 @@ fun embedBundle(configName: String, projectConfig: String, constName: String, kt
     kotlin.sourceSets.getByName(sourceSet).kotlin.srcDir(files(ktDir).builtBy(task))
 }
 
-embedBundle("engineJsBundle", "engineJs", "ENGINE_JS", "EngineJsPreamble.kt", "commonMain")
-embedBundle("enginePlayerJsBundle", "enginePlayerJs", "PLAYER_JS", "PlayerJsPreamble.kt", "commonMain")
-embedBundle("engineTestJsBundle", "engineTestJs", "ENGINE_TEST_JS", "EngineTestJsPreamble.kt", "commonTest")
+embedBundle("engineJsBundle", "engineJs", "ENGINE_JS", "EngineJsPreamble.kt", "commonMain", Versions.engineJsVersion)
+embedBundle("enginePlayerJsBundle", "enginePlayerJs", "PLAYER_JS", "PlayerJsPreamble.kt", "commonMain", Versions.playerJsVersion)
+embedBundle("engineTestJsBundle", "engineTestJs", "ENGINE_TEST_JS", "EngineTestJsPreamble.kt", "commonTest", Versions.engineJsVersion)
