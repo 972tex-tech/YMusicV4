@@ -124,6 +124,7 @@ class SabrSession(
 
         var retryCount = 0
         var lastError: String? = null
+        var cacheUsable = mediaCache != null
 
         while (true) {
             if (retryCount > maxConsecutiveEmptyRounds) {
@@ -137,17 +138,26 @@ class SabrSession(
             // synthesized UMP instead of hitting the network. A re-download of an already-cached track is
             // served entirely from cache (zero network); a partial/absent cache falls through below.
             // A throwing cache-serve degrades this round to full network — worth a trace, never fatal.
-            val served = mediaCache?.let {
+            val served = mediaCache?.takeIf { cacheUsable }?.let {
                 runCatching { it.serveSabr(request) }
                     .onFailure { e -> logger?.log(Logger.Level.WARN, "cache serve failed, using network", e) }
                     .getOrNull()
             }
             if (served is SabrServe.Hit) {
                 logger?.debug { "cache-serve rn=$rn playerTime=${request.clientAbrState.playerTimeMs} segments=${served.segmentCount} bytes=${served.cachedBytes}" }
-                val outcome = BufferedAsyncSource(served.ump.asAsyncSource()).use {
-                    readResponse(it, audio, video, mediaCache, cacheReadOnly, segmentIndex, onProgress = { emitProgress() })
+                // A cache read failing mid-round leaves at most a partial segment on disk, outside the cursor:
+                // the network resends it and writeMediaData skips the prefix already written.
+                val outcome = try {
+                    BufferedAsyncSource(served.ump.asAsyncSource()).use {
+                        readResponse(it, audio, video, mediaCache, cacheReadOnly, segmentIndex, onProgress = { emitProgress() })
+                    }
+                } catch (e: IOException) {
+                    logger?.log(Logger.Level.WARN, "cache-served round failed, continuing from network", e)
+                    cacheUsable = false
+                    null
                 }
                 if (isComplete(audio, video)) { emitProgress(force = true); return }
+                if (outcome == null) continue
                 if (outcome.completedSegments == 0) { retryCount++; lastError = "cache served zero segments" } else retryCount = 0
                 continue
             }
@@ -257,6 +267,8 @@ class SabrSession(
     private class PartState(val header: MediaHeader, val file: DownloadFile) {
         var sink: BufferedSink? = null
         var totalRead: Long = 0
+        /** Its data arrived past the file end; dropped so the next round re-requests from the cursor. */
+        var discarded = false
         /** Set when this segment is also being mirrored into the player cache (see readResponse). */
         var cacheFill: SegmentFill? = null
     }
@@ -346,7 +358,7 @@ class SabrSession(
                         state.sink = null
                         state.cacheFill?.commit() // seal the mirrored span (its index row was saved on the header)
                         state.cacheFill = null
-                        if (advanceIfContiguous(state.header, audio, video)) completed++
+                        if (!state.discarded && advanceIfContiguous(state.header, audio, video)) completed++
                     }
 
                     UmpPart.NEXT_REQUEST_POLICY -> {
@@ -405,6 +417,10 @@ class SabrSession(
             body.copyFully(sink, dataSize)
             return
         }
+        if (state.discarded) {
+            body.skipFully(dataSize)
+            return
+        }
         val fileEnd = state.file.length()
         val partStart = state.header.startRange + state.totalRead
         val partEnd = partStart + dataSize
@@ -418,8 +434,17 @@ class SabrSession(
             state.sink = sink
             body.copyFully(sink, dataSize - skips)
         } else {
-            if (fileEnd < partStart) throw IOException("gap in download stream at ${state.header.itag}")
-            body.skipFully(dataSize) // already have these bytes
+            if (fileEnd < partStart) {
+                logger?.log(
+                    Logger.Level.WARN,
+                    "itag ${state.header.itag} seg ${state.header.segmentIndex} starts at $partStart past file end " +
+                        "$fileEnd; dropped, re-requested next round",
+                )
+                state.discarded = true
+                state.cacheFill?.abort()
+                state.cacheFill = null
+            }
+            body.skipFully(dataSize) // already have these bytes, or a gap we can't write yet
         }
     }
 
