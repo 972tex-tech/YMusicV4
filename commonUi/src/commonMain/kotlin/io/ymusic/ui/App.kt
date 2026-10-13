@@ -1020,7 +1020,7 @@ private fun AppRoot(
                                             )
                                         }
                                         is AppLayer.Verify -> key(top) {
-                                            YtVerifyScreen(graph, top.state, onBack = popLayer)
+                                            YtVerifyScreen(graph, top.state, onDone = popLayer)
                                         }
                                         // Saveable state (tab picks, folder crumbs, scroll positions) is
                                         // kept per section while its content is out of composition —

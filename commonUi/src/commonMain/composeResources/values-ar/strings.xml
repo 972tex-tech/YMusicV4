@@ -464,6 +464,7 @@
     <string name="error_network">تعذّر الوصول إلى YouTube. تحقق من اتصالك وحاول مرة أخرى.</string>
     <string name="error_captcha">يريد YouTube التأكد من أنك لست روبوتًا</string>
     <string name="captcha_verify">تحقّق</string>
+    <string name="captcha_verify_hint">حُلّ أي اختبار captcha تراه على الشاشة، ثم انقر على تم</string>
     <string name="settings_player_cache">ذاكرة التخزين المؤقت للمشغّل</string>
     <string name="settings_player_cache_summary">الحد الأقصى %1$s · المستخدم %2$s · الموفَّر %3$s</string>
     <string name="settings_player_cache_off">بدون تخزين مؤقت</string>

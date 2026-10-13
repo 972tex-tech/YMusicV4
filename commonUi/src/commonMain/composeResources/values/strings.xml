@@ -480,6 +480,7 @@
     <string name="error_network">Can’t reach YouTube. Check your connection and try again.</string>
     <string name="error_captcha">YouTube wants to confirm you’re not a robot</string>
     <string name="captcha_verify">Verify</string>
+    <string name="captcha_verify_hint">Solve any captcha you see on the screen, then tap Done</string>
     <string name="settings_player_cache">Player cache</string>
     <string name="settings_player_cache_summary">Max %1$s · Used %2$s · Saved %3$s</string>
     <string name="settings_player_cache_off">No cache</string>

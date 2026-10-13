@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,8 +56,10 @@ import io.ymusic.dynamicengine.yt.ytSwitchAccountUrl
 import io.ymusic.dynamicengine.yt.ytVerifyTarget
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.captcha_verify
+import io.ymusic.ui.resources.captcha_verify_hint
 import io.ymusic.ui.resources.cd_back
 import io.ymusic.ui.resources.cd_close
+import io.ymusic.ui.resources.dialog_ok_done
 import io.ymusic.ui.resources.signin_button
 import io.ymusic.ui.resources.signin_enables
 import io.ymusic.ui.resources.signin_feature_history
@@ -306,7 +309,7 @@ internal fun YtLoginScreen(
         LoginChrome(state, onBack = onBack)
         var hintDismissed by remember { mutableStateOf(false) }
         if (switchAccount && !hintDismissed) {
-            SwitchAccountHint { hintDismissed = true }
+            BrowserHint(stringResource(Res.string.switch_account_hint), onDismiss = { hintDismissed = true })
         }
         val url = entryUrl
         when {
@@ -322,11 +325,11 @@ internal fun YtLoginScreen(
 /**
  * The captcha browser: the login chrome over the shell's WebView on the engine's verify target,
  * presenting the scrape's own User-Agent so the cleared challenge belongs to the identity the engine
- * scrapes with (cookies land in the same jar). No gate to poll — the user closes it when done, and
- * App refreshes the session and retries.
+ * scrapes with (cookies land in the same jar). Nothing tells us the challenge was solved, so Done,
+ * the back arrow and closing all mean the same: [onDone] — App refreshes the session and retries.
  */
 @Composable
-internal fun YtVerifyScreen(graph: AppGraph, state: LoginWebViewState, onBack: () -> Unit) {
+internal fun YtVerifyScreen(graph: AppGraph, state: LoginWebViewState, onDone: () -> Unit) {
     var target by remember { mutableStateOf<YtVerifyTarget?>(null) }
     var failedCode by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(graph) {
@@ -338,8 +341,22 @@ internal fun YtVerifyScreen(graph: AppGraph, state: LoginWebViewState, onBack: (
             }
     }
     Column(Modifier.fillMaxSize().background(DesignColors.Surface)) {
-        LoginChrome(state, onBack = onBack, fallbackTitle = stringResource(Res.string.captcha_verify))
+        // A double tap must not pop the layer underneath too.
+        var finished by remember { mutableStateOf(false) }
+        val finish = {
+            if (!finished) {
+                finished = true
+                onDone()
+            }
+        }
+        LoginChrome(
+            state,
+            onBack = finish,
+            fallbackTitle = stringResource(Res.string.captcha_verify),
+            onDone = finish,
+        )
         val browser = graph.loginBrowser
+        if (browser != null) BrowserHint(stringResource(Res.string.captcha_verify_hint))
         val verify = target
         val failed = failedCode
         when {
@@ -353,9 +370,9 @@ internal fun YtVerifyScreen(graph: AppGraph, state: LoginWebViewState, onBack: (
     }
 }
 
-/** The switcher's dismissable instruction strip — closing the screen is what commits the switch. */
+/** An instruction strip under the browser chrome; [onDismiss] null = not dismissable. */
 @Composable
-private fun SwitchAccountHint(onDismiss: () -> Unit) {
+private fun BrowserHint(text: String, onDismiss: (() -> Unit)? = null) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -364,16 +381,18 @@ private fun SwitchAccountHint(onDismiss: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            stringResource(Res.string.switch_account_hint),
+            text,
             style = TextStyle(fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onPrimaryContainer),
             modifier = Modifier.weight(1f).padding(vertical = DesignSpacing.Space8),
         )
-        ActionIcon(
-            Icons.Default.Close,
-            stringResource(Res.string.cd_close),
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-            onClick = onDismiss,
-        )
+        if (onDismiss != null) {
+            ActionIcon(
+                Icons.Default.Close,
+                stringResource(Res.string.cd_close),
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                onClick = onDismiss,
+            )
+        }
     }
 }
 
@@ -382,6 +401,7 @@ private fun LoginChrome(
     state: LoginWebViewState,
     onBack: () -> Unit,
     fallbackTitle: String = stringResource(Res.string.signin_screen_title),
+    onDone: (() -> Unit)? = null,
 ) = ElevatedBarColumn {
     AppBarRow {
         ActionIcon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(Res.string.cd_back), onClick = onBack)
@@ -403,6 +423,14 @@ private fun LoginChrome(
         }
         state.openDevTools?.let { open ->
             ActionIcon(Icons.Default.Code, "DevTools", onClick = open)
+        }
+        if (onDone != null) {
+            TextButton(onClick = onDone) {
+                Text(
+                    stringResource(Res.string.dialog_ok_done),
+                    style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Accent),
+                )
+            }
         }
     }
     // The load bar shows only mid-navigation; a finished (1f) or idle (0f) page hides it.
