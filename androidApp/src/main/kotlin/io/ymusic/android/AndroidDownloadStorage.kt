@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import io.ymusic.download.DefaultDownloadStorage
 import io.ymusic.download.DownloadFileNames
+import io.ymusic.download.DownloadFolderAccessException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okio.FileSystem
@@ -34,13 +35,27 @@ class AndroidDownloadStorage(
             else DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
         }
         // SAF would rename a clash itself ("name (1).ext"); pick the app-wide "name_1.ext" instead.
-        val existing = childNames(parent)
-        val name = DownloadFileNames.freeName(fileName) { it in existing }
-        val child = DocumentsContract.createDocument(resolver, parent, mimeFor(name), name)
-            ?: error("SAF createDocument failed in $destinationFolder")
-        resolver.openOutputStream(child)?.use { out ->
-            File(scratchPath).inputStream().use { it.copyTo(out) }
-        } ?: error("SAF openOutputStream failed for $child")
+        val child = try {
+            val existing = childNames(parent)
+            val name = DownloadFileNames.freeName(fileName) { it in existing }
+            DocumentsContract.createDocument(resolver, parent, mimeFor(name), name)
+        } catch (e: SecurityException) {
+            // The tree's persisted grant is gone or read-only: only re-picking the folder restores it.
+            throw DownloadFolderAccessException(destinationFolder.toString(), e)
+        } ?: error("SAF createDocument failed in $destinationFolder")
+        try {
+            resolver.openOutputStream(child)?.use { out ->
+                File(scratchPath).inputStream().use { it.copyTo(out) }
+            } ?: error("SAF openOutputStream failed for $child")
+        } catch (e: Exception) {
+            // Drop the partial document so a retry doesn't leave a truncated "name.ext" beside "name_1.ext".
+            try {
+                DocumentsContract.deleteDocument(resolver, child)
+            } catch (cleanupError: Exception) {
+                e.addSuppressed(cleanupError)
+            }
+            throw e
+        }
         child.toString()
     }
 
