@@ -13,14 +13,18 @@ import kotlinx.coroutines.withContext
  * Obtains SABR inputs for a download from a [YtEngine] (`MsePlayer`).
  * `requestPlayerResponse` returns cached `/player` + a decoded SABR URL the player already
  * fetched, or preloads the video so those requests fire. `requestPoToken` mints a content PO.
+ *
+ * Hold ONE instance per app: [mutex] serializes requests against the single player, so a resolver
+ * built per call would serialize nothing. [engine] prepares and returns the YouTube engine.
  */
 class YtEngineSabrSpecResolver(
-    private val player: YtEngine,
+    private val engine: suspend () -> YtEngine,
 ) : SabrSpecResolver {
 
     private val mutex = Mutex()
 
     override suspend fun resolve(videoId: String): ResolvedVideo = mutex.withLock {
+        val player = engine()
         withContext(Dispatchers.Main) { player.init() }
         val playerResponse = player.requestPlayerResponse(videoId)
         val poToken = player.requestPoToken(videoId)
@@ -29,6 +33,7 @@ class YtEngineSabrSpecResolver(
 
     /** The player response alone — what the download options dialog reads; no PO token minted. */
     suspend fun playerResponse(videoId: String): String = mutex.withLock {
+        val player = engine()
         withContext(Dispatchers.Main) { player.init() }
         player.requestPlayerResponse(videoId)
     }

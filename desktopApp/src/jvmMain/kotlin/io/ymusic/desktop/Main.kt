@@ -757,10 +757,9 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
             cookieJar = cookies
             defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
         }
-        val resolver = io.ymusic.download.SabrSpecResolver { videoId ->
+        val resolver = YtEngineSabrSpecResolver {
             withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
-            val yt = ytEngine ?: error("youtube engine missing")
-            YtEngineSabrSpecResolver(yt).resolve(videoId)
+            ytEngine ?: error("youtube engine missing")
         }
         // Own segment index (byte range per segment) → SABR resume across pause/re-attest. Separate from
         // the player cache DB: downloads store bytes in their own file, not the player blob cache.
@@ -787,11 +786,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
             downloadFolder = { settings.downloadLocationFolder()!! },
             onCompleted = { task, result -> registerCompletedDownload(mediaStore, settings, downloadScanner, task, result) },
             logger = rootLogger,
-            playerResponse = { videoId ->
-                withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
-                val yt = ytEngine ?: error("youtube engine missing")
-                YtEngineSabrSpecResolver(yt).playerResponse(videoId)
-            },
+            playerResponse = resolver::playerResponse,
         )
     }
 

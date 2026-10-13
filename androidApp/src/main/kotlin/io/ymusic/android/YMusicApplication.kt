@@ -527,15 +527,15 @@ class YMusicApplication : Application() {
                 cookieJar = shared.cookies
                 defaultRedirectOptions = RedirectOptions(followRedirects = false, followSslRedirects = false)
             }
+            val ytResolver = YtEngineSabrSpecResolver {
+                withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
+                ytEngine ?: error("youtube engine missing")
+            }
             io.ymusic.download.DownloadService(
                 store = io.ymusic.download.DownloadStore(io.ymusic.download.downloadDatabaseAndroidDriver(applicationContext), rootLogger),
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + uncaught("downloads")),
                 now = { System.currentTimeMillis() },
-                resolver = io.ymusic.download.SabrSpecResolver { videoId ->
-                    withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
-                    val yt = ytEngine ?: error("youtube engine missing")
-                    YtEngineSabrSpecResolver(yt).resolve(videoId)
-                },
+                resolver = ytResolver,
                 client = sabrClient,
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),
                 ffmpeg = ffmpegBin?.let { bin -> io.ymusic.download.Ffmpeg(bin) },
@@ -558,11 +558,7 @@ class YMusicApplication : Application() {
                     registerCompletedDownload(shared.mediaStore, shared.settings, downloadScanner, task, result)
                 },
                 logger = rootLogger,
-                playerResponse = { videoId ->
-                    withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
-                    val yt = ytEngine ?: error("youtube engine missing")
-                    YtEngineSabrSpecResolver(yt).playerResponse(videoId)
-                },
+                playerResponse = ytResolver::playerResponse,
             )
         }
 
