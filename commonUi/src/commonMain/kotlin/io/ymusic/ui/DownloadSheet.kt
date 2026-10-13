@@ -108,8 +108,12 @@ import io.ymusic.ui.resources.download_save_quick
 import io.ymusic.ui.resources.download_save_to
 import io.ymusic.ui.resources.download_video
 import io.ymusic.ui.resources.download_webm_detail
+import io.ymusic.ui.resources.playback_sign_in_required
+import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.retry
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.Playability
+import projectcommon.error.playabilityOf
 
 /** The filled call-to-action: the accent, deepened so white text on it stays readable. */
 internal val downloadPrimary: Color @Composable get() = lerp(DesignColors.Accent, Color.Black, 0.22f)
@@ -244,7 +248,12 @@ internal fun ProbeFailed(code: String, onRetry: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
     ) {
-        Text(stringResource(Res.string.download_failed, code), style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary))
+        val message = when (playabilityOf(code)) {
+            Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
+            Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
+            null -> stringResource(Res.string.download_failed, code)
+        }
+        Text(message, style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary))
         TextButton(onClick = onRetry) { Text(stringResource(Res.string.retry), color = DesignColors.Accent) }
     }
 }

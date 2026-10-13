@@ -19,6 +19,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import projectcommon.error.TechnicalException
 import projectcommon.error.codedError
+import projectcommon.error.errorCode
+import projectcommon.error.playabilityOf
 import kotlin.random.Random
 
 /**
@@ -285,8 +287,12 @@ class DownloadService(
         } catch (e: Throwable) {
             // Log the full technical failure here; the user sees only a code. An uncoded exception
             // (network, SABR, …) gets the E70001 fallback so every failure is reportable.
-            log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))
-                ?.captureError(e, "download failed")
+            val taskLog = log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))
+            if (playabilityOf(e.errorCode()) != null) {
+                taskLog?.log(Logger.Level.WARN, "download refused by playability", e)
+            } else {
+                taskLog?.captureError(e, "download failed")
+            }
             setState(task.id, DownloadState.FAILED, error = userFacingError(e))
         }
     }
