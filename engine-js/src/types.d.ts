@@ -152,6 +152,8 @@ interface JsEngineErrorConstructor {
   new (message: string, code: string, opts?: JsEngineErrorOptions): JsEngineError;
   parse(message: string, opts?: JsEngineErrorOptions): JsEngineError;
   network(message: string, opts?: JsEngineErrorOptions): JsEngineError;
+  /** YouTube served a bot challenge the user must clear in a browser. */
+  captcha(message: string, opts?: JsEngineErrorOptions): JsEngineError;
   /** A non-2xx response: 408/429/5xx → "network", else `siteCode`. */
   httpStatus(message: string, status: number, siteCode: string): JsEngineError;
 }

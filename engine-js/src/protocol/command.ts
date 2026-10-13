@@ -7,8 +7,8 @@
 // {code, name, message, stack, userMessage} and RESETs the pipe with that object as JSON — the host
 // rebuilds it as a typed EngineError, so a failure keeps its meaning across tiers.
 //
-// A code is either a well-known category the app localizes ("network", "parse", "oom") or a site
-// code E##### — a unique hardcoded literal at one throw site, answered by a global search
+// A code is either a well-known category the app localizes ("network", "parse", "oom", "captcha")
+// or a site code E##### — a unique hardcoded literal at one throw site, answered by a global search
 // (E2xxxx = :dynamic-engine, including this remote JS). Codes pass through tiers unchanged: wrap,
 // never re-mint. JsEngineError is the deliberate-throw carrier (message first — the debug detail you
 // read most — then the code):
@@ -39,6 +39,11 @@ export class JsEngineErrorImpl extends Error {
   }
   static network(message: string, opts?: JsEngineErrorOptions): JsEngineErrorImpl {
     return new JsEngineErrorImpl(message, "network", opts);
+  }
+  // YouTube answered with a bot challenge (google.com/sorry, reCAPTCHA) — the user clears it in a
+  // browser sharing our cookie jar; carry the challenge URL in the message for logs.
+  static captcha(message: string, opts?: JsEngineErrorOptions): JsEngineErrorImpl {
+    return new JsEngineErrorImpl(message, "captcha", opts);
   }
   // A non-2xx answer: 408/429/5xx are server-side transients ("network"); any other status means
   // our request is wrong and carries the caller's site code.
