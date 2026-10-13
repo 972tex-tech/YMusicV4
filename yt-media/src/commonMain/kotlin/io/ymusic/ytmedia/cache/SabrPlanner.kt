@@ -261,7 +261,12 @@ private fun MediaCache.synthesizeUmp(segments: List<MediaHeader>): Source? {
     // Pin every segment up front so eviction in the plan→serve gap is caught before we commit to a hit.
     val pieces = ArrayList<Source>(segments.size * 3)
     for ((i, segment) in segments.withIndex()) {
-        val pin = blobs.read(segment.cacheKey, segment.startRange, segment.contentLength)
+        val pin = try {
+            blobs.read(segment.cacheKey, segment.startRange, segment.contentLength)
+        } catch (e: Throwable) {
+            pieces.forEach { runCatching { it.close() } }
+            throw e
+        }
         if (pin == null) {
             pieces.forEach { runCatching { it.close() } } // release the spans pinned so far, give up the hit
             return null

@@ -4,6 +4,7 @@ import io.ymusic.ytmedia.cache.BlobWriter
 import io.ymusic.ytmedia.cache.CacheStats
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SabrServe
+import io.ymusic.ytmedia.cache.isMediaCacheStorageFault
 import io.ymusic.ytmedia.cache.serveProgressive
 import io.ymusic.ytmedia.cache.serveSabr
 import io.ymusic.ytmedia.proto.ProtoReader
@@ -21,6 +22,7 @@ import kmphttp.RedirectOptions
 import kmphttp.RequestBodyX.asOneshotRequestBody
 import kmphttp.RequestBuilder
 import kmphttp.asyncSource
+import kotlinx.atomicfu.atomic
 import okio.Buffer
 import okio.BufferedSource
 import okio.ForwardingSource
@@ -71,6 +73,16 @@ class LocalMediaProxy(
 ) {
     private val log = logger?.fork("mediaproxy")
 
+    /** Set once the on-disk cache proved broken (a span read or write hit a storage IO error; a deleted span file is only a miss): for the rest of
+     *  this process every request goes straight to the network, uncached. Deliberately not persisted. */
+    private val bypassCache = atomic(false)
+
+    private fun onStorageFault(error: Throwable) {
+        if (bypassCache.compareAndSet(expect = false, update = true)) {
+            log?.log(Logger.Level.WARN, "player cache storage broken — bypassing the cache for this session", error)
+        }
+    }
+
     /** Emit a DEBUG line only in [verbose] mode; the message is built lazily so it's free when off. */
     private inline fun logVerbose(message: () -> String) {
         if (verbose) log?.debug(message)
@@ -106,15 +118,18 @@ class LocalMediaProxy(
         body: Buffer?,
         extraHeaders: List<Pair<String, String>> = emptyList(),
     ): ProxyResponse {
-        if (cache.blobs.maxSize <= 0) return forward(url, method, body, extraHeaders, fill = false)
+        if (bypassCache.value || cache.blobs.maxSize <= 0) return forward(url, method, body, extraHeaders, fill = false)
         val sabrReq = body?.let { parseSabrRequest(url, method, it.peek(), it.size) }
             ?.withAdaptiveFormatsHeader(extraHeaders)
         // A cache-serve fault must never fail the request — fall through to the network — but it's a real
         // bug (bad parse, cache read), so log it as a breadcrumb rather than swallowing it silently.
         val hit = runCatching { serveFromCache(url, method, sabrReq) }
-            .onFailure { log?.log(Logger.Level.WARN, "cache serve failed, forwarding: $url", it) }
+            .onFailure {
+                log?.log(Logger.Level.WARN, "cache serve failed, forwarding: $url", it)
+                if (it.isMediaCacheStorageFault()) onStorageFault(it)
+            }
             .getOrNull()
-        return hit ?: forward(url, method, body, extraHeaders)
+        return hit ?: forward(url, method, body, extraHeaders, fill = !bypassCache.value)
     }
 
     /** A cache hit → a synthesized response; null → miss (forward to the network). Logs the decision and
@@ -133,7 +148,7 @@ class LocalMediaProxy(
                 is SabrServe.Hit -> {
                     logVerbose { "HIT sabr: served=[${serve.servedRanges}] (${serve.segmentCount} segments, ${serve.cachedBytes} bytes, built in ${started.elapsedNow()})" }
                     cache.stats?.addHitBytes(serve.cachedBytes)
-                    return umpResponse(serve.ump, url)
+                    return umpResponse(StorageFaultSource(serve.ump, ::onStorageFault), url)
                 }
                 is SabrServe.Backoff -> {
                     logVerbose { "BACKOFF sabr: requester buffered ahead — told to back off (${started.elapsedNow()})" }
@@ -159,7 +174,7 @@ class LocalMediaProxy(
         return ProxyResponse(
             status = 200, reason = "OK",
             headers = listOf("Content-Type" to "application/octet-stream", "Content-Length" to "$len"),
-            body = (cache.stats?.let { HitCountingSource(src, it) } ?: src).asAsyncSource(),
+            body = StorageFaultSource(cache.stats?.let { HitCountingSource(src, it) } ?: src, ::onStorageFault).asAsyncSource(),
             contentLength = len,
             url = url,
         )
@@ -210,7 +225,7 @@ class LocalMediaProxy(
             return ProxyResponse(response.code, "OK", headers, networkBody, length, url = effectiveUrl)
         }
         if (isSabrCache(url)) {
-            networkBody = SabrCacheTee(networkBody, cache, log, verbose)
+            networkBody = SabrCacheTee(networkBody, cache, log, verbose, ::onStorageFault)
         } else {
             networkBody = fillProgressive(effectiveUrl, networkBody) ?: networkBody
         }
@@ -232,7 +247,15 @@ class LocalMediaProxy(
         val skip = cache.blobs.cachedLength(key, prog.start, length).coerceAtLeast(0) // cached leading prefix
         if (skip >= length) return network // whole range cached (a serve race lost it) — nothing to write
         val writer = cache.blobs.writer(key, prog.start + skip, length - skip)
-        return CachingSource(network, writer, skip) { teed ->
+        return CachingSource(
+            network,
+            writer,
+            skip,
+            onWriteFailed = { error ->
+                log?.log(Logger.Level.WARN, "progressive-fill disabled: ${error.message}", error)
+                if (error.isMediaCacheStorageFault()) onStorageFault(error)
+            },
+        ) { teed ->
             logVerbose { "progressive-fill itag=${prog.itag} $teed bytes @ ${prog.start + skip} (skipped $skip cached)" }
         }
     }
@@ -300,7 +323,8 @@ class LocalMediaProxy(
  * Tees a network body into a [BlobWriter] as it streams through: each read mirrors the freshly-read bytes
  * to the cache, EOF commits, an early [close] aborts (dropping only the uncommitted trailing block —
  * committed blocks stay, per MediaBlobCache's per-block commit). [BlobWriter.commit]/[abort] are
- * non-suspend, so [close] releases the region cleanly without a coroutine.
+ * non-suspend, so [close] releases the region cleanly without a coroutine. A failing cache write never
+ * fails the body: the writer is aborted, [onWriteFailed] is told, and the bytes keep passing through.
  *
  * [skip] is a count of leading network bytes that are already cached: they pass through to the reader
  * untouched but are **not** teed (the writer starts at the first uncached byte). Once consumed, every
@@ -310,6 +334,7 @@ internal class CachingSource(
     private val network: AsyncSource,
     private val writer: BlobWriter,
     private var skip: Long = 0L,
+    private val onWriteFailed: (Throwable) -> Unit = {},
     private val onCommit: (teed: Long) -> Unit = {},
 ) : AsyncSource {
     private var finished = false
@@ -329,11 +354,15 @@ internal class CachingSource(
             teeLen -= drop
             skip -= drop
         }
-        if (teeLen > 0) {
+        if (teeLen > 0 && !finished) {
             val copy = Buffer()
             sink.copyTo(copy, teeOffset, teeLen)
-            writer.sink.write(copy, teeLen)
-            teed += teeLen
+            try {
+                writer.sink.write(copy, teeLen)
+                teed += teeLen
+            } catch (e: Exception) {
+                writeFailed(e)
+            }
         }
         return n
     }
@@ -346,12 +375,33 @@ internal class CachingSource(
     private fun finish(commit: Boolean) {
         if (finished) return
         finished = true
-        if (commit) {
-            writer.commit()
-            onCommit(teed)
-        } else {
-            writer.abort()
+        try {
+            if (commit) {
+                writer.commit()
+                onCommit(teed)
+            } else {
+                writer.abort()
+            }
+        } catch (e: Exception) {
+            onWriteFailed(e)
         }
+    }
+
+    private fun writeFailed(error: Exception) {
+        finished = true
+        runCatching { writer.abort() }.onFailure { error.addSuppressed(it) }
+        onWriteFailed(error)
+    }
+}
+
+/** Reports a cache-storage failure surfacing mid-body, then rethrows: bytes already went out, so this
+ *  response fails and the player's retry is served uncached. */
+private class StorageFaultSource(delegate: Source, private val onFault: (Throwable) -> Unit) : ForwardingSource(delegate) {
+    override fun read(sink: Buffer, byteCount: Long): Long = try {
+        super.read(sink, byteCount)
+    } catch (e: Exception) {
+        if (e.isMediaCacheStorageFault()) onFault(e)
+        throw e
     }
 }
 

@@ -10,6 +10,7 @@ import okio.BufferedSource
 import okio.FileHandle
 import okio.FileNotFoundException
 import okio.FileSystem
+import okio.IOException
 import okio.Path
 import okio.Sink
 import okio.Timeout
@@ -41,6 +42,7 @@ import okio.buffer
  *    holding no lock across plan→serve. Each span's file is validated when its key loads into the
  *    span cache (a phantom row whose file is gone is dropped then), and [read] opens every planned file
  *    before returning, so a file deleted behind the index (the OS trimming the cache dir) is a miss.
+ *    Any other storage IO failure (open/read of a span, span write/commit) throws [MediaCacheStorageException].
  * 6. **LRU eviction** — on commit, delete least-recently-used **unpinned** spans (rows + files) until
  *    `SUM(len) ≤` the budget ([budgetBytes] until [setMaxSize]).
  */
@@ -123,7 +125,7 @@ class DiskMediaBlobCache(
                         spanCache.remove(chunk.key)
                     }
                 }
-                if (!missing) throw e
+                if (!missing) throw if (e is IOException) MediaCacheStorageException("span open: ${e.message}", e) else e
                 logger?.log(Logger.Level.WARN, "span file missing, cache miss", e)
                 return null
             }
@@ -291,7 +293,7 @@ class DiskMediaBlobCache(
         /** Spills the region to disk block-by-block: each `write` fills the current temp until it reaches
          *  [maxSpanBytes], then seals it as an immutable span and starts the next. */
         private inner class RelaySink : Sink {
-            override fun write(source: Buffer, byteCount: Long) {
+            override fun write(source: Buffer, byteCount: Long) = storage("span write") {
                 var remaining = byteCount
                 while (remaining > 0) {
                     val s = tmpSink ?: openBlock()
@@ -310,20 +312,20 @@ class DiskMediaBlobCache(
         // Temp name = `{blockStart}__{writerId}.tmp`. blockStart alone can collide between two writers whose
         // current block starts at the same offset (e.g. a progressive and a SABR writer), so the per-writer
         // [id] keeps it unique; both parts are plain numbers, so the name needs no escaping.
-        private fun openBlock(): BufferedSink {
+        private fun openBlock(): BufferedSink = storage("span open") {
             fileSystem.createDirectories(dir)
             val t = dir / "${blockStart}__$id.$TMP_EXT"
             tmp = t
-            return fileSystem.sink(t).buffer().also { tmpSink = it }
+            fileSystem.sink(t).buffer().also { tmpSink = it }
         }
 
         /** Seal the current temp into `{start}_{len}.span` and index it. No-op on an empty block. */
-        private fun commitBlock() {
-            val t = tmp ?: return
+        private fun commitBlock(): Unit = storage("span commit") {
+            val t = tmp ?: return@storage
             tmpSink?.close(); tmpSink = null; tmp = null
             val len = blockBytes; blockBytes = 0
             val start = blockStart; blockStart += len
-            if (len == 0L) { fileSystem.delete(t, mustExist = false); return }
+            if (len == 0L) { fileSystem.delete(t, mustExist = false); return@storage }
             val spanPath = dir / spanName(start, len)
             if (fileSystem.exists(spanPath)) {
                 // Identical range already committed (resume, or a concurrent equal writer beat us). Bytes are
@@ -331,7 +333,7 @@ class DiskMediaBlobCache(
                 // reader may hold open. Make sure it's indexed (INSERT OR IGNORE).
                 fileSystem.delete(t, mustExist = false)
                 synchronized(lock) { index.insert(key, start, len); addSpanToCache(key, start, len) }
-                return
+                return@storage
             }
             fileSystem.atomicMove(t, spanPath)
             val victims = synchronized(lock) {
@@ -381,7 +383,7 @@ class DiskMediaBlobCache(
             while (true) {
                 val src = current
                 if (src != null && currentRemaining > 0) {
-                    val n = src.read(sink, minOf(byteCount, currentRemaining))
+                    val n = storage("span read") { src.read(sink, minOf(byteCount, currentRemaining)) }
                     if (n == -1L) { currentRemaining = 0; continue }
                     currentRemaining -= n
                     return n
@@ -413,6 +415,14 @@ class DiskMediaBlobCache(
             current?.close(); current = null
             if (idx > 0) handles[idx - 1].close()
         }
+    }
+
+    private inline fun <T> storage(op: String, block: () -> T): T = try {
+        block()
+    } catch (e: MediaCacheStorageException) {
+        throw e
+    } catch (e: IOException) {
+        throw MediaCacheStorageException("$op: ${e.message}", e)
     }
 
     private fun pathOf(key: String, start: Long, len: Long): Path = root / key / spanName(start, len)
