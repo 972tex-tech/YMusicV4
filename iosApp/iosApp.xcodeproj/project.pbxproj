@@ -8,14 +8,12 @@
 
 /* Begin PBXBuildFile section */
 		7C1A2B3C4D5E6F708192A3B4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8D2B3C4D5E6F708192A3B4C5 /* Assets.xcassets */; };
-		95A4D1047D891AC04537D8DD /* webview_ymusic.js in Resources */ = {isa = PBXBuildFile; fileRef = 1BD766C55E7134224E7A2056 /* webview_ymusic.js */; };
 		A948E84C3404DA1ED69E611B /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 941A9B507C2535496D4D5CC9 /* iOSApp.swift */; };
 		B1C2D3E4F5061728394A5B6C /* IosPip.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F40516273849A5B6C7 /* IosPip.swift */; };
 		CD3C937A9B09B6B7148C49AB /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A60121F656CB3A62E04D7B36 /* Foundation.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		1BD766C55E7134224E7A2056 /* webview_ymusic.js */ = {isa = PBXFileReference; includeInIndex = 1; path = webview_ymusic.js; sourceTree = "<group>"; };
 		8D2B3C4D5E6F708192A3B4C5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		240DAA26262878B3FD82CBD3 /* iosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		941A9B507C2535496D4D5CC9 /* iOSApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
@@ -42,7 +40,6 @@
 				2FE8585CCAB9E0864356B091 /* Products */,
 				C480666D5647F09213770E7A /* Frameworks */,
 				335A10B26181ABDC53F46456 /* iosApp */,
-				C79242D15433948DD875F55C /* Resources */,
 				8D2B3C4D5E6F708192A3B4C5 /* Assets.xcassets */,
 			);
 			sourceTree = "<group>";
@@ -72,15 +69,6 @@
 				FAF2693A0DD59DEE0A26088C /* iOS */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		C79242D15433948DD875F55C /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				1BD766C55E7134224E7A2056 /* webview_ymusic.js */,
-			);
-			name = Resources;
-			path = Resources;
 			sourceTree = "<group>";
 		};
 		FAF2693A0DD59DEE0A26088C /* iOS */ = {
@@ -146,7 +134,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				7C1A2B3C4D5E6F708192A3B4 /* Assets.xcassets in Resources */,
-				95A4D1047D891AC04537D8DD /* webview_ymusic.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -169,7 +156,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\nif [ ! -x \"${JAVA_HOME:-}/bin/java\" ]; then\n  if [ -x /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home/bin/java ]; then\n    export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home\n  elif [ -x \"$HOME/.sdkman/candidates/java/current/bin/java\" ]; then\n    export JAVA_HOME=\"$HOME/.sdkman/candidates/java/current\"\n  else\n    export JAVA_HOME=\"$(/usr/libexec/java_home 2>/dev/null)\"\n  fi\nfi\nmkdir -p \"$SRCROOT/Resources\"\ncp -f \"$SRCROOT/../webview-js/dist/webview_ymusic.js\" \"$SRCROOT/Resources/webview_ymusic.js\"\ncd \"$SRCROOT/..\"\n# Gradle daemon started from SSH cannot use the login keychain (errSecInternalComponent).\n./gradlew --stop >/dev/null 2>&1 || true\n# Let this shell (Xcode's child) codesign; Gradle's codesign hits errSecInternalComponent.\nSIGN_ID=\"${EXPANDED_CODE_SIGN_IDENTITY:-}\"\nunset EXPANDED_CODE_SIGN_IDENTITY\n# -PkmpTargets=all so iosArm64 / iosSimulatorArm64 are configured even on an Intel host.\n# -PiosAllowUndefined=true lets Compose 1.11.1's iOS 26 symbols link on an older Xcode\n# (@available-guarded, so unused below iOS 26). Drop it once building with Xcode 26.\n./gradlew --no-daemon :iosAppKotlin:embedAndSignAppleFrameworkForXcode -PkmpTargets=all -PiosAllowUndefined=true\nFW=\"$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/YMusicApp.framework\"\nif [ -n \"$SIGN_ID\" ] && [ \"$SIGN_ID\" != \"-\" ] && [ -d \"$FW\" ]; then\n  /usr/bin/codesign --force --sign \"$SIGN_ID\" --timestamp=none \"$FW\"\nfi\n";
+			shellScript = "set -e\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\nif [ ! -x \"${JAVA_HOME:-}/bin/java\" ]; then\n  if [ -x /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home/bin/java ]; then\n    export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home\n  elif [ -x \"$HOME/.sdkman/candidates/java/current/bin/java\" ]; then\n    export JAVA_HOME=\"$HOME/.sdkman/candidates/java/current\"\n  else\n    export JAVA_HOME=\"$(/usr/libexec/java_home 2>/dev/null)\"\n  fi\nfi\ncd \"$SRCROOT/..\"\n# Gradle daemon started from SSH cannot use the login keychain (errSecInternalComponent).\n./gradlew --stop >/dev/null 2>&1 || true\n# Let this shell (Xcode's child) codesign; Gradle's codesign hits errSecInternalComponent.\nSIGN_ID=\"${EXPANDED_CODE_SIGN_IDENTITY:-}\"\nunset EXPANDED_CODE_SIGN_IDENTITY\n# -PkmpTargets=all so iosArm64 / iosSimulatorArm64 are configured even on an Intel host.\n# -PiosAllowUndefined=true lets Compose 1.11.1's iOS 26 symbols link on an older Xcode\n# (@available-guarded, so unused below iOS 26). Drop it once building with Xcode 26.\n./gradlew --no-daemon :iosAppKotlin:embedAndSignAppleFrameworkForXcode -PkmpTargets=all -PiosAllowUndefined=true\nFW=\"$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/YMusicApp.framework\"\nif [ -n \"$SIGN_ID\" ] && [ \"$SIGN_ID\" != \"-\" ] && [ -d \"$FW\" ]; then\n  /usr/bin/codesign --force --sign \"$SIGN_ID\" --timestamp=none \"$FW\"\nfi\n";
 		};
 		9B3E5C1A7D2F4E6B8A0C1D2E /* Stamp version name from gradle.properties */ = {
 			isa = PBXShellScriptBuildPhase;

@@ -48,7 +48,6 @@ iPhone/iPad sim). On Intel, skip the sim and use a plugged-in device.
 The Gradle build phase runs `:iosAppKotlin:embedAndSignAppleFrameworkForXcode -PkmpTargets=all
 -PiosAllowUndefined=true` to build + embed + sign `YMusicApp.framework`. `-PkmpTargets=all` configures
 `iosArm64` on this Intel host; `JAVA_HOME` is set to `$HOME/.sdkman/candidates/java/current`.
-The build phase also copies `webview-js/dist/webview_ymusic.js` into `iosApp/Resources/`.
 
 Signing is the only manual step — this environment can't enter your Apple ID; Xcode does it locally.
 

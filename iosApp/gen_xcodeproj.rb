@@ -25,9 +25,7 @@ target.add_file_references([
 ])
 src_group.new_file("Info.plist")
 
-res_group = project.new_group("Resources", "Resources")
 target.add_resources([
-  res_group.new_file("webview_ymusic.js"),
   project.new_file("Assets.xcassets"),
 ])
 
@@ -44,8 +42,6 @@ gradle_phase.shell_script = <<~SH
       export JAVA_HOME="$(/usr/libexec/java_home 2>/dev/null)"
     fi
   fi
-  mkdir -p "$SRCROOT/Resources"
-  cp -f "$SRCROOT/../webview-js/dist/webview_ymusic.js" "$SRCROOT/Resources/webview_ymusic.js"
   cd "$SRCROOT/.."
   # Gradle daemon started from SSH cannot use the login keychain (errSecInternalComponent).
   ./gradlew --stop >/dev/null 2>&1 || true
