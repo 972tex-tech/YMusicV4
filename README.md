@@ -7,8 +7,15 @@ A Kotlin Multiplatform music player for Android, desktop (JVM), and iOS.
 Prerequisites: **JDK 17+**, **Node.js**, **CMake + a C toolchain** (QuickJS native library),
 **Android SDK** for the Android app, **Xcode** (macOS) for the iOS app.
 
+FFmpeg comes from [ffmpeg-build](https://github.com/ymusic-io/ffmpeg-build), checked out next to
+this repository (`../ffmpeg-build`) and built locally — nothing is downloaded. Build the targets
+you need there first (see its README): `scripts/build-desktop.sh` for the desktop app,
+`scripts/build-android.sh <abi>` for `arm64-v8a`, `x86` and `x86_64` for Android,
+`scripts/build-ios.sh` for iOS. A missing build fails with the command that produces it.
+
 ```sh
 # one-time
+git clone --recursive --shallow-submodules https://github.com/ymusic-io/ffmpeg-build ../ffmpeg-build
 (cd webview-js && npm install && npm run build)
 
 # desktop app
