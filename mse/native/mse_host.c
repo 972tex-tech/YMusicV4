@@ -1085,6 +1085,7 @@ static void aq_pause_flush(MseHost *h)
     SLAndroidSimpleBufferQueueItf bq;
     uint8_t *bufs;
     int i, nbufs, buf_bytes;
+    pthread_mutex_lock(&h->sl_mu);
 #endif
     pthread_mutex_lock(&h->mu);
     h->flushing = 1;
@@ -1127,6 +1128,9 @@ static void aq_pause_flush(MseHost *h)
     h->flushing = 0;
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
+#ifdef __ANDROID__
+    pthread_mutex_unlock(&h->sl_mu);
+#endif
 }
 #endif
 
