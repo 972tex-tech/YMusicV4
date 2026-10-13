@@ -97,6 +97,7 @@
 
     <string name="feed_empty">Không có gì ở đây</string>
     <string name="error_generic">Đã xảy ra lỗi (%1$s)</string>
+    <string name="startup_failed">Khởi động thất bại: %1$s</string>
     <string name="retry">Thử lại</string>
     <string name="reload">Tải lại</string>
     <string name="search_videos">Tìm video</string>

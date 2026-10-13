@@ -148,6 +148,7 @@ import io.ymusic.ui.resources.folder_picker_title
 import io.ymusic.ui.resources.ymusic_logo
 import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
 import io.ymusic.ui.sponsorblock.sponsorBlockJdbcDriver
+import io.ymusic.ui.startupFailedMessage
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -495,7 +496,7 @@ fun main() {
                     Box(Modifier.weight(1f)) {
                         when {
                             bootError != null -> Booting {
-                                Text("Startup failed: $bootError", color = MaterialTheme.colorScheme.error)
+                                Text(startupFailedMessage("$bootError"), color = MaterialTheme.colorScheme.error)
                             }
                             graph == null && lockedCookies != null -> CookieUnlockScreen(
                                 locked = lockedCookies!!,

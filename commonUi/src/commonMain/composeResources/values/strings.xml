@@ -109,6 +109,7 @@
     <!-- Feed -->
     <string name="feed_empty">Nothing here</string>
     <string name="error_generic">Something went wrong (%1$s)</string>
+    <string name="startup_failed">Startup failed: %1$s</string>
     <string name="retry">Retry</string>
     <string name="reload">Reload</string>
     <string name="search_videos">Search videos</string>

@@ -44,6 +44,7 @@ import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.playhistory.playHistoryNativeDriver
 import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
 import io.ymusic.ui.sponsorblock.sponsorBlockNativeDriver
+import io.ymusic.ui.startupFailedMessage
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -103,7 +104,7 @@ private fun IosAppRoot() {
 
     val g = graph
     when {
-        error != null -> Center { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
+        error != null -> Center { Text(startupFailedMessage("$error"), color = MaterialTheme.colorScheme.error) }
         g == null -> Center { CircularProgressIndicator() }
         else -> {
             LaunchedEffect(g) {

@@ -50,6 +50,7 @@ import io.ymusic.ui.IncomingLinks
 import io.ymusic.ui.LightDesignColors
 import io.ymusic.ui.LinkAction
 import io.ymusic.ui.rememberStartSection
+import io.ymusic.ui.startupFailedMessage
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -307,7 +308,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
             when {
-                error != null -> Booting { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
+                error != null -> Booting { Text(startupFailedMessage("$error"), color = MaterialTheme.colorScheme.error) }
                 graph == null -> Booting { CircularProgressIndicator() }
                 else -> {
                     LaunchedEffect(graph) { attachPip(graph!!) }

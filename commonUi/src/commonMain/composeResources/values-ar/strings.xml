@@ -97,6 +97,7 @@
 
     <string name="feed_empty">لا يوجد شيء هنا</string>
     <string name="error_generic">حدث خطأ ما (%1$s)</string>
+    <string name="startup_failed">تعذّر بدء التشغيل: %1$s</string>
     <string name="retry">إعادة المحاولة</string>
     <string name="reload">إعادة التحميل</string>
     <string name="search_videos">ابحث عن فيديوهات</string>
