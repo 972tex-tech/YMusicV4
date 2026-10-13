@@ -201,6 +201,7 @@ internal class AccountController(
             loginEpoch.value += 1
             _profileReady.value = true
             graph.player.refreshOnNext()
+            if (graph.player.status.value.error?.playability() == Playability.SignInRequired) graph.player.play()
             graph.requestRefresh()
         }
     }

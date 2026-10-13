@@ -153,6 +153,7 @@ import io.ymusic.ui.resources.queue_loading_more
 import io.ymusic.ui.resources.queue_save_as_yt_playlist
 import io.ymusic.ui.resources.remove_from_queue
 import io.ymusic.ui.resources.retry
+import io.ymusic.ui.resources.signin_button
 import io.ymusic.ui.resources.sound_eq
 import io.ymusic.ui.resources.sound_speed
 import io.ymusic.ui.resources.sponsor_block_excluded
@@ -305,6 +306,8 @@ fun MiniPlayer(
  */
 private val LocalOpenChannel = staticCompositionLocalOf<(url: String, title: String) -> Unit> { { _, _ -> } }
 
+private val LocalOpenLogin = staticCompositionLocalOf<() -> Unit> { {} }
+
 @Composable
 fun NowPlayingScreen(
     graph: AppGraph,
@@ -312,6 +315,7 @@ fun NowPlayingScreen(
     onClose: () -> Unit,
     onPeek: (Float) -> Unit = {},
     onOpenChannel: (url: String, title: String) -> Unit = { _, _ -> },
+    onLogin: () -> Unit = {},
 ) {
     var fullscreen by remember { mutableStateOf(false) }
     DisposableEffect(fullscreen) {
@@ -357,7 +361,7 @@ fun NowPlayingScreen(
     ) {
         // No full-screen fill: the video hole is opaque (TextureView) and the chrome paints
         // Surface itself. A wrapping Surface under the picture is 1× overdraw on every pixel.
-        CompositionLocalProvider(LocalOpenChannel provides onOpenChannel) {
+        CompositionLocalProvider(LocalOpenChannel provides onOpenChannel, LocalOpenLogin provides onLogin) {
             Box(Modifier.fillMaxSize(), content = { shell() })
         }
     }
@@ -897,21 +901,29 @@ private fun PlaybackErrorRow(player: io.ymusic.player.Player, error: io.ymusic.p
             color = MaterialTheme.colorScheme.error,
             fontSize = 12.sp,
         )
+        if (error.playability() == Playability.SignInRequired) {
+            ErrorRowAction(stringResource(Res.string.signin_button), LocalOpenLogin.current)
+        }
         if (error.canRetry) {
             // play() reloads the current item after a retryable error (the facade's port
             // of the legacy recovery path), so retry is just play.
-            Text(
-                stringResource(Res.string.retry),
-                color = DesignColors.Accent,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable { player.play() }
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
+            ErrorRowAction(stringResource(Res.string.retry)) { player.play() }
         }
     }
+}
+
+@Composable
+private fun ErrorRowAction(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = DesignColors.Accent,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
 }
 
 /** chevron-down · [right:] download · sponsorblock · sleep timer · quality chip · ⋮ (reload + tracks). */

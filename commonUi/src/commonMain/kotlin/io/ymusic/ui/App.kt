@@ -1101,6 +1101,11 @@ private fun AppRoot(
                             nowPlayingPeeking = false
                         },
                         onPeek = { nowPlayingPeeking = it > 0.5f },
+                        onLogin = {
+                            graph.pip.nowPlayingOpen.value = false
+                            nowPlayingPeeking = false
+                            openLogin()
+                        },
                         onOpenChannel = { url, title ->
                             graph.pip.nowPlayingOpen.value = false
                             nowPlayingPeeking = false
