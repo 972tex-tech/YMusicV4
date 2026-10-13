@@ -5,8 +5,14 @@ package projectcommon.error
 enum class Playability { SignInRequired, Unavailable }
 
 /** The verdict an error [code] carries, or null for any other code. */
-fun playabilityOf(code: String?): Playability? = when (code) {
-    "LOGIN_REQUIRED", "AGE_CHECK_REQUIRED", "AGE_VERIFICATION_REQUIRED" -> Playability.SignInRequired
-    "UNPLAYABLE", "ERROR", "LIVE_STREAM_OFFLINE" -> Playability.Unavailable
+fun playabilityOf(code: String?): Playability? = when {
+    code == null -> null
+    code in SIGN_IN_STATUSES -> Playability.SignInRequired
+    // Any other playabilityStatus (UNPLAYABLE, ERROR, CONTENT_CHECK_REQUIRED, future ones): all-caps,
+    // unlike site codes (E#####) and categories ("network").
+    PLAYABILITY_STATUS.matches(code) -> Playability.Unavailable
     else -> null
 }
+
+private val SIGN_IN_STATUSES = setOf("LOGIN_REQUIRED", "AGE_CHECK_REQUIRED", "AGE_VERIFICATION_REQUIRED")
+private val PLAYABILITY_STATUS = Regex("[A-Z][A-Z_]*")
