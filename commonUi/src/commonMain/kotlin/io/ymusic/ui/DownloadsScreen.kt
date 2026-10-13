@@ -52,6 +52,14 @@ import io.ymusic.download.DownloadState
 import io.ymusic.download.DownloadTask
 import io.ymusic.download.DownloadTasksAggregator
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.dialog_cancel
+import io.ymusic.ui.resources.download_size_kb
+import io.ymusic.ui.resources.download_size_mb
+import io.ymusic.ui.resources.downloads_action_pause
+import io.ymusic.ui.resources.downloads_action_resume
+import io.ymusic.ui.resources.downloads_action_reveal_finder
+import io.ymusic.ui.resources.downloads_action_reveal_library
+import io.ymusic.ui.resources.downloads_completed_date
 import io.ymusic.ui.resources.downloads_empty_all
 import io.ymusic.ui.resources.downloads_empty_completed
 import io.ymusic.ui.resources.downloads_empty_error
@@ -70,7 +78,17 @@ import io.ymusic.ui.resources.downloads_none_message
 import io.ymusic.ui.resources.downloads_none_title
 import io.ymusic.ui.resources.downloads_pause_all
 import io.ymusic.ui.resources.downloads_resume_all
+import io.ymusic.ui.resources.downloads_state_canceled
+import io.ymusic.ui.resources.downloads_state_done
+import io.ymusic.ui.resources.downloads_state_downloading
+import io.ymusic.ui.resources.downloads_state_failed
+import io.ymusic.ui.resources.downloads_state_preparing
+import io.ymusic.ui.resources.downloads_state_processing
+import io.ymusic.ui.resources.downloads_state_queued
 import io.ymusic.ui.resources.downloads_unavailable
+import io.ymusic.ui.resources.menu_play
+import io.ymusic.ui.resources.menu_remove
+import io.ymusic.ui.resources.month_abbr
 import io.ymusic.ui.resources.playback_sign_in_required
 import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.retry
@@ -80,6 +98,7 @@ import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.Playability
 import projectcommon.error.playabilityOf
@@ -381,16 +400,16 @@ private fun DownloadBar(task: DownloadTask, c: DownloadColors) {
 @Composable
 private fun StatusPill(task: DownloadTask, c: DownloadColors) {
     val (label, bg, fg) = when (task.state) {
-        DownloadState.QUEUED -> Triple("Queued", c.neutral, c.inkMuted)
-        DownloadState.PREPARING -> Triple("Preparing", c.accentSoft, c.accent)
-        DownloadState.DOWNLOADING -> Triple("Downloading", c.accentSoft, c.accent)
-        DownloadState.PROCESSING -> Triple("Processing", c.accentSoft, c.accent)
-        DownloadState.PAUSED -> Triple("Paused", c.warningSoft, c.warning)
-        DownloadState.FAILED -> Triple("Failed", c.dangerSoft, c.danger)
-        DownloadState.COMPLETED -> Triple("Done", c.successSoft, c.success)
-        DownloadState.CANCELED -> Triple("Canceled", c.neutral, c.inkMuted)
+        DownloadState.QUEUED -> Triple(Res.string.downloads_state_queued, c.neutral, c.inkMuted)
+        DownloadState.PREPARING -> Triple(Res.string.downloads_state_preparing, c.accentSoft, c.accent)
+        DownloadState.DOWNLOADING -> Triple(Res.string.downloads_state_downloading, c.accentSoft, c.accent)
+        DownloadState.PROCESSING -> Triple(Res.string.downloads_state_processing, c.accentSoft, c.accent)
+        DownloadState.PAUSED -> Triple(Res.string.downloads_filter_paused, c.warningSoft, c.warning)
+        DownloadState.FAILED -> Triple(Res.string.downloads_state_failed, c.dangerSoft, c.danger)
+        DownloadState.COMPLETED -> Triple(Res.string.downloads_state_done, c.successSoft, c.success)
+        DownloadState.CANCELED -> Triple(Res.string.downloads_state_canceled, c.neutral, c.inkMuted)
     }
-    StatusChip(label, bg, fg)
+    StatusChip(stringResource(label), bg, fg)
 }
 
 @Composable
@@ -405,8 +424,7 @@ private fun StatusChip(label: String, container: Color, content: Color) {
     }
 }
 
-/** Build the per-state overflow menu. Labels are hardcoded (English) to steer clear of the
- *  compose-resources accessor-chunk boundary hazard when adding many new strings at once. */
+@Composable
 private fun actionsFor(
     task: DownloadTask,
     service: DownloadService,
@@ -418,25 +436,25 @@ private fun actionsFor(
     val entries = buildList<Pair<String, () -> Unit>> {
         when (task.state) {
             DownloadState.QUEUED, DownloadState.PREPARING, DownloadState.DOWNLOADING, DownloadState.PROCESSING -> {
-                add("Pause" to { service.pause(task.id) })
-                add("Cancel" to { service.cancel(task.id) })
+                add(stringResource(Res.string.downloads_action_pause) to { service.pause(task.id) })
+                add(stringResource(Res.string.dialog_cancel) to { service.cancel(task.id) })
             }
             DownloadState.PAUSED -> {
-                add("Resume" to { service.resume(task.id) })
-                add("Cancel" to { service.cancel(task.id) })
+                add(stringResource(Res.string.downloads_action_resume) to { service.resume(task.id) })
+                add(stringResource(Res.string.dialog_cancel) to { service.cancel(task.id) })
             }
             DownloadState.FAILED -> {
-                add("Retry" to onRetry)
-                add("Remove" to { service.remove(task.id) })
+                add(stringResource(Res.string.retry) to onRetry)
+                add(stringResource(Res.string.menu_remove) to { service.remove(task.id) })
             }
             DownloadState.COMPLETED -> {
-                add("Play" to onPlay)
-                onRevealLibrary?.let { add("Reveal in Library" to it) }
-                onRevealFolder?.let { add("Reveal in Finder" to it) }
-                add("Remove" to { service.remove(task.id) })
+                add(stringResource(Res.string.menu_play) to onPlay)
+                onRevealLibrary?.let { add(stringResource(Res.string.downloads_action_reveal_library) to it) }
+                onRevealFolder?.let { add(stringResource(Res.string.downloads_action_reveal_finder) to it) }
+                add(stringResource(Res.string.menu_remove) to { service.remove(task.id) })
             }
             DownloadState.CANCELED -> {
-                add("Remove" to { service.remove(task.id) })
+                add(stringResource(Res.string.menu_remove) to { service.remove(task.id) })
             }
         }
     }
@@ -473,17 +491,22 @@ private fun DownloadFormat.badgeColor(): Color = when (this) {
 }
 
 /** `updatedAt` (a completed task's finish time) as e.g. "Jul 31, 2026", in the device's time zone. */
+@Composable
 private fun formatDownloadDate(epochMs: Long): String {
     val dt = Instant.fromEpochMilliseconds(epochMs).toLocalDateTime(TimeZone.currentSystemDefault())
-    return "${MONTH_ABBR[dt.monthNumber - 1]} ${dt.dayOfMonth}, ${dt.year}"
+    val month = stringArrayResource(Res.array.month_abbr)[dt.monthNumber - 1]
+    return stringResource(Res.string.downloads_completed_date, month, dt.dayOfMonth, dt.year)
 }
 
-private val MONTH_ABBR = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-
+@Composable
 private fun humanSize(bytes: Long): String {
-    if (bytes <= 0) return "0 MB"
+    if (bytes <= 0) return stringResource(Res.string.download_size_mb, "0")
     val mb = bytes / (1024.0 * 1024.0)
-    return if (mb >= 1) "${(mb * 10).toLong() / 10.0} MB" else "${bytes / 1024} KB"
+    return if (mb >= 1) {
+        stringResource(Res.string.download_size_mb, "${(mb * 10).toLong() / 10.0}")
+    } else {
+        stringResource(Res.string.download_size_kb, "${bytes / 1024}")
+    }
 }
 
 /** The download screen's semantic palette — the app's surfaces/ink/accent plus amber/green for the

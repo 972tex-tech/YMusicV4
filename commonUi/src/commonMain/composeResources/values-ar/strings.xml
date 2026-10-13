@@ -27,6 +27,36 @@
     <string name="downloads_sign_in_message">يطلب YouTube تسجيل الدخول قبل تنزيل هذا الفيديو. بعد تسجيل الدخول، يبدأ التنزيل من جديد.</string>
     <string name="downloads_unavailable_title">الفيديو غير متاح</string>
     <string name="downloads_unavailable_message">يفيد YouTube بأن هذا الفيديو غير متاح، لذا لن تفيد إعادة المحاولة. يمكنك إزالته من التنزيلات.</string>
+    <string name="downloads_state_queued">في قائمة الانتظار</string>
+    <string name="downloads_state_preparing">جارٍ التحضير</string>
+    <string name="downloads_state_downloading">جارٍ التنزيل</string>
+    <string name="downloads_state_processing">جارٍ المعالجة</string>
+    <string name="downloads_state_failed">فشل</string>
+    <string name="downloads_state_done">تم</string>
+    <string name="downloads_state_canceled">أُلغي</string>
+    <string name="downloads_action_pause">إيقاف مؤقت</string>
+    <string name="downloads_action_resume">استئناف</string>
+    <string name="downloads_action_reveal_library">إظهار في المكتبة</string>
+    <string name="downloads_action_reveal_finder">إظهار في Finder</string>
+    <string name="downloads_completed_date">%2$d %1$s %3$d</string>
+    <string-array name="month_abbr">
+        <item>يناير</item>
+        <item>فبراير</item>
+        <item>مارس</item>
+        <item>أبريل</item>
+        <item>مايو</item>
+        <item>يونيو</item>
+        <item>يوليو</item>
+        <item>أغسطس</item>
+        <item>سبتمبر</item>
+        <item>أكتوبر</item>
+        <item>نوفمبر</item>
+        <item>ديسمبر</item>
+    </string-array>
+    <string name="download_size_kb">%1$s كيلوبايت</string>
+    <string name="download_location_prompt_not_now">ليس الآن</string>
+    <string name="download_location_prompt_set_default">تعيين كافتراضي</string>
+    <string name="download_location_prompt_message">هل تريد حفظ التنزيلات في “%1$s”؟ يمكنك تغيير ذلك من الإعدادات.</string>
     <string name="section_settings">الإعدادات</string>
     <string name="section_donate">تبرّع</string>
     <string name="section_telegram">إعلانات تيليجرام</string>

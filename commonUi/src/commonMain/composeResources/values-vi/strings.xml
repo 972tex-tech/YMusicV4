@@ -27,6 +27,36 @@
     <string name="downloads_sign_in_message">YouTube yêu cầu đăng nhập trước khi tải video này. Sau khi bạn đăng nhập, video sẽ được tải lại.</string>
     <string name="downloads_unavailable_title">Video không khả dụng</string>
     <string name="downloads_unavailable_message">YouTube cho biết video này không khả dụng nên thử lại cũng không được. Bạn có thể xóa nó khỏi danh sách tải xuống.</string>
+    <string name="downloads_state_queued">Đang chờ</string>
+    <string name="downloads_state_preparing">Đang chuẩn bị</string>
+    <string name="downloads_state_downloading">Đang tải</string>
+    <string name="downloads_state_processing">Đang xử lý</string>
+    <string name="downloads_state_failed">Thất bại</string>
+    <string name="downloads_state_done">Xong</string>
+    <string name="downloads_state_canceled">Đã hủy</string>
+    <string name="downloads_action_pause">Tạm dừng</string>
+    <string name="downloads_action_resume">Tiếp tục</string>
+    <string name="downloads_action_reveal_library">Hiện trong Thư viện</string>
+    <string name="downloads_action_reveal_finder">Hiện trong Finder</string>
+    <string name="downloads_completed_date">%2$d %1$s, %3$d</string>
+    <string-array name="month_abbr">
+        <item>thg 1</item>
+        <item>thg 2</item>
+        <item>thg 3</item>
+        <item>thg 4</item>
+        <item>thg 5</item>
+        <item>thg 6</item>
+        <item>thg 7</item>
+        <item>thg 8</item>
+        <item>thg 9</item>
+        <item>thg 10</item>
+        <item>thg 11</item>
+        <item>thg 12</item>
+    </string-array>
+    <string name="download_size_kb">%1$s KB</string>
+    <string name="download_location_prompt_not_now">Để sau</string>
+    <string name="download_location_prompt_set_default">Đặt làm mặc định</string>
+    <string name="download_location_prompt_message">Lưu các bản tải xuống vào “%1$s”? Bạn có thể đổi lại trong Cài đặt.</string>
     <string name="section_settings">Cài đặt</string>
     <string name="section_donate">Ủng hộ</string>
     <string name="section_telegram">Thông báo trên Telegram</string>

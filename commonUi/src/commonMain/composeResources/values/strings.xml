@@ -32,6 +32,37 @@
     <string name="downloads_sign_in_message">YouTube asks you to sign in before this video can be downloaded. Once you’re signed in, the download starts again.</string>
     <string name="downloads_unavailable_title">Video unavailable</string>
     <string name="downloads_unavailable_message">YouTube says this video is unavailable, so retrying won’t help. You can remove it from your downloads.</string>
+    <string name="downloads_state_queued">Queued</string>
+    <string name="downloads_state_preparing">Preparing</string>
+    <string name="downloads_state_downloading">Downloading</string>
+    <string name="downloads_state_processing">Processing</string>
+    <string name="downloads_state_failed">Failed</string>
+    <string name="downloads_state_done">Done</string>
+    <string name="downloads_state_canceled">Canceled</string>
+    <string name="downloads_action_pause">Pause</string>
+    <string name="downloads_action_resume">Resume</string>
+    <string name="downloads_action_reveal_library">Reveal in Library</string>
+    <string name="downloads_action_reveal_finder">Reveal in Finder</string>
+    <!-- A finished download's date: %1$s = month from month_abbr, %2$d = day, %3$d = year. -->
+    <string name="downloads_completed_date">%1$s %2$d, %3$d</string>
+    <string-array name="month_abbr">
+        <item>Jan</item>
+        <item>Feb</item>
+        <item>Mar</item>
+        <item>Apr</item>
+        <item>May</item>
+        <item>Jun</item>
+        <item>Jul</item>
+        <item>Aug</item>
+        <item>Sep</item>
+        <item>Oct</item>
+        <item>Nov</item>
+        <item>Dec</item>
+    </string-array>
+    <string name="download_size_kb">%1$s KB</string>
+    <string name="download_location_prompt_not_now">Not now</string>
+    <string name="download_location_prompt_set_default">Set as default</string>
+    <string name="download_location_prompt_message">Save downloads to “%1$s”? You can change this in Settings.</string>
     <string name="section_settings">Settings</string>
     <string name="section_catalogue">UI catalogue</string>
     <string name="section_donate">Donate</string>
