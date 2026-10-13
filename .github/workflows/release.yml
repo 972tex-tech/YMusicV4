@@ -264,3 +264,44 @@ jobs:
           name: ${{ matrix.slug }}-dmg
           path: YMusicV4/desktopApp/build/compose/binaries/main-release/dmg/*.dmg
           if-no-files-found: error
+
+  # A DRAFT GitHub Release for the tag with every artifact attached: nothing is public until it is
+  # reviewed and published by hand.
+  release:
+    needs: [android, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+
+      - name: Collect the files
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp artifacts/android-apks/*.apk release/
+          # Both macOS jobs name their DMG YMusic-<version>.dmg; the asset name carries the arch.
+          for arch in arm64 x86_64; do
+            for dmg in artifacts/macos-$arch-dmg/*.dmg; do
+              cp "$dmg" "release/$(basename "$dmg" .dmg)-$arch.dmg"
+            done
+          done
+          (cd release && sha256sum * > SHA256SUMS)
+          ls -l release
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null || true)"
+          case "$draft" in
+            "")    gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --draft \
+                     --title "${TAG#release-}" --generate-notes ;;
+            # A re-run of the tag refreshes its draft's files.
+            true)  gh release upload "$TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber ;;
+            *)     echo "release $TAG is already published; not touching it" >&2; exit 1 ;;
+          esac
