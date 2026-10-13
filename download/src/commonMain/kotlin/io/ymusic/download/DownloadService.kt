@@ -277,6 +277,11 @@ class DownloadService(
         } catch (c: CancellationException) {
             interrupted = true
             throw c
+        } catch (e: Throwable) {
+            // Outside the pipeline (e.g. a state/progress DB write): still an end state, never a row
+            // stuck in DOWNLOADING with no slot.
+            log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))?.captureError(e, "download run failed")
+            failure = downloadError(e)
         } finally {
             withContext(NonCancellable) {
                 gate.withLock {
