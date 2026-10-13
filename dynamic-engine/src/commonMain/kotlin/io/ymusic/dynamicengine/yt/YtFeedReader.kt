@@ -395,20 +395,6 @@ private suspend fun readLocaleOption(r: JsonReader): YtLocaleOption {
     return YtLocaleOption(code, label)
 }
 
-/** The `yt/embed` result: `{"html":"…"}`. */
-internal suspend fun readEmbedHtml(r: JsonReader): String {
-    var html = ""
-    r.beginObject()
-    while (r.hasNextObjectKey()) {
-        when (r.nextKey()) {
-            "html" -> html = r.stringOrNull() ?: ""
-            else -> r.skipValue()
-        }
-    }
-    r.endObject()
-    return html
-}
-
 /** The `yt/video-details` result. */
 internal suspend fun readVideoDetails(r: JsonReader): YtVideoDetails {
     var title: String? = null

@@ -53,12 +53,6 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
   - Wired via `DynamicEngine.create(cacheStore = …)` (absent → no cache; `E20050` bad head / `E20051` store threw).
   - Its home is the InnerTube session params (client version / `sts` / `visitorData` / bootstrap feed).
 
-- **Embed page** — the WebView player's embed page also comes through the engine:
-  `DynamicEngineManager.embedPage(userAgent)` → the bundle's `yt/embed` (engine-js `logic/yt/embed.ts`) fetches
-  `/embed` on the cooked cookie identity with the WebView's UA **verbatim** and returns the rewritten HTML (CSP
-  stripped, preloads defanged) carrying the `INJECT_JS_HERE` slot the player splices its boot script into — the
-  splice point is remotely updatable, the `webview_ymusic.js` bundle stays an app asset.
-
 - **Player** — `DynamicEnginePlayer` is a sibling of `DynamicEngine`: same HTTP/cookies/cache/settings
   plus native `:mse` (or pipe MSE in tests). App commands are
   `player/init|load|play|pause|seek|stop|setSpeed|status|mintPo`. Host opens `listen/player/status` and

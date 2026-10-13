@@ -248,21 +248,6 @@ suspend fun DynamicEngineManager.ytLocaleOptions(logger: Logger? = null): YtLoca
     }) { readLocales(it) }
 }
 
-/**
- * The YouTube `/embed` page for the WebView player, fetched and rewritten by the engine: the fetch
- * rides the engine's cooked cookie identity (one identity with all scraping), and the HTML splice
- * (CSP stripped, script preloads defanged, the boot-script slot inserted first in `<head>`) is
- * remotely updatable. The one header exception: [userAgent] must be the WebView's OWN UA, carried
- * verbatim — the page has to look loaded by the WebView that runs it (playback-identity rule).
- * The returned HTML holds the `INJECT_JS_HERE` placeholder where the caller splices its boot
- * script (session globals + the `webview_ymusic.js` bundle, which stays app-side).
- */
-suspend fun DynamicEngineManager.embedPage(userAgent: String, logger: Logger? = null): String = use { engine ->
-    engine.jsonCommand("yt/embed", log = logger.cmd("embedPage"), writeFields = { w ->
-        w.name("userAgent").value(userAgent)
-    }) { readEmbedHtml(it) }
-}
-
 /** This API layer's own hop: the function name plus its call args as props (null args omitted,
  *  opaque tokens truncated). Free-text user input (a search query) is deliberately NOT a prop —
  *  props reach crash reports. */
