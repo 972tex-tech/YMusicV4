@@ -45,7 +45,7 @@ class DownloadTasksAggregatorTest {
             changes.emit(DownloadChange.ProgressChanged("a", downloaded = 50, total = 100))
             withTimeout(5_000) { tasks.first { it.firstOrNull { t -> t.id == "a" }?.progress == 0.5f } }
 
-            changes.emit(DownloadChange.StateChanged("b", DownloadState.FAILED, "Something went wrong (E70001)"))
+            changes.emit(DownloadChange.StateChanged("b", DownloadState.FAILED, DownloadError("E70001", null)))
             withTimeout(5_000) { tasks.first { it.firstOrNull { t -> t.id == "b" }?.state == DownloadState.FAILED } }
 
             changes.emit(DownloadChange.Removed("b"))

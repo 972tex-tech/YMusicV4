@@ -1,5 +1,7 @@
 package io.ymusic.download
 
+import projectcommon.error.CodedError
+
 /**
  * The container/codec a download is delivered as. The pipeline that produces each is in
  * [DownloadPipeline]; which are available depends on the platform (ffmpeg presence):
@@ -49,7 +51,7 @@ enum class DownloadState {
     /** User-paused; keeps any partially-downloaded bytes for resume. */
     PAUSED,
 
-    /** Failed with [DownloadTask.errorMessage]; retryable. */
+    /** Failed with [DownloadTask.errorCode]; retryable. */
     FAILED,
 
     /** User-canceled; partial files cleaned up. Terminal. */
@@ -111,6 +113,8 @@ class DownloadTask(
      *  on Android a `content://` SAF document in one of the user's Library folders, a `file://`/path
      *  elsewhere — so it round-trips to the player and the library regardless of where the file lives. */
     val fileUri: String?,
+    /** A failure's display-ready, already-localized text minted at its origin ([CodedError.userMessage]);
+     *  null when it had none — the UI then renders [errorCode]. */
     val errorMessage: String?,
     val createdAt: Long,
     val updatedAt: Long,
@@ -119,6 +123,8 @@ class DownloadTask(
     val captions: CaptionChoice? = null,
     val audioLanguage: String? = null,
     val captionLanguage: String? = null,
+    /** The failure's [CodedError.code] — a well-known category or an `E#####` site code; null unless FAILED. */
+    val errorCode: String? = null,
 ) {
     /** 0f..1f, or null when the total isn't known yet (before the first MEDIA_HEADER). */
     val progress: Float?
@@ -130,13 +136,18 @@ class DownloadTask(
         totalBytes: Long = this.totalBytes,
         fileUri: String? = this.fileUri,
         errorMessage: String? = this.errorMessage,
+        errorCode: String? = this.errorCode,
         updatedAt: Long = this.updatedAt,
     ) = DownloadTask(
         id, videoId, title, artist, thumbnailUrl, format, requestedHeight,
         state, downloadedBytes, totalBytes, fileUri, errorMessage, createdAt, updatedAt,
-        fileName, audioTrackId, captions, audioLanguage, captionLanguage,
+        fileName, audioTrackId, captions, audioLanguage, captionLanguage, errorCode,
     )
 }
+
+/** A failed task's error as the user sees it: the [CodedError.code] plus its origin-minted
+ *  [CodedError.userMessage], if any. */
+data class DownloadError(val code: String, val userMessage: String?)
 
 /** A caption track's identity within one video: its `languageCode`, `a.`-prefixed for the auto-generated
  *  (ASR) track — a video can carry both a manual and an ASR track in the same language. */

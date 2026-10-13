@@ -291,18 +291,19 @@ class DownloadService(
             // Log the full technical failure here; the user sees only a code. An uncoded exception
             // (network, SABR, …) gets the E70001 fallback so every failure is reportable.
             val taskLog = log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))
-            if (playabilityOf(e.errorCode()) != null) {
-                taskLog?.log(Logger.Level.WARN, "download refused by playability", e)
-            } else {
-                taskLog?.captureError(e, "download failed")
+            val code = e.errorCode()
+            when {
+                playabilityOf(code) != null -> taskLog?.log(Logger.Level.WARN, "download refused by playability", e)
+                code == DownloadFolderAccessException.CODE -> taskLog?.log(Logger.Level.WARN, "download folder not writable", e)
+                else -> taskLog?.captureError(e, "download failed")
             }
-            setState(task.id, DownloadState.FAILED, error = userFacingError(e))
+            setState(task.id, DownloadState.FAILED, error = downloadError(e))
         }
     }
 
     // --- writes (DB + change event) ------------------------------------------------------------------
 
-    private suspend fun setState(id: String, state: DownloadState, error: String? = null) {
+    private suspend fun setState(id: String, state: DownloadState, error: DownloadError? = null) {
         store.updateState(id, state, error, now())
         _changes.emit(DownloadChange.StateChanged(id, state, error))
     }
@@ -318,12 +319,9 @@ class DownloadService(
         }
     }
 
-    private fun userFacingError(e: Throwable): String {
+    private fun downloadError(e: Throwable): DownloadError {
         val coded = e.codedError()
-        return when {
-            coded?.userMessage != null -> "${coded.userMessage} (${coded.code})"
-            else -> "Something went wrong (${coded?.code ?: "E70001"})"
-        }
+        return DownloadError(coded?.code ?: "E70001", coded?.userMessage)
     }
 
     private suspend fun pruneOrphanScratch() {

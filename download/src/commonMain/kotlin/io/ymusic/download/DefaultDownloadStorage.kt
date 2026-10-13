@@ -10,7 +10,9 @@ import okio.Path.Companion.toPath
 import okio.Source
 import okio.buffer
 import okio.use
+import projectcommon.error.CodedError
 import projectcommon.error.TechnicalException
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * [DownloadStorage] over an okio [FileSystem]. Scratch files live under [scratchDir]; [publish] moves the
@@ -42,9 +44,8 @@ open class DefaultDownloadStorage(
         if (folder.scheme != "file") {
             val uri = try {
                 publishToUri(scratch.path, fileName, folder)
-            } catch (e: TechnicalException) {
-                throw e
             } catch (e: Exception) {
+                if (e is CodedError || e is CancellationException) throw e
                 throw TechnicalException("E70032", "could not publish $fileName into $destinationFolder", cause = e)
             }
             scratch.delete()
