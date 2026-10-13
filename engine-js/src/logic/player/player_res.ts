@@ -2,11 +2,14 @@
 // player's own googlevideo requests. Download uses that; we do not decipher.
 
 import { debug } from "../../debug";
+import { JsEngineErrorImpl } from "../../protocol/command";
 
 const CACHE_MS = 3 * 60 * 1000;
 const WAIT_MS = 20_000;
 
-type Waiter = (ok: boolean) => void;
+/** null = the entry is complete; else YouTube's non-OK playabilityStatus, which is never cached. */
+type Verdict = { status: string; reason: string } | null;
+type Waiter = (verdict: Verdict) => void;
 
 type Entry = {
   rec: Record<string, unknown> | null;
@@ -41,10 +44,10 @@ function complete(e: Entry): boolean {
   return !!(e.rec && e.sabrUrls.length);
 }
 
-function flush(e: Entry, ok: boolean): void {
+function flush(e: Entry, verdict: Verdict): void {
   const w = e.waiters;
   e.waiters = [];
-  for (let i = 0; i < w.length; i++) w[i]!(ok);
+  for (let i = 0; i < w.length; i++) w[i]!(verdict);
 }
 
 function entry(id: string): Entry {
@@ -255,13 +258,16 @@ export function waitDownloadJson(videoId: string, ms: number): Promise<Record<st
   if (hit) return Promise.resolve(hit);
   const e = entry(videoId);
   return new Promise(function (resolve, reject) {
-    const t = setTimeout(function () {
-      reject(new Error("player response not cached"));
-    }, ms);
-    e.waiters.push(function (ok) {
+    const waiter: Waiter = function (verdict) {
       clearTimeout(t);
-      if (!ok) {
-        reject(new Error("player response not cached"));
+      if (verdict) {
+        reject(
+          new JsEngineErrorImpl(
+            "playability " + verdict.status + ": " + verdict.reason,
+            verdict.status,
+            verdict.reason ? { userMessage: verdict.reason } : undefined,
+          ),
+        );
         return;
       }
       try {
@@ -269,8 +275,15 @@ export function waitDownloadJson(videoId: string, ms: number): Promise<Record<st
       } catch (err) {
         reject(err);
       }
-    });
-    if (complete(e)) flush(e, true);
+    };
+    const t = setTimeout(function () {
+      const i = e.waiters.indexOf(waiter);
+      if (i >= 0) e.waiters.splice(i, 1);
+      const missing = !e.rec ? "/player never arrived" : "no SABR URL after /player";
+      reject(new JsEngineErrorImpl("player response not cached: " + missing, "E20087"));
+    }, ms);
+    e.waiters.push(waiter);
+    if (complete(e)) flush(e, null);
   });
 }
 
@@ -298,7 +311,16 @@ export function notePlayerResponse(rec: Record<string, unknown>): void {
   if (!vid) return;
   const st = asRec(rec["playabilityStatus"]);
   const ok = !st || st["status"] === "OK" || st["status"] == null;
-  if (!ok) return;
+  if (!ok) {
+    const waiting = cache[vid];
+    if (waiting && waiting.waiters.length) {
+      const status = String(st["status"]).toUpperCase() || "ERROR";
+      const reason = st["reason"] != null ? String(st["reason"]) : "";
+      console.info("mse player-res /player vid=" + vid + " playability=" + status);
+      flush(waiting, { status: status, reason: reason });
+    }
+    return;
+  }
   lastPlayerVid = vid;
   const sd = asRec(rec["streamingData"]);
   const listed =
@@ -318,7 +340,7 @@ export function notePlayerResponse(rec: Record<string, unknown>): void {
       " wait=" +
       e.waiters.length,
   );
-  if (complete(e)) flush(e, true);
+  if (complete(e)) flush(e, null);
   if (playerResponseListener) playerResponseListener(vid);
 }
 
@@ -394,5 +416,5 @@ export function noteSabrPlaybackUrl(url: string): void {
   debug(function () {
     return "mse player-res sabr vid=" + vid + " stream=" + (sid || "-") + " n=" + e.sabrUrls.length;
   });
-  if (complete(e)) flush(e, true);
+  if (complete(e)) flush(e, null);
 }
