@@ -54,6 +54,8 @@ class AndroidDownloadStorage(
             } catch (cleanupError: Exception) {
                 e.addSuppressed(cleanupError)
             }
+            // A grant revoked between createDocument and the write is the same lost-folder case.
+            if (e is SecurityException) throw DownloadFolderAccessException(destinationFolder.toString(), e)
             throw e
         }
         child.toString()
