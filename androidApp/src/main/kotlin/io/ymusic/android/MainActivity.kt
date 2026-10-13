@@ -38,6 +38,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import io.ymusic.player.VideoSize
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.ui.App
@@ -395,13 +396,7 @@ class MainActivity : FragmentActivity() {
             ) { _, _, _, _, _ -> }
                 .combine(graph.player.config) { _, _ -> graph.pip.autoEnterEligible() }
                 .collect { eligible ->
-                    val size = graph.player.status.value.videoSize
-                    val ratio = if (size != null && size.width > 0 && size.height > 0) {
-                        Rational(size.width, size.height)
-                    } else {
-                        Rational(16, 9)
-                    }
-                    val b = PictureInPictureParams.Builder().setAspectRatio(ratio)
+                    val b = PictureInPictureParams.Builder().setAspectRatio(pipAspectRatio(graph.player.status.value.videoSize))
                     if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(eligible)
                     setPictureInPictureParams(b.build())
                 }
@@ -410,15 +405,20 @@ class MainActivity : FragmentActivity() {
 
     private fun enterPip() {
         if (Build.VERSION.SDK_INT < 26) return
-        val size = appGraph?.player?.status?.value?.videoSize
-        val ratio = if (size != null && size.width > 0 && size.height > 0) {
-            Rational(size.width, size.height)
-        } else {
-            Rational(16, 9)
-        }
         enterPictureInPictureMode(
-            PictureInPictureParams.Builder().setAspectRatio(ratio).build(),
+            PictureInPictureParams.Builder().setAspectRatio(pipAspectRatio(appGraph?.player?.status?.value?.videoSize)).build(),
         )
+    }
+
+    // Android rejects ratios outside [1/2.39, 2.39] (config_pictureInPictureMin/MaxAspectRatio); 2.35 keeps float rounding inside.
+    private fun pipAspectRatio(size: VideoSize?): Rational {
+        if (size == null || size.width <= 0 || size.height <= 0) return Rational(16, 9)
+        val ratio = size.aspectRatio
+        return when {
+            ratio > 2.35f -> Rational(235, 100)
+            ratio < 1 / 2.35f -> Rational(100, 235)
+            else -> Rational(size.width, size.height)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
