@@ -453,6 +453,8 @@
         <item quantity="other">%1$d video đã chọn đã có trong Thư viện.</item>
     </plurals>
     <string name="error_network">Không kết nối được YouTube. Hãy kiểm tra mạng và thử lại.</string>
+    <string name="error_captcha">YouTube muốn xác nhận bạn không phải là robot</string>
+    <string name="captcha_verify">Xác minh</string>
     <string name="settings_player_cache">Bộ nhớ đệm trình phát</string>
     <string name="settings_player_cache_summary">Tối đa %1$s · Đã dùng %2$s · Tiết kiệm %3$s</string>
     <string name="settings_player_cache_off">Không dùng bộ nhớ đệm</string>

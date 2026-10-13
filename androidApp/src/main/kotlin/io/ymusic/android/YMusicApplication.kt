@@ -614,8 +614,8 @@ class YMusicApplication : Application() {
             appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
             imageLoader = shared.imageLoader,
             settings = shared.settings,
-            loginBrowser = { url, state, onPageChanged, modifier ->
-                AndroidLoginBrowser(url, state, onPageChanged, modifier)
+            loginBrowser = { url, userAgent, state, onPageChanged, modifier ->
+                AndroidLoginBrowser(url, userAgent, state, onPageChanged, modifier)
             },
             exportSessionCookies = { shared.cookies.exportSessionCookies() },
             scanQrCode = { qrScanner?.invoke() },

@@ -45,13 +45,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtAccountInfo
+import io.ymusic.dynamicengine.yt.YtVerifyTarget
 import io.ymusic.dynamicengine.yt.ytAccountInfo
 import io.ymusic.dynamicengine.yt.ytLoginStatus
 import io.ymusic.dynamicengine.yt.ytLoginUrl
 import io.ymusic.dynamicengine.yt.ytLogout
 import io.ymusic.dynamicengine.yt.ytRefreshSession
 import io.ymusic.dynamicengine.yt.ytSwitchAccountUrl
+import io.ymusic.dynamicengine.yt.ytVerifyTarget
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.captcha_verify
 import io.ymusic.ui.resources.cd_back
 import io.ymusic.ui.resources.cd_close
 import io.ymusic.ui.resources.signin_button
@@ -79,6 +82,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.Playability
+import projectcommon.error.errorCode
 import projectcommon.error.runSuspendCatching
 
 /**
@@ -113,12 +117,14 @@ class LoginWebViewState {
 
 /**
  * A platform browser WebView, injected by the platform shell (like [AppGraph.playerSurface]) so the
- * pure shared UI never depends on a WebView stack. It loads [url], reports title / URL / progress
- * into [state], and calls [onPageChanged] after each navigation. The shell copies sign-in cookies
- * into the persistent jar the engine reads so the login gate sees them.
+ * pure shared UI never depends on a WebView stack. It loads [url] presenting [userAgent] (null = the
+ * platform default), reports title / URL / progress into [state], and calls [onPageChanged] after
+ * each navigation. The shell copies sign-in cookies into the persistent jar the engine reads so the
+ * login gate sees them.
  */
 typealias LoginBrowser = @Composable (
     url: String,
+    userAgent: String?,
     state: LoginWebViewState,
     onPageChanged: () -> Unit,
     modifier: Modifier,
@@ -202,8 +208,21 @@ internal class AccountController(
             loginEpoch.value += 1
             _profileReady.value = true
             graph.player.refreshOnNext()
-            if (graph.player.status.value.error?.playability() == Playability.SignInRequired) graph.player.play()
+            val playerError = graph.player.status.value.error
+            if (playerError?.playability() == Playability.SignInRequired || playerError?.code == CAPTCHA_CODE) {
+                graph.player.play()
+            }
             graph.requestRefresh()
+        }
+    }
+
+    /** After the captcha browser closes: re-scrape the session under the cookies the cleared
+     *  challenge left, then [retry] what failed (a still-blocked scrape fails it again, visibly). */
+    fun onCaptchaVerified(retry: () -> Unit) {
+        scope.launch {
+            runSuspendCatching { graph.engines.ytRefreshSession() }
+                .onFailure { log?.log(Logger.Level.WARN, "post-verify session refresh failed", it) }
+            retry()
         }
     }
 
@@ -295,7 +314,41 @@ internal fun YtLoginScreen(
                 Text(stringResource(Res.string.signin_unavailable), color = DesignColors.InkMuted)
             }
             url == null -> CenteredBox { CircularProgressIndicator(color = DesignColors.Accent) }
-            else -> browser(url, state, {}, Modifier.fillMaxWidth().weight(1f))
+            else -> browser(url, null, state, {}, Modifier.fillMaxWidth().weight(1f))
+        }
+    }
+}
+
+/**
+ * The captcha browser: the login chrome over the shell's WebView on the engine's verify target,
+ * presenting the scrape's own User-Agent so the cleared challenge belongs to the identity the engine
+ * scrapes with (cookies land in the same jar). No gate to poll — the user closes it when done, and
+ * App refreshes the session and retries.
+ */
+@Composable
+internal fun YtVerifyScreen(graph: AppGraph, state: LoginWebViewState, onBack: () -> Unit) {
+    var target by remember { mutableStateOf<YtVerifyTarget?>(null) }
+    var failedCode by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(graph) {
+        runSuspendCatching { graph.engines.ytVerifyTarget() }
+            .onSuccess { target = it }
+            .onFailure {
+                graph.logger?.fork("verify")?.captureError(it, "verify target failed")
+                failedCode = it.errorCode() ?: "E20147"
+            }
+    }
+    Column(Modifier.fillMaxSize().background(DesignColors.Surface)) {
+        LoginChrome(state, onBack = onBack, fallbackTitle = stringResource(Res.string.captcha_verify))
+        val browser = graph.loginBrowser
+        val verify = target
+        val failed = failedCode
+        when {
+            browser == null -> CenteredBox {
+                Text(stringResource(Res.string.signin_unavailable), color = DesignColors.InkMuted)
+            }
+            failed != null -> CenteredBox { Text(errorMessage(failed), color = MaterialTheme.colorScheme.error) }
+            verify == null -> CenteredBox { CircularProgressIndicator(color = DesignColors.Accent) }
+            else -> browser(verify.url, verify.userAgent, state, {}, Modifier.fillMaxWidth().weight(1f))
         }
     }
 }
@@ -325,12 +378,16 @@ private fun SwitchAccountHint(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun LoginChrome(state: LoginWebViewState, onBack: () -> Unit) = ElevatedBarColumn {
+private fun LoginChrome(
+    state: LoginWebViewState,
+    onBack: () -> Unit,
+    fallbackTitle: String = stringResource(Res.string.signin_screen_title),
+) = ElevatedBarColumn {
     AppBarRow {
         ActionIcon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(Res.string.cd_back), onClick = onBack)
         Column(Modifier.weight(1f)) {
             Text(
-                state.title?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.signin_screen_title),
+                state.title?.takeIf { it.isNotBlank() } ?: fallbackTitle,
                 style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

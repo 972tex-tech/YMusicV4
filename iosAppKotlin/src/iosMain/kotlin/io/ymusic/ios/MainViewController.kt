@@ -282,8 +282,8 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         api = api,
         remoteConfig = remoteConfig.config,
         surfaceScalesDown = true,
-        loginBrowser = { url, state, onPageChanged, modifier ->
-            IosLoginBrowser(url, state, onPageChanged, modifier)
+        loginBrowser = { url, userAgent, state, onPageChanged, modifier ->
+            IosLoginBrowser(url, userAgent, state, onPageChanged, modifier)
         },
         exportSessionCookies = { cookies.exportSessionCookies() },
         scanQrCode = { iosScanQrCode() },

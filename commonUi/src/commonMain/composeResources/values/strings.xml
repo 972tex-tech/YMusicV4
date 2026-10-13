@@ -478,6 +478,8 @@
         <item quantity="other">%1$d of the selected videos are already in your Library.</item>
     </plurals>
     <string name="error_network">Can’t reach YouTube. Check your connection and try again.</string>
+    <string name="error_captcha">YouTube wants to confirm you’re not a robot</string>
+    <string name="captcha_verify">Verify</string>
     <string name="settings_player_cache">Player cache</string>
     <string name="settings_player_cache_summary">Max %1$s · Used %2$s · Saved %3$s</string>
     <string name="settings_player_cache_off">No cache</string>
