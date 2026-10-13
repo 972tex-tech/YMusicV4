@@ -267,8 +267,8 @@ class SabrSession(
     private class PartState(val header: MediaHeader, val file: DownloadFile) {
         var sink: BufferedSink? = null
         var totalRead: Long = 0
-        /** Its data arrived past the file end; dropped so the next round re-requests from the cursor. */
-        var discarded = false
+        /** Its data starts past the file end: skipped, and the cursor re-seeded from the file. */
+        var beyondFileEnd = false
         /** Set when this segment is also being mirrored into the player cache (see readResponse). */
         var cacheFill: SegmentFill? = null
     }
@@ -346,7 +346,9 @@ class SabrSession(
                         val headerId = body.readByte().toInt() and 0xFF
                         val state = checkNotNull(open[headerId]) { "media data for unknown header $headerId" }
                         val dataSize = partSize - 1
+                        val wasBeyond = state.beyondFileEnd
                         writeMediaData(body, state, dataSize)
+                        if (state.beyondFileEnd && !wasBeyond) reseedCursor(state, audio, video, segmentIndex)
                         state.totalRead += dataSize
                         onProgress() // throttled by the caller; reflects the growing file length
                     }
@@ -358,7 +360,7 @@ class SabrSession(
                         state.sink = null
                         state.cacheFill?.commit() // seal the mirrored span (its index row was saved on the header)
                         state.cacheFill = null
-                        if (!state.discarded && advanceIfContiguous(state.header, audio, video)) completed++
+                        if (state.reachedFileEnd() && advanceIfContiguous(state.header, audio, video)) completed++
                     }
 
                     UmpPart.NEXT_REQUEST_POLICY -> {
@@ -417,7 +419,7 @@ class SabrSession(
             body.copyFully(sink, dataSize)
             return
         }
-        if (state.discarded) {
+        if (state.beyondFileEnd) {
             body.skipFully(dataSize)
             return
         }
@@ -435,16 +437,11 @@ class SabrSession(
             body.copyFully(sink, dataSize - skips)
         } else {
             if (fileEnd < partStart) {
-                logger?.log(
-                    Logger.Level.WARN,
-                    "itag ${state.header.itag} seg ${state.header.segmentIndex} starts at $partStart past file end " +
-                        "$fileEnd; dropped, re-requested next round",
-                )
-                state.discarded = true
+                state.beyondFileEnd = true
                 state.cacheFill?.abort()
                 state.cacheFill = null
             }
-            body.skipFully(dataSize) // already have these bytes, or a gap we can't write yet
+            body.skipFully(dataSize) // already have these bytes, or past the file end
         }
     }
 
@@ -462,6 +459,26 @@ class SabrSession(
         } finally {
             if (buffer.size > remainderAfter) buffer.skip(buffer.size - remainderAfter)
         }
+    }
+
+    /** The segment counts as complete only once the file holds all of its bytes. */
+    private fun PartState.reachedFileEnd(): Boolean {
+        val length = if (header.contentLength > 0) header.contentLength else totalRead
+        return !beyondFileEnd && file.length() >= header.startRange + length
+    }
+
+    /** Data arrived past the file end, so the cursor claims bytes the file lacks: rebuild it from the file. */
+    private fun reseedCursor(state: PartState, audio: SabrTrack, video: SabrTrack?, segmentIndex: SegmentIndex?) {
+        val header = state.header
+        val track = if (header.cacheKey == audio.format.cacheKey) audio else video ?: return
+        val cursor = if (track === audio) audioSegment else videoSegment
+        val seeded = seedCursor(segmentIndex, track)
+        logger?.log(
+            Logger.Level.WARN,
+            "itag ${header.itag} seg ${header.segmentIndex} [${header.startRange}+${header.contentLength}] past file end " +
+                "${track.file.length()}; cursor seg ${cursor?.segmentIndex} reseeded to ${seeded?.segmentIndex}",
+        )
+        if (track === audio) audioSegment = seeded else videoSegment = seeded
     }
 
     private fun advanceIfContiguous(header: MediaHeader, audio: SabrTrack, video: SabrTrack?): Boolean {
