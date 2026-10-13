@@ -26,6 +26,7 @@ import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import io.ymusic.player.PlayableItem
@@ -256,7 +257,9 @@ class PlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<MediaItem>> =
-            future { LibraryResult.ofItem(tree.rootItem(), params) }
+            // Must be already done: the legacy onGetRoot blocks the main thread until this resolves,
+            // and its completion callback is posted to that same main thread — a pending future deadlocks.
+            Futures.immediateFuture(LibraryResult.ofItem(tree.rootItem(), params))
 
         override fun onGetChildren(
             session: MediaLibrarySession,
