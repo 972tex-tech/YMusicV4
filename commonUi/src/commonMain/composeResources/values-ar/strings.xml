@@ -23,6 +23,10 @@
     <string name="downloads_none_message">تعمل الأغاني والفيديوهات التي تم تنزيلها بلا اتصال.</string>
     <string name="downloads_failed">فشل التنزيل</string>
     <string name="downloads_error_folder_access">تعذّر الحفظ في مجلد التنزيلات — اختره مرة أخرى</string>
+    <string name="downloads_sign_in_title">سجّل الدخول للتنزيل</string>
+    <string name="downloads_sign_in_message">يطلب YouTube تسجيل الدخول قبل تنزيل هذا الفيديو. بعد تسجيل الدخول، يبدأ التنزيل من جديد.</string>
+    <string name="downloads_unavailable_title">الفيديو غير متاح</string>
+    <string name="downloads_unavailable_message">يفيد YouTube بأن هذا الفيديو غير متاح، لذا لن تفيد إعادة المحاولة. يمكنك إزالته من التنزيلات.</string>
     <string name="section_settings">الإعدادات</string>
     <string name="section_donate">تبرّع</string>
     <string name="section_telegram">إعلانات تيليجرام</string>

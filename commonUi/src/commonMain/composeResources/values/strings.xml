@@ -28,6 +28,10 @@
     <string name="downloads_none_message">Downloaded songs and videos play offline.</string>
     <string name="downloads_failed">Download failed</string>
     <string name="downloads_error_folder_access">Can’t save to the download folder — pick it again</string>
+    <string name="downloads_sign_in_title">Sign in to download</string>
+    <string name="downloads_sign_in_message">YouTube asks you to sign in before this video can be downloaded. Once you’re signed in, the download starts again.</string>
+    <string name="downloads_unavailable_title">Video unavailable</string>
+    <string name="downloads_unavailable_message">YouTube says this video is unavailable, so retrying won’t help. You can remove it from your downloads.</string>
     <string name="section_settings">Settings</string>
     <string name="section_catalogue">UI catalogue</string>
     <string name="section_donate">Donate</string>

@@ -132,6 +132,18 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val folderReveal = LocalLibraryFolderReveal.current
     val store = graph.mediaStore
     val scope = rememberCoroutineScope()
+    val signIn = LocalSignInResolver.current
+    var retryBlock by remember { mutableStateOf<RetryBlock?>(null) }
+    retryBlock?.let { block ->
+        val dismiss = { retryBlock = null }
+        when (block.verdict) {
+            Playability.SignInRequired -> DownloadSignInDialog(
+                onSignIn = { signIn?.signIn { service.retry(block.taskId) } },
+                onDismiss = dismiss,
+            )
+            Playability.Unavailable -> DownloadUnavailableDialog(onRemove = { service.remove(block.taskId) }, onDismiss = dismiss)
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
@@ -166,11 +178,16 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     task, service,
                     modifier = Modifier.animateItem(),
                     onRetry = {
-                        // The folder lost its write grant: only a fresh pick restores it, so Retry re-picks first.
-                        if (task.errorCode == DownloadFolderAccessException.CODE && graph.libraryFolderPicker != null) {
-                            scope.launch { if (pickDownloadFolder(graph)) service.retry(task.id) }
-                        } else {
-                            service.retry(task.id)
+                        val playability = playabilityOf(task.errorCode)
+                        when {
+                            // The folder lost its write grant: only a fresh pick restores it, so Retry re-picks first.
+                            task.errorCode == DownloadFolderAccessException.CODE && graph.libraryFolderPicker != null ->
+                                scope.launch { if (pickDownloadFolder(graph)) service.retry(task.id) }
+                            // Signed out only: once signed in, the stored verdict may predate the sign-in, so it re-runs.
+                            playability == Playability.SignInRequired && signIn != null && !signIn.signedIn ->
+                                retryBlock = RetryBlock(task.id, playability)
+                            playability == Playability.Unavailable -> retryBlock = RetryBlock(task.id, playability)
+                            else -> service.retry(task.id)
                         }
                     },
                     onPlay = {
@@ -216,6 +233,9 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
         }
     }
 }
+
+/** A Retry that a playability [verdict] answers before any re-run: its resolve dialog is up. */
+private class RetryBlock(val taskId: String, val verdict: Playability)
 
 /** The filter chips, in display order. CANCELED matches none (it's filtered out of the screen). */
 private enum class DownloadFilter(val label: StringResource, val empty: StringResource) {

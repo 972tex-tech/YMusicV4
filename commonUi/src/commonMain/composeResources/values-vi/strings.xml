@@ -23,6 +23,10 @@
     <string name="downloads_none_message">Bài hát và video đã tải phát được khi không có mạng.</string>
     <string name="downloads_failed">Tải xuống thất bại</string>
     <string name="downloads_error_folder_access">Không thể lưu vào thư mục tải xuống — hãy chọn lại thư mục</string>
+    <string name="downloads_sign_in_title">Đăng nhập để tải xuống</string>
+    <string name="downloads_sign_in_message">YouTube yêu cầu đăng nhập trước khi tải video này. Sau khi bạn đăng nhập, video sẽ được tải lại.</string>
+    <string name="downloads_unavailable_title">Video không khả dụng</string>
+    <string name="downloads_unavailable_message">YouTube cho biết video này không khả dụng nên thử lại cũng không được. Bạn có thể xóa nó khỏi danh sách tải xuống.</string>
     <string name="section_settings">Cài đặt</string>
     <string name="section_donate">Ủng hộ</string>
     <string name="section_telegram">Thông báo trên Telegram</string>
