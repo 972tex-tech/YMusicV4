@@ -11,18 +11,18 @@ plugins {
 }
 
 // Writes the absolute path of a runnable ffmpeg binary into the test source set so the smoke tests
-// can exec a real ffmpeg. The binary comes from the latest ffmpeg-build release (see
-// buildSrc/FfmpegRelease.kt); on a host that release has no build for, the path is emitted as null
+// can exec a real ffmpeg. The binary comes from the sibling ffmpeg-build's local build (see
+// buildSrc/FfmpegBuild.kt); on an OS ffmpeg-build has no target for, the path is emitted as null
 // and the tests skip themselves. Mirrors :kmpHttp:core's generateHttpbunCerts pattern (generated
 // Kotlin on the test source set).
-val ffmpegBinary = FfmpegRelease.hostBinary(project)
+val ffmpegBinary = FfmpegBuild.hostBinary(project)
 val ffmpegTestData = project.file("testdata")
 val generateFfmpegTestConfig = tasks.register("generateFfmpegTestConfig") {
     dependsOn(rootProject.tasks.named("syncFfmpegHost"))
     val outDir = layout.buildDirectory.dir("generated/ffmpegTestConfig")
     outputs.dir(outDir)
     // No exists() guard: the sync above is what puts the binary there, and it has not run yet at
-    // configuration time. A host the release has no build for is the null case.
+    // configuration time. An OS ffmpeg-build has no target for is the null case.
     val binPath = ffmpegBinary?.absolutePath
     val dataDir = ffmpegTestData.absolutePath
     inputs.property("binPath", binPath ?: "")
@@ -68,11 +68,8 @@ val stageFfmpegDeviceTestJni = tasks.register<Copy>("stageFfmpegDeviceTestJni") 
     dependsOn(rootProject.tasks.named("syncFfmpegAndroid"))
     description = "Stage prebuilt android ffmpeg pack into the androidDeviceTest jniLibs convention dir."
     into(layout.projectDirectory.dir("src/androidDeviceTest/jniLibs"))
-    FfmpegRelease.ANDROID_ABIS.forEach { abi ->
-        from(FfmpegRelease.androidPackDir(project, abi)) {
-            into(abi)
-            exclude(".tars", ".tars/**", "*.tar.gz", "*.part")
-        }
+    FfmpegBuild.ANDROID_ABIS.forEach { abi ->
+        from(FfmpegBuild.androidPackDir(project, abi)) { into(abi) }
     }
 }
 

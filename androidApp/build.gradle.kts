@@ -132,9 +132,8 @@ val stageFfmpeg by tasks.registering(Copy::class) {
     dependsOn(rootProject.tasks.named("syncFfmpegAndroid"))
     into(layout.buildDirectory.dir("ffmpegJniLibs").get().asFile)
     appAbis.forEach { abi ->
-        from(FfmpegRelease.androidPackDir(project, abi)) {
+        from(FfmpegBuild.androidPackDir(project, abi)) {
             into(abi)
-            exclude(".tars", ".tars/**", "*.tar.gz", "*.part")
             // Shared libav lives in the :mse AAR (same DSOs the CLI loads via $ORIGIN).
             exclude("libav*", "libsw*")
         }

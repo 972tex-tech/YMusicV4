@@ -58,11 +58,11 @@ val remoteConfigBaseUrl: String = localServerUrl()
 // (or reveal) where it was built.
 val localIp: String = localServerIp()
 
-// Dev and test runs exec the prebuilt ffmpeg from the latest ffmpeg-build release through
+// Dev and test runs exec the ffmpeg staged from the sibling ffmpeg-build through
 // -Dio.ymusic.ffmpeg. A packaged build never sees this property: it uses the copy packed next to
 // the compose resources (see stagePackedFfmpeg). Set on the run and test TASKS, never on
 // compose.desktop.application.jvmArgs — those are baked into the packaged launcher.
-val ffmpegForDev: File? = FfmpegRelease.hostBinary(project)
+val ffmpegForDev: File? = FfmpegBuild.hostBinary(project)
 if (ffmpegForDev != null) {
     val syncFfmpegHost = rootProject.tasks.named("syncFfmpegHost")
     val ffmpegPath = ffmpegForDev.absolutePath
@@ -81,7 +81,7 @@ if (ffmpegForDev != null) {
 // app-resources — the one copy of each library a package carries (:mse's jar copy is stripped
 // below). Each library ships once, under the soname the CLI and libav itself link against: the
 // pack's other names are symlinks, which a copy would turn into full duplicates.
-val ffmpegPackedName = FfmpegRelease.hostCliName()
+val ffmpegPackedName = FfmpegBuild.hostCliName()
 val ffmpegAppResources = layout.buildDirectory.dir("ffmpegAppResources")
 val mseJniName: String = System.mapLibraryName("mseffmpegjni")
 val stagePackedFfmpeg by tasks.registering(Copy::class) {
@@ -89,9 +89,8 @@ val stagePackedFfmpeg by tasks.registering(Copy::class) {
     val stagedDir = ffmpegAppResources.map { it.dir("common") }
     // A stale stage would keep names this one no longer produces.
     doFirst { stagedDir.get().asFile.deleteRecursively() }
-    if (FfmpegRelease.hostAsset() != null) {
-        from(FfmpegRelease.hostDir(project)) {
-            exclude(".tars", ".tars/**", "*.tar.gz", "*.part")
+    if (FfmpegBuild.hostSlug() != null) {
+        from(FfmpegBuild.hostDir(project)) {
             eachFile {
                 if (Files.isSymbolicLink(file.toPath())) {
                     exclude()

@@ -11,7 +11,7 @@ internal data class OssComponent(val name: String, val license: String, val scop
  * FFmpeg ships as a SEPARATE executable the app runs as a child process — never linked in — so its
  * LGPL and this app's GPL never meet: the boundary is a process, not a library call. The build
  * scripts, the sources it is built from and the relinking notice the LGPL asks for live in
- * github.com/ymusic-io/ffmpeg-build (NOTICE.md); the binaries are that repo's release assets.
+ * github.com/ymusic-io/ffmpeg-build (NOTICE.md); the binaries are built from that repo.
  */
 internal val OssComponents: List<OssComponent> = listOf(
     OssComponent("Kotlin Standard Library", "Apache-2.0"),

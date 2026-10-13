@@ -33,44 +33,37 @@ spotless {
     }
 }
 
-// ---- prebuilt ffmpeg (see buildSrc/FfmpegRelease.kt) --------------------------------------------
+// ---- ffmpeg packs from the sibling ffmpeg-build (see buildSrc/FfmpegBuild.kt) -----------------
 // Registered here rather than per module so the two staging directories have exactly one producer
 // each. Consumers depend on the one they need: :androidApp and :kmpFfmpeg's device tests on the
 // android ABI packs, :desktopApp's run and tests on the host pack (CLI + the same libav DSOs).
-fun Project.registerFfmpegSync(name: String, wanted: Set<String>, dir: File, what: String) =
+fun Project.registerFfmpegSync(name: String, packs: Map<String, String>, dir: File, what: String) =
     tasks.register<SyncFfmpeg>(name) {
         group = "build setup"
-        description = "Fetch $what from the latest ${FfmpegRelease.REPO} release."
-        repo.set(FfmpegRelease.REPO)
-        assets.set(wanted)
-        FfmpegRelease.localDir(project)?.let { localDir.set(it) }
-        localPacks.from(FfmpegRelease.localBuildPacks(project, wanted))
-        offline.set(gradle.startParameter.isOffline)
-        // --rerun-tasks counts too: it already re-runs this task, and a build asking for everything
-        // to be redone from scratch should not be the one build that keeps a stale ffmpeg.
-        force.set(
-            providers.gradleProperty("ymusic.ffmpegUpdate").isPresent || gradle.startParameter.isRerunTasks,
-        )
+        description = "Stage $what from ../ffmpeg-build/out."
+        this.packs.set(packs)
+        ffmpegBuildRoot.set(FfmpegBuild.root(project).absolutePath)
+        packFiles.from(packs.values.map { FfmpegBuild.pack(project, it) })
         outputDir.set(dir)
     }
 
 registerFfmpegSync(
     "syncFfmpegHost",
-    setOfNotNull(FfmpegRelease.hostAsset()),
-    FfmpegRelease.hostDir(project),
+    listOfNotNull(FfmpegBuild.hostSlug()).associateBy { "" },
+    FfmpegBuild.hostDir(project),
     "the host ffmpeg pack (CLI + libav) the desktop app ships and the tests exec",
 )
 
 registerFfmpegSync(
     "syncFfmpegAndroid",
-    FfmpegRelease.ANDROID_ABIS.map(FfmpegRelease::androidAsset).toSet(),
-    FfmpegRelease.androidDir(project),
+    FfmpegBuild.ANDROID_ABIS.associateWith(FfmpegBuild::androidSlug),
+    FfmpegBuild.androidDir(project),
     "the per-ABI ffmpeg pack the apk ships as lib/<abi>/{libffmpeg.so,libav*.so}",
 )
 
 tasks.register("syncFfmpeg") {
     group = "build setup"
-    description = "Fetch every prebuilt ffmpeg this host can use."
+    description = "Stage every ffmpeg pack this host can use."
     dependsOn("syncFfmpegHost", "syncFfmpegAndroid")
 }
 

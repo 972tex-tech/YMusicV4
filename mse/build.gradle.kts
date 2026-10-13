@@ -180,7 +180,7 @@ val javaHomeForJni: String = run {
     }
     candidates.firstOrNull { File(it, "include/jni.h").exists() } ?: ""
 }
-val ffmpegDesktopPrefix: File? = FfmpegRelease.hostPrefix(project)
+val ffmpegDesktopPrefix: File? = FfmpegBuild.hostPrefix(project)
 fun canBuildMseJni(log: org.gradle.api.logging.Logger): Boolean {
     val missing = when {
         javaHomeForJni.isEmpty() -> "no JDK with include/jni.h (set JAVA_HOME)"
