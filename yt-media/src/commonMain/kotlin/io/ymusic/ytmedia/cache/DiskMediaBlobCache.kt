@@ -350,20 +350,24 @@ class DiskMediaBlobCache(
         private fun finish(commitTail: Boolean) {
             if (released) return
             released = true
-            if (commitTail) {
-                sink.flush() // push whatever the buffered façade still holds into RelaySink → the temp
-                commitBlock()
-            } else {
-                tmpSink?.close()
-                tmp?.let { fileSystem.delete(it, mustExist = false) }
-                tmpSink = null; tmp = null
+            try {
+                if (commitTail) {
+                    sink.flush() // push whatever the buffered façade still holds into RelaySink → the temp
+                    commitBlock()
+                } else {
+                    tmpSink?.close()
+                    tmp?.let { fileSystem.delete(it, mustExist = false) }
+                    tmpSink = null; tmp = null
+                }
+            } finally {
+                // Released even when the tail fails, or the region stays "in flight" (unwritable) forever.
+                val victims = synchronized(lock) {
+                    regionToken?.let { inFlight -= it } // known-length only
+                    activeWriters -= id
+                    planEviction(0)
+                }
+                victims.forEach { fileSystem.delete(it, mustExist = false) }
             }
-            val victims = synchronized(lock) {
-                regionToken?.let { inFlight -= it } // known-length only
-                activeWriters -= id
-                planEviction(0)
-            }
-            victims.forEach { fileSystem.delete(it, mustExist = false) }
         }
     }
 
