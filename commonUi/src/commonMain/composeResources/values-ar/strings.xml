@@ -22,6 +22,7 @@
     <string name="downloads_none_title">لا توجد تنزيلات بعد</string>
     <string name="downloads_none_message">تعمل الأغاني والفيديوهات التي تم تنزيلها بلا اتصال.</string>
     <string name="downloads_failed">فشل التنزيل</string>
+    <string name="downloads_error_folder_access">تعذّر الحفظ في مجلد التنزيلات — اختره مرة أخرى</string>
     <string name="section_settings">الإعدادات</string>
     <string name="section_donate">تبرّع</string>
     <string name="section_telegram">إعلانات تيليجرام</string>

@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.ymusic.download.DownloadFolderAccessException
 import io.ymusic.download.DownloadFormat
 import io.ymusic.download.DownloadService
 import io.ymusic.download.DownloadState
@@ -57,6 +58,7 @@ import io.ymusic.ui.resources.downloads_empty_error
 import io.ymusic.ui.resources.downloads_empty_paused
 import io.ymusic.ui.resources.downloads_empty_running
 import io.ymusic.ui.resources.downloads_empty_waiting
+import io.ymusic.ui.resources.downloads_error_folder_access
 import io.ymusic.ui.resources.downloads_failed
 import io.ymusic.ui.resources.downloads_filter_all
 import io.ymusic.ui.resources.downloads_filter_completed
@@ -69,6 +71,8 @@ import io.ymusic.ui.resources.downloads_none_title
 import io.ymusic.ui.resources.downloads_pause_all
 import io.ymusic.ui.resources.downloads_resume_all
 import io.ymusic.ui.resources.downloads_unavailable
+import io.ymusic.ui.resources.playback_sign_in_required
+import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.retry
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.launch
@@ -77,6 +81,8 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.Playability
+import projectcommon.error.playabilityOf
 
 /**
  * The Download Manager: a status filter chip row over one flat adaptive grid (one column on a phone,
@@ -159,6 +165,14 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 DownloadCard(
                     task, service,
                     modifier = Modifier.animateItem(),
+                    onRetry = {
+                        // The folder lost its write grant: only a fresh pick restores it, so Retry re-picks first.
+                        if (task.errorCode == DownloadFolderAccessException.CODE && graph.libraryFolderPicker != null) {
+                            scope.launch { if (pickDownloadFolder(graph)) service.retry(task.id) }
+                        } else {
+                            service.retry(task.id)
+                        }
+                    },
                     onPlay = {
                         task.fileUri?.let { uri ->
                             scope.launch { coordinator.playDownloaded(uri, task.videoId, task.title, task.artist) }
@@ -231,6 +245,7 @@ private fun DownloadCard(
     task: DownloadTask,
     service: DownloadService,
     modifier: Modifier,
+    onRetry: () -> Unit,
     onPlay: () -> Unit,
     onRevealLibrary: (() -> Unit)?,
     onRevealFolder: (() -> Unit)?,
@@ -261,7 +276,7 @@ private fun DownloadCard(
                         }
                     }
                 }
-                MoreMenu(actionsFor(task, service, onPlay, onRevealLibrary, onRevealFolder))
+                MoreMenu(actionsFor(task, service, onRetry, onPlay, onRevealLibrary, onRevealFolder))
             }
             if (task.showsBar()) {
                 Box(Modifier.fillMaxWidth().padding(start = ContentIndent)) { DownloadBar(task, c) }
@@ -285,9 +300,9 @@ private fun DownloadCard(
                             Text(formatDownloadDate(task.updatedAt), style = MaterialTheme.typography.labelSmall, color = c.inkMuted)
                         }
                         DownloadState.FAILED -> {
-                            Text(task.errorMessage ?: stringResource(Res.string.downloads_failed), style = MaterialTheme.typography.bodySmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(downloadErrorText(task), style = MaterialTheme.typography.bodySmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             Button(
-                                onClick = { service.retry(task.id) },
+                                onClick = onRetry,
                                 shape = RoundedCornerShape(percent = 50),
                                 colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                                 contentPadding = PaddingValues(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space4),
@@ -298,6 +313,20 @@ private fun DownloadCard(
                 }
             }
         }
+    }
+}
+
+/** A failed task's message: a category the user acts on as its own text, else the origin-minted
+ *  userMessage with its code, else "Something went wrong (code)". */
+@Composable
+private fun downloadErrorText(task: DownloadTask): String {
+    val code = task.errorCode ?: return task.errorMessage ?: stringResource(Res.string.downloads_failed)
+    return when {
+        code == DownloadFolderAccessException.CODE -> stringResource(Res.string.downloads_error_folder_access)
+        playabilityOf(code) == Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
+        playabilityOf(code) == Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
+        task.errorMessage != null -> "${task.errorMessage} ($code)"
+        else -> errorMessage(code)
     }
 }
 
@@ -361,6 +390,7 @@ private fun StatusChip(label: String, container: Color, content: Color) {
 private fun actionsFor(
     task: DownloadTask,
     service: DownloadService,
+    onRetry: () -> Unit,
     onPlay: () -> Unit,
     onRevealLibrary: (() -> Unit)?,
     onRevealFolder: (() -> Unit)?,
@@ -376,7 +406,7 @@ private fun actionsFor(
                 add("Cancel" to { service.cancel(task.id) })
             }
             DownloadState.FAILED -> {
-                add("Retry" to { service.retry(task.id) })
+                add("Retry" to onRetry)
                 add("Remove" to { service.remove(task.id) })
             }
             DownloadState.COMPLETED -> {

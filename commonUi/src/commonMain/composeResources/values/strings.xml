@@ -27,6 +27,7 @@
     <string name="downloads_none_title">No downloads yet</string>
     <string name="downloads_none_message">Downloaded songs and videos play offline.</string>
     <string name="downloads_failed">Download failed</string>
+    <string name="downloads_error_folder_access">Can’t save to the download folder — pick it again</string>
     <string name="section_settings">Settings</string>
     <string name="section_catalogue">UI catalogue</string>
     <string name="section_donate">Donate</string>

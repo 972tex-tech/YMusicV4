@@ -22,6 +22,7 @@
     <string name="downloads_none_title">Chưa có bản tải xuống nào</string>
     <string name="downloads_none_message">Bài hát và video đã tải phát được khi không có mạng.</string>
     <string name="downloads_failed">Tải xuống thất bại</string>
+    <string name="downloads_error_folder_access">Không thể lưu vào thư mục tải xuống — hãy chọn lại thư mục</string>
     <string name="section_settings">Cài đặt</string>
     <string name="section_donate">Ủng hộ</string>
     <string name="section_telegram">Thông báo trên Telegram</string>
