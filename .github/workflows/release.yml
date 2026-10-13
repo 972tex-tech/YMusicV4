@@ -1,10 +1,9 @@
-name: build
+name: release
 
+# The shipping build, run by pushing a release tag: git tag release-v4.0.0 && git push <remote> release-v4.0.0
 on:
   push:
-    branches: [master]
-  pull_request:
-  workflow_dispatch:
+    tags: ['release-*']
 
 permissions:
   contents: read
@@ -123,11 +122,10 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
 
-      # The shipping build: secrets.enc → secrets.properties + signing/. Pull requests never decrypt
-      # (nor does a run without SECRETS_PASSPHRASE); they build on defaults — unsigned, no Sentry
-      # upload, no remote config — to prove the change compiles, not to ship.
+      # secrets.enc → secrets.properties + signing/. Without SECRETS_PASSPHRASE the build runs on
+      # defaults: unsigned, no Sentry upload, no remote config.
       - name: Restore secrets
-        if: env.SECRETS_PASSPHRASE != '' && github.event_name != 'pull_request'
+        if: env.SECRETS_PASSPHRASE != ''
         working-directory: YMusicV4
         run: ./decrypt.sh
 
@@ -181,11 +179,10 @@ jobs:
           node-version: 22
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
 
-      # The shipping build: secrets.enc → secrets.properties + signing/. Pull requests never decrypt
-      # (nor does a run without SECRETS_PASSPHRASE); they build on defaults — unsigned, no Sentry
-      # upload, no remote config — to prove the change compiles, not to ship.
+      # secrets.enc → secrets.properties + signing/. Without SECRETS_PASSPHRASE the build runs on
+      # defaults: unsigned, no Sentry upload, no remote config.
       - name: Restore secrets
-        if: env.SECRETS_PASSPHRASE != '' && github.event_name != 'pull_request'
+        if: env.SECRETS_PASSPHRASE != ''
         working-directory: YMusicV4
         run: ./decrypt.sh
 
@@ -193,15 +190,14 @@ jobs:
       #   MACOS_CERT_P12       Developer ID .p12, base64:  base64 -i cert.p12 | pbcopy
       #   MACOS_CERT_PASSWORD  its export password
       # The identity goes into a throwaway keychain, and its name becomes YMUSIC_MAC_IDENTITY for
-      # the build. Without the secret (or on a pull request) YMUSIC_MAC_IDENTITY is empty: unsigned.
+      # the build. Without the secret YMUSIC_MAC_IDENTITY is empty: unsigned.
       - name: Import signing identity
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-          IS_PR: ${{ github.event_name == 'pull_request' }}
         run: |
           set -euo pipefail
-          if [ -z "$MACOS_CERT_P12" ] || [ "$IS_PR" = true ]; then
+          if [ -z "$MACOS_CERT_P12" ]; then
             echo "YMUSIC_MAC_IDENTITY=" >> "$GITHUB_ENV"
             echo "no signing identity: the DMG will be unsigned"
             exit 0
