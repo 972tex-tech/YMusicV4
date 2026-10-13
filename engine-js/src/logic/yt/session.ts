@@ -275,7 +275,7 @@ async function scrapeSession(): Promise<YtSession> {
   );
   if (!res.ok) {
     res.close();
-    throw JsEngineErrorImpl.network("yt session HTTP " + res.status);
+    throw JsEngineErrorImpl.httpStatus("yt session", res.status, "E20145");
   }
   const host = hostOf(res.url);
   if (host !== WWW_HOST) {

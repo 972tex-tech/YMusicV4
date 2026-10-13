@@ -72,6 +72,12 @@ E20110 - creating a playlist failed with an uncoded error (commonUi YtPlaylistDi
 E20111 - edit_playlist (remove a video from a playlist) answered a failure status (engine-js logic/yt/playlistEdit.ts)
 E20112 - removing a video from a playlist failed with an uncoded error (commonUi DetailScreens.kt)
 E20113 - resolving an outside link (yt/resolve-link) failed with an uncoded error (commonUi App.kt)
+E20140 - InnerTube youtubei/v1 call answered a non-transient non-2xx (4xx except 408/429; 403 after session refresh) (engine-js logic/yt/innertube.ts innertubeJson)
+E20141 - InnerTube youtubei/v1 call answered a non-transient non-2xx other than 404 (engine-js logic/yt/innertube.ts innertubeJsonOrNotFound)
+E20142 - music.youtube.com youtubei/v1 call answered a non-transient non-2xx (4xx except 408/429; 403 after session refresh) (engine-js logic/yt/ytmusic.ts)
+E20143 - charts.youtube.com browse answered a non-transient non-2xx (engine-js logic/yt/charts.ts)
+E20144 - search suggest (suggestqueries) answered a non-transient non-2xx (engine-js logic/yt/commands.ts)
+E20145 - youtube.com homepage session scrape answered a non-transient non-2xx (engine-js logic/yt/session.ts)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 

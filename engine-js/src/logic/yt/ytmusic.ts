@@ -23,7 +23,7 @@ const MUSIC_CLIENT_VERSION = "1.20260707.12.00";
 /**
  * POST `youtubei/v1/<endpoint>` on music.youtube.com with the WEB_REMIX context and `fields` merged
  * next to it. Mirrors innertube.ts: the session supplies visitorData, the engine owns hl/gl, a 403
- * refreshes the session once and retries, non-2xx throws classified "network".
+ * refreshes the session once and retries.
  */
 export async function musicJson(
   endpoint: string,
@@ -39,7 +39,7 @@ export async function musicJson(
   }
   if (!res.ok) {
     res.close();
-    throw JsEngineErrorImpl.network("ytmusic " + endpoint + " HTTP " + res.status);
+    throw JsEngineErrorImpl.httpStatus("ytmusic " + endpoint, res.status, "E20142");
   }
   return res.jsonObject();
 }

@@ -40,6 +40,12 @@ export class JsEngineErrorImpl extends Error {
   static network(message: string, opts?: JsEngineErrorOptions): JsEngineErrorImpl {
     return new JsEngineErrorImpl(message, "network", opts);
   }
+  // A non-2xx answer: 408/429/5xx are server-side transients ("network"); any other status means
+  // our request is wrong and carries the caller's site code.
+  static httpStatus(message: string, status: number, siteCode: string): JsEngineErrorImpl {
+    const transient = status === 408 || status === 429 || status >= 500;
+    return new JsEngineErrorImpl(message + " HTTP " + status, transient ? "network" : siteCode);
+  }
 }
 globalThis.JsEngineError = JsEngineErrorImpl;
 
