@@ -55,6 +55,13 @@ import io.ymusic.ui.AppGraph
 import io.ymusic.ui.SlimSeekBar
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.badge_live
+import io.ymusic.ui.resources.cd_next
+import io.ymusic.ui.resources.cd_open_app
+import io.ymusic.ui.resources.cd_pause
+import io.ymusic.ui.resources.cd_play
+import io.ymusic.ui.resources.cd_previous
+import io.ymusic.ui.resources.cd_stop_dismiss
+import io.ymusic.ui.resources.mini_player_nothing_playing
 import io.ymusic.ui.skipSegmentFractions
 import kmpcommon.log.Logger
 import org.jetbrains.compose.resources.stringResource
@@ -151,7 +158,7 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
             }
             Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                 Text(
-                    item?.displayTitle ?: "Nothing playing",
+                    item?.displayTitle ?: stringResource(Res.string.mini_player_nothing_playing),
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -167,10 +174,10 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
                 }
             }
             IconButton(onClick = onOpenApp, modifier = Modifier.size(30.dp)) {
-                Icon(Icons.AutoMirrored.Filled.OpenInNew, "Open YMusic", Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, stringResource(Res.string.cd_open_app), Modifier.size(16.dp))
             }
             IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
-                Icon(Icons.Default.Close, "Stop and dismiss", Modifier.size(16.dp))
+                Icon(Icons.Default.Close, stringResource(Res.string.cd_stop_dismiss), Modifier.size(16.dp))
             }
         }
 
@@ -224,17 +231,17 @@ private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onDismiss:
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = { player.skipPrev() }, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.SkipPrevious, "Previous", Modifier.size(20.dp))
+                Icon(Icons.Default.SkipPrevious, stringResource(Res.string.cd_previous), Modifier.size(20.dp))
             }
             IconButton(onClick = { player.togglePlay() }, modifier = Modifier.size(36.dp)) {
                 Icon(
                     if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    if (playing) "Pause" else "Play",
+                    stringResource(if (playing) Res.string.cd_pause else Res.string.cd_play),
                     Modifier.size(26.dp),
                 )
             }
             IconButton(onClick = { player.skipNext() }, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.SkipNext, "Next", Modifier.size(20.dp))
+                Icon(Icons.Default.SkipNext, stringResource(Res.string.cd_next), Modifier.size(20.dp))
             }
         }
     }

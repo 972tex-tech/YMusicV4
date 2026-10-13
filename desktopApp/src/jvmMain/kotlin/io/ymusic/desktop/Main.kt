@@ -140,6 +140,11 @@ import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.playhistory.playHistoryJdbcDriver
 import io.ymusic.ui.registerCompletedDownload
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.cd_close
+import io.ymusic.ui.resources.cd_fullscreen
+import io.ymusic.ui.resources.cd_minimize
+import io.ymusic.ui.resources.feedback_attach
+import io.ymusic.ui.resources.folder_picker_title
 import io.ymusic.ui.resources.ymusic_logo
 import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
 import io.ymusic.ui.sponsorblock.sponsorBlockJdbcDriver
@@ -173,7 +178,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toPath
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 import projectcommon.log.FileLogger
 import projectcommon.log.LoggingWorker
 import java.awt.BorderLayout
@@ -392,15 +399,15 @@ fun main() {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            MacTrafficLight(Color(0xFFFF5F57), "Close", "✕", closeApp)
+                            MacTrafficLight(Color(0xFFFF5F57), stringResource(Res.string.cd_close), "✕", closeApp)
                             MacTrafficLight(
                                 Color(0xFFFEBC2E),
-                                "Minimize",
+                                stringResource(Res.string.cd_minimize),
                                 "─",
                             ) { window.extendedState = java.awt.Frame.ICONIFIED }
                             MacTrafficLight(
                                 Color(0xFF28C840),
-                                "Full screen",
+                                stringResource(Res.string.cd_fullscreen),
                                 "＋",
                                 onClick = { frame.toggleFullscreen() },
                             )
@@ -1378,8 +1385,9 @@ private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = {
 /** Multi-select file pick for feedback attachments; an over-limit file comes back name-only (null
  *  bytes) so the form can refuse it with its name. */
 private suspend fun pickFeedbackFiles(): List<io.ymusic.ui.FeedbackFile> {
+    val title = getString(Res.string.feedback_attach)
     val picked = withContext(Dispatchers.Main) {
-        val dialog = FileDialog(null as Frame?, "Attach files", FileDialog.LOAD)
+        val dialog = FileDialog(null as Frame?, title, FileDialog.LOAD)
         dialog.isMultipleMode = true
         dialog.isVisible = true
         dialog.files.toList()
@@ -1395,16 +1403,19 @@ private suspend fun pickFeedbackFiles(): List<io.ymusic.ui.FeedbackFile> {
 
 // macOS's AWT FileDialog only picks directories while this property is set; elsewhere the dialog
 // picks a single file, which the scanner indexes on its own (a supported single-file scan).
-private suspend fun pickFolder(): File? = withContext(Dispatchers.Main) {
-    val prop = "apple.awt.fileDialogForDirectories"
-    val previous = System.getProperty(prop)
-    System.setProperty(prop, "true")
-    try {
-        val dialog = FileDialog(null as Frame?, "Choose a music folder", FileDialog.LOAD)
-        dialog.isVisible = true
-        dialog.file?.let { File(dialog.directory, it) }
-    } finally {
-        if (previous == null) System.clearProperty(prop) else System.setProperty(prop, previous)
+private suspend fun pickFolder(): File? {
+    val title = getString(Res.string.folder_picker_title)
+    return withContext(Dispatchers.Main) {
+        val prop = "apple.awt.fileDialogForDirectories"
+        val previous = System.getProperty(prop)
+        System.setProperty(prop, "true")
+        try {
+            val dialog = FileDialog(null as Frame?, title, FileDialog.LOAD)
+            dialog.isVisible = true
+            dialog.file?.let { File(dialog.directory, it) }
+        } finally {
+            if (previous == null) System.clearProperty(prop) else System.setProperty(prop, previous)
+        }
     }
 }
 

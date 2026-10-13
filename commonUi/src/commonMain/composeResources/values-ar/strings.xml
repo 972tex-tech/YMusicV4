@@ -278,11 +278,14 @@
     <string name="cd_collapse">طي</string>
     <string name="cd_expand">توسيع</string>
     <string name="cd_play_pause">تشغيل/إيقاف مؤقت</string>
+    <string name="cd_play">تشغيل</string>
+    <string name="cd_pause">إيقاف مؤقت</string>
     <string name="cd_next">التالي</string>
     <string name="cd_previous">السابق</string>
     <string name="cd_download">تنزيل</string>
     <string name="cd_fullscreen">ملء الشاشة</string>
     <string name="cd_exit_fullscreen">الخروج من ملء الشاشة</string>
+    <string name="cd_minimize">تصغير</string>
     <string name="cd_fit_video">ملاءمة الفيديو</string>
     <string name="cd_fill_video">ملء الشاشة</string>
     <string name="cd_rewind10">إرجاع 10 ثوانٍ</string>
@@ -296,6 +299,10 @@
     <string name="cd_drag_to_reorder">اسحب لإعادة الترتيب</string>
     <string name="cd_send">إرسال</string>
     <string name="cd_vote">تصويت</string>
+    <string name="cd_open_app">فتح YMusic</string>
+    <string name="cd_stop_dismiss">إيقاف وإغلاق</string>
+    <string name="mini_player_nothing_playing">لا شيء قيد التشغيل</string>
+    <string name="folder_picker_title">اختر مجلد موسيقى</string>
     <string name="menu_remove_from_disk">حذف من القرص</string>
     <string name="delete_from_disk_title">حذف الملف؟</string>
     <string name="delete_from_disk_message">سيتم حذف "%1$s" نهائيًا من هذا الجهاز. لا يمكن التراجع عن ذلك.</string>

@@ -293,11 +293,14 @@
     <string name="cd_collapse">Collapse</string>
     <string name="cd_expand">Expand</string>
     <string name="cd_play_pause">Play/Pause</string>
+    <string name="cd_play">Play</string>
+    <string name="cd_pause">Pause</string>
     <string name="cd_next">Next</string>
     <string name="cd_previous">Previous</string>
     <string name="cd_download">Download</string>
     <string name="cd_fullscreen">Full screen</string>
     <string name="cd_exit_fullscreen">Exit full screen</string>
+    <string name="cd_minimize">Minimize</string>
     <string name="cd_fit_video">Fit video</string>
     <string name="cd_fill_video">Fill screen</string>
     <string name="cd_rewind10">Rewind 10 seconds</string>
@@ -311,6 +314,10 @@
     <string name="cd_drag_to_reorder">Drag to reorder</string>
     <string name="cd_send">Send</string>
     <string name="cd_vote">Vote</string>
+    <string name="cd_open_app">Open YMusic</string>
+    <string name="cd_stop_dismiss">Stop and dismiss</string>
+    <string name="mini_player_nothing_playing">Nothing playing</string>
+    <string name="folder_picker_title">Choose a music folder</string>
     <string name="menu_remove_from_disk">Remove from disk</string>
     <string name="delete_from_disk_title">Delete file?</string>
     <string name="delete_from_disk_message">“%1$s” will be permanently deleted from this device. This cannot be undone.</string>
