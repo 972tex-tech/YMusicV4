@@ -38,6 +38,14 @@ internal fun fingerprintPolicy(event: SentryEvent): SentryEvent {
     if (event.exceptions.any { it.type == "TrailMark" }) {
         event.exceptions = event.exceptions.filterNot { it.type == "TrailMark" }.toMutableList()
     }
+    // An ANR or native crash is reported by the NEXT process, enriched from the scope Sentry persisted
+    // before the death — including the trail/code tags of the last event captureError sent. They don't
+    // describe this event and would group every such ANR under that unrelated code.
+    if (event.exceptions.any { it.type in NEXT_PROCESS_REPORTS }) {
+        event.removeTag(SentryLogger.TRAIL_TAG)
+        event.removeTag(SentryLogger.CODE_TAG)
+        return event
+    }
     val code = event.getTag(SentryLogger.CODE_TAG)
     val trail = event.getTag(SentryLogger.TRAIL_TAG)
     if (code != null) {
@@ -53,6 +61,8 @@ internal fun fingerprintPolicy(event: SentryEvent): SentryEvent {
 }
 
 private val SITE_CODE = Regex("""E\d{5}""")
+
+private val NEXT_PROCESS_REPORTS = setOf("ApplicationNotResponding", "SIGSEGV", "SIGABRT", "SIGBUS", "SIGILL", "SIGFPE", "SIGTRAP")
 
 /** Attach the anonymous stable device id to every event this process sends (crash grouping across
  *  sessions, "how many devices" triage). No-op until Sentry.init ran. */
