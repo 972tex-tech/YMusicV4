@@ -1,0 +1,185 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The ffmpeg-build commit the apps link against. Bumping it rebuilds every ffmpeg pack once;
+  # otherwise each pack comes from the cache keyed on this ref.
+  FFMPEG_BUILD_REPO: ymusic-io/ffmpeg-build
+  FFMPEG_BUILD_REF: e38cb40412b6da2d789e77dad4117299a08cddfc
+
+jobs:
+  # The checkouts sit side by side (YMusicV4/ + ffmpeg-build/): the Gradle build reads
+  # ../ffmpeg-build/out/<slug>, exactly as on a developer machine.
+  ffmpeg:
+    name: ffmpeg ${{ matrix.slug }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { slug: android-arm64-v8a, runner: ubuntu-24.04 }
+          - { slug: android-x86, runner: ubuntu-24.04 }
+          - { slug: android-x86_64, runner: ubuntu-24.04 }
+          - { slug: macos-arm64, runner: macos-14 }
+          - { slug: macos-x86_64, runner: macos-15-intel }
+    steps:
+      - id: cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ffmpeg-build/out/${{ matrix.slug }}
+          key: ffmpeg-${{ matrix.slug }}-${{ env.FFMPEG_BUILD_REF }}
+
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ env.FFMPEG_BUILD_REPO }}
+          ref: ${{ env.FFMPEG_BUILD_REF }}
+          path: ffmpeg-build
+          submodules: recursive
+          fetch-depth: 1
+
+      - if: steps.cache.outputs.cache-hit != 'true' && startsWith(matrix.slug, 'android-')
+        working-directory: ffmpeg-build
+        run: |
+          sudo apt-get update && sudo apt-get install -y nasm automake autoconf libtool pkg-config patchelf
+          ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME" scripts/build-android.sh "${SLUG#android-}"
+        env:
+          SLUG: ${{ matrix.slug }}
+
+      - if: steps.cache.outputs.cache-hit != 'true' && startsWith(matrix.slug, 'macos-')
+        working-directory: ffmpeg-build
+        run: |
+          brew install nasm automake autoconf libtool pkg-config meson ninja
+          scripts/build-desktop.sh
+
+  android:
+    needs: ffmpeg
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: YMusicV4
+
+      - name: Restore ffmpeg android-arm64-v8a
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ffmpeg-build/out/android-arm64-v8a
+          key: ffmpeg-android-arm64-v8a-${{ env.FFMPEG_BUILD_REF }}
+          fail-on-cache-miss: true
+      - name: Restore ffmpeg android-x86
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ffmpeg-build/out/android-x86
+          key: ffmpeg-android-x86-${{ env.FFMPEG_BUILD_REF }}
+          fail-on-cache-miss: true
+      - name: Restore ffmpeg android-x86_64
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ffmpeg-build/out/android-x86_64
+          key: ffmpeg-android-x86_64-${{ env.FFMPEG_BUILD_REF }}
+          fail-on-cache-miss: true
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+
+      - name: Build webview-js
+        working-directory: YMusicV4/webview-js
+        run: npm ci && npm run build
+
+      # Without ANDROID_KEYSTORE_BASE64 the release APKs are debug-signed: installable, not updatable
+      # over a store install.
+      - name: Release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.p12"
+            echo "YMUSIC_ANDROID_STORE_FILE=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
+          fi
+
+      - name: Assemble release APKs
+        working-directory: YMusicV4
+        env:
+          YMUSIC_ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          YMUSIC_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          YMUSIC_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          YMUSIC_REMOTE_CONFIG_URL: ${{ vars.REMOTE_CONFIG_URL }}
+          YMUSIC_BUNDLE_PUBLIC_KEY: ${{ vars.BUNDLE_PUBLIC_KEY }}
+          YMUSIC_UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_PUBLIC_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: ./gradlew :androidApp:assembleRelease
+
+      - name: Discard the keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.p12"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android-apks
+          path: YMusicV4/androidApp/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+  macos:
+    name: macos ${{ matrix.slug }}
+    needs: ffmpeg
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { slug: macos-arm64, runner: macos-14 }
+          - { slug: macos-x86_64, runner: macos-15-intel }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: YMusicV4
+
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ffmpeg-build/out/${{ matrix.slug }}
+          key: ffmpeg-${{ matrix.slug }}-${{ env.FFMPEG_BUILD_REF }}
+          fail-on-cache-miss: true
+
+      # A full JDK: jpackage builds the DMG, and the build looks for it under JAVA_HOME.
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+
+      # Unsigned: Developer ID signing and notarization stay on the release machine.
+      - name: Package DMG
+        working-directory: YMusicV4
+        env:
+          YMUSIC_REMOTE_CONFIG_URL: ${{ vars.REMOTE_CONFIG_URL }}
+          YMUSIC_BUNDLE_PUBLIC_KEY: ${{ vars.BUNDLE_PUBLIC_KEY }}
+          YMUSIC_UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_PUBLIC_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: ./gradlew :desktopApp:packageReleaseDmg
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.slug }}-dmg
+          path: YMusicV4/desktopApp/build/compose/binaries/main-release/dmg/*.dmg
+          if-no-files-found: error
