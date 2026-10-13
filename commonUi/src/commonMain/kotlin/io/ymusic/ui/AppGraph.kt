@@ -23,6 +23,7 @@ import io.ymusic.ui.sponsorblock.ServiceSponsorBlockApi
 import io.ymusic.ui.sponsorblock.SponsorBlockApi
 import io.ymusic.ui.sponsorblock.SponsorBlockService
 import io.ymusic.ui.sponsorblock.SponsorBlockStore
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -211,7 +212,10 @@ class AppGraph(
 
     /** One per process — a second instance double-captures playback failures and double-credits watch time.
      *  Lazy: its collectors start at once and must only see a fully constructed graph. */
-    val playback by lazy { PlaybackCoordinator(this, CoroutineScope(SupervisorJob() + Dispatchers.Default)) }
+    val playback by lazy {
+        val onFailure = CoroutineExceptionHandler { _, e -> logger?.fork("playback")?.captureError(e, "playback coordinator failed") }
+        PlaybackCoordinator(this, CoroutineScope(SupervisorJob() + Dispatchers.Default + onFailure))
+    }
 
     init {
         // Process-lifetime like the graph itself: every queue is recorded, whatever screen is up.
