@@ -874,11 +874,8 @@ internal class PlayerImpl(
         /** Cue the next item this close to the end — legacy UniPlayer. */
         const val PRELOAD_LEAD_MS = 10_000L
 
-        /**
-         * A wedge guard, not a network budget: a cold YouTube init (homepage scrape, BotGuard, 2.6 MB
-         * base.js fetch + QuickJS eval) runs ~11 s on low-end phones, and each request has its own timeout.
-         */
-        const val PREPARE_TIMEOUT_MS = 30_000L
+        /** UniPlayer `tryMakePlayerReady` timeout. */
+        const val PREPARE_TIMEOUT_MS = 10_000L
 
         /** A listen tick within this of the seek target counts as landed. */
         const val SEEK_SETTLE_MS = 500L
