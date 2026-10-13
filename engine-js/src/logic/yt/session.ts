@@ -279,7 +279,10 @@ async function scrapeSession(): Promise<YtSession> {
     throw JsEngineErrorImpl.captcha("yt session: bot challenge at " + challenge);
   }
   if (!res.ok) {
-    res.close();
+    if (RE_CHALLENGE_BODY.test(await res.text()))
+      throw JsEngineErrorImpl.captcha(
+        "yt session: bot challenge page (" + res.status + ") at " + res.url,
+      );
     throw JsEngineErrorImpl.httpStatus("yt session", res.status, "E20145");
   }
   const host = hostOf(res.url);
@@ -288,11 +291,10 @@ async function scrapeSession(): Promise<YtSession> {
     throw JsEngineErrorImpl.parse("yt session: homepage redirected to " + host);
   }
   const html = await res.text();
-  if (html.indexOf("INNERTUBE_") === -1) {
-    if (RE_CHALLENGE_BODY.test(html))
-      throw JsEngineErrorImpl.captcha("yt session: bot challenge page at " + res.url);
+  if (RE_CHALLENGE_BODY.test(html))
+    throw JsEngineErrorImpl.captcha("yt session: bot challenge page at " + res.url);
+  if (html.indexOf("INNERTUBE_") === -1)
     throw JsEngineErrorImpl.parse("yt session: no ytcfg in homepage");
-  }
 
   const clientVersion = firstMatch(html, "INNERTUBE_CONTEXT_CLIENT_VERSION", RE_CLIENT_VERSION);
   const visitorData = firstMatch(html, "VISITOR_DATA", RE_VISITOR_DATA, -1);
@@ -442,8 +444,9 @@ function isSorryUrl(url: string): boolean {
   return url.indexOf("/sorry", url.indexOf(host) + host.length) !== -1;
 }
 
-// Only consulted on a page with no ytcfg — the real homepage carries none of these.
-const RE_CHALLENGE_BODY = /recaptcha|unusual traffic|\/sorry\//i;
+// The reCAPTCHA v2 widget element. The normal homepage mentions recaptcha too (RECAPTCHA_V3_SITEKEY,
+// .grecaptcha-badge) but never carries this class attribute.
+const RE_CHALLENGE_BODY = /\bclass\s*=\s*["'](?:[^"']*\s)?g-recaptcha["'\s]/i;
 
 function hostOf(url: string): string {
   const start = url.indexOf("//");
