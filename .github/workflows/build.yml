@@ -189,38 +189,68 @@ jobs:
         working-directory: YMusicV4
         run: ./decrypt.sh
 
-      # The Developer ID identity (MACOS_CERT_P12, base64, + MACOS_CERT_PASSWORD from the decrypted
-      # secrets.properties) goes into a throwaway keychain the build's codesign can reach.
+      # Repository secrets (not secrets.enc), as ffmpeg-build's release signing had them:
+      #   MACOS_CERT_P12       Developer ID .p12, base64:  base64 -i cert.p12 | pbcopy
+      #   MACOS_CERT_PASSWORD  its export password
+      # The identity goes into a throwaway keychain, and its name becomes YMUSIC_MAC_IDENTITY for
+      # the build. Without the secret (or on a pull request) YMUSIC_MAC_IDENTITY is empty: unsigned.
       - name: Import signing identity
-        if: hashFiles('YMusicV4/secrets.properties') != ''
-        working-directory: YMusicV4
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          IS_PR: ${{ github.event_name == 'pull_request' }}
         run: |
           set -euo pipefail
-          prop() { sed -n "s/^$1=//p" secrets.properties | head -n 1; }
+          if [ -z "$MACOS_CERT_P12" ] || [ "$IS_PR" = true ]; then
+            echo "YMUSIC_MAC_IDENTITY=" >> "$GITHUB_ENV"
+            echo "no signing identity: the DMG will be unsigned"
+            exit 0
+          fi
           KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
           KEYCHAIN_PASSWORD="$(uuidgen)"
           CERT="$RUNNER_TEMP/cert.p12"
-          prop MACOS_CERT_P12 | base64 --decode > "$CERT"
-          [ -s "$CERT" ] || { echo "MACOS_CERT_P12 in secrets.properties is empty or not base64" >&2; exit 1; }
+
+          echo "$MACOS_CERT_P12" | base64 --decode > "$CERT"
+          [ -s "$CERT" ] || { echo "MACOS_CERT_P12 is empty or is not base64" >&2; exit 1; }
+
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           # Without this the keychain relocks mid-build and codesign waits on a UI prompt.
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$CERT" -P "$(prop MACOS_CERT_PASSWORD)" -A -f pkcs12 -k "$KEYCHAIN"
+          # A wrong password fails here loudly. A .p12 exported from Keychain Access's "Keys"
+          # category holds the private key alone and imports silently — caught just below.
+          security import "$CERT" -P "$MACOS_CERT_PASSWORD" -A -f pkcs12 -k "$KEYCHAIN"
           rm -f "$CERT"
+          if [ "$(security find-certificate -a "$KEYCHAIN" 2>/dev/null | grep -c '^keychain:')" -lt 1 ]; then
+            echo "the .p12 holds a private key but no certificate. Re-export the identity from" >&2
+            echo "Keychain Access under \"My Certificates\", not under \"Keys\"." >&2
+            exit 1
+          fi
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
             -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
-          # Appended: the runner's own keychains carry the Apple intermediates the chain needs.
+          # Appended, not substituted: the runner's keychains carry the Apple intermediates the chain needs.
           security list-keychain -d user -s "$KEYCHAIN" $(security list-keychain -d user | tr -d ' "')
-          security find-identity -v -p codesigning "$KEYCHAIN" | grep -q "Developer ID Application" ||
-            { echo "no valid Developer ID Application identity in MACOS_CERT_P12" >&2; exit 1; }
 
-      # Signed with mac.signing.identity and notarized + stapled with the mac.notarization.* account
-      # when secrets were restored; otherwise an unsigned DMG.
+          echo "identities in the signing keychain:"
+          security find-identity -p codesigning "$KEYCHAIN" | sed 's/^/  /'
+          # sed, not grep: a non-matching grep under pipefail would abort before the diagnosis prints.
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | sed -n '/Developer ID Application/{s/.*"\(.*\)".*/\1/p;q;}')"
+          if [ -z "$IDENTITY" ]; then
+            echo "no VALID Developer ID Application identity. From the listing above:" >&2
+            echo "  listed, but not valid -> the .p12 is missing its intermediate certificate" >&2
+            echo "  not listed at all     -> wrong MACOS_CERT_PASSWORD, or not a Developer ID .p12" >&2
+            exit 1
+          fi
+          echo "signing as: $IDENTITY"
+          echo "YMUSIC_MAC_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      # Signed with the imported identity; notarized + stapled with the mac.notarization.* account
+      # from secrets.enc when both are present. Otherwise an unsigned DMG.
       - name: Package DMG
         working-directory: YMusicV4
         run: |
-          if [ -f secrets.properties ]; then
+          if [ -n "$YMUSIC_MAC_IDENTITY" ] && grep -q '^mac.notarization.appleId=.' secrets.properties 2>/dev/null; then
             ./gradlew :desktopApp:packageReleaseDmg :desktopApp:notarizeReleaseDmg
           else
             ./gradlew :desktopApp:packageReleaseDmg
