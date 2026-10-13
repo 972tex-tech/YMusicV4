@@ -424,6 +424,7 @@
     <string name="sound_pitch">Pitch %1$s</string>
     <string name="sound_eq">Equalizer</string>
     <string name="sound_eq_band">%1$s Hz  %2$d dB</string>
+    <string name="sound_db">%1$s dB</string>
     <string name="sound_reset">Reset</string>
     <string name="sound_ok">OK</string>
     <string name="sound_preset_flat">Flat</string>
