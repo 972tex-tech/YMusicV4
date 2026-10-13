@@ -28,7 +28,7 @@ fun SentryOptions.applyYMusicTelemetry() {
 /**
  * Grouping for [SentryLogger.captureError] events (async stacks make frame-based grouping
  * meaningless here): a site code (`E#####`) groups alone — one code, one throw site, one issue;
- * a category code ("parse", "oom"; "network" is never captured) and a non-coded exception
+ * a category code ("parse", "oom"; "network" and "captcha" are never captured) and a non-coded exception
  * group per trail, so the same failure shape in two subsystems stays two issues. Events with no
  * trail tag (uncaught crashes the SDK captured itself) keep Sentry's default grouping.
  */

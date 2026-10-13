@@ -32,6 +32,11 @@ sealed class EngineError(
     class Parse internal constructor(m: String, u: String?, n: String?, s: String?, c: Throwable?) :
         EngineError("parse", m, u, n, s, c)
 
+    /** YouTube answered with a bot challenge (google.com/sorry, reCAPTCHA) — the user clears it in a
+     *  browser over the shared cookie jar ([io.ymusic.dynamicengine.yt.ytVerifyTarget]). */
+    class Captcha internal constructor(m: String, u: String?, n: String?, s: String?, c: Throwable?) :
+        EngineError("captcha", m, u, n, s, c)
+
     /** The JS engine itself gave out (OOM, stack overflow) — when it was even catchable. */
     class Oom internal constructor(m: String, u: String?, n: String?, s: String?, c: Throwable?) :
         EngineError("oom", m, u, n, s, c)
@@ -72,6 +77,7 @@ internal fun decodeEngineError(reason: String, cause: Throwable?): EngineError {
     return when {
         wire.code == "network" -> EngineError.Network(message, wire.userMessage, wire.name, wire.stack, cause)
         wire.code == "parse" -> EngineError.Parse(message, wire.userMessage, wire.name, wire.stack, cause)
+        wire.code == "captcha" -> EngineError.Captcha(message, wire.userMessage, wire.name, wire.stack, cause)
         wire.code == "oom" -> EngineError.Oom(message, wire.userMessage, wire.name, wire.stack, cause)
         SITE_CODE.matches(wire.code) ->
             EngineError.Technical(wire.code, message, wire.userMessage, wire.name, wire.stack, cause)
