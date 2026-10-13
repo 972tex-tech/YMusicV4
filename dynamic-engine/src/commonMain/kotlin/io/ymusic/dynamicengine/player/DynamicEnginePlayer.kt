@@ -55,7 +55,7 @@ class DynamicEnginePlayer private constructor(
                 if (height != null) w.name("height").value(height)
                 if (freshConfig) w.name("freshConfig").value(true)
             },
-            logger,
+            logger?.fork("init", mapOf("freshConfig" to freshConfig)),
         ) { it.readObject() }
     }
 
@@ -86,7 +86,7 @@ class DynamicEnginePlayer private constructor(
                 writer.name("pitch").value(pitch.toString())
                 writer.name("loop").value(loop)
             },
-            logger,
+            logger?.fork("load", mapOf("videoId" to videoId, "audioOnly" to audioOnly)),
         ) { it.readObject() }
     }
 
@@ -107,7 +107,7 @@ class DynamicEnginePlayer private constructor(
         return engine.jsonCommand(
             "player/preload",
             { w -> w.name("videoId").value(videoId) },
-            logger,
+            logger?.fork("preload", mapOf("videoId" to videoId)),
         ) { it.readObject() }
     }
 

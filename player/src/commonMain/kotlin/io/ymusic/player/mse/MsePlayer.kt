@@ -66,6 +66,7 @@ import projectcommon.json.longOrNull
 import projectcommon.json.objectOrNull
 import projectcommon.json.objects
 import projectcommon.json.stringOrNull
+import projectcommon.log.markTrail
 
 /**
  * YouTube [YtEngine] over engine-js + C MSE, mirroring legacy `WebViewYtPlayer`. Each [init]/[reset]
@@ -81,10 +82,12 @@ import projectcommon.json.stringOrNull
 class MsePlayer internal constructor(
     private val newEngineThread: () -> CloseableCoroutineDispatcher,
     val videoSurface: MseVideoSurface,
-    private val log: Logger?,
+    logger: Logger?,
     private val playerJs: JsSourceProvider,
     private val buildPlayer: (engineThread: CoroutineDispatcher, playerJs: String) -> DynamicEnginePlayer,
 ) : YtEngine {
+    private val log = logger?.fork("mse")
+
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /** Fire-and-forget teardown of abandoned sessions; deliberately outlives [release]. */
@@ -217,7 +220,9 @@ class MsePlayer internal constructor(
             delay(LOAD_TIMEOUT_MS)
             loadTimeoutJob = null
             tearDownSession()
-            fail(TechnicalException("E60051", "load timeout ${source.videoId}"), "load timeout", needReset = true)
+            val timeout = TechnicalException("E60051", "load timeout ${source.videoId}")
+                .markTrail(log?.fork("load", mapOf("videoId" to source.videoId)))
+            fail(timeout, "load timeout", needReset = true)
         }
     }
 
@@ -670,6 +675,8 @@ class MsePlayer internal constructor(
             ?: Regex("""E\d{5}""").find(error.message.orEmpty())?.value
             ?: "E60033"
         log?.log(Logger.Level.WARN, "$code $message", error)
+        // The state change, not a throw, carries this failure out — its capture site must still see the mse trail.
+        error.markTrail(log)
         loadTimeoutJob?.cancel()
         loadTimeoutJob = null
         _status.update {
