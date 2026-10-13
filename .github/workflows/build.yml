@@ -18,6 +18,9 @@ env:
   # otherwise each pack comes from the cache keyed on this ref.
   FFMPEG_BUILD_REPO: ymusic-io/ffmpeg-build
   FFMPEG_BUILD_REF: e38cb40412b6da2d789e77dad4117299a08cddfc
+  # The NDK (r28c) for the Android ffmpeg packs and the app's own native code, installed with the
+  # runner's sdkmanager: the image's ANDROID_NDK_LATEST_HOME moves (r30 fails android-x86_64).
+  NDK_VERSION: 28.2.13676358
 
 jobs:
   # The checkouts sit side by side (YMusicV4/ + ffmpeg-build/): the Gradle build reads
@@ -39,7 +42,8 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ffmpeg-build/out/${{ matrix.slug }}
-          key: ffmpeg-${{ matrix.slug }}-${{ env.FFMPEG_BUILD_REF }}
+          # Android packs also key on the NDK: a pack must not outlive the toolchain it was built with.
+          key: ffmpeg-${{ matrix.slug }}-${{ env.FFMPEG_BUILD_REF }}${{ startsWith(matrix.slug, 'android-') && format('-ndk{0}', env.NDK_VERSION) || '' }}
 
       - if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -50,13 +54,11 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      # Pinned, not the runner's moving ANDROID_NDK_LATEST_HOME: r28c is what the packs are known to
-      # build with on every ABI.
       - if: steps.cache.outputs.cache-hit != 'true' && startsWith(matrix.slug, 'android-')
-        id: ndk
-        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
-        with:
-          ndk-version: r28c
+        name: Install NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
 
       - if: steps.cache.outputs.cache-hit != 'true' && startsWith(matrix.slug, 'android-')
         working-directory: ffmpeg-build
@@ -71,7 +73,6 @@ jobs:
           }
         env:
           SLUG: ${{ matrix.slug }}
-          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
 
       - if: steps.cache.outputs.cache-hit != 'true' && startsWith(matrix.slug, 'macos-')
         working-directory: ffmpeg-build
@@ -93,19 +94,19 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ffmpeg-build/out/android-arm64-v8a
-          key: ffmpeg-android-arm64-v8a-${{ env.FFMPEG_BUILD_REF }}
+          key: ffmpeg-android-arm64-v8a-${{ env.FFMPEG_BUILD_REF }}-ndk${{ env.NDK_VERSION }}
           fail-on-cache-miss: true
       - name: Restore ffmpeg android-x86
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ffmpeg-build/out/android-x86
-          key: ffmpeg-android-x86-${{ env.FFMPEG_BUILD_REF }}
+          key: ffmpeg-android-x86-${{ env.FFMPEG_BUILD_REF }}-ndk${{ env.NDK_VERSION }}
           fail-on-cache-miss: true
       - name: Restore ffmpeg android-x86_64
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ffmpeg-build/out/android-x86_64
-          key: ffmpeg-android-x86_64-${{ env.FFMPEG_BUILD_REF }}
+          key: ffmpeg-android-x86_64-${{ env.FFMPEG_BUILD_REF }}-ndk${{ env.NDK_VERSION }}
           fail-on-cache-miss: true
 
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
@@ -117,11 +118,10 @@ jobs:
           node-version: 22
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
       # The ffmpeg packs' NDK, for :quickjs and :mse's CMake builds (they honor ANDROID_NDK_ROOT).
-      - id: ndk
-        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
-        with:
-          ndk-version: r28c
-      - run: echo "ANDROID_NDK_ROOT=${{ steps.ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+      - name: Install NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
 
       # The shipping build: secrets.enc → secrets.properties + signing/. Pull requests never decrypt
       # (nor does a run without SECRETS_PASSPHRASE); they build on defaults — unsigned, no Sentry
