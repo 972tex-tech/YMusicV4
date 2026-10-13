@@ -191,8 +191,12 @@ class RemoteConfig(
                 } catch (refused: HttpStatusException) {
                     // A refusal the server may recover from is a state; one it will not is a bug.
                     // The last good value stays published either way.
+                    // 403 is the edge refusing this client (WAF/bot rules hit data-center IPs such as
+                    // Play pre-launch devices), not a malformed request from this build.
                     if (refused.retryable) {
                         log?.info("Fetch config: ${refused.message}")
+                    } else if (refused.code == 403) {
+                        log?.log(Logger.Level.WARN, "Fetch config refused", refused)
                     } else {
                         log?.captureError(refused, "Fetch config failed")
                     }
