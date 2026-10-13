@@ -594,6 +594,7 @@ internal class PlayerImpl(
         when (item) {
             is PlayableItem.LocalMedia -> {
                 val engine = localEngine ?: engines.local().also { localEngine = it }
+                resetUnshownError(engine)
                 bind(engine)
                 requestLoad(engine, item, startPositionMs, gen)
             }
@@ -612,11 +613,22 @@ internal class PlayerImpl(
                     return
                 }
                 val engine = ytEngine ?: factory().also { ytEngine = it }
+                resetUnshownError(engine)
                 bind(engine)
                 requestLoad(engine, item, startPositionMs, gen)
             }
         }
         refreshPrepareNext()
+    }
+
+    /** An unbound engine's error (a failed [prepareYoutubeEngine] pre-warm) was never shown; binding
+     *  it as-is would publish a stale failure the load is about to recover from. */
+    private fun resetUnshownError(engine: MediaEngine<*>) {
+        if (engine === _currentEngine.value) return
+        val error = (engine.status.value.state as? PlaybackState.Error)?.error ?: return
+        if (!error.canRetry || !error.needReset) return
+        if (engine is YtEngine) ytResetOnNext = false
+        engine.reset()
     }
 
     private fun requestLoad(
