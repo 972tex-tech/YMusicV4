@@ -34,6 +34,9 @@ open class DefaultDownloadStorage(
         fileSystem.deleteRecursively(scratchDir / taskId, mustExist = false)
     }
 
+    override fun scratchTaskIds(): List<String> =
+        fileSystem.listOrNull(scratchDir).orEmpty().map { it.name }
+
     final override suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String): String {
         val folder = Uri.parse(destinationFolder)
         if (folder.scheme != "file") {

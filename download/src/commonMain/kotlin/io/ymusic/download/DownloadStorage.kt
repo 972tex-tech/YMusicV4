@@ -24,6 +24,9 @@ interface DownloadStorage {
      *  Best-effort (no-op if absent). */
     fun deleteScratch(taskId: String)
 
+    /** The task ids that currently own a scratch folder — for pruning folders whose task is gone. */
+    fun scratchTaskIds(): List<String> = emptyList()
+
     /**
      * Move [scratch]'s finished bytes into [destinationFolder] as [fileName] and return the created file's
      * uri. [destinationFolder] is the user's chosen download-location folder uri — always concrete (the UX

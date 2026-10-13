@@ -1,5 +1,6 @@
 package io.ymusic.download
 
+import io.ymusic.download.internal.downloadDbDispatcher
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SegmentIndex
 import kmpcommon.log.Logger
@@ -98,13 +99,15 @@ class DownloadService(
      * One-time startup recovery, run lazily on first use (no explicit start-up call): anything left
      * running or queued — in-flight when the app was killed/crashed, or still waiting — is reset to
      * [DownloadState.PAUSED] so the queue never auto-starts and the user resumes explicitly.
-     * Terminal/failed/already-paused tasks are kept. Idempotent.
+     * Terminal/failed/already-paused tasks are kept. Scratch folders no resumable task owns are deleted —
+     * the scratch root is app data storage, which the OS never trims. Idempotent.
      */
     internal suspend fun initIfNotYet() {
         if (initialized) return
         initMutex.withLock {
             if (initialized) return
             store.pauseActiveAndQueued(now())
+            pruneOrphanScratch()
             initialized = true
         }
     }
@@ -320,6 +323,19 @@ class DownloadService(
         return when {
             coded?.userMessage != null -> "${coded.userMessage} (${coded.code})"
             else -> "Something went wrong (${coded?.code ?: "E70001"})"
+        }
+    }
+
+    private suspend fun pruneOrphanScratch() {
+        val resumable = store.all().filter { !it.state.isTerminal }.mapTo(HashSet()) { it.id }
+        withContext(downloadDbDispatcher()) {
+            val owners = try {
+                storage.scratchTaskIds()
+            } catch (e: okio.IOException) {
+                log?.log(Logger.Level.WARN, "scratch listing failed (orphans leak until next run)", e)
+                return@withContext
+            }
+            owners.filter { it !in resumable }.forEach(::cleanupTemp)
         }
     }
 
