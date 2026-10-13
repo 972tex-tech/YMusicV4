@@ -1,5 +1,6 @@
 package io.ymusic.dynamicengine
 
+import io.ymusic.dynamicengine.internal.ENGINE_TEST_JS_VERSION
 import io.ymusic.dynamicengine.yt.jsonCommand
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
@@ -61,10 +62,10 @@ class HostLoggingTest {
             engine.probe("""{"url":"https://youtube.com/watch","ctx":["download","fetchForLinkParser"]}""")
 
             // The failure is logged once, where it's born, with the trail + this protocol's hop.
-            // The bundle bakes its own js:<version> as the trail root (logger.ts VERSION_TAG).
+            // The bundle bakes its own <name>:<version> as the trail root (logger.ts VERSION_TAG).
             val entry = log.calls.single { it.message.startsWith("request failed:") }
             assertEquals(Logger.Level.WARN, entry.level)
-            assertEquals(listOf("js:68", "js:download", "js:fetchForLinkParser", "http"), entry.tags)
+            assertEquals(listOf("engine:$ENGINE_TEST_JS_VERSION", "js:download", "js:fetchForLinkParser", "http"), entry.tags)
             assertEquals(mapOf<String, Any>("url" to "https://youtube.com/watch"), entry.crumbs.last().prop)
             assertTrue(entry.message.startsWith("request failed:"), "message was: ${entry.message}")
             assertTrue(entry.message.contains("connect refused"), "message was: ${entry.message}")
@@ -81,7 +82,7 @@ class HostLoggingTest {
         try {
             engine.probe("""{"url":"https://x/"}""")
             assertEquals(
-                listOf("js:68", "http"),
+                listOf("engine:$ENGINE_TEST_JS_VERSION", "http"),
                 log.calls.single { it.message.startsWith("request failed:") }.tags,
             )
         } finally {
@@ -104,7 +105,7 @@ class HostLoggingTest {
             // The birth-site WARN carries the Kotlin caller's trail (via the parked key), the JS
             // side's forks WITH their props (by value), and the protocol's own hop.
             val entry = log.calls.single { it.message.startsWith("request failed:") }
-            assertEquals(listOf("Discover", "task", "js:68", "js:fetch", "js:sub", "http"), entry.tags)
+            assertEquals(listOf("Discover", "task", "engine:$ENGINE_TEST_JS_VERSION", "js:fetch", "js:sub", "http"), entry.tags)
             assertEquals(mapOf<String, Any>("id" to "a1"), entry.crumbs[1].prop)
             assertEquals(mapOf<String, Any>("n" to 1L), entry.crumbs[4].prop)
             assertTrue(entry.error is IOException)

@@ -37,12 +37,13 @@ plugins {
 // BuildFlags.PRODUCTION: `debug(function () { return concat; })` does not call the thunk
 // when true (esbuild inlines; Closure DCE drops the dead branch).
 val production = providers.gradleProperty("production").map(String::toBoolean).getOrElse(false)
-fun esbuildDefines(backendVersion: Long) = arrayOf(
+fun esbuildDefines(bundleName: String, backendVersion: Long) = arrayOf(
+    "--define:BUNDLE_NAME=\"$bundleName\"",
     "--define:BACKEND_VERSION=$backendVersion",
     "--define:PRODUCTION=$production",
 )
-val engineDefines = esbuildDefines(Versions.engineJsVersion)
-val playerDefines = esbuildDefines(Versions.playerJsVersion)
+val engineDefines = esbuildDefines("engine", Versions.engineJsVersion)
+val playerDefines = esbuildDefines("player", Versions.playerJsVersion)
 
 val srcDir = layout.projectDirectory.dir("src")
 val tsconfig = layout.projectDirectory.file("tsconfig.json")

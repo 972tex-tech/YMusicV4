@@ -17,9 +17,10 @@ function jsTag(tag: string): string {
   return t.indexOf("js:") === 0 ? t : "js:" + t;
 }
 
-// Every trail this bundle emits opens with its own revision (js:<version>/js:<job>/…) so a report
-// names the bundle that produced it. Baked here, not host-side: the version is the bundle's fact.
-export const VERSION_TAG: string = "js:" + BACKEND_VERSION;
+// Every trail this bundle emits opens with its own name + revision (engine:<version>/js:<job>/…, or
+// player:<version>/…) so a report names the bundle that produced it. Baked here, not host-side:
+// the version is the bundle's fact.
+export const VERSION_TAG: string = BUNDLE_NAME + ":" + BACKEND_VERSION;
 
 export interface LogWire {
   "key"?: number;

@@ -86,6 +86,9 @@ declare var versions: {
  *  (The host app's version needs no twin: read the `versions.app` global.) */
 declare const BACKEND_VERSION: number;
 
+/** Which bundle this is — "engine" (scrape, also the test bundle) or "player" (MSE player). */
+declare const BUNDLE_NAME: string;
+
 /** Same bake as Kotlin BuildFlags.PRODUCTION (`-Pproduction`, default false).
  *  `debug(function () { return concat; })` does not call the thunk when true. */
 declare const PRODUCTION: boolean;
