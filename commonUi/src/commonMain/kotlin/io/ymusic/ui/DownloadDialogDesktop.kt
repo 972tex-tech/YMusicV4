@@ -86,6 +86,7 @@ internal fun DownloadDialogDesktop(
     locationName: String?,
     onPickLocation: () -> Unit,
     onRetry: () -> Unit,
+    onSignIn: (() -> Unit)?,
     onDownload: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -119,7 +120,7 @@ internal fun DownloadDialogDesktop(
                 val options = state.options
                 when {
                     state.isLive -> LiveNotDownloadable()
-                    options == null && state.errorCode != null -> ProbeFailed(state.errorCode!!, onRetry)
+                    options == null && state.errorCode != null -> ProbeFailed(state.errorCode!!, onRetry, onSignIn)
                     options == null -> Text(
                         stringResource(Res.string.download_loading),
                         Modifier.padding(vertical = DesignSpacing.Space24),
