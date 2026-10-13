@@ -67,3 +67,9 @@ fun installSentryDeviceId(id: String) {
 fun installSentryEngineVersion(version: Int) {
     Sentry.configureScope { scope -> scope.setTag("engine.version", version.toString()) }
 }
+
+/** The player.js revision of the most recent player session, as the `player.version` tag — set each
+ *  time a session's bundle passes its health check, so playback reports name the player that ran. */
+fun installSentryPlayerVersion(version: Int) {
+    Sentry.configureScope { scope -> scope.setTag("player.version", version.toString()) }
+}

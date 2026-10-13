@@ -53,6 +53,7 @@ import io.ymusic.player.mse.MsePlayer
 import io.ymusic.remoteconfig.ApiService
 import io.ymusic.remoteconfig.HttpApiService
 import io.ymusic.remoteconfig.RemoteConfig
+import io.ymusic.remoteconfig.RunningBundles
 import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.anonymousDeviceId
@@ -63,6 +64,7 @@ import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.bindCrashReporting
 import io.ymusic.telemetry.installSentryDeviceId
 import io.ymusic.telemetry.installSentryEngineVersion
+import io.ymusic.telemetry.installSentryPlayerVersion
 import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.AppGraph
@@ -137,6 +139,8 @@ class SharedServices(
     /** The YMusic service; null when this build has no service url. */
     val api: ApiService?,
     val remoteConfig: RemoteConfig,
+    /** The running engine.js / player.js revisions the service calls report. */
+    val runningBundles: RunningBundles,
 )
 
 class YMusicApplication : Application() {
@@ -244,6 +248,7 @@ class YMusicApplication : Application() {
         // The one client of the YMusic service; null when this build has no service url. Its own
         // client instance carries the API cookie jar (the activity watermark survives restarts) —
         // the engine client stays jar-less on purpose, the engine JS owns YouTube cookies.
+        val runningBundles = RunningBundles()
         val api = BuildConfig.REMOTE_CONFIG_URL.takeIf { it.isNotBlank() }?.let { baseUrl ->
             HttpApiService(
                 client = http.engine.newBuilder().apply {
@@ -258,6 +263,7 @@ class YMusicApplication : Application() {
                 now = { System.currentTimeMillis() },
                 // The device's preferred ABI, so the service can offer its split APK.
                 arch = android.os.Build.SUPPORTED_ABIS.firstOrNull(),
+                bundles = runningBundles,
             )
         }
         // Flags, the newest JS bundle revisions, and update availability. Started here so the first
@@ -312,8 +318,11 @@ class YMusicApplication : Application() {
             settings = settings,
             // Debug builds crash on an engine-thread stall (StrictMode-style); release only logs.
             strictStints = BuildConfig.DEBUG,
-            // Every Sentry event names the engine-js bundle that was live (start + each swap).
-            onBackendVersion = ::installSentryEngineVersion,
+            // Every Sentry event and service call names the engine-js bundle that was live (start + each swap).
+            onBackendVersion = { version ->
+                installSentryEngineVersion(version)
+                runningBundles.engine = version
+            },
             jsSource = engineSource,
         )
         engines.start()
@@ -379,7 +388,7 @@ class YMusicApplication : Application() {
         )
         updates.pruneDownloads()
         scope.launch { remoteConfig.config.collect { updates.offer(it.appUpdate) } }
-        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, playerJs, imageLoader, stats, updates, api, remoteConfig)
+        return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, playerJs, imageLoader, stats, updates, api, remoteConfig, runningBundles)
     }
 
     private suspend fun buildGraph(): AppGraph {
@@ -499,6 +508,10 @@ class YMusicApplication : Application() {
                         main = shared.engines,
                         mediaProxy = mediaProxy,
                         playerJs = shared.playerJs,
+                        onPlayerJsVersion = { version ->
+                            installSentryPlayerVersion(version)
+                            shared.runningBundles.player = version
+                        },
                     ).also {
                         ytEngine = it
                         msePlayer = it

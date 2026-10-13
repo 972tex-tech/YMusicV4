@@ -30,6 +30,7 @@ import io.ymusic.player.createPlayer
 import io.ymusic.player.mse.MsePlayer
 import io.ymusic.remoteconfig.HttpApiService
 import io.ymusic.remoteconfig.RemoteConfig
+import io.ymusic.remoteconfig.RunningBundles
 import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.anonymousDeviceId
@@ -148,6 +149,8 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     // BEFORE the engine starts, because the engine pulls the same key as its content-language (hl).
     ensureAppLanguage(settings)
     val cacheStore = appleEngineCacheStore(logger = rootLogger)
+    // The running engine.js / player.js revisions the service calls report.
+    val runningBundles = RunningBundles()
     val engines = DynamicEngineManager(
         http.engine,
         appVersion = 5000,
@@ -156,6 +159,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         cookieJar = cookies,
         settings = settings,
         cacheStore = cacheStore,
+        onBackendVersion = { version -> runningBundles.engine = version },
     )
     engines.start()
 
@@ -185,6 +189,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
             deviceId = settings.anonymousDeviceId(),
             baseUrl = baseUrl,
             now = now,
+            bundles = runningBundles,
         )
     }
     // Kept, not cached: Application Support is never purged under storage pressure.
@@ -247,6 +252,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         videoSurface = mseSurface,
         main = engines,
         mediaProxy = mediaProxy,
+        onPlayerJsVersion = { version -> runningBundles.player = version },
     )
     val player = createPlayer(
         PlayerEngines(

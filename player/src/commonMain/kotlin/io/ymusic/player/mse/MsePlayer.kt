@@ -700,6 +700,8 @@ class MsePlayer internal constructor(
             main: DynamicEngineManager,
             mediaProxy: LocalMediaProxy? = null,
             playerJs: JsSourceProvider = embeddedPlayerJsSource(),
+            /** The running player.js revision, reported each time a player session's bundle starts. */
+            onPlayerJsVersion: ((Int) -> Unit)? = null,
         ): MsePlayer {
             val engineClient = SabrProxyHttpClient(client, mediaProxy)
             return MsePlayer({ QuickJsRuntime.newDispatcher() }, videoSurface, logger, playerJs) { engineThread, source ->
@@ -711,6 +713,7 @@ class MsePlayer internal constructor(
                     settings = settings,
                     videoSurface = videoSurface,
                     main = main,
+                    onBackendVersion = onPlayerJsVersion,
                 )
             }
         }

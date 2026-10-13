@@ -106,6 +106,7 @@ import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.remoteconfig.HttpApiService
 import io.ymusic.remoteconfig.RemoteConfig
+import io.ymusic.remoteconfig.RunningBundles
 import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.FileSettingsStore
@@ -117,6 +118,7 @@ import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.bindCrashReporting
 import io.ymusic.telemetry.installSentryDeviceId
 import io.ymusic.telemetry.installSentryEngineVersion
+import io.ymusic.telemetry.installSentryPlayerVersion
 import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.App
@@ -559,6 +561,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
     val deviceId = settings.anonymousDeviceId()
 
     // The one client of the YMusic service; null when this build has no service url.
+    val runningBundles = RunningBundles()
     val api = REMOTE_CONFIG_URL.takeIf { it.isNotBlank() }?.let { baseUrl ->
         HttpApiService(
             client = http.engine.newBuilder().apply {
@@ -572,6 +575,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
             baseUrl = baseUrl,
             now = { System.currentTimeMillis() },
             arch = desktopArch(),
+            bundles = runningBundles,
         )
     }
     // Flags, the newest JS bundle revisions, and update availability. Started here so the first
@@ -624,8 +628,11 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
             cookieJar = cookies,
             settings = settings,
             strictStints = DEBUG_BUILD,
-            // Every Sentry event names the engine-js bundle that was live (start + each swap).
-            onBackendVersion = ::installSentryEngineVersion,
+            // Every Sentry event and service call names the engine-js bundle that was live (start + each swap).
+            onBackendVersion = { version ->
+                installSentryEngineVersion(version)
+                runningBundles.engine = version
+            },
             jsSource = engineSource,
         )
     }
@@ -723,6 +730,10 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
                             logger = rootLogger,
                             ioDispatcher = Dispatchers.IO,
                         ),
+                        onPlayerJsVersion = { version ->
+                            installSentryPlayerVersion(version)
+                            runningBundles.player = version
+                        },
                     ).also { ytEngine = it }
                 },
             ),

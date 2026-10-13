@@ -315,6 +315,8 @@ class DynamicEnginePlayer private constructor(
             settings: SettingsStore? = null,
             videoSurface: MseVideoSurface? = null,
             main: DynamicEngineManager? = null,
+            /** The health-checked player bundle's revision, once per session. */
+            onBackendVersion: ((Int) -> Unit)? = null,
         ): DynamicEnginePlayer {
             var nativeMse: NativeMseHost? = null
             val engine = DynamicEngine.createEngine(
@@ -326,7 +328,7 @@ class DynamicEnginePlayer private constructor(
                     mgr.use { it.openPipe(cmd) }
                 }
             }
-            engine.healthCheck()
+            onBackendVersion?.invoke(engine.healthCheck())
             logger?.bindMseNativeLogs()
             val jsEventBridge: (String) -> Unit = { eventName -> engine.fire(eventName) }
             MseJsEventBridge.setJsEventBridge(jsEventBridge)

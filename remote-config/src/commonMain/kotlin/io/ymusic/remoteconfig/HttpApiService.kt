@@ -46,6 +46,8 @@ class HttpApiService(
     private val apiKey: String? = null,
     /** Which build this device needs: the CPU (x64, arm64) on desktop, the primary ABI on Android. */
     private val arch: String? = null,
+    /** The JS bundle revisions running now; each header is omitted until its bundle has run. */
+    private val bundles: RunningBundles? = null,
 ) : ApiService {
 
     override suspend fun getConfig(): RemoteConfigData {
@@ -138,6 +140,8 @@ class HttpApiService(
             .header(HEADER_DEVICE_ID, deviceId)
         arch?.let { request.header(HEADER_ARCH, it) }
         apiKey?.let { request.header(HEADER_API_KEY, it) }
+        bundles?.engine?.let { request.header(HEADER_ENGINE_JS_VER, it.toString()) }
+        bundles?.player?.let { request.header(HEADER_PLAYER_JS_VER, it.toString()) }
         return request
     }
 
@@ -149,5 +153,7 @@ class HttpApiService(
         const val HEADER_DEVICE_ID = "x-device-id"
         const val HEADER_ARCH = "x-arch"
         const val HEADER_API_KEY = "x-api-key"
+        const val HEADER_ENGINE_JS_VER = "x-engine-js-ver"
+        const val HEADER_PLAYER_JS_VER = "x-player-js-ver"
     }
 }
