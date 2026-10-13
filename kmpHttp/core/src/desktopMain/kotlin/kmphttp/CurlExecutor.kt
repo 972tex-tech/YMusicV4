@@ -33,6 +33,7 @@ import kmphttp.curl.CurlMultiApi
 import kmphttp.curl.EasyHandle
 import kmphttp.internal.SuspendCondition
 import kmphttp.internal.http.RecoverableIOException
+import kmphttp.internal.http.TransportIOException
 import kmphttp.internal.read
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -60,8 +61,10 @@ import libcurl.CURLE_COULDNT_CONNECT
 import libcurl.CURLE_COULDNT_RESOLVE_HOST
 import libcurl.CURLE_COULDNT_RESOLVE_PROXY
 import libcurl.CURLE_GOT_NOTHING
+import libcurl.CURLE_HTTP2_STREAM
 import libcurl.CURLE_OK
 import libcurl.CURLE_OPERATION_TIMEDOUT
+import libcurl.CURLE_PARTIAL_FILE
 import libcurl.CURLE_RECV_ERROR
 import libcurl.CURLE_SEND_ERROR
 import libcurl.CURLE_SSL_CONNECT_ERROR
@@ -95,6 +98,13 @@ private val RECOVERABLE_CURL_ERRORS: Set<UInt> = setOf(
     CURLE_GOT_NOTHING,
     CURLE_SEND_ERROR,
     CURLE_RECV_ERROR,
+)
+
+/** Connectivity failures mid-transfer, after the request may have been delivered — not retried. */
+@OptIn(ExperimentalForeignApi::class)
+private val TRANSPORT_CURL_ERRORS: Set<UInt> = setOf(
+    CURLE_PARTIAL_FILE,
+    CURLE_HTTP2_STREAM,
 )
 
 /**
@@ -555,6 +565,8 @@ private class StreamingResponseHandler(
                     // failures stay a plain IOException and surface immediately.
                     completeError = if (result in RECOVERABLE_CURL_ERRORS) {
                         RecoverableIOException(message)
+                    } else if (result in TRANSPORT_CURL_ERRORS) {
+                        TransportIOException(message)
                     } else {
                         IOException(message)
                     }
