@@ -221,7 +221,7 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0, showMessage: (String) -> Uni
             }
             if (blocked != null) {
                 Text(
-                    stringResource(Res.string.update_manual_hint, blocked),
+                    stringResource(Res.string.update_manual_hint, stringResource(blocked)),
                     style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
                 )
             }

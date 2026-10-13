@@ -15,6 +15,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
+import org.jetbrains.compose.resources.StringResource
 import java.io.File
 
 /** What the UI shows. A verified download survives a restart, so [Ready] can be the first state. */
@@ -66,7 +67,7 @@ class UpdateService internal constructor(
     @Volatile var pendingUpdate: AppUpdate? = null
         private set
 
-    val selfUpdateBlockedReason: String? get() = installer.blockedReason
+    val selfUpdateBlockedReason: StringResource? get() = installer.blockedReason
 
     /** Without a pinned key nothing can be verified, so no update is ever offered. */
     val isEnabled: Boolean get() = publicKey.isNotBlank()

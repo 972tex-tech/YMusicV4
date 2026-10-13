@@ -423,6 +423,11 @@
     <string name="update_downloading">Đang tải… %1$s / %2$s</string>
     <string name="update_ready">Sẵn sàng cài đặt</string>
     <string name="update_manual_hint">Bản này không thể tự cập nhật (%1$s). Hãy tải bản mới theo cách thủ công.</string>
+    <string name="update_blocked_not_installed">ứng dụng không chạy từ bản đã cài đặt</string>
+    <string name="update_blocked_mac_swap">phiên bản macOS này không thể thay thế ứng dụng tại chỗ</string>
+    <string name="update_blocked_folder_read_only">không thể ghi vào thư mục chứa YMusic</string>
+    <string name="update_blocked_not_deb">bản này không được cài từ gói .deb</string>
+    <string name="update_blocked_no_pkexec">thiếu pkexec hoặc apt-get</string>
     <string name="update_failed">Cập nhật thất bại: %1$s</string>
     <string name="update_download_failed">Tải bản cập nhật thất bại</string>
     <string name="update_check">Kiểm tra cập nhật</string>

@@ -30,6 +30,7 @@ import okio.blackholeSink
 import okio.buffer
 import okio.sink
 import okio.source
+import org.jetbrains.compose.resources.StringResource
 import java.io.File
 
 /**
@@ -57,7 +58,7 @@ class AndroidAppUpdates(
 
     private val _status = MutableStateFlow<AppUpdateStatus>(AppUpdateStatus.None)
     override val status: StateFlow<AppUpdateStatus> = _status
-    override val blockedReason: String? = null
+    override val blockedReason: StringResource? = null
 
     private val mutex = Mutex()
     private val downloadDir = File(context.cacheDir, "update")

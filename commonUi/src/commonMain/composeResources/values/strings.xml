@@ -445,6 +445,12 @@
     <string name="update_downloading">Downloading… %1$s of %2$s</string>
     <string name="update_ready">Ready to install</string>
     <string name="update_manual_hint">This copy cannot update itself (%1$s). Download the new version instead.</string>
+    <!-- Why this desktop copy cannot update itself; each fills update_manual_hint's %1$s. -->
+    <string name="update_blocked_not_installed">the app is not running from an installed copy</string>
+    <string name="update_blocked_mac_swap">this macOS cannot swap the app in place</string>
+    <string name="update_blocked_folder_read_only">the folder holding YMusic is not writable</string>
+    <string name="update_blocked_not_deb">this copy was not installed from the .deb package</string>
+    <string name="update_blocked_no_pkexec">pkexec or apt-get is missing</string>
     <string name="update_failed">Update failed: %1$s</string>
     <string name="update_download_failed">Update download failed</string>
     <string name="update_check">Check for update</string>

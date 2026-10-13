@@ -1,6 +1,7 @@
 package io.ymusic.ui
 
 import kotlinx.coroutines.flow.StateFlow
+import org.jetbrains.compose.resources.StringResource
 
 /**
  * The shell's updater, as the shared UI sees it. Desktop and Android implement this; iOS leaves it
@@ -11,7 +12,7 @@ interface AppUpdates {
 
     /** Why an in-place update is impossible here, or null when it is possible. Shown next to the
      *  manual download so a blocked user is told what to do instead of silently getting nothing. */
-    val blockedReason: String?
+    val blockedReason: StringResource?
 
     /** Start fetching now (the "Download" button). No-op once downloading or ready. */
     fun download()

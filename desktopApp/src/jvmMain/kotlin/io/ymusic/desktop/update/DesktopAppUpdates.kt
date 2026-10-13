@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import java.awt.Desktop
 import java.net.URI
 import kotlin.system.exitProcess
@@ -29,7 +30,7 @@ class DesktopAppUpdates(
 
     private val _status = MutableStateFlow<AppUpdateStatus>(AppUpdateStatus.None)
     override val status: StateFlow<AppUpdateStatus> = _status
-    override val blockedReason: String? get() = service.selfUpdateBlockedReason
+    override val blockedReason: StringResource? get() = service.selfUpdateBlockedReason
 
     init {
         scope.launch {
