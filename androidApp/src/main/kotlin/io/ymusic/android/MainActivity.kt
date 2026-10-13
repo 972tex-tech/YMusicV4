@@ -93,8 +93,19 @@ class MainActivity : FragmentActivity() {
     private val openFolder =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
             if (treeUri != null) {
-                // Persist read access so a rescan (and next launch) can reach the folder without re-picking.
-                contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                // Any picked folder can become the download location; a read-only persisted grant fails
+                // only at publish, once the process holding the picker's transient write grant is gone.
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        treeUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                } catch (e: SecurityException) {
+                    // A provider that grants read-only: the folder still scans; a download there fails at publish.
+                    (application as YMusicApplication).rootLogger.fork("folder-pick")
+                        .log(kmpcommon.log.Logger.Level.WARN, "folder $treeUri has no write grant; persisting read-only", e)
+                    contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
             }
             pendingPick?.complete(treeUri?.let { Uri.parse(it.toString()) })
             pendingPick = null
