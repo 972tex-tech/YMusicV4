@@ -138,6 +138,8 @@
     <string name="sort_duration">ความยาว</string>
     <string name="sort_song_count">จำนวนเพลง</string>
     <string name="cd_sort">จัดเรียง</string>
+    <string name="cd_sort_ascending">ลำดับการจัดเรียง: น้อยไปมาก</string>
+    <string name="cd_sort_descending">ลำดับการจัดเรียง: มากไปน้อย</string>
     <string name="library_unavailable">ยังไม่ได้ตั้งค่าคลังเพลงในเครื่องบนแพลตฟอร์มนี้</string>
     <string name="library_empty">คลังเพลงของคุณว่างเปล่า</string>
     <string name="library_scan_folder">+  สแกนโฟลเดอร์</string>
@@ -249,6 +251,9 @@
     <string name="cd_fill_video">เต็มหน้าจอ</string>
     <string name="cd_rewind10">ย้อนกลับ 10 วินาที</string>
     <string name="cd_forward10">ข้ามไปข้างหน้า 10 วินาที</string>
+    <string name="cd_repeat_off">เล่นซ้ำ: ปิด</string>
+    <string name="cd_repeat_all">เล่นซ้ำ: ทั้งหมด</string>
+    <string name="cd_repeat_one">เล่นซ้ำ: เพลงเดียว</string>
     <string name="play_all">เล่นทั้งหมด</string>
     <string name="shuffle_all">สุ่มเล่นทั้งหมด</string>
     <string name="cd_shuffle">สุ่มเล่น</string>

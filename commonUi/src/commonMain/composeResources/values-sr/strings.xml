@@ -138,6 +138,8 @@
     <string name="sort_duration">Трајање</string>
     <string name="sort_song_count">Број песама</string>
     <string name="cd_sort">Сортирај</string>
+    <string name="cd_sort_ascending">Редослед сортирања: растуће</string>
+    <string name="cd_sort_descending">Редослед сортирања: опадајуће</string>
     <string name="library_unavailable">На овој платформи није подешена локална библиотека</string>
     <string name="library_empty">Ваша библиотека је празна</string>
     <string name="library_scan_folder">+  Скенирај фасциклу</string>
@@ -251,6 +253,9 @@
     <string name="cd_fill_video">Попуни екран</string>
     <string name="cd_rewind10">Премотај 10 секунди уназад</string>
     <string name="cd_forward10">Премотај 10 секунди унапред</string>
+    <string name="cd_repeat_off">Понављање: искључено</string>
+    <string name="cd_repeat_all">Понављање: све</string>
+    <string name="cd_repeat_one">Понављање: једна</string>
     <string name="play_all">Пусти све</string>
     <string name="shuffle_all">Насумично пусти све</string>
     <string name="cd_shuffle">Насумично</string>

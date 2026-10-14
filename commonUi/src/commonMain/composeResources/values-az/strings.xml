@@ -138,6 +138,8 @@
     <string name="sort_duration">Müddət</string>
     <string name="sort_song_count">Mahnı sayı</string>
     <string name="cd_sort">Sırala</string>
+    <string name="cd_sort_ascending">Sıralama qaydası: artan</string>
+    <string name="cd_sort_descending">Sıralama qaydası: azalan</string>
     <string name="library_unavailable">Bu platformada lokal kitabxana qurulmayıb</string>
     <string name="library_empty">Kitabxananız boşdur</string>
     <string name="library_scan_folder">+  Qovluğu skan et</string>
@@ -250,6 +252,9 @@
     <string name="cd_fill_video">Ekranı doldur</string>
     <string name="cd_rewind10">10 saniyə geri</string>
     <string name="cd_forward10">10 saniyə irəli</string>
+    <string name="cd_repeat_off">Təkrarla: söndürülüb</string>
+    <string name="cd_repeat_all">Təkrarla: hamısı</string>
+    <string name="cd_repeat_one">Təkrarla: biri</string>
     <string name="play_all">Hamısını oxut</string>
     <string name="shuffle_all">Hamısını qarışıq oxut</string>
     <string name="cd_shuffle">Qarışdır</string>

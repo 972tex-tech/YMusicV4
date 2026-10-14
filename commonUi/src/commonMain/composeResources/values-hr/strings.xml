@@ -138,6 +138,8 @@
     <string name="sort_duration">Trajanje</string>
     <string name="sort_song_count">Broj pjesama</string>
     <string name="cd_sort">Razvrstaj</string>
+    <string name="cd_sort_ascending">Redoslijed razvrstavanja: uzlazno</string>
+    <string name="cd_sort_descending">Redoslijed razvrstavanja: silazno</string>
     <string name="library_unavailable">Na ovoj platformi nije postavljena lokalna zbirka</string>
     <string name="library_empty">Vaša zbirka je prazna</string>
     <string name="library_scan_folder">+  Skeniraj mapu</string>
@@ -251,6 +253,9 @@
     <string name="cd_fill_video">Ispuni zaslon</string>
     <string name="cd_rewind10">Premotaj 10 sekundi unatrag</string>
     <string name="cd_forward10">Premotaj 10 sekundi unaprijed</string>
+    <string name="cd_repeat_off">Ponavljanje: isključeno</string>
+    <string name="cd_repeat_all">Ponavljanje: sve</string>
+    <string name="cd_repeat_one">Ponavljanje: jedna</string>
     <string name="play_all">Reproduciraj sve</string>
     <string name="shuffle_all">Nasumično sve</string>
     <string name="cd_shuffle">Nasumično</string>

@@ -138,6 +138,8 @@
     <string name="sort_duration">अवधि</string>
     <string name="sort_song_count">गानों की संख्या</string>
     <string name="cd_sort">क्रमबद्ध करें</string>
+    <string name="cd_sort_ascending">क्रम: आरोही</string>
+    <string name="cd_sort_descending">क्रम: अवरोही</string>
     <string name="library_unavailable">इस प्लेटफ़ॉर्म पर कोई लोकल लाइब्रेरी सेट नहीं है</string>
     <string name="library_empty">आपकी लाइब्रेरी खाली है</string>
     <string name="library_scan_folder">+  फ़ोल्डर स्कैन करें</string>
@@ -250,6 +252,9 @@
     <string name="cd_fill_video">स्क्रीन भरें</string>
     <string name="cd_rewind10">10 सेकंड पीछे</string>
     <string name="cd_forward10">10 सेकंड आगे</string>
+    <string name="cd_repeat_off">दोहराएं: बंद</string>
+    <string name="cd_repeat_all">दोहराएं: सभी</string>
+    <string name="cd_repeat_one">दोहराएं: एक</string>
     <string name="play_all">सभी चलाएं</string>
     <string name="shuffle_all">सभी शफ़ल करें</string>
     <string name="cd_shuffle">शफ़ल</string>

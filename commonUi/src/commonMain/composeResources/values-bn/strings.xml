@@ -138,6 +138,8 @@
     <string name="sort_duration">সময়কাল</string>
     <string name="sort_song_count">গানের সংখ্যা</string>
     <string name="cd_sort">সাজান</string>
+    <string name="cd_sort_ascending">সাজানোর ক্রম: ঊর্ধ্বক্রম</string>
+    <string name="cd_sort_descending">সাজানোর ক্রম: অধঃক্রম</string>
     <string name="library_unavailable">এই প্ল্যাটফর্মে কোনো লোকাল লাইব্রেরি কনফিগার করা নেই</string>
     <string name="library_empty">আপনার লাইব্রেরি খালি</string>
     <string name="library_scan_folder">+  ফোল্ডার স্ক্যান করুন</string>
@@ -250,6 +252,9 @@
     <string name="cd_fill_video">স্ক্রিন ভরাট করুন</string>
     <string name="cd_rewind10">10 সেকেন্ড পিছিয়ে যান</string>
     <string name="cd_forward10">10 সেকেন্ড এগিয়ে যান</string>
+    <string name="cd_repeat_off">পুনরাবৃত্তি: বন্ধ</string>
+    <string name="cd_repeat_all">পুনরাবৃত্তি: সবগুলি</string>
+    <string name="cd_repeat_one">পুনরাবৃত্তি: একটি</string>
     <string name="play_all">সব চালান</string>
     <string name="shuffle_all">সব শাফল করুন</string>
     <string name="cd_shuffle">শাফল</string>

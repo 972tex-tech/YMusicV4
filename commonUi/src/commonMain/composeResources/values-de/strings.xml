@@ -138,6 +138,8 @@
     <string name="sort_duration">Dauer</string>
     <string name="sort_song_count">Anzahl Songs</string>
     <string name="cd_sort">Sortieren</string>
+    <string name="cd_sort_ascending">Sortierreihenfolge: aufsteigend</string>
+    <string name="cd_sort_descending">Sortierreihenfolge: absteigend</string>
     <string name="library_unavailable">Auf dieser Plattform ist keine lokale Mediathek eingerichtet</string>
     <string name="library_empty">Deine Mediathek ist leer</string>
     <string name="library_scan_folder">+  Ordner scannen</string>
@@ -250,6 +252,9 @@
     <string name="cd_fill_video">Bildschirm füllen</string>
     <string name="cd_rewind10">10 Sekunden zurück</string>
     <string name="cd_forward10">10 Sekunden vor</string>
+    <string name="cd_repeat_off">Wiederholen: aus</string>
+    <string name="cd_repeat_all">Wiederholen: alle</string>
+    <string name="cd_repeat_one">Wiederholen: einen Titel</string>
     <string name="play_all">Alle abspielen</string>
     <string name="shuffle_all">Alle zufällig</string>
     <string name="cd_shuffle">Zufallswiedergabe</string>

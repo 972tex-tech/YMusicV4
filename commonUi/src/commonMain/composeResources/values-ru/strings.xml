@@ -138,6 +138,8 @@
     <string name="sort_duration">Длительность</string>
     <string name="sort_song_count">Количество песен</string>
     <string name="cd_sort">Сортировка</string>
+    <string name="cd_sort_ascending">Порядок сортировки: по возрастанию</string>
+    <string name="cd_sort_descending">Порядок сортировки: по убыванию</string>
     <string name="library_unavailable">На этой платформе локальная библиотека не настроена</string>
     <string name="library_empty">Ваша библиотека пуста</string>
     <string name="library_scan_folder">+  Сканировать папку</string>
@@ -252,6 +254,9 @@
     <string name="cd_fill_video">Заполнить экран</string>
     <string name="cd_rewind10">Назад на 10 секунд</string>
     <string name="cd_forward10">Вперёд на 10 секунд</string>
+    <string name="cd_repeat_off">Повтор: выкл.</string>
+    <string name="cd_repeat_all">Повтор: все</string>
+    <string name="cd_repeat_one">Повтор: один трек</string>
     <string name="play_all">Воспроизвести все</string>
     <string name="shuffle_all">Перемешать все</string>
     <string name="cd_shuffle">Перемешать</string>

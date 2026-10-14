@@ -138,6 +138,8 @@
     <string name="sort_duration">સમયગાળો</string>
     <string name="sort_song_count">ગીતોની સંખ્યા</string>
     <string name="cd_sort">સૉર્ટ કરો</string>
+    <string name="cd_sort_ascending">સૉર્ટ ક્રમ: ચડતો</string>
+    <string name="cd_sort_descending">સૉર્ટ ક્રમ: ઊતરતો</string>
     <string name="library_unavailable">આ પ્લેટફોર્મ પર કોઈ લોકલ લાઇબ્રેરી ગોઠવેલી નથી</string>
     <string name="library_empty">તમારી લાઇબ્રેરી ખાલી છે</string>
     <string name="library_scan_folder">+  ફોલ્ડર સ્કૅન કરો</string>
@@ -250,6 +252,9 @@
     <string name="cd_fill_video">સ્ક્રીન ભરો</string>
     <string name="cd_rewind10">10 સેકન્ડ પાછળ</string>
     <string name="cd_forward10">10 સેકન્ડ આગળ</string>
+    <string name="cd_repeat_off">પુનરાવર્તન: બંધ</string>
+    <string name="cd_repeat_all">પુનરાવર્તન: બધા</string>
+    <string name="cd_repeat_one">પુનરાવર્તન: એક</string>
     <string name="play_all">બધા વગાડો</string>
     <string name="shuffle_all">બધા શફલ કરો</string>
     <string name="cd_shuffle">શફલ</string>

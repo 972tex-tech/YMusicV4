@@ -138,6 +138,8 @@
     <string name="sort_duration">Duur</string>
     <string name="sort_song_count">Aantal liedjies</string>
     <string name="cd_sort">Sorteer</string>
+    <string name="cd_sort_ascending">Sorteervolgorde: stygend</string>
+    <string name="cd_sort_descending">Sorteervolgorde: dalend</string>
     <string name="library_unavailable">Geen plaaslike biblioteek op hierdie platform opgestel nie</string>
     <string name="library_empty">Jou biblioteek is leeg</string>
     <string name="library_scan_folder">+  Skandeer vouer</string>
@@ -250,6 +252,9 @@
     <string name="cd_fill_video">Vul skerm</string>
     <string name="cd_rewind10">Spoel 10 sekondes terug</string>
     <string name="cd_forward10">Spoel 10 sekondes vorentoe</string>
+    <string name="cd_repeat_off">Herhaal: af</string>
+    <string name="cd_repeat_all">Herhaal: alles</string>
+    <string name="cd_repeat_one">Herhaal: een</string>
     <string name="play_all">Speel alles</string>
     <string name="shuffle_all">Skommel alles</string>
     <string name="cd_shuffle">Skommel</string>

@@ -138,6 +138,8 @@
     <string name="sort_duration">Durada</string>
     <string name="sort_song_count">Nombre de cançons</string>
     <string name="cd_sort">Ordena</string>
+    <string name="cd_sort_ascending">Ordre: ascendent</string>
+    <string name="cd_sort_descending">Ordre: descendent</string>
     <string name="library_unavailable">No hi ha cap biblioteca local configurada en aquesta plataforma</string>
     <string name="library_empty">La teva biblioteca és buida</string>
     <string name="library_scan_folder">+  Escaneja una carpeta</string>
@@ -251,6 +253,9 @@
     <string name="cd_fill_video">Omple la pantalla</string>
     <string name="cd_rewind10">Enrere 10 segons</string>
     <string name="cd_forward10">Endavant 10 segons</string>
+    <string name="cd_repeat_off">Repeteix: desactivat</string>
+    <string name="cd_repeat_all">Repeteix: tot</string>
+    <string name="cd_repeat_one">Repeteix: una</string>
     <string name="play_all">Reprodueix-ho tot</string>
     <string name="shuffle_all">Reprodueix-ho tot aleatòriament</string>
     <string name="cd_shuffle">Aleatori</string>

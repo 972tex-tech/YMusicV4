@@ -138,6 +138,8 @@
     <string name="sort_duration">Dĺžka</string>
     <string name="sort_song_count">Počet skladieb</string>
     <string name="cd_sort">Zoradiť</string>
+    <string name="cd_sort_ascending">Poradie zoradenia: vzostupne</string>
+    <string name="cd_sort_descending">Poradie zoradenia: zostupne</string>
     <string name="library_unavailable">Na tejto platforme nie je nastavená žiadna miestna knižnica</string>
     <string name="library_empty">Vaša knižnica je prázdna</string>
     <string name="library_scan_folder">+  Prehľadať priečinok</string>
@@ -252,6 +254,9 @@
     <string name="cd_fill_video">Vyplniť obrazovku</string>
     <string name="cd_rewind10">Pretočiť o 10 sekúnd späť</string>
     <string name="cd_forward10">Pretočiť o 10 sekúnd dopredu</string>
+    <string name="cd_repeat_off">Opakovať: vypnuté</string>
+    <string name="cd_repeat_all">Opakovať: všetko</string>
+    <string name="cd_repeat_one">Opakovať: jednu</string>
     <string name="play_all">Prehrať všetko</string>
     <string name="shuffle_all">Prehrať všetko náhodne</string>
     <string name="cd_shuffle">Náhodne</string>

@@ -138,6 +138,8 @@
     <string name="sort_duration">長度</string>
     <string name="sort_song_count">歌曲數</string>
     <string name="cd_sort">排序</string>
+    <string name="cd_sort_ascending">排序方式：遞增</string>
+    <string name="cd_sort_descending">排序方式：遞減</string>
     <string name="library_unavailable">這個平台未設定本機音樂庫</string>
     <string name="library_empty">你的音樂庫是空的</string>
     <string name="library_scan_folder">+  掃描資料夾</string>
@@ -249,6 +251,9 @@
     <string name="cd_fill_video">填滿螢幕</string>
     <string name="cd_rewind10">倒轉 10 秒</string>
     <string name="cd_forward10">快轉 10 秒</string>
+    <string name="cd_repeat_off">重複播放：關閉</string>
+    <string name="cd_repeat_all">重複播放：全部</string>
+    <string name="cd_repeat_one">重複播放：單曲</string>
     <string name="play_all">全部播放</string>
     <string name="shuffle_all">隨機播放全部</string>
     <string name="cd_shuffle">隨機播放</string>

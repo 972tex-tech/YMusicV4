@@ -138,6 +138,8 @@
     <string name="sort_duration">Durasi</string>
     <string name="sort_song_count">Jumlah lagu</string>
     <string name="cd_sort">Urutkan</string>
+    <string name="cd_sort_ascending">Urutan: naik</string>
+    <string name="cd_sort_descending">Urutan: turun</string>
     <string name="library_unavailable">Perpustakaan lokal belum dikonfigurasi di platform ini</string>
     <string name="library_empty">Perpustakaan Anda kosong</string>
     <string name="library_scan_folder">+  Pindai folder</string>
@@ -249,6 +251,9 @@
     <string name="cd_fill_video">Penuhi layar</string>
     <string name="cd_rewind10">Mundur 10 detik</string>
     <string name="cd_forward10">Maju 10 detik</string>
+    <string name="cd_repeat_off">Ulangi: nonaktif</string>
+    <string name="cd_repeat_all">Ulangi: semua</string>
+    <string name="cd_repeat_one">Ulangi: satu</string>
     <string name="play_all">Putar semua</string>
     <string name="shuffle_all">Acak semua</string>
     <string name="cd_shuffle">Acak</string>

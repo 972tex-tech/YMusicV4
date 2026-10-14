@@ -138,6 +138,8 @@
     <string name="sort_duration">Διάρκεια</string>
     <string name="sort_song_count">Αριθμός τραγουδιών</string>
     <string name="cd_sort">Ταξινόμηση</string>
+    <string name="cd_sort_ascending">Σειρά ταξινόμησης: αύξουσα</string>
+    <string name="cd_sort_descending">Σειρά ταξινόμησης: φθίνουσα</string>
     <string name="library_unavailable">Δεν υπάρχει τοπική βιβλιοθήκη σε αυτήν την πλατφόρμα</string>
     <string name="library_empty">Η βιβλιοθήκη σας είναι κενή</string>
     <string name="library_scan_folder">+  Σάρωση φακέλου</string>
@@ -250,6 +252,9 @@
     <string name="cd_fill_video">Γέμισμα οθόνης</string>
     <string name="cd_rewind10">Πίσω 10 δευτερόλεπτα</string>
     <string name="cd_forward10">Μπροστά 10 δευτερόλεπτα</string>
+    <string name="cd_repeat_off">Επανάληψη: ανενεργή</string>
+    <string name="cd_repeat_all">Επανάληψη: όλα</string>
+    <string name="cd_repeat_one">Επανάληψη: ένα</string>
     <string name="play_all">Αναπαραγωγή όλων</string>
     <string name="shuffle_all">Τυχαία αναπαραγωγή όλων</string>
     <string name="cd_shuffle">Τυχαία σειρά</string>

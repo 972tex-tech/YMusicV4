@@ -138,6 +138,8 @@
     <string name="sort_duration">Времетраење</string>
     <string name="sort_song_count">Број на песни</string>
     <string name="cd_sort">Подреди</string>
+    <string name="cd_sort_ascending">Редослед на подредување: растечки</string>
+    <string name="cd_sort_descending">Редослед на подредување: опаѓачки</string>
     <string name="library_unavailable">На оваа платформа нема поставено локална библиотека</string>
     <string name="library_empty">Вашата библиотека е празна</string>
     <string name="library_scan_folder">+  Скенирај папка</string>
@@ -250,6 +252,9 @@
     <string name="cd_fill_video">Пополни го екранот</string>
     <string name="cd_rewind10">Премотај 10 секунди назад</string>
     <string name="cd_forward10">Премотај 10 секунди напред</string>
+    <string name="cd_repeat_off">Повторувај: исклучено</string>
+    <string name="cd_repeat_all">Повторувај: сè</string>
+    <string name="cd_repeat_one">Повторувај: една</string>
     <string name="play_all">Пушти ги сите</string>
     <string name="shuffle_all">Измешај ги сите</string>
     <string name="cd_shuffle">Измешај</string>

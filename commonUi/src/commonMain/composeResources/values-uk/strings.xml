@@ -138,6 +138,8 @@
     <string name="sort_duration">Тривалість</string>
     <string name="sort_song_count">Кількість пісень</string>
     <string name="cd_sort">Сортування</string>
+    <string name="cd_sort_ascending">Порядок сортування: за зростанням</string>
+    <string name="cd_sort_descending">Порядок сортування: за спаданням</string>
     <string name="library_unavailable">На цій платформі локальну бібліотеку не налаштовано</string>
     <string name="library_empty">Ваша бібліотека порожня</string>
     <string name="library_scan_folder">+  Сканувати папку</string>
@@ -252,6 +254,9 @@
     <string name="cd_fill_video">Заповнити екран</string>
     <string name="cd_rewind10">Назад на 10 секунд</string>
     <string name="cd_forward10">Уперед на 10 секунд</string>
+    <string name="cd_repeat_off">Повтор: вимк.</string>
+    <string name="cd_repeat_all">Повтор: усі</string>
+    <string name="cd_repeat_one">Повтор: один трек</string>
     <string name="play_all">Відтворити все</string>
     <string name="shuffle_all">Перемішати все</string>
     <string name="cd_shuffle">Перемішати</string>

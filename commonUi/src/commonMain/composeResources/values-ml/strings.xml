@@ -138,6 +138,8 @@
     <string name="sort_duration">ദൈർഘ്യം</string>
     <string name="sort_song_count">പാട്ടുകളുടെ എണ്ണം</string>
     <string name="cd_sort">അടുക്കുക</string>
+    <string name="cd_sort_ascending">അടുക്കൽ ക്രമം: ആരോഹണം</string>
+    <string name="cd_sort_descending">അടുക്കൽ ക്രമം: അവരോഹണം</string>
     <string name="library_unavailable">ഈ പ്ലാറ്റ്‌ഫോമിൽ ലോക്കൽ ലൈബ്രറി കോൺഫിഗർ ചെയ്തിട്ടില്ല</string>
     <string name="library_empty">നിങ്ങളുടെ ലൈബ്രറി ശൂന്യമാണ്</string>
     <string name="library_scan_folder">+  ഫോൾഡർ സ്കാൻ ചെയ്യുക</string>
@@ -250,6 +252,9 @@
     <string name="cd_fill_video">സ്ക്രീൻ നിറയ്ക്കുക</string>
     <string name="cd_rewind10">10 സെക്കൻഡ് പിന്നോട്ട്</string>
     <string name="cd_forward10">10 സെക്കൻഡ് മുന്നോട്ട്</string>
+    <string name="cd_repeat_off">ആവർത്തിക്കുക: ഓഫ്</string>
+    <string name="cd_repeat_all">ആവർത്തിക്കുക: എല്ലാം</string>
+    <string name="cd_repeat_one">ആവർത്തിക്കുക: ഒന്ന്</string>
     <string name="play_all">എല്ലാം പ്ലേ ചെയ്യുക</string>
     <string name="shuffle_all">എല്ലാം ഷഫിൾ ചെയ്യുക</string>
     <string name="cd_shuffle">ഷഫിൾ</string>

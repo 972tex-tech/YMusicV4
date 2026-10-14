@@ -138,6 +138,8 @@
     <string name="sort_duration">Iraupena</string>
     <string name="sort_song_count">Abesti kopurua</string>
     <string name="cd_sort">Ordenatu</string>
+    <string name="cd_sort_ascending">Ordenatzeko modua: gorantz</string>
+    <string name="cd_sort_descending">Ordenatzeko modua: beherantz</string>
     <string name="library_unavailable">Ez dago liburutegi lokalik konfiguratuta plataforma honetan</string>
     <string name="library_empty">Zure liburutegia hutsik dago</string>
     <string name="library_scan_folder">+  Eskaneatu karpeta</string>
@@ -250,6 +252,9 @@
     <string name="cd_fill_video">Bete pantaila</string>
     <string name="cd_rewind10">Atzeratu 10 segundo</string>
     <string name="cd_forward10">Aurreratu 10 segundo</string>
+    <string name="cd_repeat_off">Errepikatu: desaktibatuta</string>
+    <string name="cd_repeat_all">Errepikatu: guztiak</string>
+    <string name="cd_repeat_one">Errepikatu: bat</string>
     <string name="play_all">Erreproduzitu guztiak</string>
     <string name="shuffle_all">Nahastu guztiak</string>
     <string name="cd_shuffle">Nahastu</string>
