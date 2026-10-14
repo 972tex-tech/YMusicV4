@@ -1,9 +1,10 @@
 name: release
 
 # The shipping build, run by pushing a release tag: git tag release-v4.0.0 && git push <remote> release-v4.0.0
+# A hotfix ships the same way under hotfix-* (e.g. hotfix-v4.0.1). Any branch: the tag alone picks the commit.
 on:
   push:
-    tags: ['release-*']
+    tags: ['release-*', 'hotfix-*']
 
 permissions:
   contents: read
