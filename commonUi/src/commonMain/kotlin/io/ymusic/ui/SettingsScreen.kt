@@ -115,7 +115,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             .onFailure { graph.logger?.fork("settings")?.log(Logger.Level.WARN, "locale options fetch failed", it) }
         loadingOptions = false
     }
-    suspend fun applyLocale(gl: String) {
+    suspend fun applyLocale(gl: String?) {
         runSuspendCatching { graph.engines.applyYtLocale(gl) }
             .onFailure { graph.logger?.fork("settings")?.captureError(it, "applyYtLocale failed — UI reloads as if it changed") }
         localeRevision++ // re-ask: the labels and the automatic answer follow the new locale
@@ -144,7 +144,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
                         withContext(NonCancellable) {
                             // Persist FIRST: apply is only the notify — the engine re-pulls this setting.
                             graph.settings.put(AppSettings.uiLanguage, tag)
-                            applyLocale(gl = options.gl)
+                            applyLocale(gl = null)
                         }
                     }
                 },

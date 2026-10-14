@@ -222,17 +222,17 @@ suspend fun DynamicEngineManager.searchSuggestions(query: String, logger: Logger
 /**
  * The locale-changed notification (the legacy `YTPrefsUpdateTask` role). [gl] is the region pick,
  * blank = automatic (the slot leaves PREF, so the bootstrap homepage answers with YouTube's
- * IP-derived region again) — PREF itself, the persistent WebView-shared cookie store, is the
- * pick's one record. There is no hl argument — the app language IS the content language, and the
+ * IP-derived region again), null = a language change that leaves the region alone — PREF itself,
+ * the persistent WebView-shared cookie store, is the pick's one record. There is no hl argument — the app language IS the content language, and the
  * engine re-pulls it from host settings on every notify (only the hl slot is re-asserted on every
  * cooked request; the gl slot is YouTube's to control). On a real change the engine deletes the
  * sticky `s_gl` echo and refreshes its session under the new identity: the re-parsed ytcfg GL
  * becomes the working region value — YouTube outranks the pick. Call when the user picks a region
  * OR a language (after persisting the language setting) — never on start.
  */
-suspend fun DynamicEngineManager.applyYtLocale(gl: String, logger: Logger? = null): Unit = use { engine ->
+suspend fun DynamicEngineManager.applyYtLocale(gl: String?, logger: Logger? = null): Unit = use { engine ->
     engine.jsonCommand("yt/locale/apply", log = logger.cmd("applyYtLocale", "gl" to gl), writeFields = { w ->
-        w.name("gl").value(gl)
+        w.optionalField("gl", gl)
     }) { it.skipValue() }
 }
 
