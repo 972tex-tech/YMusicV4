@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.0.2
+
+### Updates
+- Update dialog: one layout for every download state; progress and errors only after Download; official download site link ([6ff8bc841..f3e15cfcf](https://github.com/ymusic-io/YMusicV4/compare/a6ad0790873a745cd47f7adf5d2cc70a84296521...f3e15cfcf54655e56626ecfe3b24e6746d896f31))
+- Android update: pin the install session to this app; ask for the install permission, or download in the browser ([5f1b1ab39..3e9a718b5](https://github.com/ymusic-io/YMusicV4/compare/8aaaa737910a5bb8784b5dec24396a8441da69f1...3e9a718b564ceef86e6b165896ccd186e6272b2b))
+
+### Settings
+- Versions row in Settings › About: app, running EngineJs and PlayerJs ([c70416647..70244ffec](https://github.com/ymusic-io/YMusicV4/compare/ca4955e3e82b6f39a313fc6f1a4b0f23f2fdc35f...70244ffec4dcb0445b5d4f10ae5dd423040b64de))
+- Desktop nav menu shows the version and arch ([1e8282af2](https://github.com/ymusic-io/YMusicV4/commit/1e8282af2a11facb59f005b351a05e5dcaa12bd2))
+
+### CI
+- Sign update-config.json with the keys in secrets.enc; fail when a key is missing ([ca4955e3e](https://github.com/ymusic-io/YMusicV4/commit/ca4955e3e82b6f39a313fc6f1a4b0f23f2fdc35f), [b94150e33](https://github.com/ymusic-io/YMusicV4/commit/b94150e33285f6c4b94cf42c6207a6ecc1c9a300))
+
 ## 4.0.1
 
 ### Crashes / ANRs
