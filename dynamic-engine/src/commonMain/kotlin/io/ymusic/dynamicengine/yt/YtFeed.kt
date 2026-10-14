@@ -165,9 +165,9 @@ data class YtSectionHeader(
 }
 
 /**
- * A run of items under one header. [layout] is the engine's INTENT (see [LAYOUT_LIST]/[LAYOUT_GRID],
- * open string for a future carousel) derived from the source renderer; the app may still re-resolve
- * it responsively by screen width. The app renders each item with the (`item.kind` × [layout]) leaf
+ * A run of items under one header. [layout] is the engine's INTENT (see the LAYOUT_ constants) derived
+ * from the source renderer; the app re-resolves list/grid (and any unknown value) responsively by
+ * screen width. The app renders each item with the (`item.kind` × [layout]) leaf
  * component — videoType{List,Grid} / channelType{List,Grid} / playlistType{List,Grid}.
  */
 data class YtSection(
@@ -190,6 +190,9 @@ data class YtSection(
 
         /** A wrap of navigation pills ([YtFeedItem.KIND_TAG]) — e.g. Explore's Moods & genres. */
         const val LAYOUT_TAGS = "tags"
+
+        /** One horizontally scrolling row at every width — e.g. the subscribed-channel avatars. */
+        const val LAYOUT_CAROUSEL = "carousel"
     }
 }
 

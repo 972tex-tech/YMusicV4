@@ -920,6 +920,7 @@ function deeplinkFor(browseId: string | undefined, params: string | undefined): 
   // The library shelves' own-account feeds (yt/channel serves these app links back as browses).
   if (browseId === "FEhistory") return "/feed/history";
   if (browseId === "FEplaylist_aggregation") return "/feed/playlists";
+  if (browseId === "FEsubscriptions") return "/feed/subscriptions";
   return undefined;
 }
 
@@ -1319,4 +1320,40 @@ function subscribedOf(root: Record<string, unknown>): boolean | undefined {
     entities.filter((e) => key !== undefined && e["key"] === key)[0] ??
     (entities.length === 1 ? entities[0] : undefined);
   return match === undefined ? subscribed : match["subscribed"] === true;
+}
+
+/** The viewer's subscribed channels off /guide (guideSubscriptionsSectionRenderer, verified live
+ *  2026-10-14): leading entries inline, the rest under a guideCollapsibleEntryRenderer's
+ *  expandableItems. Only UC… browse targets are channels — header/"Show more" rows are skipped. */
+export function guideChannelsSection(root: Record<string, unknown>): WireSection | undefined {
+  const items: WireFeedItem[] = [];
+  const entry = (node: unknown): void => {
+    const r = get(node, "guideEntryRenderer");
+    if (!isObj(r)) return;
+    const id = asString(get(r, "navigationEndpoint", "browseEndpoint", "browseId"));
+    const title = textOf(r["formattedTitle"]);
+    if (id === undefined || id.indexOf("UC") !== 0 || title === undefined) return;
+    const item: WireFeedItem = { "kind": "channel", "id": id, "title": title, "channelId": id };
+    item["url"] = channelUrl(id);
+    const thumbs = thumbsOf(r["thumbnail"]);
+    if (thumbs !== undefined) item["thumbs"] = thumbs;
+    items.push(item);
+  };
+  const guideItems = get(root, "items");
+  if (!Array.isArray(guideItems)) return undefined;
+  for (const section of guideItems) {
+    const entries = get(section, "guideSubscriptionsSectionRenderer", "items");
+    if (!Array.isArray(entries)) continue;
+    for (const node of entries) {
+      entry(node);
+      const more = get(node, "guideCollapsibleEntryRenderer", "expandableItems");
+      if (Array.isArray(more)) for (const m of more) entry(m);
+    }
+  }
+  if (items.length === 0) return undefined;
+  return {
+    "header": { "title": "Channels", "titleKey": "subscribed_channels" },
+    "layout": "carousel",
+    "items": items,
+  };
 }

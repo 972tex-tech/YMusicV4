@@ -23,6 +23,7 @@ import {
   collectItems,
   collectPage,
   dedupeItems,
+  guideChannelsSection,
   isMixPlaylist,
   mixSeedVideoId,
   mixToken,
@@ -291,6 +292,7 @@ const SHORTS_CONT_PREFIX = "ychshorts1:";
 const FEED_BROWSE_IDS: Record<string, string> = {
   "/feed/history": "FEhistory",
   "/feed/playlists": "FEplaylist_aggregation",
+  "/feed/subscriptions": "FEsubscriptions",
 };
 
 onAccept(
@@ -347,12 +349,18 @@ onAccept(
         shortsTab = channelPath.slug === "shorts";
       }
     }
-    const page = collectPage(
-      await innertubeJson("browse", fields, hostLogger(args, "yt/channel")),
-      {
-        shorts: shortsTab,
-      },
-    );
+    const log = hostLogger(args, "yt/channel");
+    // The subscriptions feed leads with the subscribed channels, which only /guide lists.
+    const withChannels = fields["browseId"] === "FEsubscriptions";
+    const [browse, guide] = await Promise.all([
+      innertubeJson("browse", fields, log),
+      withChannels ? innertubeJson("guide", {}, log) : Promise.resolve(undefined),
+    ]);
+    const page = collectPage(browse, { shorts: shortsTab });
+    if (guide !== undefined) {
+      const channels = guideChannelsSection(guide);
+      if (channels !== undefined) page["sections"].unshift(channels);
+    }
     if (shortsTab) {
       // Paging AND the sort chips must stay in Shorts mode — wrap every token the app can send back.
       const cont = page["continuation"];

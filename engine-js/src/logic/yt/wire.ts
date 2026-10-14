@@ -147,9 +147,9 @@ export interface WireSectionHeader {
   ctaAction?: string;
 }
 
-// A run of items under one header. `layout` is the engine's INTENT ("list" | "grid" — open string
-// for a future "carousel"), derived from the source renderer (vertical feed → list, shelf/rich-grid →
-// grid); the app may still re-resolve it responsively by screen width. The app renders each item with
+// A run of items under one header. `layout` is the engine's INTENT ("list" | "grid" | "tags" |
+// "carousel" = one horizontal row at every width; open string), derived from the source renderer
+// (vertical feed → list, shelf/rich-grid → grid); the app may still re-resolve it responsively by screen width. The app renders each item with
 // the (item.kind × layout) leaf component: videoType{List,Grid} / channelType{List,Grid} /
 // playlistType{List,Grid}.
 export interface WireSection {
