@@ -39,6 +39,7 @@ class FeedbackScreenTest {
         var sent: FeedbackDraft? = null
         val snackbars = mutableListOf<String>()
         val session = FeedbackSession(parentLog = null)
+        var dismissed = false
         val graph = AppGraph(
             engines = engines(),
             player = StubPlayer(),
@@ -55,7 +56,7 @@ class FeedbackScreenTest {
         runComposeUiTest {
             setContent {
                 CompositionLocalProvider(LocalSnackbar provides { snackbars.add(it) }) {
-                    FeedbackScreen(graph, session)
+                    FeedbackScreen(graph, session, onDismiss = { dismissed = true })
                 }
             }
             // Fields in declaration order: message, name, email.
@@ -78,6 +79,7 @@ class FeedbackScreenTest {
             // The report resets for a fresh one; the sender identity stays.
             waitUntil(timeoutMillis = 5_000) { session.message.isEmpty() && session.attachments.isEmpty() }
             assertEquals("jane@example.com", session.email)
+            assertTrue(dismissed, "a sent report closes the screen")
         }
     }
 
@@ -95,7 +97,7 @@ class FeedbackScreenTest {
         runComposeUiTest {
             setContent {
                 CompositionLocalProvider(LocalSnackbar provides {}) {
-                    FeedbackScreen(graph, FeedbackSession(parentLog = null))
+                    FeedbackScreen(graph, FeedbackSession(parentLog = null), onDismiss = {})
                 }
             }
             onAllNodes(hasSetTextAction())[0].performTextInput("Report")
@@ -122,7 +124,7 @@ class FeedbackScreenTest {
         runComposeUiTest {
             setContent {
                 CompositionLocalProvider(LocalSnackbar provides {}) {
-                    FeedbackScreen(graph, FeedbackSession(parentLog = null))
+                    FeedbackScreen(graph, FeedbackSession(parentLog = null), onDismiss = {})
                 }
             }
             val root = onRoot().getBoundsInRoot()
@@ -160,7 +162,7 @@ class FeedbackScreenTest {
                 CompositionLocalProvider(LocalSnackbar provides {}) {
                     // A tall phone-shaped viewport: large height but compact width → no centering.
                     Box(Modifier.size(400.dp, 700.dp)) {
-                        FeedbackScreen(graph, FeedbackSession(parentLog = null))
+                        FeedbackScreen(graph, FeedbackSession(parentLog = null), onDismiss = {})
                     }
                 }
             }

@@ -14,27 +14,36 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.ymusic.settings.AppSettings
+import io.ymusic.settings.flow
+import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_remove_attachment
 import io.ymusic.ui.resources.feedback_attach
@@ -47,6 +56,7 @@ import io.ymusic.ui.resources.feedback_name_label
 import io.ymusic.ui.resources.feedback_send
 import io.ymusic.ui.resources.feedback_send_failed
 import io.ymusic.ui.resources.feedback_sent
+import io.ymusic.ui.resources.settings_crash_reports
 import kmpcommon.log.Logger
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
@@ -62,6 +72,7 @@ internal class FeedbackSession(parentLog: Logger?) {
     var email by mutableStateOf("")
     val attachments = mutableStateListOf<FeedbackFile>()
     var sending by mutableStateOf(false)
+    var allowReports by mutableStateOf(false)
 
     fun clearReport() {
         message = ""
@@ -72,11 +83,13 @@ internal class FeedbackSession(parentLog: Logger?) {
 /**
  * The drawer's Feedback section: a free-text report with optional name/email and file attachments,
  * delivered through [AppGraph.sendFeedback] (Sentry user feedback in the shells). The shell's app
- * bar provides the section chrome; attach is hidden when the shell provides no picker.
+ * bar provides the section chrome; attach is hidden when the shell provides no picker. While crash
+ * reports are off in Settings, Send waits on a consent checkbox, and sending turns them on.
  */
 @Composable
-internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
+internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val reportsEnabled by remember(graph) { graph.settings.flow(AppSettings.crashReports) }.collectAsState()
     val snackbar = LocalSnackbar.current
     val scrollState = rememberScrollState()
     TrackScroll { scrollState.canScrollBackward }
@@ -157,13 +170,22 @@ internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
                         Text(stringResource(Res.string.feedback_attach), color = DesignColors.Accent)
                     }
                 }
-                SendButton(session, enabled = session.message.isNotBlank() && !session.sending) {
+                if (!reportsEnabled) {
+                    ConsentRow(
+                        checked = session.allowReports,
+                        enabled = !session.sending,
+                        onToggle = { session.allowReports = it },
+                    )
+                }
+                val consented = reportsEnabled || session.allowReports
+                SendButton(session, enabled = session.message.isNotBlank() && consented && !session.sending) {
                     scope.launch {
                         // Two taps can land before the first launch flips the flag through
                         // recomposition — only one send goes out.
                         if (session.sending) return@launch
                         session.sending = true
                         try {
+                            if (!reportsEnabled) graph.settings.put(AppSettings.crashReports, true)
                             graph.sendFeedback?.invoke(
                                 FeedbackDraft(
                                     message = session.message.trim(),
@@ -174,6 +196,7 @@ internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
                             )
                             snackbar(getString(Res.string.feedback_sent))
                             session.clearReport()
+                            onDismiss()
                         } catch (c: kotlinx.coroutines.CancellationException) {
                             throw c
                         } catch (e: Exception) {
@@ -186,6 +209,25 @@ internal fun FeedbackScreen(graph: AppGraph, session: FeedbackSession) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ConsentRow(checked: Boolean, enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = onToggle),
+        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = null,
+            enabled = enabled,
+            colors = CheckboxDefaults.colors(checkedColor = DesignColors.Accent),
+        )
+        Text(stringResource(Res.string.settings_crash_reports), style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink))
     }
 }
 

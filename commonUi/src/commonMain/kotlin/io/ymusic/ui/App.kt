@@ -1099,7 +1099,7 @@ private fun AppRoot(
                                                     onLogin = openLogin,
                                                 )
                                                 AppSection.Feedback ->
-                                                    if (graph.sendFeedback != null) FeedbackScreen(graph, feedbackSession)
+                                                    if (graph.sendFeedback != null) FeedbackScreen(graph, feedbackSession, onDismiss = { onSection(AppSection.Discover) })
                                                     else ComingSoon(section)
                                                 AppSection.Catalogue ->
                                                     if (catalogue != null) catalogue() else ComingSoon(section)
