@@ -80,7 +80,7 @@ data class PlaybackConfig(
 
 /**
  * A recoverable classification the caller can surface — a [CodedError] with a stable `E6xxxx` player
- * code. [message] is developer detail (the backend's own error text) — log material, never shown.
+ * code, or a well-known category ([FILE_MISSING]). [message] is developer detail (the backend's own error text) — log material, never shown.
  *
  * [canRetry]/[needReset] mirror the legacy `PlayerState.Error` flags: [canRetry] = a fresh
  * [MediaEngine.load] of the same source may succeed (false = don't offer retry — e.g. no engine for
@@ -94,7 +94,12 @@ data class PlayerError(
     val canRetry: Boolean = true,
     val needReset: Boolean = false,
     val cause: Throwable? = null,
-) : CodedError
+) : CodedError {
+    companion object {
+        /** A local item's file is gone from storage (deleted/moved since the scan) — never retryable. */
+        const val FILE_MISSING = "file_missing"
+    }
+}
 
 /** A YouTube video's owner channel, as its player response reports it. [channelUrl] is an
  *  engine-composed app link. */

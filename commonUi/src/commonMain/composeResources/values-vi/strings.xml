@@ -237,6 +237,7 @@
     <string name="playback_failed">Phát thất bại (%1$s)</string>
     <string name="playback_sign_in_required">YouTube yêu cầu đăng nhập để phát video này</string>
     <string name="playback_unavailable">Video này không khả dụng</string>
+    <string name="playback_file_missing">Tệp này không còn trên thiết bị của bạn</string>
     <string name="menu_reload_player">Tải lại trình phát</string>
 
 

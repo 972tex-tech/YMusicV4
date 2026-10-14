@@ -150,6 +150,7 @@ import io.ymusic.ui.resources.ic_sponsor_block
 import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.menu_reload_player
 import io.ymusic.ui.resources.playback_failed
+import io.ymusic.ui.resources.playback_file_missing
 import io.ymusic.ui.resources.playback_sign_in_required
 import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.queue_end
@@ -904,6 +905,7 @@ private fun PlaybackErrorRow(player: io.ymusic.player.Player, error: io.ymusic.p
         Text(
             when {
                 captcha -> stringResource(Res.string.error_captcha)
+                error.code == io.ymusic.player.PlayerError.FILE_MISSING -> stringResource(Res.string.playback_file_missing)
                 else -> when (error.playability()) {
                     Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
                     Playability.Unavailable -> stringResource(Res.string.playback_unavailable)

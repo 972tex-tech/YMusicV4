@@ -8,6 +8,7 @@ import io.ymusic.player.PlaybackConfig
 import io.ymusic.player.PlaybackState
 import io.ymusic.player.PlaybackStatus
 import io.ymusic.player.Player
+import io.ymusic.player.PlayerError
 import io.ymusic.player.QueueSource
 import io.ymusic.ui.playhistory.PlayAgainSession
 import kmpcommon.log.Logger
@@ -55,6 +56,8 @@ class PlaybackCoordinator(
                 player.status.map { it.error }.distinctUntilChanged().collect { err ->
                     if (err != null && err.playability() != null) {
                         log.log(Logger.Level.WARN, "playability ${err.code}: ${err.message}")
+                    } else if (err != null && err.code == PlayerError.FILE_MISSING) {
+                        log.log(Logger.Level.WARN, "file missing: ${err.message}", err.cause)
                     } else if (err != null) {
                         log.captureError(
                             TechnicalException(err.code, err.message ?: "player error", cause = err.cause),
