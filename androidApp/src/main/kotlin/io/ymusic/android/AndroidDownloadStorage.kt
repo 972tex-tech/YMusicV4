@@ -42,6 +42,10 @@ class AndroidDownloadStorage(
         } catch (e: SecurityException) {
             // The tree's persisted grant is gone or read-only: only re-picking the folder restores it.
             throw DownloadFolderAccessException(destinationFolder.toString(), e)
+        } catch (e: IllegalStateException) {
+            // ExternalStorageProvider's own wording when File.createNewFile() refuses the path it picked.
+            if (e.message?.startsWith("Failed to touch") == true) throw DownloadFolderAccessException(destinationFolder.toString(), e)
+            throw e
         } ?: error("SAF createDocument failed in $destinationFolder")
         try {
             resolver.openOutputStream(child)?.use { out ->
