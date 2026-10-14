@@ -13,7 +13,11 @@ fun SentryOptions.applyYMusicTelemetry() {
     maxBreadcrumbs = 200
     // Consent is enforced HERE, not by deinitializing (see bindCrashReporting): everything that
     // would leave the process passes one of these hooks and is dropped while consent says no.
-    beforeSend = { event -> if (crashReportingAllowed) fingerprintPolicy(event) else null }
+    // A feedback report is its own consent (the Feedback screen turns reports on as it sends), so it
+    // passes even before the gate's collector has seen that flip.
+    beforeSend = { event ->
+        if (crashReportingAllowed || event.getTag(FEEDBACK_TAG) == "true") fingerprintPolicy(event) else null
+    }
     // Sentry Logs are OFF by default — without this every Sentry.logger call is dropped. A log is
     // NOT an event: it has its own pipeline and its own beforeSend, so the consent lock repeats.
     logs.enabled = true

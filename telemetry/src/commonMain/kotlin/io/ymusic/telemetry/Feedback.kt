@@ -18,7 +18,7 @@ fun sendSentryFeedback(
     attachments: List<Attachment> = emptyList(),
 ) {
     val eventId = Sentry.captureMessage("User feedback") { scope ->
-        scope.setTag("feedback", "true")
+        scope.setTag(FEEDBACK_TAG, "true")
         attachments.forEach(scope::addAttachment)
     }
     Sentry.captureUserFeedback(
@@ -29,3 +29,5 @@ fun sendSentryFeedback(
         },
     )
 }
+
+internal const val FEEDBACK_TAG = "feedback"
