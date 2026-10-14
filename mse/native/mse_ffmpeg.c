@@ -1329,7 +1329,7 @@ static int mc_queue(MseAv *a, const uint8_t *data, int n, int64_t pts_us, int ke
     uint32_t flags = 0;
     if (!a->mc || n <= 0)
         return 0;
-    ix = AMediaCodec_dequeueInputBuffer(a->mc, 2000);
+    ix = AMediaCodec_dequeueInputBuffer(a->mc, 0);
     if (ix < 0)
         return AVERROR(EAGAIN);
     buf = AMediaCodec_getInputBuffer(a->mc, (size_t)ix, &cap);
@@ -1432,10 +1432,71 @@ static int mc_out_late(const MseAv *a, double p, double clock)
     return p < clock - late && !(a->show_late && p >= clock - 0.35);
 }
 
+/* Frames at/after a pending rep switch are lost when the decoder reopens, so
+   only that window keeps clock pacing. */
+static int mc_feed_paced(MseAv *a, double clock, double pts)
+{
+    double ahead = mc_send_ahead(a);
+    if (!a->vpar_next)
+        return 0;
+    if (a->v_switch_pts >= 0 && pts < a->v_switch_pts - ahead)
+        return 0;
+    return pts > clock + ahead;
+}
+
+/* Fill every free input slot: a decoder that emits only once several AUs are
+   queued starves under clock pacing and hands back pictures in late clumps. */
+static int mc_feed(MseAv *a, double clock)
+{
+    int sent = 0, i;
+    for (i = 0; i < 64; i++) {
+        size_t rd0 = a->vf.rd;
+        double sp;
+        int key, sr;
+        maybe_apply_video_rep(a);
+        if (!a->mc)
+            break;
+        while (a->vf.rd < a->vf.n && a->need_rap[0] &&
+               !coded_is_rap(a, &a->vf.f[a->vf.rd])) {
+            a->vf.f[a->vf.rd].sent = 1;
+            a->vf.rd++;
+        }
+        if (a->vf.rd != rd0)
+            vlog_state(a, clock, "rap-skip", a->vf.rd < a->vf.n ? a->vf.f[a->vf.rd].pts : -1);
+        if (a->vf.rd >= a->vf.n)
+            break;
+        sp = a->vf.f[a->vf.rd].pts;
+        key = a->vf.f[a->vf.rd].key;
+        if (mc_feed_paced(a, clock, sp)) {
+            vlog_starve_ahead(a, clock, a->vf.rd);
+            break;
+        }
+        rd0 = a->vf.rd;
+        sr = mc_send_one(a);
+        if (sr < 0) {
+            mse_critf(MSE_LOG_WARN, "mse-v mediacodec send-err pts=%.3f key=%d r=%d",
+                      sp, key, sr);
+            a->need_rap[0] = 1;
+            continue;
+        }
+        if (a->vf.rd == rd0)
+            break;
+        if (key)
+            a->need_rap[0] = 0;
+        sent++;
+        if (vdbg_ok())
+            vlog("send pts=%.3f key=%d clock=%.3f", sp, key, clock);
+    }
+    return sent;
+}
+
 static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
 {
     const double early = 0.04;
     int i;
+    mc_feed(a, clock);
+    if (!a->mc)
+        return 0;
     if (a->mc_hold) {
         double p = (a->mc_hold_pts_us + a->mc_pts0) / 1e6;
         double d = p - clock;
@@ -1448,6 +1509,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
         }
         if (mc_out_late(a, p, clock)) {
             vlog_state(a, clock, "hold-late", d);
+            mc_cost_note_out(a, p);
             mc_hold_drop(a, 0);
         } else {
             mc_hold_drop(a, 1);
@@ -1482,6 +1544,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
             if (mc_out_late(a, p, clock)) {
                 if (vdbg_ok())
                     vlog_state(a, clock, "recv-late", d);
+                mc_cost_note_out(a, p);
                 AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 0);
                 continue;
             }
@@ -1538,45 +1601,10 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
         }
         if (ox == AMEDIACODEC_INFO_TRY_AGAIN_LATER ||
             ox == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED) {
-            size_t rd0 = a->vf.rd;
-            int sr;
-            maybe_apply_video_rep(a);
-            if (!a->mc)
-                break;
-            while (a->vf.rd < a->vf.n && a->need_rap[0] &&
-                   !coded_is_rap(a, &a->vf.f[a->vf.rd])) {
-                a->vf.f[a->vf.rd].sent = 1;
-                a->vf.rd++;
-            }
-            if (a->vf.rd != rd0)
-                vlog_state(a, clock, "rap-skip", a->vf.rd < a->vf.n ? a->vf.f[a->vf.rd].pts : -1);
-            if (a->vf.rd >= a->vf.n) {
+            if (mc_feed(a, clock) > 0)
+                continue;
+            if (a->mc && a->vf.rd >= a->vf.n)
                 vlog_starve_empty(a, clock, 0);
-                break;
-            }
-            if (a->vf.f[a->vf.rd].pts > clock + mc_send_ahead(a)) {
-                vlog_starve_ahead(a, clock, a->vf.rd);
-                break;
-            }
-            {
-                double sp = a->vf.f[a->vf.rd].pts;
-                int key = a->vf.f[a->vf.rd].key;
-                size_t sent_rd = a->vf.rd;
-                sr = mc_send_one(a);
-                if (sr < 0) {
-                    mse_critf(MSE_LOG_WARN, "mse-v mediacodec send-err pts=%.3f key=%d r=%d",
-                              sp, key, sr);
-                    a->need_rap[0] = 1;
-                    continue;
-                }
-                if (a->vf.rd == sent_rd)
-                    break;
-                if (key)
-                    a->need_rap[0] = 0;
-                if (vdbg_ok())
-                    vlog("send pts=%.3f key=%d clock=%.3f", sp, key, clock);
-            }
-            continue;
         }
         break;
     }
@@ -3929,8 +3957,13 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     maybe_apply_video_rep(a);
     while (vf_skip_stale(a, clock))
         ;
+    /* A running MediaCodec takes the next GOP early; only a resync waits. */
     if (a->vf.rd < a->vf.n && coded_is_rap(a, &a->vf.f[a->vf.rd]) &&
-        a->vf.f[a->vf.rd].pts > clock + early) {
+        a->vf.f[a->vf.rd].pts > clock + early
+#ifdef __ANDROID__
+        && !(a->mc && !a->need_rap[0])
+#endif
+    ) {
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
