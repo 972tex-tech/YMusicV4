@@ -9,6 +9,8 @@
 // carries an English `title` plus a stable `titleKey` the app resolves to a localized string
 // (falling back to `title` for a key it doesn't know — an older app meeting a newer bundle).
 
+import { debug } from "../../debug";
+import { Cache } from "../../protocol/cache";
 import { JsEngineErrorImpl } from "../../protocol/command";
 import { jsLogger } from "../../protocol/logger";
 import type { JsLogger } from "../../protocol/logger";
@@ -35,8 +37,10 @@ const CHARTS_UA =
  * CHART_HOME serves every region tried (including the ones legacy's hardcoded table routed to the
  * location-insights perspective instead).
  */
-async function chartsBrowse(log?: JsLogger): Promise<Record<string, unknown>> {
-  const locale = await effectiveLocale();
+async function chartsBrowse(
+  locale: { hl: string; gl: string },
+  log?: JsLogger,
+): Promise<Record<string, unknown>> {
   const client: Record<string, unknown> = {
     "clientName": "WEB_MUSIC_ANALYTICS",
     "clientVersion": "2.0",
@@ -219,8 +223,8 @@ function analyticsContent(root: Record<string, unknown>): Record<string, unknown
  * (`trackTypes` = songs, `videos` = music videos), each tagged with a `listType` and a chart period;
  * the shown set — and which period wins when a chart ships both — mirrors legacy's picks.
  */
-export async function trendingMusicPage(log?: JsLogger): Promise<WireFeedPage> {
-  const content = analyticsContent(await chartsBrowse(log));
+function composeTrendingPage(response: Record<string, unknown>): WireFeedPage {
+  const content = analyticsContent(response);
   if (content === undefined)
     throw JsEngineErrorImpl.parse("yt/trending: no musicAnalyticsSectionRenderer content");
 
@@ -293,4 +297,41 @@ export async function trendingMusicPage(log?: JsLogger): Promise<WireFeedPage> {
     ),
   );
   return { "sections": sections };
+}
+
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+const CHARTS_CACHE_SCOPE = "yt-charts";
+/** Charts move daily at most: a region's page serves 10h before the next charts.youtube.com hit. */
+const CHARTS_TTL_MS = 10 * 60 * 60 * 1000;
+
+export async function trendingMusicPage(log?: JsLogger): Promise<WireFeedPage> {
+  const locale = await effectiveLocale();
+  const key = locale.hl + "_" + locale.gl;
+  let cached: WireFeedPage | null = null;
+  try {
+    cached = await Cache.get(CHARTS_CACHE_SCOPE, key, async (source, meta) => {
+      const page = await source.readJsonObject();
+      return Date.now() - meta.updatedAt <= CHARTS_TTL_MS
+        ? (page as unknown as WireFeedPage)
+        : null;
+    });
+  } catch (e) {
+    // No cache store wired (capability inert) or a store error — the live fetch still works.
+    debug(function () {
+      return "yt charts cache read skipped: " + errText(e);
+    });
+  }
+  if (cached !== null) return cached;
+  const page = composeTrendingPage(await chartsBrowse(locale, log));
+  try {
+    await Cache.setJson(CHARTS_CACHE_SCOPE, key, page);
+  } catch (e) {
+    debug(function () {
+      return "yt charts cache write skipped: " + errText(e);
+    });
+  }
+  return page;
 }
