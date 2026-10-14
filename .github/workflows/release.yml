@@ -294,6 +294,8 @@ jobs:
   release:
     needs: [android, macos]
     runs-on: ubuntu-24.04
+    env:
+      SECRETS_PASSPHRASE: ${{ secrets.SECRETS_PASSPHRASE }}
     permissions:
       contents: write
     steps:
@@ -323,11 +325,15 @@ jobs:
       # update-config.json: the releases/engineJs/playerJs entries for the server's App config.
       # The update dialog's notes are an annotated tag's message (git tag -a … -m "notes"); a
       # lightweight tag gives none. The dialog shows 7 lines (UpdateDialog.kt ChangeNotes).
+      # The signing keys come from secrets.enc (bundle.signing.* / update.* in secrets.properties).
+      - name: Restore secrets
+        if: env.SECRETS_PASSPHRASE != ''
+        working-directory: YMusicV4
+        run: ./decrypt.sh
+
       - name: Build the update config
         env:
           TAG: ${{ github.ref_name }}
-          YM_UPDATE_SIGNING_KEY: ${{ secrets.YM_UPDATE_SIGNING_KEY }}
-          YM_BUNDLE_SIGNING_KEY: ${{ secrets.YM_BUNDLE_SIGNING_KEY }}
         run: |
           set -euo pipefail
           notes="$RUNNER_TEMP/notes.txt"
@@ -343,6 +349,11 @@ jobs:
           node YMusicV4/.github/update-config.mjs release "$GITHUB_REPOSITORY" "$TAG" YMusicV4 "$notes" \
             > release/update-config.json
           { echo '### update-config.json'; echo '```json'; cat release/update-config.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Discard secrets
+        if: always()
+        working-directory: YMusicV4
+        run: rm -rf secrets.properties signing
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

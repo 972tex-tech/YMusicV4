@@ -4,13 +4,13 @@
 //
 //   node update-config.mjs <release dir> <owner/repo> <tag> <YMusicV4 checkout> [notes file]
 //
-// Urls are the release's asset download links, live once the draft is published. Signatures need
-// YM_UPDATE_SIGNING_KEY (installers) and YM_BUNDLE_SIGNING_KEY (JS bundles), base64 PKCS#8 P-256;
-// without one its entries carry an empty signature, which the apps refuse, and the message to sign
-// is printed instead (sign offline with ymusic-server's scripts/sign-*.mjs).
+// Urls are the release's asset download links, live once the draft is published. Signatures use
+// bundle.signing.private.key (JS bundles) and update.private.key (installers) from the checkout's
+// secrets.properties (./decrypt.sh), each checked against its .public.key; a missing key leaves its
+// entries with an empty signature, which the apps refuse, and prints the messages to sign instead.
 
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
-import { createReadStream, readFileSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 const [dir, repo, tag, root, notesFile] = process.argv.slice(2)
@@ -39,16 +39,29 @@ const notes = notesFile ? readFileSync(notesFile, 'utf8').trim() : ''
 const changelogUrl = `https://github.com/${repo}/blob/${tag}/CHANGELOG.md`
 const assetUrl = (file) => `https://github.com/${repo}/releases/download/${tag}/${file}`
 
-const signer = (envName) => {
-  const keyBase64 = process.env[envName]
-  if (!keyBase64) return null
-  const privateKey = createPrivateKey({ key: Buffer.from(keyBase64, 'base64'), format: 'der', type: 'pkcs8' })
-  if (privateKey.asymmetricKeyDetails?.namedCurve !== 'prime256v1') {
-    console.error(`${envName} is not a P-256 key`)
+const secretsPath = join(root, 'secrets.properties')
+const secrets = existsSync(secretsPath)
+  ? Object.fromEntries(
+      readFileSync(secretsPath, 'utf8')
+        .split('\n')
+        .map((line) => line.match(/^([\w.]+)=(.*)$/))
+        .filter(Boolean)
+        .map((found) => [found[1], found[2].trim()]),
+    )
+  : {}
+
+const signer = (keyName) => {
+  const privateBase64 = secrets[`${keyName}.private.key`]
+  if (!privateBase64) {
+    console.error(`${keyName}.private.key is not in secrets.properties`)
+    return null
+  }
+  const privateKey = createPrivateKey({ key: Buffer.from(privateBase64, 'base64'), format: 'der', type: 'pkcs8' })
+  const publicKey = createPublicKey(privateKey)
+  if (publicKey.export({ format: 'der', type: 'spki' }).toString('base64') !== secrets[`${keyName}.public.key`]) {
+    console.error(`${keyName}.private.key does not match ${keyName}.public.key, the key the apps pin`)
     process.exit(1)
   }
-  const publicKey = createPublicKey(privateKey)
-  console.error(`${envName} public key: ${publicKey.export({ format: 'der', type: 'spki' }).toString('base64')}`)
   return (text) => {
     const message = Buffer.from(text, 'utf8')
     const signature = sign('sha256', message, privateKey)
@@ -59,8 +72,8 @@ const signer = (envName) => {
     return signature.toString('base64')
   }
 }
-const signUpdate = signer('YM_UPDATE_SIGNING_KEY')
-const signBundle = signer('YM_BUNDLE_SIGNING_KEY')
+const signUpdate = signer('update')
+const signBundle = signer('bundle.signing')
 const unsigned = []
 const signOrNote = (signFn, message) => {
   if (signFn) return signFn(message)
