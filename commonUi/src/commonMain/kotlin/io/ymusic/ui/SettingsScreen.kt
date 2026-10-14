@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtLocaleOption
@@ -271,7 +272,7 @@ private fun ChangelogRow(url: String) {
 private fun VersionsRow(graph: AppGraph) {
     val engine by remember(graph) { graph.runningBundles?.engineFlow ?: flowOf(null) }.collectAsState(initial = null)
     val player by remember(graph) { graph.runningBundles?.playerFlow ?: flowOf(null) }.collectAsState(initial = null)
-    val lines = listOfNotNull(
+    val parts = listOfNotNull(
         graph.appVersionName?.let { name ->
             stringResource(Res.string.settings_versions_app, name, graph.appVersionCode?.toString() ?: "—")
         },
@@ -287,13 +288,13 @@ private fun VersionsRow(graph: AppGraph) {
             stringResource(Res.string.settings_versions),
             style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
         )
-        lines.forEach { line ->
-            Text(
-                line,
-                style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
-                modifier = Modifier.padding(top = DesignSpacing.Space2),
-            )
-        }
+        Text(
+            parts.joinToString(" · "),
+            style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = DesignSpacing.Space2),
+        )
     }
 }
 
