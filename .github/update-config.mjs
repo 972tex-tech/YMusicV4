@@ -6,8 +6,8 @@
 //
 // Urls are the release's asset download links, live once the draft is published. Signatures use
 // bundle.signing.private.key (JS bundles) and update.private.key (installers) from the checkout's
-// secrets.properties (./decrypt.sh), each checked against its .public.key; a missing key leaves its
-// entries with an empty signature, which the apps refuse, and prints the messages to sign instead.
+// secrets.properties (./decrypt.sh), each checked against its .public.key. A missing key fails the
+// run: an entry with an empty signature is one the apps refuse, so it must never reach the dashboard.
 
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
@@ -74,12 +74,7 @@ const signer = (keyName) => {
 }
 const signUpdate = signer('update')
 const signBundle = signer('bundle.signing')
-const unsigned = []
-const signOrNote = (signFn, message) => {
-  if (signFn) return signFn(message)
-  unsigned.push(message)
-  return ''
-}
+if (!signUpdate || !signBundle) process.exit(1)
 
 const sha256Of = async (path) => {
   const hash = createHash('sha256')
@@ -106,7 +101,7 @@ for (const { platform, file, versionCode } of INSTALLERS) {
     url: assetUrl(file),
     size: statSync(path).size,
     sha256,
-    signature: signOrNote(signUpdate, `app-${platform}:${versionCode}:${sha256}`),
+    signature: signUpdate(`app-${platform}:${versionCode}:${sha256}`),
     changelogUrl,
   }
 }
@@ -114,7 +109,7 @@ for (const { platform, file, versionCode } of INSTALLERS) {
 const bundle = async (name, version) => {
   const file = `${name}.${version}.js`
   const sha256 = await sha256Of(join(dir, file))
-  return { version, url: assetUrl(file), signature: signOrNote(signBundle, `${name}:${version}:${sha256}`) }
+  return { version, url: assetUrl(file), signature: signBundle(`${name}:${version}:${sha256}`) }
 }
 
 const config = {
@@ -123,8 +118,3 @@ const config = {
   playerJs: await bundle('player', playerVersion),
 }
 console.log(JSON.stringify(config, null, 2))
-
-if (unsigned.length > 0) {
-  console.error('UNSIGNED: the apps refuse these entries until each message below is signed:')
-  for (const message of unsigned) console.error(`  ${message}`)
-}
