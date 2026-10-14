@@ -138,7 +138,6 @@
     <string name="sort_duration">ಅವಧಿ</string>
     <string name="sort_song_count">ಹಾಡುಗಳ ಸಂಖ್ಯೆ</string>
     <string name="cd_sort">ವಿಂಗಡಿಸಿ</string>
-    <string name="cd_sort_order">ವಿಂಗಡಣೆ ಕ್ರಮ</string>
     <string name="library_unavailable">ಈ ಪ್ಲ್ಯಾಟ್‌ಫಾರ್ಮ್‌ನಲ್ಲಿ ಯಾವುದೇ ಸ್ಥಳೀಯ ಲೈಬ್ರರಿ ಕಾನ್ಫಿಗರ್ ಆಗಿಲ್ಲ</string>
     <string name="library_empty">ನಿಮ್ಮ ಲೈಬ್ರರಿ ಖಾಲಿಯಾಗಿದೆ</string>
     <string name="library_scan_folder">+  ಫೋಲ್ಡರ್ ಸ್ಕ್ಯಾನ್ ಮಾಡಿ</string>
@@ -242,7 +241,6 @@
     <string name="cd_more">ಇನ್ನಷ್ಟು</string>
     <string name="cd_collapse">ಕುಗ್ಗಿಸಿ</string>
     <string name="cd_expand">ವಿಸ್ತರಿಸಿ</string>
-    <string name="cd_play_pause">ಪ್ಲೇ/ವಿರಾಮ</string>
     <string name="cd_next">ಮುಂದಿನದು</string>
     <string name="cd_previous">ಹಿಂದಿನದು</string>
     <string name="cd_download">ಡೌನ್‌ಲೋಡ್</string>
@@ -252,7 +250,6 @@
     <string name="cd_fill_video">ಪರದೆ ತುಂಬಿಸಿ</string>
     <string name="cd_rewind10">10 ಸೆಕೆಂಡ್ ಹಿಂದಕ್ಕೆ</string>
     <string name="cd_forward10">10 ಸೆಕೆಂಡ್ ಮುಂದಕ್ಕೆ</string>
-    <string name="cd_repeat">ಪುನರಾವರ್ತಿಸಿ</string>
     <string name="play_all">ಎಲ್ಲವನ್ನೂ ಪ್ಲೇ ಮಾಡಿ</string>
     <string name="shuffle_all">ಎಲ್ಲವನ್ನೂ ಷಫಲ್ ಮಾಡಿ</string>
     <string name="cd_shuffle">ಷಫಲ್</string>

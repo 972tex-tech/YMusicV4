@@ -167,7 +167,8 @@
     <string name="sort_duration">المدة</string>
     <string name="sort_song_count">عدد الأغاني</string>
     <string name="cd_sort">فرز</string>
-    <string name="cd_sort_order">ترتيب الفرز</string>
+    <string name="cd_sort_ascending">ترتيب الفرز: تصاعدي</string>
+    <string name="cd_sort_descending">ترتيب الفرز: تنازلي</string>
     <string name="library_unavailable">لا توجد مكتبة محلية على هذه المنصة</string>
     <string name="library_empty">مكتبتك فارغة</string>
     <string name="library_scan_folder">+  فحص مجلد</string>
@@ -278,7 +279,6 @@
     <string name="cd_more">المزيد</string>
     <string name="cd_collapse">طي</string>
     <string name="cd_expand">توسيع</string>
-    <string name="cd_play_pause">تشغيل/إيقاف مؤقت</string>
     <string name="cd_play">تشغيل</string>
     <string name="cd_pause">إيقاف مؤقت</string>
     <string name="cd_next">التالي</string>
@@ -291,7 +291,9 @@
     <string name="cd_fill_video">ملء الشاشة</string>
     <string name="cd_rewind10">إرجاع 10 ثوانٍ</string>
     <string name="cd_forward10">تقديم 10 ثوانٍ</string>
-    <string name="cd_repeat">تكرار</string>
+    <string name="cd_repeat_off">التكرار: إيقاف</string>
+    <string name="cd_repeat_all">التكرار: الكل</string>
+    <string name="cd_repeat_one">التكرار: مقطع واحد</string>
     <string name="play_all">تشغيل الكل</string>
     <string name="shuffle_all">تشغيل الكل عشوائيًا</string>
     <string name="cd_shuffle">خلط</string>

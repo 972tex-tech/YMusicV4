@@ -181,7 +181,8 @@
     <string name="sort_duration">Duration</string>
     <string name="sort_song_count">Song count</string>
     <string name="cd_sort">Sort</string>
-    <string name="cd_sort_order">Sort order</string>
+    <string name="cd_sort_ascending">Sort order: ascending</string>
+    <string name="cd_sort_descending">Sort order: descending</string>
     <string name="library_unavailable">No local library configured on this platform</string>
     <string name="library_empty">Your library is empty</string>
     <string name="library_scan_folder">+  Scan folder</string>
@@ -293,7 +294,6 @@
     <string name="cd_more">More</string>
     <string name="cd_collapse">Collapse</string>
     <string name="cd_expand">Expand</string>
-    <string name="cd_play_pause">Play/Pause</string>
     <string name="cd_play">Play</string>
     <string name="cd_pause">Pause</string>
     <string name="cd_next">Next</string>
@@ -306,7 +306,9 @@
     <string name="cd_fill_video">Fill screen</string>
     <string name="cd_rewind10">Rewind 10 seconds</string>
     <string name="cd_forward10">Forward 10 seconds</string>
-    <string name="cd_repeat">Repeat</string>
+    <string name="cd_repeat_off">Repeat: off</string>
+    <string name="cd_repeat_all">Repeat: all</string>
+    <string name="cd_repeat_one">Repeat: one</string>
     <string name="play_all">Play all</string>
     <string name="shuffle_all">Shuffle all</string>
     <string name="cd_shuffle">Shuffle</string>

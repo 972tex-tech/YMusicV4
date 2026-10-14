@@ -138,7 +138,6 @@
     <string name="sort_duration">משך</string>
     <string name="sort_song_count">מספר שירים</string>
     <string name="cd_sort">מיון</string>
-    <string name="cd_sort_order">סדר מיון</string>
     <string name="library_unavailable">לא הוגדרה ספרייה מקומית בפלטפורמה הזו</string>
     <string name="library_empty">הספרייה שלך ריקה</string>
     <string name="library_scan_folder">+  סריקת תיקייה</string>
@@ -243,7 +242,6 @@
     <string name="cd_more">עוד</string>
     <string name="cd_collapse">כיווץ</string>
     <string name="cd_expand">הרחבה</string>
-    <string name="cd_play_pause">השמעה/השהיה</string>
     <string name="cd_next">הבא</string>
     <string name="cd_previous">הקודם</string>
     <string name="cd_download">הורדה</string>
@@ -253,7 +251,6 @@
     <string name="cd_fill_video">מילוי המסך</string>
     <string name="cd_rewind10">10 שניות אחורה</string>
     <string name="cd_forward10">10 שניות קדימה</string>
-    <string name="cd_repeat">חזרה על השמעה</string>
     <string name="play_all">השמע הכול</string>
     <string name="shuffle_all">ערבב הכול</string>
     <string name="cd_shuffle">ערבוב</string>

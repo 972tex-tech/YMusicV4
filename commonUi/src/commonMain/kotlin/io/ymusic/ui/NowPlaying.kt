@@ -97,6 +97,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -136,9 +137,12 @@ import io.ymusic.ui.resources.cd_forward10
 import io.ymusic.ui.resources.cd_fullscreen
 import io.ymusic.ui.resources.cd_more
 import io.ymusic.ui.resources.cd_next
-import io.ymusic.ui.resources.cd_play_pause
+import io.ymusic.ui.resources.cd_pause
+import io.ymusic.ui.resources.cd_play
 import io.ymusic.ui.resources.cd_previous
-import io.ymusic.ui.resources.cd_repeat
+import io.ymusic.ui.resources.cd_repeat_all
+import io.ymusic.ui.resources.cd_repeat_off
+import io.ymusic.ui.resources.cd_repeat_one
 import io.ymusic.ui.resources.cd_rewind10
 import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.error_captcha
@@ -287,7 +291,7 @@ fun MiniPlayer(
                     IconButton(onClick = { coordinator.player.togglePlay() }) {
                         Icon(
                             if (status.playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            stringResource(Res.string.cd_play_pause),
+                            stringResource(if (status.playWhenReady) Res.string.cd_pause else Res.string.cd_play),
                             tint = DesignColors.InkMuted,
                         )
                     }
@@ -1273,12 +1277,12 @@ private fun TransportRow(
                 onClick = { player.skipPrev() },
             )
             Box(
-                Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable { player.togglePlay() },
+                Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable(role = Role.Button) { player.togglePlay() },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    stringResource(Res.string.cd_play_pause),
+                    stringResource(if (playing) Res.string.cd_pause else Res.string.cd_play),
                     Modifier.size(26.dp),
                     tint = playForeground,
                 )
@@ -1371,7 +1375,13 @@ private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, tot
         Box(Modifier.weight(1f))
         ActionIcon(
             if (loopMode == LoopMode.One) Icons.Default.RepeatOne else Icons.Default.Repeat,
-            stringResource(Res.string.cd_repeat),
+            stringResource(
+                when (loopMode) {
+                    LoopMode.None -> Res.string.cd_repeat_off
+                    LoopMode.All -> Res.string.cd_repeat_all
+                    LoopMode.One -> Res.string.cd_repeat_one
+                },
+            ),
             iconSize = 20.dp,
             tint = if (loopMode != LoopMode.None) DesignColors.Accent else DesignColors.InkSoft,
             onClick = {
@@ -1384,12 +1394,13 @@ private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, tot
                 )
             },
         )
-        ActionIcon(
+        ToggleActionIcon(
             Icons.Default.Shuffle,
             stringResource(Res.string.cd_shuffle),
+            checked = shuffle,
             iconSize = 20.dp,
             tint = if (shuffle) DesignColors.Accent else DesignColors.InkSoft,
-            onClick = { player.setShuffle(!shuffle) },
+            onCheckedChange = { player.setShuffle(it) },
         )
     }
 }

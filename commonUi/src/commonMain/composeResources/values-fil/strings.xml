@@ -138,7 +138,6 @@
     <string name="sort_duration">Tagal</string>
     <string name="sort_song_count">Bilang ng kanta</string>
     <string name="cd_sort">Ayusin</string>
-    <string name="cd_sort_order">Pagkakasunod-sunod</string>
     <string name="library_unavailable">Walang naka-configure na lokal na library sa platform na ito</string>
     <string name="library_empty">Walang laman ang iyong library</string>
     <string name="library_scan_folder">+  I-scan ang folder</string>
@@ -242,7 +241,6 @@
     <string name="cd_more">Higit pa</string>
     <string name="cd_collapse">I-collapse</string>
     <string name="cd_expand">I-expand</string>
-    <string name="cd_play_pause">I-play/I-pause</string>
     <string name="cd_next">Susunod</string>
     <string name="cd_previous">Nakaraan</string>
     <string name="cd_download">I-download</string>
@@ -252,7 +250,6 @@
     <string name="cd_fill_video">Punuin ang screen</string>
     <string name="cd_rewind10">I-rewind nang 10 segundo</string>
     <string name="cd_forward10">I-forward nang 10 segundo</string>
-    <string name="cd_repeat">Ulitin</string>
     <string name="play_all">I-play lahat</string>
     <string name="shuffle_all">I-shuffle lahat</string>
     <string name="cd_shuffle">I-shuffle</string>

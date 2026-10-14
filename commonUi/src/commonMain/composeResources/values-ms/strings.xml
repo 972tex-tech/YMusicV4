@@ -138,7 +138,6 @@
     <string name="sort_duration">Tempoh</string>
     <string name="sort_song_count">Bilangan lagu</string>
     <string name="cd_sort">Isih</string>
-    <string name="cd_sort_order">Tertib isihan</string>
     <string name="library_unavailable">Tiada pustaka setempat dikonfigurasikan pada platform ini</string>
     <string name="library_empty">Pustaka anda kosong</string>
     <string name="library_scan_folder">+  Imbas folder</string>
@@ -241,7 +240,6 @@
     <string name="cd_more">Lagi</string>
     <string name="cd_collapse">Kuncupkan</string>
     <string name="cd_expand">Kembangkan</string>
-    <string name="cd_play_pause">Main/Jeda</string>
     <string name="cd_next">Seterusnya</string>
     <string name="cd_previous">Sebelumnya</string>
     <string name="cd_download">Muat turun</string>
@@ -251,7 +249,6 @@
     <string name="cd_fill_video">Penuhi skrin</string>
     <string name="cd_rewind10">Undur 10 saat</string>
     <string name="cd_forward10">Maju 10 saat</string>
-    <string name="cd_repeat">Ulang</string>
     <string name="play_all">Main semua</string>
     <string name="shuffle_all">Kocok semua</string>
     <string name="cd_shuffle">Kocok</string>

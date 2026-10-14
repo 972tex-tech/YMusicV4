@@ -138,7 +138,6 @@
     <string name="sort_duration">長さ</string>
     <string name="sort_song_count">曲数</string>
     <string name="cd_sort">並べ替え</string>
-    <string name="cd_sort_order">並び順</string>
     <string name="library_unavailable">このプラットフォームではローカルライブラリが設定されていません</string>
     <string name="library_empty">ライブラリは空です</string>
     <string name="library_scan_folder">+  フォルダをスキャン</string>
@@ -241,7 +240,6 @@
     <string name="cd_more">その他</string>
     <string name="cd_collapse">折りたたむ</string>
     <string name="cd_expand">展開</string>
-    <string name="cd_play_pause">再生/一時停止</string>
     <string name="cd_next">次へ</string>
     <string name="cd_previous">前へ</string>
     <string name="cd_download">ダウンロード</string>
@@ -251,7 +249,6 @@
     <string name="cd_fill_video">画面いっぱいに表示</string>
     <string name="cd_rewind10">10 秒戻す</string>
     <string name="cd_forward10">10 秒進める</string>
-    <string name="cd_repeat">リピート</string>
     <string name="play_all">すべて再生</string>
     <string name="shuffle_all">すべてシャッフル</string>
     <string name="cd_shuffle">シャッフル</string>

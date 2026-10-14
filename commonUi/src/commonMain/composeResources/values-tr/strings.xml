@@ -138,7 +138,6 @@
     <string name="sort_duration">Süre</string>
     <string name="sort_song_count">Şarkı sayısı</string>
     <string name="cd_sort">Sırala</string>
-    <string name="cd_sort_order">Sıralama düzeni</string>
     <string name="library_unavailable">Bu platformda yerel kitaplık yapılandırılmamış</string>
     <string name="library_empty">Kitaplığınız boş</string>
     <string name="library_scan_folder">+  Klasör tara</string>
@@ -242,7 +241,6 @@
     <string name="cd_more">Diğer</string>
     <string name="cd_collapse">Daralt</string>
     <string name="cd_expand">Genişlet</string>
-    <string name="cd_play_pause">Oynat/Duraklat</string>
     <string name="cd_next">Sonraki</string>
     <string name="cd_previous">Önceki</string>
     <string name="cd_download">İndir</string>
@@ -252,7 +250,6 @@
     <string name="cd_fill_video">Ekranı doldur</string>
     <string name="cd_rewind10">10 saniye geri sar</string>
     <string name="cd_forward10">10 saniye ileri sar</string>
-    <string name="cd_repeat">Tekrarla</string>
     <string name="play_all">Tümünü oynat</string>
     <string name="shuffle_all">Tümünü karıştır</string>
     <string name="cd_shuffle">Karıştır</string>

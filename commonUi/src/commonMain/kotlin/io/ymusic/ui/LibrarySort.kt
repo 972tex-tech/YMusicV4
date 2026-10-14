@@ -35,7 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_sort
-import io.ymusic.ui.resources.cd_sort_order
+import io.ymusic.ui.resources.cd_sort_ascending
+import io.ymusic.ui.resources.cd_sort_descending
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -122,7 +123,7 @@ internal fun SortControl(labels: List<StringResource>, state: SortState) {
         IconButton(onClick = { state.descending = !state.descending }, modifier = Modifier.size(32.dp)) {
             Icon(
                 if (state.descending) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
-                stringResource(Res.string.cd_sort_order),
+                stringResource(if (state.descending) Res.string.cd_sort_descending else Res.string.cd_sort_ascending),
                 Modifier.size(17.dp),
                 tint = DesignColors.InkSoft,
             )

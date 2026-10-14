@@ -138,7 +138,6 @@
     <string name="sort_duration">Durée</string>
     <string name="sort_song_count">Nombre de titres</string>
     <string name="cd_sort">Trier</string>
-    <string name="cd_sort_order">Ordre de tri</string>
     <string name="library_unavailable">Aucune bibliothèque locale configurée sur cette plateforme</string>
     <string name="library_empty">Votre bibliothèque est vide</string>
     <string name="library_scan_folder">+  Analyser un dossier</string>
@@ -243,7 +242,6 @@
     <string name="cd_more">Plus</string>
     <string name="cd_collapse">Réduire</string>
     <string name="cd_expand">Développer</string>
-    <string name="cd_play_pause">Lecture/Pause</string>
     <string name="cd_next">Suivant</string>
     <string name="cd_previous">Précédent</string>
     <string name="cd_download">Télécharger</string>
@@ -253,7 +251,6 @@
     <string name="cd_fill_video">Remplir l'écran</string>
     <string name="cd_rewind10">Reculer de 10 secondes</string>
     <string name="cd_forward10">Avancer de 10 secondes</string>
-    <string name="cd_repeat">Répéter</string>
     <string name="play_all">Tout lire</string>
     <string name="shuffle_all">Tout lire en aléatoire</string>
     <string name="cd_shuffle">Lecture aléatoire</string>

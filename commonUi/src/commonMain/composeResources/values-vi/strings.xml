@@ -167,7 +167,8 @@
     <string name="sort_duration">Thời lượng</string>
     <string name="sort_song_count">Số bài hát</string>
     <string name="cd_sort">Sắp xếp</string>
-    <string name="cd_sort_order">Thứ tự sắp xếp</string>
+    <string name="cd_sort_ascending">Thứ tự sắp xếp: tăng dần</string>
+    <string name="cd_sort_descending">Thứ tự sắp xếp: giảm dần</string>
     <string name="library_unavailable">Nền tảng này chưa hỗ trợ thư viện cục bộ</string>
     <string name="library_empty">Thư viện của bạn đang trống</string>
     <string name="library_scan_folder">+  Quét thư mục</string>
@@ -273,7 +274,6 @@
     <string name="cd_more">Thêm</string>
     <string name="cd_collapse">Thu gọn</string>
     <string name="cd_expand">Mở rộng</string>
-    <string name="cd_play_pause">Phát/Tạm dừng</string>
     <string name="cd_play">Phát</string>
     <string name="cd_pause">Tạm dừng</string>
     <string name="cd_next">Bài tiếp theo</string>
@@ -286,7 +286,9 @@
     <string name="cd_fill_video">Phóng đầy</string>
     <string name="cd_rewind10">Tua lùi 10 giây</string>
     <string name="cd_forward10">Tua tới 10 giây</string>
-    <string name="cd_repeat">Lặp lại</string>
+    <string name="cd_repeat_off">Lặp lại: tắt</string>
+    <string name="cd_repeat_all">Lặp lại: tất cả</string>
+    <string name="cd_repeat_one">Lặp lại: một bài</string>
     <string name="play_all">Phát tất cả</string>
     <string name="shuffle_all">Phát ngẫu nhiên tất cả</string>
     <string name="cd_shuffle">Phát ngẫu nhiên</string>
