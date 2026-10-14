@@ -169,6 +169,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         cookieJar = cookies,
         settings = settings,
         cacheStore = cacheStore,
+        strictStints = DEBUG_BUILD,
         onBackendVersion = { version ->
             runningBundles.engine = version
             backgroundScope.launch { settings.put(AppSettings.lastLoadedEngineJsVer, version) }
