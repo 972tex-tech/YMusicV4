@@ -11,6 +11,13 @@
 # .register / RegisterNatives walk the declared methods).
 -keepclasseswithmembers,includedescriptorclasses class * { native <methods>; }
 
+# Enum.valueOf / EnumMap / EnumSet reach values() reflectively (Class.getEnumConstants); without it
+# they throw "X is not an enum class" — zxing's QRCodeWriter does ErrorCorrectionLevel.valueOf(hint).
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+
 # QuickJS JNI bridge (same rule as androidApp): quickjs_jni.c resolves the class and these members
 # BY NAME (FindClass / GetStaticMethodID / the exception ctor), including non-native callback
 # methods invoked from C — the JNI floor above doesn't cover those.
