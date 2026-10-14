@@ -24,12 +24,12 @@ import type { WireFeedItem, WireFeedPage, WireSection, WireSectionHeader } from 
 const CHARTS_ORIGIN = "https://charts.youtube.com";
 
 /**
- * Charts only: charts.youtube.com answers 429 to a Chrome older than ~154 (Chrome/151, our
- * DESKTOP_UA, fails; 154+ passes — measured 2026-10-09). Bump when it starts failing again.
+ * Charts only: charts.youtube.com answers 429 to some Chrome versions and not to others — no clean
+ * cutoff (2026-10-14, 8 tries each: 151/153/155 → 429, 154/156/160 → 200). Swap when it 429s again.
  */
 const CHARTS_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-  "(KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
+  "(KHTML, like Gecko) Chrome/160.0.0.0 Safari/537.36";
 
 /**
  * POST the chart-home browse for the engine-resolved region (session.ts effectiveLocale).
