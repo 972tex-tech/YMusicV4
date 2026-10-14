@@ -45,6 +45,36 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
   not a load handshake: natives may be added AND removed per app version; the always-latest bundle encodes the
   compatibility matrix.
 
+- **Backward compatibility checklist** — any change crossing the JS ↔ host boundary is judged by direction: **args /
+  native calls** flow toward the receiver (old host → new JS for command args; new JS → old host for natives and
+  protocol heads), **results** flow back. The newer side must tolerate everything the older side sends or expects.
+
+  | Change | Command args (old Kotlin → new JS) | Command result (new JS → old Kotlin) |
+  |---|---|---|
+  | add optional field | safe — JS defaults it | safe — old decoders skip unknown keys |
+  | add required field | **break** — old host never sends it | safe |
+  | remove field | safe — JS ignores it | **break** if any old decoder reads it |
+  | optional → required, nullable → non-null | **break** | safe |
+  | required → optional, non-null → nullable | safe | **break** |
+  | narrow type / enum | **break** | safe |
+  | widen type / add enum value | safe | **break** — old `when` / enum decode throws |
+  | add command | safe | — |
+  | remove / rename command | **break** — old app still calls it | — |
+
+  - Calls from JS into the host (C natives, `__mse*`, http/cookie/cache/settings heads) follow the **args** column with
+    JS as the sender: a native or head field newer than the support floor needs a `typeof` / `versions.app` guard
+    and a fallback.
+  - A **rename** is a remove + add — a break to old hosts. Ship both names; drop the old one only once every app
+    version reading it is below the support floor.
+  - **Semantic changes break silently**: a field keeping its type but changing format or meaning (duration
+    `"3:45"` → seconds, app-link or URL shape, units) is a break — add a new field instead.
+  - **Errors are wire too**: `WireError` shape and categories; a new category must land in an old host's generic
+    "Something went wrong (E…)" path, never a crash.
+  - "Required" means **what the shipped Kotlin decoder requires**, not what `wire.ts` declares — read the decoder
+    (`:dynamic-engine` `yt/…`, `DynamicEnginePlayer`) before calling a result change safe.
+  - Kotlin side, same rules mirrored: a new decoder must tolerate the oldest bundle it may still run with (the
+    shell's bundled `engine.js` is the floor), and must fail a job with an E-code, never crash the host.
+
 - **Headless WEB player** — `logic/player/` (raw `orig/env.raw.js` + PO minter `pot.ts` + `boot.ts`). Homepage
   `get_player_config` (live EVENT_ID + `ytAtN` program) → minter on `HttpRequest` → OWL slot → eval `base.js`
   (`fetch`) → KEVLAR_WATCH `Application.create` / `loadVideoById`. Native `:mse` via `protocol/mse.ts`.
