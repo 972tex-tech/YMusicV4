@@ -23,7 +23,9 @@ import {
   collectItems,
   collectPage,
   dedupeItems,
+  foldLooseRuns,
   guideChannelsSection,
+  headerOnlyShelfTitle,
   isMixPlaylist,
   mixSeedVideoId,
   mixToken,
@@ -286,6 +288,9 @@ onAccept(
 // The Shorts tab needs its own parsing mode (Shorts are skipped everywhere else), and the mode
 // must survive paging — so its continuations are wrapped with an engine-private prefix.
 const SHORTS_CONT_PREFIX = "ychshorts1:";
+// The subscriptions feed's paging carries its "Latest" title so every page lands under the same
+// header: "ysubs1:<encoded title>:<token>".
+const SUBS_CONT_PREFIX = "ysubs1:";
 
 // The signed-in account's own feed pages, served through yt/channel: an app link composed here
 // (deeplinkFor) or by the app's fixed library nav rows, decoded back to its browseId here.
@@ -301,6 +306,7 @@ onAccept(
     const args = await src.readJsonObject();
     const fields: Record<string, unknown> = {};
     let shortsTab = false;
+    let subsTitle: string | undefined;
     // The app link is "/channel/<UC…>[/<tab-slug>][?params=…]" — the slug names the tab (see
     // channelUrl), so the Shorts mode is a path read, not a params decode.
     const channelPath = ((): { id: string; slug?: string } | undefined => {
@@ -331,6 +337,12 @@ onAccept(
       if (continuation.indexOf(SHORTS_CONT_PREFIX) === 0) {
         shortsTab = true;
         fields["continuation"] = continuation.slice(SHORTS_CONT_PREFIX.length);
+      } else if (continuation.indexOf(SUBS_CONT_PREFIX) === 0) {
+        const rest = continuation.slice(SUBS_CONT_PREFIX.length);
+        const cut = rest.indexOf(":");
+        if (cut < 0) throw JsEngineErrorImpl.parse("yt/channel: malformed subscriptions token");
+        subsTitle = decodeURIComponent(rest.slice(0, cut));
+        fields["continuation"] = rest.slice(cut + 1);
       } else {
         fields["continuation"] = continuation;
       }
@@ -357,6 +369,24 @@ onAccept(
       withChannels ? innertubeJson("guide", {}, log) : Promise.resolve(undefined),
     ]);
     const page = collectPage(browse, { shorts: shortsTab });
+    if (withChannels || subsTitle !== undefined) {
+      // YouTube interleaves "Most relevant" into the latest uploads; here the titled shelves lead
+      // and every latest upload folds into one "Latest" run the paging keeps feeding.
+      const title = withChannels ? (headerOnlyShelfTitle(browse) ?? "") : (subsTitle ?? "");
+      page["sections"] = foldLooseRuns(
+        page["sections"],
+        title !== "" ? { "title": title } : undefined,
+      );
+      for (const section of page["sections"]) {
+        if (section["header"] !== undefined && section["header"]["title"] !== title) {
+          section["collapsible"] = true;
+          section["collapsedRows"] = [3, 1];
+        }
+      }
+      const cont = page["continuation"];
+      if (cont !== undefined)
+        page["continuation"] = SUBS_CONT_PREFIX + encodeURIComponent(title) + ":" + cont;
+    }
     if (guide !== undefined) {
       const channels = guideChannelsSection(guide);
       if (channels !== undefined) page["sections"].unshift(channels);

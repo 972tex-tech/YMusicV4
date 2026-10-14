@@ -293,11 +293,11 @@ class Pager(
     }
 
     private fun appendSections(current: List<YtSection>, more: List<YtSection>): List<YtSection> {
-        // A continuation usually keeps feeding the run it left off in — a header-less incoming
-        // section continues a header-less tail section rather than starting a visual break.
+        // A continuation usually keeps feeding the run it left off in — an incoming section with
+        // the tail's header (none, or the same one re-sent) continues it rather than starting a break.
         val last = current.lastOrNull()
         val first = more.firstOrNull()
-        if (last == null || first == null || last.header != null || first.header != null) return current + more
+        if (last == null || first == null || last.header != first.header) return current + more
         return current.dropLast(1) + last.copy(items = last.items + first.items) + more.drop(1)
     }
 }

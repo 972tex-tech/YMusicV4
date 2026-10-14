@@ -1357,3 +1357,41 @@ export function guideChannelsSection(root: Record<string, unknown>): WireSection
     "items": items,
   };
 }
+
+/** The first titled shelf with no items of its own: the subscriptions feed's "Latest", a bare
+ *  header over the loose grid that follows it (verified live 2026-10-14). */
+export function headerOnlyShelfTitle(root: unknown): string | undefined {
+  let title: string | undefined;
+  walk(root, (key, value) => {
+    if (title !== undefined) return true;
+    if (key !== "shelfRenderer" || !isObj(value)) return;
+    if (value["content"] !== undefined || value["contents"] !== undefined) return;
+    title = textOf(value["title"]);
+    return true;
+  });
+  return title;
+}
+
+/** Folds every headerless run into ONE trailing section under [header]; titled sections keep
+ *  their order ahead of it — the infinite run must be last, where the page continuation feeds. */
+export function foldLooseRuns(
+  sections: WireSection[],
+  header: WireSectionHeader | undefined,
+): WireSection[] {
+  const out: WireSection[] = [];
+  const items: WireFeedItem[] = [];
+  let layout = "grid";
+  for (const section of sections) {
+    if (section["header"] !== undefined) {
+      out.push(section);
+      continue;
+    }
+    layout = section["layout"];
+    for (const item of section["items"]) items.push(item);
+  }
+  if (items.length === 0) return out;
+  const run: WireSection = { "layout": layout, "items": items };
+  if (header !== undefined) run["header"] = header;
+  out.push(run);
+  return out;
+}
