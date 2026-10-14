@@ -3,6 +3,7 @@ package io.ymusic.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -113,8 +115,10 @@ private fun AccountLibraryHeader(
         BoxWithConstraints {
             if (maxWidth >= 600.dp) {
                 Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = DesignSpacing.MarginCompact, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
                 ) {
                     navRows.forEach { t -> AccountNavChip(t, onDeeplink) }
                 }
