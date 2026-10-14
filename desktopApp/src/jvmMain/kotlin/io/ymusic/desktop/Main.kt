@@ -878,7 +878,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
                     .onFailure { rootLogger.fork("reveal").log(Logger.Level.WARN, "Finder reveal failed for $path", it) }
             }
         },
-        appVersion = "dev · jvm",
+        appVersion = "$APP_VERSION_NAME · ${desktopArch()}",
         appVersionName = APP_VERSION_NAME,
         appVersionCode = APP_VERSION_CODE,
         runningBundles = runningBundles,
