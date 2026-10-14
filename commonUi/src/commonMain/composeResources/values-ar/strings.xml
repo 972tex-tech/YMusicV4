@@ -258,6 +258,10 @@
     <string name="overlay_fps">%1$d إطار/ث</string>
     <string name="settings_changelog">سجل التغييرات</string>
     <string name="settings_licenses">تراخيص المصادر المفتوحة</string>
+    <string name="settings_versions">الإصدارات</string>
+    <string name="settings_versions_app">التطبيق v%1$s/%2$s</string>
+    <string name="settings_versions_engine">EngineJs %1$s</string>
+    <string name="settings_versions_player">PlayerJs %1$s</string>
     <string name="settings_licenses_intro">‏YMusic مفتوح المصدر بموجب رخصة GNU GPL v3.0، ويتضمن المكوّنات التالية:</string>
     <string name="feedback_hint">أخبرنا بما تعطّل أو بما تودّ رؤيته. لقطات الشاشة أو ملفات السجلّ مفيدة.</string>
     <string name="feedback_message_label">ماذا حدث؟</string>

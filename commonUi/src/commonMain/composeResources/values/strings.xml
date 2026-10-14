@@ -270,6 +270,10 @@
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_changelog">Changelog</string>
     <string name="settings_licenses">Open source licenses</string>
+    <string name="settings_versions">Versions</string>
+    <string name="settings_versions_app">App v%1$s/%2$s</string>
+    <string name="settings_versions_engine">EngineJs %1$s</string>
+    <string name="settings_versions_player">PlayerJs %1$s</string>
     <string name="settings_licenses_intro">YMusic is open source under the GNU GPL v3.0. It includes these components:</string>
 
     <!-- Feedback -->

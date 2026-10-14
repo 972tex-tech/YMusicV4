@@ -113,6 +113,11 @@ class AppGraph(
     val revealInFolder: (suspend (uri: String) -> Unit)? = null,
     /** Display version for the drawer header (e.g. "4.0.1 · arm64"); null hides the line. */
     val appVersion: String? = null,
+    /** Settings › Versions: the build's versionName and versionCode; null hides the app line. */
+    val appVersionName: String? = null,
+    val appVersionCode: Int? = null,
+    /** Settings › Versions: the engine.js / player.js revisions actually running. */
+    val runningBundles: io.ymusic.remoteconfig.RunningBundles? = null,
     /** Thumbnail loading; null keeps the placeholder boxes (e.g. a shell without a cache dir yet). */
     val imageLoader: ImageLoader? = null,
     /** The app's root logger (Sentry-backed in the shells); screens fork their own scope off it. */

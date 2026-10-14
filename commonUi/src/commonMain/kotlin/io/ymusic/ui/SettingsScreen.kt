@@ -77,10 +77,15 @@ import io.ymusic.ui.resources.settings_theme
 import io.ymusic.ui.resources.settings_theme_dark
 import io.ymusic.ui.resources.settings_theme_light
 import io.ymusic.ui.resources.settings_theme_system
+import io.ymusic.ui.resources.settings_versions
+import io.ymusic.ui.resources.settings_versions_app
+import io.ymusic.ui.resources.settings_versions_engine
+import io.ymusic.ui.resources.settings_versions_player
 import io.ymusic.ui.resources.sound_eq
 import io.ymusic.ui.resources.sound_speed
 import kmpcommon.log.Logger
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -183,6 +188,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             val config by remember(graph) { graph.remoteConfig ?: emptyFlow() }.collectAsState(initial = null)
             config?.changelogUrl?.let { ChangelogRow(it) }
             LicensesRow()
+            VersionsRow(graph)
         }
         SettingsSection(Res.string.settings_debug) {
             ToggleRow(graph, AppSettings.showFps, Res.string.settings_show_fps, Res.string.settings_show_fps_hint)
@@ -258,6 +264,37 @@ private fun ChangelogRow(url: String) {
             .clickable { uriHandler.openUri(url) }
             .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
     )
+}
+
+/** Informational only: the app build and the JS bundle revisions in effect ("—" until a bundle has run). */
+@Composable
+private fun VersionsRow(graph: AppGraph) {
+    val engine by remember(graph) { graph.runningBundles?.engineFlow ?: flowOf(null) }.collectAsState(initial = null)
+    val player by remember(graph) { graph.runningBundles?.playerFlow ?: flowOf(null) }.collectAsState(initial = null)
+    val lines = listOfNotNull(
+        graph.appVersionName?.let { name ->
+            stringResource(Res.string.settings_versions_app, name, graph.appVersionCode?.toString() ?: "—")
+        },
+        stringResource(Res.string.settings_versions_engine, engine?.toString() ?: "—"),
+        stringResource(Res.string.settings_versions_player, player?.toString() ?: "—"),
+    )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
+    ) {
+        Text(
+            stringResource(Res.string.settings_versions),
+            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+        )
+        lines.forEach { line ->
+            Text(
+                line,
+                style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+                modifier = Modifier.padding(top = DesignSpacing.Space2),
+            )
+        }
+    }
 }
 
 /** Settings → Open source licenses: the shipped third-party components ([OssComponents]) in the

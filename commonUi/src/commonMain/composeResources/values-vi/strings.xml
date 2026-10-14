@@ -253,6 +253,10 @@
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_changelog">Nhật ký thay đổi</string>
     <string name="settings_licenses">Giấy phép mã nguồn mở</string>
+    <string name="settings_versions">Phiên bản</string>
+    <string name="settings_versions_app">Ứng dụng v%1$s/%2$s</string>
+    <string name="settings_versions_engine">EngineJs %1$s</string>
+    <string name="settings_versions_player">PlayerJs %1$s</string>
     <string name="settings_licenses_intro">YMusic là phần mềm mã nguồn mở theo giấy phép GNU GPL v3.0. Ứng dụng bao gồm các thành phần sau:</string>
     <string name="feedback_hint">Cho chúng tôi biết lỗi bạn gặp hoặc điều bạn muốn thấy. Ảnh chụp màn hình hoặc tệp log sẽ rất hữu ích.</string>
     <string name="feedback_message_label">Điều gì đã xảy ra?</string>

@@ -879,6 +879,9 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
             }
         },
         appVersion = "dev · jvm",
+        appVersionName = APP_VERSION_NAME,
+        appVersionCode = APP_VERSION_CODE,
+        runningBundles = runningBundles,
         imageLoader = imageLoader,
         settings = settings,
         // MSE blit and ffmpeg frames scale; safe to display at art-tile size.
