@@ -391,6 +391,10 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
     private var closed = false
     private var task: NSURLSessionDataTask? = null
 
+    // NSURLSessionTask.suspend() is COUNTED (each needs its own resume() before data flows again),
+    // though `state` reads Running after one resume — so suspend at most once and pair each resume.
+    private var taskSuspended = false
+
     /**
      * Attach a task, which will be canceled automatically when close this instance.
      */
@@ -425,14 +429,22 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
                     // Resume as soon as there is room again. Waiting until the buffer is entirely
                     // empty can deadlock a streaming consumer that needs the next network chunk to
                     // finish parsing the current value (the large YouTube Home response hit this).
-                    if (hotBuffer.size < preBufferedSize) task?.resume()
+                    if (hotBuffer.size < preBufferedSize) resumeTask()
                     return toRead
                 }
                 if (completed) return -1
-                task?.resume()
+                resumeTask()
                 suspendCondition.pause()
             }
             suspendCondition.await()
+        }
+    }
+
+    /** Call under [hotBufferGuard]. */
+    private fun resumeTask() {
+        if (taskSuspended) {
+            taskSuspended = false
+            task?.resume()
         }
     }
 
@@ -468,7 +480,10 @@ private class StreamingResponseHandler(private val onClose: () -> Unit) : NSObje
         synchronized(hotBufferGuard) {
             if (closed) return
             hotBuffer.write(didReceiveData)
-            if (hotBuffer.size >= preBufferedSize) dataTask.suspend()
+            if (hotBuffer.size >= preBufferedSize && !taskSuspended) {
+                taskSuspended = true
+                dataTask.suspend()
+            }
         }
         suspendCondition.resume()
     }

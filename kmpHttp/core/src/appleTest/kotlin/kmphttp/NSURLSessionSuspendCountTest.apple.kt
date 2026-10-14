@@ -10,10 +10,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Documents that NSURLSessionTask suspend/resume are a BOOLEAN state, not a cumulative count: a
- * single resume() clears any number of prior suspend() calls. (An earlier fix assumed they were
- * counted — this test shows they are not, so a handler that suspends more than it resumes does not
- * strand the task.)
+ * Documents that NSURLSessionTask's `state` is BOOLEAN: one resume() after any number of suspend()
+ * calls reads Running again. Data delivery is NOT — suspends are counted, and a task suspended
+ * twice and resumed once stays silent (verified on the iOS simulator, 2026-10-14). Pair them.
  */
 @OptIn(ExperimentalForeignApi::class)
 class NSURLSessionSuspendCountTest {
