@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 4.0.1
 
 ### Crashes / ANRs
 - Fix ANR in media browser service `onGetRoot` deadlock ([2a769a633](https://github.com/ymusic-io/YMusicV4/commit/2a769a6335b51f459b12e28f65e3a9ecf008f43a))
@@ -53,6 +53,9 @@
 ### Localization
 - Replace hardcoded UI labels with en/vi/ar resources ([46bca8060..30a2e1c7b](https://github.com/ymusic-io/YMusicV4/compare/72a0bdeab089aadf35c3c5e2ab7f6fb0b4718287...30a2e1c7b594a7b625162be8de195ce13f2fc91c))
 - Translate repeat-state and sort-direction labels ([11566d4c1](https://github.com/ymusic-io/YMusicV4/commit/11566d4c13d928035117f51abf9099d8fb50a306))
+
+### Other
+- Update dialog shows 7 lines of release notes ([a14fcb415](https://github.com/ymusic-io/YMusicV4/commit/a14fcb4155b2a348dc15482864b2a77e9317351e))
 
 ## 4.0.0 ([3bac880ac](https://github.com/ymusic-io/YMusicV4/commit/3bac880acdd9598051c3c706e72d62318be3b4c3))
 - First release of YMusic V4.
