@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Κορυφαία τραγούδια στα Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Κορυφαία τραγούδια της ημέρας στα Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Κορυφαία τραγούδια της εβδομάδας στα Shorts</string>
+    <string name="section_subscribed_channels">Κανάλια</string>
 
     <!-- Feed -->
     <string name="feed_empty">Δεν υπάρχει τίποτα εδώ</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">Ιστορικό παρακολούθησης</string>
     <string name="account_watch_later">Παρακολούθηση αργότερα</string>
     <string name="account_liked_videos">Βίντεο που σας αρέσουν</string>
+    <string name="account_subscriptions">Εγγραφές</string>
     <string name="account_library_empty">Η βιβλιοθήκη σας είναι κενή</string>
 
     <!-- Updates -->

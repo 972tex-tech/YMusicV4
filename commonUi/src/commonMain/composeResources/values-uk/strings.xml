@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Топ пісень у Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Топ пісень дня у Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Топ пісень тижня у Shorts</string>
+    <string name="section_subscribed_channels">Канали</string>
 
     <!-- Feed -->
     <string name="feed_empty">Тут порожньо</string>
@@ -343,6 +344,7 @@
     <string name="account_watch_history">Історія переглядів</string>
     <string name="account_watch_later">Переглянути пізніше</string>
     <string name="account_liked_videos">Сподобалися</string>
+    <string name="account_subscriptions">Підписки</string>
     <string name="account_library_empty">Ваша бібліотека порожня</string>
 
     <!-- Updates -->

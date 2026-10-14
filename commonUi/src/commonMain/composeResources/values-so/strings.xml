@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Heesaha ugu sarreeya Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Heesaha ugu sarreeya Shorts maalinta</string>
     <string name="chart_top_songs_on_shorts_weekly">Heesaha ugu sarreeya Shorts toddobaadka</string>
+    <string name="section_subscribed_channels">Kanaalada</string>
 
     <!-- Feed -->
     <string name="feed_empty">Halkan waxba ma yaallaan</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">Waxaad daawatay</string>
     <string name="account_watch_later">Hadhow daawo</string>
     <string name="account_liked_videos">Laga helay</string>
+    <string name="account_subscriptions">Rukummada</string>
     <string name="account_library_empty">Boggaagu waa madhan yahay</string>
 
     <!-- Updates -->

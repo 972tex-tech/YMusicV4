@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">เพลงยอดนิยมใน Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">เพลงยอดนิยมรายวันใน Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">เพลงยอดนิยมรายสัปดาห์ใน Shorts</string>
+    <string name="section_subscribed_channels">ช่อง</string>
 
     <!-- Feed -->
     <string name="feed_empty">ไม่มีอะไรที่นี่</string>
@@ -340,6 +341,7 @@
     <string name="account_watch_history">ประวัติการดู</string>
     <string name="account_watch_later">ดูภายหลัง</string>
     <string name="account_liked_videos">วิดีโอที่ชอบ</string>
+    <string name="account_subscriptions">การติดตาม</string>
     <string name="account_library_empty">คลังเพลงของคุณว่างเปล่า</string>
 
     <!-- Updates -->

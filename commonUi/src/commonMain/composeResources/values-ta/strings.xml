@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Shorts-இல் சிறந்த பாடல்கள்</string>
     <string name="chart_top_songs_on_shorts_daily">Shorts-இல் தினசரி சிறந்த பாடல்கள்</string>
     <string name="chart_top_songs_on_shorts_weekly">Shorts-இல் வாராந்திர சிறந்த பாடல்கள்</string>
+    <string name="section_subscribed_channels">சேனல்கள்</string>
 
     <!-- Feed -->
     <string name="feed_empty">இங்கே எதுவும் இல்லை</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">பார்த்த வரலாறு</string>
     <string name="account_watch_later">பின்னர் பார்</string>
     <string name="account_liked_videos">லைக் செய்த வீடியோக்கள்</string>
+    <string name="account_subscriptions">சந்தாக்கள்</string>
     <string name="account_library_empty">உங்கள் லைப்ரரி காலியாக உள்ளது</string>
 
     <!-- Updates -->

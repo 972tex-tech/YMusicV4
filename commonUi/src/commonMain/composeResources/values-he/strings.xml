@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">השירים המובילים ב-Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">השירים המובילים ב-Shorts היום</string>
     <string name="chart_top_songs_on_shorts_weekly">השירים המובילים ב-Shorts השבוע</string>
+    <string name="section_subscribed_channels">ערוצים</string>
 
     <!-- Feed -->
     <string name="feed_empty">אין כאן כלום</string>
@@ -342,6 +343,7 @@
     <string name="account_watch_history">היסטוריית צפייה</string>
     <string name="account_watch_later">צפייה בהמשך</string>
     <string name="account_liked_videos">סרטונים שאהבתי</string>
+    <string name="account_subscriptions">מינויים</string>
     <string name="account_library_empty">הספרייה שלך ריקה</string>
 
     <!-- Updates -->

@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Shorts मा शीर्ष गीतहरू</string>
     <string name="chart_top_songs_on_shorts_daily">Shorts मा दैनिक शीर्ष गीतहरू</string>
     <string name="chart_top_songs_on_shorts_weekly">Shorts मा साप्ताहिक शीर्ष गीतहरू</string>
+    <string name="section_subscribed_channels">च्यानलहरू</string>
 
     <!-- Feed -->
     <string name="feed_empty">यहाँ केही छैन</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">हेरेको इतिहास</string>
     <string name="account_watch_later">पछि हेर्नुहोस्</string>
     <string name="account_liked_videos">मन परेका भिडियोहरू</string>
+    <string name="account_subscriptions">सदस्यताहरू</string>
     <string name="account_library_empty">तपाईंको लाइब्रेरी खाली छ</string>
 
     <!-- Updates -->

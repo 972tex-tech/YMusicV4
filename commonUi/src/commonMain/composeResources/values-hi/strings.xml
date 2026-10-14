@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Shorts पर टॉप गाने</string>
     <string name="chart_top_songs_on_shorts_daily">Shorts पर आज के टॉप गाने</string>
     <string name="chart_top_songs_on_shorts_weekly">Shorts पर इस हफ़्ते के टॉप गाने</string>
+    <string name="section_subscribed_channels">चैनल</string>
 
     <!-- Feed -->
     <string name="feed_empty">यहां कुछ नहीं है</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">देखने का इतिहास</string>
     <string name="account_watch_later">बाद में देखें</string>
     <string name="account_liked_videos">पसंद किए गए वीडियो</string>
+    <string name="account_subscriptions">सदस्यताएं</string>
     <string name="account_library_empty">आपकी लाइब्रेरी खाली है</string>
 
     <!-- Updates -->

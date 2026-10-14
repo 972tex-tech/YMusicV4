@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Top titres sur Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Top titres du jour sur Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Top titres de la semaine sur Shorts</string>
+    <string name="section_subscribed_channels">Chaînes</string>
 
     <!-- Feed -->
     <string name="feed_empty">Rien ici</string>
@@ -342,6 +343,7 @@
     <string name="account_watch_history">Historique des vidéos regardées</string>
     <string name="account_watch_later">À regarder plus tard</string>
     <string name="account_liked_videos">Vidéos « J'aime »</string>
+    <string name="account_subscriptions">Abonnements</string>
     <string name="account_library_empty">Votre bibliothèque est vide</string>
 
     <!-- Updates -->

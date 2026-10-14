@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Lagu Teratas di Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Lagu Teratas Harian di Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Lagu Teratas Mingguan di Shorts</string>
+    <string name="section_subscribed_channels">Saluran</string>
 
     <!-- Feed -->
     <string name="feed_empty">Tidak ada apa-apa di sini</string>
@@ -340,6 +341,7 @@
     <string name="account_watch_history">Riwayat tontonan</string>
     <string name="account_watch_later">Tonton nanti</string>
     <string name="account_liked_videos">Video yang disukai</string>
+    <string name="account_subscriptions">Langganan</string>
     <string name="account_library_empty">Perpustakaan Anda kosong</string>
 
     <!-- Updates -->

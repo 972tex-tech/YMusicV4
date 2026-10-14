@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Shorts 인기곡</string>
     <string name="chart_top_songs_on_shorts_daily">Shorts 일간 인기곡</string>
     <string name="chart_top_songs_on_shorts_weekly">Shorts 주간 인기곡</string>
+    <string name="section_subscribed_channels">채널</string>
 
     <!-- Feed -->
     <string name="feed_empty">항목 없음</string>
@@ -340,6 +341,7 @@
     <string name="account_watch_history">시청 기록</string>
     <string name="account_watch_later">나중에 볼 동영상</string>
     <string name="account_liked_videos">좋아요 표시한 동영상</string>
+    <string name="account_subscriptions">구독</string>
     <string name="account_library_empty">보관함이 비어 있습니다</string>
 
     <!-- Updates -->

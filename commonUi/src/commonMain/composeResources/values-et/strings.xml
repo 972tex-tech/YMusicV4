@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Populaarseimad lood Shortsis</string>
     <string name="chart_top_songs_on_shorts_daily">Päeva populaarseimad lood Shortsis</string>
     <string name="chart_top_songs_on_shorts_weekly">Nädala populaarseimad lood Shortsis</string>
+    <string name="section_subscribed_channels">Kanalid</string>
 
     <!-- Feed -->
     <string name="feed_empty">Siin pole midagi</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">Vaatamisajalugu</string>
     <string name="account_watch_later">Vaata hiljem</string>
     <string name="account_liked_videos">Meeldinud videod</string>
+    <string name="account_subscriptions">Tellimused</string>
     <string name="account_library_empty">Sinu kogu on tühi</string>
 
     <!-- Updates -->

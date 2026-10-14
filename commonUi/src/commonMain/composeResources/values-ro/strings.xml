@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Top melodii pe Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Top melodii pe Shorts zilnic</string>
     <string name="chart_top_songs_on_shorts_weekly">Top melodii pe Shorts săptămânal</string>
+    <string name="section_subscribed_channels">Canale</string>
 
     <!-- Feed -->
     <string name="feed_empty">Nimic aici</string>
@@ -342,6 +343,7 @@
     <string name="account_watch_history">Istoricul vizionărilor</string>
     <string name="account_watch_later">Vizionează mai târziu</string>
     <string name="account_liked_videos">Videoclipuri apreciate</string>
+    <string name="account_subscriptions">Abonamente</string>
     <string name="account_library_empty">Biblioteca ta este goală</string>
 
     <!-- Updates -->

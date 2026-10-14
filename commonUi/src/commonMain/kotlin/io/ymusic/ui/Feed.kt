@@ -662,6 +662,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
         }
         return
     }
+    if (section.layout == YtSection.LAYOUT_CAROUSEL) {
+        item { ChannelCarousel(section.items, onOpen) }
+        return
+    }
     // A collapsed section keeps a few rows, resolved by column count from an engine-supplied
     // ladder (YtSection.collapsedRows, remotely tunable per section) or the app default —
     // index columns-1, the last entry extending to wider layouts.

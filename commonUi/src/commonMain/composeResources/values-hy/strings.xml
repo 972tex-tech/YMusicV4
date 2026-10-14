@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Լավագույն երգերը Shorts-ում</string>
     <string name="chart_top_songs_on_shorts_daily">Օրվա լավագույն երգերը Shorts-ում</string>
     <string name="chart_top_songs_on_shorts_weekly">Շաբաթվա լավագույն երգերը Shorts-ում</string>
+    <string name="section_subscribed_channels">Ալիքներ</string>
 
     <!-- Feed -->
     <string name="feed_empty">Այստեղ ոչինչ չկա</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">Դիտումների պատմություն</string>
     <string name="account_watch_later">Դիտել ավելի ուշ</string>
     <string name="account_liked_videos">Հավանած տեսանյութեր</string>
+    <string name="account_subscriptions">Բաժանորդագրություններ</string>
     <string name="account_library_empty">Ձեր գրադարանը դատարկ է</string>
 
     <!-- Updates -->

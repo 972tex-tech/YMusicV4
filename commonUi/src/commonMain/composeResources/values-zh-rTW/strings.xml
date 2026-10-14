@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Shorts 熱門歌曲</string>
     <string name="chart_top_songs_on_shorts_daily">Shorts 每日熱門歌曲</string>
     <string name="chart_top_songs_on_shorts_weekly">Shorts 每週熱門歌曲</string>
+    <string name="section_subscribed_channels">頻道</string>
 
     <!-- Feed -->
     <string name="feed_empty">這裡沒有任何內容</string>
@@ -340,6 +341,7 @@
     <string name="account_watch_history">觀看記錄</string>
     <string name="account_watch_later">稍後觀看</string>
     <string name="account_liked_videos">喜歡的影片</string>
+    <string name="account_subscriptions">訂閱內容</string>
     <string name="account_library_empty">你的媒體庫是空的</string>
 
     <!-- Updates -->

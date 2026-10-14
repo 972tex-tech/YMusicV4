@@ -94,6 +94,7 @@
     <string name="chart_top_songs_on_shorts">Bài hát hàng đầu trên Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Bài hát hàng đầu trên Shorts trong ngày</string>
     <string name="chart_top_songs_on_shorts_weekly">Bài hát hàng đầu trên Shorts trong tuần</string>
+    <string name="section_subscribed_channels">Kênh</string>
 
     <string name="feed_empty">Không có gì ở đây</string>
     <string name="error_generic">Đã xảy ra lỗi (%1$s)</string>
@@ -400,6 +401,7 @@
     <string name="account_watch_history">Lịch sử xem</string>
     <string name="account_watch_later">Xem sau</string>
     <string name="account_liked_videos">Video đã thích</string>
+    <string name="account_subscriptions">Kênh đăng ký</string>
     <string name="account_library_empty">Thư viện của bạn đang trống</string>
     <string name="sound_title">Âm thanh</string>
     <string name="sound_playback">Phát</string>

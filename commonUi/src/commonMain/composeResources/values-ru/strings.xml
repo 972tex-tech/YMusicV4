@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Топ песен в Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Топ песен дня в Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Топ песен недели в Shorts</string>
+    <string name="section_subscribed_channels">Каналы</string>
 
     <!-- Feed -->
     <string name="feed_empty">Здесь пусто</string>
@@ -343,6 +344,7 @@
     <string name="account_watch_history">История просмотра</string>
     <string name="account_watch_later">Смотреть позже</string>
     <string name="account_liked_videos">Понравившиеся</string>
+    <string name="account_subscriptions">Подписки</string>
     <string name="account_library_empty">Ваша библиотека пуста</string>
 
     <!-- Updates -->

@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Shorts-da top mahnılar</string>
     <string name="chart_top_songs_on_shorts_daily">Shorts-da günün top mahnıları</string>
     <string name="chart_top_songs_on_shorts_weekly">Shorts-da həftənin top mahnıları</string>
+    <string name="section_subscribed_channels">Kanallar</string>
 
     <!-- Feed -->
     <string name="feed_empty">Burada heç nə yoxdur</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">Baxış tarixçəsi</string>
     <string name="account_watch_later">Sonra bax</string>
     <string name="account_liked_videos">Bəyənilən videolar</string>
+    <string name="account_subscriptions">Abunəliklər</string>
     <string name="account_library_empty">Kitabxananız boşdur</string>
 
     <!-- Updates -->

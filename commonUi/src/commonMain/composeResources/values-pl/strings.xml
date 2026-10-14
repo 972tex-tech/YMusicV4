@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Najpopularniejsze utwory w Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Najpopularniejsze utwory dnia w Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Najpopularniejsze utwory tygodnia w Shorts</string>
+    <string name="section_subscribed_channels">Kanały</string>
 
     <!-- Feed -->
     <string name="feed_empty">Nic tu nie ma</string>
@@ -343,6 +344,7 @@
     <string name="account_watch_history">Historia oglądania</string>
     <string name="account_watch_later">Do obejrzenia</string>
     <string name="account_liked_videos">Polubione filmy</string>
+    <string name="account_subscriptions">Subskrypcje</string>
     <string name="account_library_empty">Twoja biblioteka jest pusta</string>
 
     <!-- Updates -->

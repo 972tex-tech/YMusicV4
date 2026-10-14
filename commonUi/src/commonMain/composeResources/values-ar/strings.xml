@@ -94,6 +94,7 @@
     <string name="chart_top_songs_on_shorts">أفضل الأغاني على Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">أفضل الأغاني على Shorts يوميًا</string>
     <string name="chart_top_songs_on_shorts_weekly">أفضل الأغاني على Shorts أسبوعيًا</string>
+    <string name="section_subscribed_channels">القنوات</string>
 
     <string name="feed_empty">لا يوجد شيء هنا</string>
     <string name="error_generic">حدث خطأ ما (%1$s)</string>
@@ -405,6 +406,7 @@
     <string name="account_watch_history">سجل المشاهدة</string>
     <string name="account_watch_later">المشاهدة لاحقًا</string>
     <string name="account_liked_videos">الفيديوهات التي أعجبتني</string>
+    <string name="account_subscriptions">الاشتراكات</string>
     <string name="account_library_empty">مكتبتك فارغة</string>
     <string name="sound_title">الصوت</string>
     <string name="sound_playback">التشغيل</string>

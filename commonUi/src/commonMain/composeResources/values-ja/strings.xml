@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">ショートで人気の曲</string>
     <string name="chart_top_songs_on_shorts_daily">ショートで人気の曲（デイリー）</string>
     <string name="chart_top_songs_on_shorts_weekly">ショートで人気の曲（ウィークリー）</string>
+    <string name="section_subscribed_channels">チャンネル</string>
 
     <!-- Feed -->
     <string name="feed_empty">何もありません</string>
@@ -340,6 +341,7 @@
     <string name="account_watch_history">再生履歴</string>
     <string name="account_watch_later">後で見る</string>
     <string name="account_liked_videos">高く評価した動画</string>
+    <string name="account_subscriptions">登録チャンネル</string>
     <string name="account_library_empty">ライブラリは空です</string>
 
     <!-- Updates -->

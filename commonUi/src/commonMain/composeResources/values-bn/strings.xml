@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Shorts-এ শীর্ষ গান</string>
     <string name="chart_top_songs_on_shorts_daily">Shorts-এ দৈনিক শীর্ষ গান</string>
     <string name="chart_top_songs_on_shorts_weekly">Shorts-এ সাপ্তাহিক শীর্ষ গান</string>
+    <string name="section_subscribed_channels">চ্যানেল</string>
 
     <!-- Feed -->
     <string name="feed_empty">এখানে কিছু নেই</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">দেখার ইতিহাস</string>
     <string name="account_watch_later">পরে দেখুন</string>
     <string name="account_liked_videos">লাইক করা ভিডিও</string>
+    <string name="account_subscriptions">সাবস্ক্রিপশন</string>
     <string name="account_library_empty">আপনার লাইব্রেরি খালি</string>
 
     <!-- Updates -->

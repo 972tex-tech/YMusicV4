@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Top dalok a Shortsban</string>
     <string name="chart_top_songs_on_shorts_daily">Napi top dalok a Shortsban</string>
     <string name="chart_top_songs_on_shorts_weekly">Heti top dalok a Shortsban</string>
+    <string name="section_subscribed_channels">Csatornák</string>
 
     <!-- Feed -->
     <string name="feed_empty">Itt nincs semmi</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">Megtekintési előzmények</string>
     <string name="account_watch_later">Megnézendő</string>
     <string name="account_liked_videos">Kedvelt videók</string>
+    <string name="account_subscriptions">Feliratkozások</string>
     <string name="account_library_empty">A könyvtárad üres</string>
 
     <!-- Updates -->

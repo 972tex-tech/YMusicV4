@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Topnummers op Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Dagelijkse topnummers op Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Wekelijkse topnummers op Shorts</string>
+    <string name="section_subscribed_channels">Kanalen</string>
 
     <!-- Feed -->
     <string name="feed_empty">Niets hier</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">Kijkgeschiedenis</string>
     <string name="account_watch_later">Later bekijken</string>
     <string name="account_liked_videos">Leuk gevonden video's</string>
+    <string name="account_subscriptions">Abonnementen</string>
     <string name="account_library_empty">Je bibliotheek is leeg</string>
 
     <!-- Updates -->

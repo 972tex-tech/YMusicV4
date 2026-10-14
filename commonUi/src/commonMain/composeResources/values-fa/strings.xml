@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">آهنگ‌های برتر در Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">آهنگ‌های برتر روزانه در Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">آهنگ‌های برتر هفتگی در Shorts</string>
+    <string name="section_subscribed_channels">کانال‌ها</string>
 
     <!-- Feed -->
     <string name="feed_empty">چیزی اینجا نیست</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">تاریخچه تماشا</string>
     <string name="account_watch_later">تماشا در آینده</string>
     <string name="account_liked_videos">ویدیوهای پسندیده</string>
+    <string name="account_subscriptions">اشتراک‌ها</string>
     <string name="account_library_empty">کتابخانه شما خالی است</string>
 
     <!-- Updates -->

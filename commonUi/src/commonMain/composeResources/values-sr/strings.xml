@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Топ песме на Shorts-у</string>
     <string name="chart_top_songs_on_shorts_daily">Дневне топ песме на Shorts-у</string>
     <string name="chart_top_songs_on_shorts_weekly">Недељне топ песме на Shorts-у</string>
+    <string name="section_subscribed_channels">Канали</string>
 
     <!-- Feed -->
     <string name="feed_empty">Овде нема ничега</string>
@@ -342,6 +343,7 @@
     <string name="account_watch_history">Историја гледања</string>
     <string name="account_watch_later">Гледај касније</string>
     <string name="account_liked_videos">Видеи који ми се свиђају</string>
+    <string name="account_subscriptions">Праћења</string>
     <string name="account_library_empty">Ваша библиотека је празна</string>
 
     <!-- Updates -->

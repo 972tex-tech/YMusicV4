@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Nejlepší skladby v Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Nejlepší skladby dne v Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Nejlepší skladby týdne v Shorts</string>
+    <string name="section_subscribed_channels">Kanály</string>
 
     <!-- Feed -->
     <string name="feed_empty">Nic tu není</string>
@@ -343,6 +344,7 @@
     <string name="account_watch_history">Historie sledování</string>
     <string name="account_watch_later">Na později</string>
     <string name="account_liked_videos">Oblíbená videa</string>
+    <string name="account_subscriptions">Odběry</string>
     <string name="account_library_empty">Vaše knihovna je prázdná</string>
 
     <!-- Updates -->

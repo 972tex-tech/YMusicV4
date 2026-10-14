@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -43,6 +44,7 @@ import io.ymusic.ui.resources.account_library_empty
 import io.ymusic.ui.resources.account_liked_videos
 import io.ymusic.ui.resources.account_my_channel
 import io.ymusic.ui.resources.account_sign_out
+import io.ymusic.ui.resources.account_subscriptions
 import io.ymusic.ui.resources.account_switch
 import io.ymusic.ui.resources.account_watch_history
 import io.ymusic.ui.resources.account_watch_later
@@ -94,8 +96,8 @@ private fun AccountLibraryHeader(
         AccountCard(account, onSignOut, onSwitchAccount)
         HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = DesignColors.Divider)
         // The nav targets are the app's OWN links in the one scheme it parses (Deeplink.kt): the
-        // account's channel, and YouTube's eternal Watch-later/Liked pseudo-playlists. These three
-        // are fixed chrome (icons + localized labels), not engine content — a deliberate exception
+        // account's channel, its own feeds, and YouTube's eternal Watch-later/Liked pseudo-playlists.
+        // These are fixed chrome (icons + localized labels), not engine content — a deliberate exception
         // to "urls come from the engine": if WL/LL ever rot, no engine-composed url would save
         // rows the app draws itself.
         val name = account.name
@@ -106,6 +108,7 @@ private fun AccountLibraryHeader(
             add(NavTarget(Icons.Outlined.History, stringResource(Res.string.account_watch_history), "/feed/history", null))
             add(NavTarget(Icons.Outlined.Schedule, stringResource(Res.string.account_watch_later), "/playlist?list=WL", null))
             add(NavTarget(Icons.Outlined.ThumbUp, stringResource(Res.string.account_liked_videos), "/playlist?list=LL", null))
+            add(NavTarget(Icons.Outlined.Subscriptions, stringResource(Res.string.account_subscriptions), "/feed/subscriptions", null))
         }
         BoxWithConstraints {
             if (maxWidth >= 600.dp) {

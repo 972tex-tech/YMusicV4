@@ -105,6 +105,7 @@
     <string name="chart_top_songs_on_shorts">Top Songs on Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Daily Top Songs on Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Weekly Top Songs on Shorts</string>
+    <string name="section_subscribed_channels">Channels</string>
 
     <!-- Feed -->
     <string name="feed_empty">Nothing here</string>
@@ -404,6 +405,7 @@
     <string name="account_watch_history">Watch history</string>
     <string name="account_watch_later">Watch later</string>
     <string name="account_liked_videos">Liked videos</string>
+    <string name="account_subscriptions">Subscriptions</string>
     <string name="account_library_empty">Your library is empty</string>
 
     <!-- Updates -->

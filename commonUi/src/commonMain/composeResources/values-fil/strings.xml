@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Mga Nangungunang Kanta sa Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Mga Nangungunang Kanta sa Shorts Ngayong Araw</string>
     <string name="chart_top_songs_on_shorts_weekly">Mga Nangungunang Kanta sa Shorts Ngayong Linggo</string>
+    <string name="section_subscribed_channels">Mga channel</string>
 
     <!-- Feed -->
     <string name="feed_empty">Walang laman dito</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">History ng panonood</string>
     <string name="account_watch_later">Panoorin mamaya</string>
     <string name="account_liked_videos">Mga na-like na video</string>
+    <string name="account_subscriptions">Mga subscription</string>
     <string name="account_library_empty">Walang laman ang iyong library</string>
 
     <!-- Updates -->

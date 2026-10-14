@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -19,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -80,6 +83,7 @@ import io.ymusic.ui.resources.chart_top_songs_on_shorts_weekly
 import io.ymusic.ui.resources.chart_top_songs_weekly
 import io.ymusic.ui.resources.chart_trending_music_videos
 import io.ymusic.ui.resources.play_all
+import io.ymusic.ui.resources.section_subscribed_channels
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -103,7 +107,7 @@ class ItemActions(
 
 /**
  * A header's display title. Scraped titles arrive localized from YouTube and render verbatim; the
- * ones the engine SYNTHESIZES (the charts feed publishes none of its own) carry a stable
+ * ones the engine SYNTHESIZES (charts, the subscriptions feed's channel row) carry a stable
  * [YtSectionHeader.titleKey] instead, resolved here — falling back to the engine's English text for
  * a key this build doesn't know, so a newer bundle's chart still shows a title.
  */
@@ -121,6 +125,7 @@ private fun sectionTitle(header: YtSectionHeader?): String {
         "top_songs_on_shorts" -> Res.string.chart_top_songs_on_shorts
         "top_songs_on_shorts_daily" -> Res.string.chart_top_songs_on_shorts_daily
         "top_songs_on_shorts_weekly" -> Res.string.chart_top_songs_on_shorts_weekly
+        "subscribed_channels" -> Res.string.section_subscribed_channels
         else -> null
     }
     return resource?.let { stringResource(it) } ?: header.title.orEmpty()
@@ -428,6 +433,38 @@ internal fun TagFlow(items: List<YtFeedItem>, onOpen: ((YtFeedItem) -> Unit)?) {
         items.forEach { item -> TagPill(item.title, item.accent) { onOpen?.invoke(item) } }
     }
 }
+
+/** A [YtSection.LAYOUT_CAROUSEL] row: avatar-over-name cells scrolling horizontally at every width. */
+@Composable
+internal fun ChannelCarousel(items: List<YtFeedItem>, onOpen: ((YtFeedItem) -> Unit)?) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = DesignSpacing.MarginCompact - DesignSpacing.Space4),
+        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
+    ) {
+        items(items.size) { i ->
+            val item = items[i]
+            Column(
+                Modifier
+                    .width(CAROUSEL_CELL_WIDTH)
+                    .clip(RoundedCornerShape(12.dp))
+                    .then(if (onOpen != null) Modifier.clickable { onOpen(item) } else Modifier)
+                    .padding(DesignSpacing.Space4),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
+            ) {
+                CircleThumb(item, 64.dp)
+                Text(
+                    item.title,
+                    style = GridSubStyle.copy(color = DesignColors.Ink),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+private val CAROUSEL_CELL_WIDTH = 80.dp
 
 /** One navigation pill: a rounded, softly-filled chip whose border takes the tag's backend accent
  *  colour (YouTube Music's per-mood/genre colour, 8-hex AARRGGBB) when present. */

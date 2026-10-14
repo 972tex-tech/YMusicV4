@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Nyimbo Bora kwenye Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Nyimbo Bora za Kila Siku kwenye Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Nyimbo Bora za Kila Wiki kwenye Shorts</string>
+    <string name="section_subscribed_channels">Vituo</string>
 
     <!-- Feed -->
     <string name="feed_empty">Hakuna kitu hapa</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">Historia ya kutazama</string>
     <string name="account_watch_later">Tazama baadaye</string>
     <string name="account_liked_videos">Video ulizopenda</string>
+    <string name="account_subscriptions">Usajili</string>
     <string name="account_library_empty">Maktaba yako ni tupu</string>
 
     <!-- Updates -->

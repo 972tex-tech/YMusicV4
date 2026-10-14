@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Top-Songs auf Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Tägliche Top-Songs auf Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Wöchentliche Top-Songs auf Shorts</string>
+    <string name="section_subscribed_channels">Kanäle</string>
 
     <!-- Feed -->
     <string name="feed_empty">Hier ist nichts</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">Wiedergabeverlauf</string>
     <string name="account_watch_later">Später ansehen</string>
     <string name="account_liked_videos">Videos mit „Mag ich“</string>
+    <string name="account_subscriptions">Abos</string>
     <string name="account_library_empty">Deine Mediathek ist leer</string>
 
     <!-- Updates -->

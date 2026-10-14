@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Topliedjies op Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Daaglikse topliedjies op Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Weeklikse topliedjies op Shorts</string>
+    <string name="section_subscribed_channels">Kanale</string>
 
     <!-- Feed -->
     <string name="feed_empty">Niks hier nie</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">Kykgeskiedenis</string>
     <string name="account_watch_later">Kyk later</string>
     <string name="account_liked_videos">Gelaaikte video's</string>
+    <string name="account_subscriptions">Intekenings</string>
     <string name="account_library_empty">Jou biblioteek is leeg</string>
 
     <!-- Updates -->

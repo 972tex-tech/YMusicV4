@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Shorts හි ජනප්‍රිය ගීත</string>
     <string name="chart_top_songs_on_shorts_daily">Shorts හි දෛනික ජනප්‍රිය ගීත</string>
     <string name="chart_top_songs_on_shorts_weekly">Shorts හි සතිපතා ජනප්‍රිය ගීත</string>
+    <string name="section_subscribed_channels">නාලිකා</string>
 
     <!-- Feed -->
     <string name="feed_empty">මෙහි කිසිවක් නැත</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">නැරඹුම් ඉතිහාසය</string>
     <string name="account_watch_later">පසුව නරඹන්න</string>
     <string name="account_liked_videos">කැමති වූ වීඩියෝ</string>
+    <string name="account_subscriptions">දායකත්ව</string>
     <string name="account_library_empty">ඔබගේ පුස්තකාලය හිස්ය</string>
 
     <!-- Updates -->

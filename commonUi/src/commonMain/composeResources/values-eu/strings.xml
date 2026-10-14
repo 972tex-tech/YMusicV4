@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Shorts-eko abesti onenak</string>
     <string name="chart_top_songs_on_shorts_daily">Shorts-eko eguneko abesti onenak</string>
     <string name="chart_top_songs_on_shorts_weekly">Shorts-eko asteko abesti onenak</string>
+    <string name="section_subscribed_channels">Kanalak</string>
 
     <!-- Feed -->
     <string name="feed_empty">Ez dago ezer hemen</string>
@@ -341,6 +342,7 @@
     <string name="account_watch_history">Ikusitakoen historia</string>
     <string name="account_watch_later">Ikusteko geroago</string>
     <string name="account_liked_videos">Atsegin ditudan bideoak</string>
+    <string name="account_subscriptions">Harpidetzak</string>
     <string name="account_library_empty">Zure liburutegia hutsik dago</string>
 
     <!-- Updates -->

@@ -63,6 +63,7 @@
     <string name="chart_top_songs_on_shorts">Najbolje pjesme na Shorts</string>
     <string name="chart_top_songs_on_shorts_daily">Najbolje pjesme dana na Shorts</string>
     <string name="chart_top_songs_on_shorts_weekly">Najbolje pjesme tjedna na Shorts</string>
+    <string name="section_subscribed_channels">Kanali</string>
 
     <!-- Feed -->
     <string name="feed_empty">Ovdje nema ničega</string>
@@ -342,6 +343,7 @@
     <string name="account_watch_history">Povijest gledanja</string>
     <string name="account_watch_later">Gledaj kasnije</string>
     <string name="account_liked_videos">Videozapisi koji vam se sviđaju</string>
+    <string name="account_subscriptions">Pretplate</string>
     <string name="account_library_empty">Vaša zbirka je prazna</string>
 
     <!-- Updates -->
