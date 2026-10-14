@@ -28,6 +28,8 @@ sealed interface UpdateState {
 
     data class Ready(val update: AppUpdate, val installer: File) : UpdateState
 
+    data class Installing(val update: AppUpdate) : UpdateState
+
     /** [code] is shown to the user. [trusted] false: [update]'s signature did not verify, so nothing
      *  of it may be downloaded or opened — only its version and notes are shown. */
     data class Failed(val code: String, val update: AppUpdate, val trusted: Boolean = true) : UpdateState
@@ -121,7 +123,7 @@ class UpdateService internal constructor(
         val update = mutex.withLock {
             val update = pendingUpdate ?: return
             if (!update.installInApp) return
-            if (_state.value is UpdateState.Downloading || _state.value is UpdateState.Ready) return
+            if (_state.value.let { it is UpdateState.Downloading || it is UpdateState.Ready || it is UpdateState.Installing }) return
             _state.value = UpdateState.Downloading(update, 0, update.size)
             update
         }
@@ -166,10 +168,17 @@ class UpdateService internal constructor(
      * at once. False: nothing changed (not ready, or the user declined the admin prompt).
      */
     suspend fun install(): Boolean {
-        val ready = _state.value as? UpdateState.Ready ?: return false
+        val ready = mutex.withLock {
+            val ready = _state.value as? UpdateState.Ready ?: return false
+            _state.value = UpdateState.Installing(ready.update)
+            ready
+        }
         return try {
-            installer.install(ready.installer, ready.update)
+            installer.install(ready.installer, ready.update).also { started ->
+                if (!started) _state.value = ready
+            }
         } catch (cancel: CancellationException) {
+            _state.value = ready
             throw cancel
         } catch (error: Exception) {
             log?.captureError(error, "installing update ${ready.update.versionCode} failed")

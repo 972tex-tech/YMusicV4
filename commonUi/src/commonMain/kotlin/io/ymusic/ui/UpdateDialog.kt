@@ -110,7 +110,7 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
                 download is UpdateDownload.Ready -> TextButton(onClick = { updates.installAndRestart() }) {
                     Text(stringResource(Res.string.update_install_now))
                 }
-                requested && download is UpdateDownload.Running -> TextButton(onClick = {}, enabled = false) {
+                download is UpdateDownload.Installing || (requested && download is UpdateDownload.Running) -> TextButton(onClick = {}, enabled = false) {
                     Text(stringResource(Res.string.update_install_now))
                 }
                 else -> TextButton(

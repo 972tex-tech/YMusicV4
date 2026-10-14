@@ -58,6 +58,9 @@ sealed interface UpdateDownload {
     data object Idle : UpdateDownload
     data class Running(val done: Long, val total: Long) : UpdateDownload
     data object Ready : UpdateDownload
+
+    /** "Install now" was tapped and the installer is running; the app relaunches when it is done. */
+    data object Installing : UpdateDownload
     data class Failed(val code: String) : UpdateDownload
 
     /** The OS will not let this app install packages until the user allows it ("Install unknown

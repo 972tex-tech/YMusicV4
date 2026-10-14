@@ -44,6 +44,7 @@ class DesktopAppUpdates(
         is UpdateState.Available -> offered(s.update, UpdateDownload.Idle)
         is UpdateState.Downloading -> offered(s.update, UpdateDownload.Running(s.done, s.total))
         is UpdateState.Ready -> offered(s.update, UpdateDownload.Ready)
+        is UpdateState.Installing -> offered(s.update, UpdateDownload.Installing)
         is UpdateState.Failed -> offered(s.update, UpdateDownload.Failed(s.code), trusted = s.trusted)
     }
 
