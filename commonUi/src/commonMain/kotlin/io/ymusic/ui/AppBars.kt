@@ -68,6 +68,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -84,6 +85,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -502,6 +504,27 @@ internal fun Modifier.horizontalWheelScroll(scrollState: ScrollableState): Modif
     }
 
 private const val WheelScrollStep = 64f
+
+/** Mouse click-drag scrolls a horizontal [scrollState] — desktop scrollables take touch drags only,
+ *  so a mouse drag would otherwise fall through to the parent (Discover's tab swipe). Touch stays
+ *  with the row's own scrolling. */
+internal fun Modifier.horizontalMouseDragScroll(scrollState: ScrollableState): Modifier = composed {
+    val sign = if (LocalLayoutDirection.current == LayoutDirection.Rtl) 1f else -1f
+    pointerInput(scrollState, sign) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            if (down.type != PointerType.Mouse) return@awaitEachGesture
+            val drag = awaitHorizontalTouchSlopOrCancellation(down.id) { change, over ->
+                change.consume()
+                scrollState.dispatchRawDelta(sign * over)
+            } ?: return@awaitEachGesture
+            horizontalDrag(drag.id) { change ->
+                scrollState.dispatchRawDelta(sign * change.positionChange().x)
+                change.consume()
+            }
+        }
+    }
+}
 
 /**
  * Swipe left/right on the body to step to the adjacent entry, with a slide animation — a lightweight

@@ -114,9 +114,11 @@ private fun AccountLibraryHeader(
         }
         BoxWithConstraints {
             if (maxWidth >= 600.dp) {
+                val chipScroll = rememberScrollState()
                 Row(
                     Modifier
-                        .horizontalScroll(rememberScrollState())
+                        .horizontalMouseDragScroll(chipScroll)
+                        .horizontalScroll(chipScroll)
                         .padding(horizontal = DesignSpacing.MarginCompact, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
                 ) {

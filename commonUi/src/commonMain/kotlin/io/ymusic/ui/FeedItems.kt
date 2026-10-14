@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -437,7 +438,10 @@ internal fun TagFlow(items: List<YtFeedItem>, onOpen: ((YtFeedItem) -> Unit)?) {
 /** A [YtSection.LAYOUT_CAROUSEL] row: avatar-over-name cells scrolling horizontally at every width. */
 @Composable
 internal fun ChannelCarousel(items: List<YtFeedItem>, onOpen: ((YtFeedItem) -> Unit)?) {
+    val rowState = rememberLazyListState()
     LazyRow(
+        Modifier.horizontalMouseDragScroll(rowState),
+        state = rowState,
         contentPadding = PaddingValues(horizontal = DesignSpacing.MarginCompact - DesignSpacing.Space4),
         horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
     ) {
