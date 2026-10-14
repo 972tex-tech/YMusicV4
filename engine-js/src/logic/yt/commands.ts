@@ -651,22 +651,23 @@ onAccept(
   }),
 );
 
-// The locale-changed notification: {"gl"} (the region pick, "" = automatic) -> {}. hl is NOT an
-// argument — the app language is the one hl, re-pulled from host settings here (the engine's
-// cache invalidated first). PREF is rewritten (hl slot + the pick's gl slot — PREF itself is the
-// pick's persistent record — s_gl deleted), the cached session is stamped with the new pair, and
-// the session REFRESHES under the new identity: the re-parsed ytcfg GL lands as the working
-// region value — YouTube outranks the pick (offline, the stale session is dropped instead; the
-// next online call re-scrapes). An unchanged apply is a free no-op.
+// The locale-changed notification: {"gl"?} (the region pick, "" = automatic, absent = a language
+// change that leaves the region alone) -> {}. hl is NOT an argument — the app language is the one
+// hl, re-pulled from host settings here (the engine's cache invalidated first). PREF is rewritten
+// (hl slot + the pick's gl slot — PREF itself is the pick's persistent record — s_gl deleted),
+// the cached session is stamped with the new pair, and the session REFRESHES under the new
+// identity: the re-parsed ytcfg GL lands as the working region value — YouTube outranks the pick
+// (offline, the stale session is dropped instead; the next online call re-scrapes). An unchanged
+// apply is a free no-op.
 onAccept(
   "yt/locale/apply",
   commandHandler(async (src, out) => {
     const args = await src.readJsonObject();
-    const gl = asString(args["gl"]) ?? "";
+    const gl = asString(args["gl"]);
     invalidateAppLanguage();
     const changed = await applyLocaleCookie(gl);
     if (changed) {
-      await overrideSessionLocale((await pulledAppLanguage()) ?? "", gl);
+      await overrideSessionLocale((await pulledAppLanguage()) ?? "", gl ?? "");
       try {
         await getSession(0);
       } catch (e) {

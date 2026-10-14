@@ -197,21 +197,25 @@ export function invalidateAppLanguage(): void {
  * WebView-shared store) is the pick's record; the caller follows up with a session refresh, whose
  * parsed GL overwrites the working value — YouTube outranks the pick. Returns whether anything
  * changed — an already-matching PREF is left untouched (no cookie write, no session respin).
+ * An undefined [gl] (a language change) leaves the gl slot and `s_gl` alone.
  */
-export async function applyLocaleCookie(gl: string): Promise<boolean> {
+export async function applyLocaleCookie(gl: string | undefined): Promise<boolean> {
   const map = await Cookies.get(YT_ORIGIN);
   const hl = await pulledAppLanguage();
-  const pref = prefWithout(map["PREF"], ["hl", "gl", "al", "app"]);
+  const pref = prefWithout(
+    map["PREF"],
+    gl === undefined ? ["hl", "al", "app"] : ["hl", "gl", "al", "app"],
+  );
   if (hl !== undefined) pref.push("hl=" + hl);
-  if (gl.length > 0) pref.push("gl=" + gl);
+  if (gl !== undefined && gl.length > 0) pref.push("gl=" + gl);
   const next = pref.join("&");
   if (next === (map["PREF"] ?? "")) return false;
   const values: string[] = [
     pref.length > 0
       ? "PREF=" + next + "; Domain=.youtube.com" + COOKIE_ATTRS
       : "PREF=; Domain=.youtube.com" + EXPIRED,
-    "s_gl=; Domain=.youtube.com" + EXPIRED,
   ];
+  if (gl !== undefined) values.push("s_gl=; Domain=.youtube.com" + EXPIRED);
   await Cookies.set(YT_ORIGIN, values);
   return true;
 }
