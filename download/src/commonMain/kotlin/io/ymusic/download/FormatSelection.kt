@@ -37,14 +37,16 @@ internal object FormatSelection {
     /**
      * Video track nearest [requestedHeight] (or the highest when null), biased to the codec family that
      * stream-copies into [container]: VP9/WebM for a WebM output, AVC/mp4 for an MP4 output (VP9-in-mp4
-     * copies but plays back poorly on many devices). Ties break on larger [AdaptiveFormat.clen].
+     * copies but plays back poorly on many devices). Ties break on larger [AdaptiveFormat.clen]. A WebM
+     * output only considers codecs the WebM muxer accepts, even at a farther height.
      */
     fun videoNearest(
         formats: List<AdaptiveFormat>,
         requestedHeight: Int?,
         container: DownloadFormat,
     ): AdaptiveFormat? {
-        val video = formats.filter { it.isVideo && it.clen > 0 && it.height != null }
+        val playable = formats.filter { it.isVideo && it.clen > 0 && it.height != null }
+        val video = if (container == DownloadFormat.VIDEO_WEBM) playable.filter { isWebmVideo(it.mimeType) } else playable
         if (video.isEmpty()) return null
         val preferMp4Codec = container == DownloadFormat.VIDEO_MP4
         return video.sortedWith(
@@ -57,6 +59,12 @@ internal object FormatSelection {
                 .thenByDescending { it.clen },
         ).first()
     }
+}
+
+/** VP8/VP9/AV1 — the video codecs ffmpeg's `webm` muxer accepts. */
+internal fun isWebmVideo(mimeType: String): Boolean {
+    val codecs = mimeType.substringAfter("codecs=", "").trim('"', ' ')
+    return codecs.startsWith("vp8") || codecs.startsWith("vp9") || codecs.startsWith("vp09") || codecs.startsWith("av01")
 }
 
 /** An `audioTrack.id`'s language: `en` of `en.4`, `es-US` of `es-US.3`. */

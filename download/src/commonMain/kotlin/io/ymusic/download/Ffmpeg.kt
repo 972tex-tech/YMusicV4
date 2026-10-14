@@ -77,15 +77,17 @@ class Ffmpeg(
         onProgressUs: ((Long) -> Unit)? = null,
     ) = run(webmAudioArgs(input, output, copy, captions, metadata, cover), onProgressUs)
 
-    /** Mux VP9 video + Opus audio (+ any [captions], as WebVTT) into one WebM, stream-copying A/V. */
+    /** Mux VP9/AV1 video (copied) + audio (copied when Opus/Vorbis, [copyAudio], else → Opus) (+ any
+     *  [captions], as WebVTT) into one WebM. */
     suspend fun muxWebm(
         video: String,
         audio: String,
         output: String,
+        copyAudio: Boolean,
         captions: List<SubtitleInput> = emptyList(),
         metadata: List<Pair<String, String>> = emptyList(),
         onProgressUs: ((Long) -> Unit)? = null,
-    ) = run(webmMuxArgs(video, audio, output, captions, metadata), onProgressUs)
+    ) = run(webmMuxArgs(video, audio, output, copyAudio, captions, metadata), onProgressUs)
 
     /** Mux video (copied) + audio (transcoded to AAC) (+ any [captions], as mov_text) into one MP4. */
     suspend fun muxMp4(
@@ -206,12 +208,7 @@ internal fun webmAudioArgs(
     captions.forEach { add("-i"); add(it.path.ffSpec()) }
     add("-map"); add("0:a:0")
     captions.indices.forEach { add("-map"); add("${it + 1}:0") }
-    if (copy) {
-        add("-c:a"); add("copy")
-    } else {
-        // The shipped ffmpeg has no libopus; its native encoder is "experimental" and 48 kHz-only.
-        add("-c:a"); add("opus"); add("-strict"); add("-2"); add("-ar"); add("48000"); add("-b:a"); add("160k")
-    }
+    addAll(webmAudioCodecArgs(copy))
     if (captions.isNotEmpty()) { add("-c:s"); add("webvtt") }
     addAll(subtitleMetaArgs(captions))
     if (cover != null) {
@@ -246,11 +243,12 @@ internal fun mp4MuxArgs(
     add("-f"); add("mp4"); add(output.ffSpec())
 }
 
-/** Mux video+audio (+subtitles as WebVTT) into a WebM, stream-copying audio and video. */
+/** Mux video+audio (+subtitles as WebVTT) into a WebM: video copied, audio copied or → Opus. */
 internal fun webmMuxArgs(
     video: String,
     audio: String,
     output: String,
+    copyAudio: Boolean,
     captions: List<SubtitleInput>,
     metadata: List<Pair<String, String>>,
 ): List<String> = buildList {
@@ -261,12 +259,20 @@ internal fun webmMuxArgs(
     add("-map"); add("1:a:0")
     captions.indices.forEach { add("-map"); add("${it + 2}:0") }
     add("-c:v"); add("copy")
-    add("-c:a"); add("copy")
+    addAll(webmAudioCodecArgs(copyAudio))
     if (captions.isNotEmpty()) { add("-c:s"); add("webvtt") }
     addAll(subtitleMetaArgs(captions))
     addAll(metaArgs(metadata))
     add("-f"); add("webm"); add(output.ffSpec())
 }
+
+private fun webmAudioCodecArgs(copy: Boolean): List<String> =
+    if (copy) {
+        listOf("-c:a", "copy")
+    } else {
+        // The shipped ffmpeg has no libopus; its native encoder is "experimental" and 48 kHz-only.
+        listOf("-c:a", "opus", "-strict", "-2", "-ar", "48000", "-b:a", "160k")
+    }
 
 /** The cover file is an extension-less scratch, so name its demuxer and codec instead of probing. */
 private fun coverInputArgs(cover: String): List<String> =

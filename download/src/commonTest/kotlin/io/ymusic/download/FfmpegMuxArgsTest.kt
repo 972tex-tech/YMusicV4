@@ -50,7 +50,7 @@ class FfmpegMuxArgsTest {
 
     @Test
     fun webm_uses_webvtt_codec_for_subtitles() {
-        val args = webmMuxArgs("/v", "/a", "/out", cc, emptyList())
+        val args = webmMuxArgs("/v", "/a", "/out", copyAudio = true, captions = cc, metadata = emptyList())
         assertTrue(args.containsSeq("-c:s", "webvtt"))
         assertTrue(args.containsSeq("-c:v", "copy"))
         assertTrue(args.containsSeq("-c:a", "copy"))

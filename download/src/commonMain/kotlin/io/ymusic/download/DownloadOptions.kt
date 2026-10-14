@@ -97,7 +97,7 @@ class DownloadOptions(
             return heights.map { height ->
                 val atHeight = formats.filter { it.isVideo && it.height == height }
                 val mp4Video = FormatSelection.videoNearest(atHeight, height, DownloadFormat.VIDEO_MP4)
-                val webmVideo = FormatSelection.videoNearest(atHeight, height, DownloadFormat.VIDEO_WEBM)
+                val webmVideo = FormatSelection.videoNearest(formats, height, DownloadFormat.VIDEO_WEBM)
                 VideoOption(
                     height = height,
                     fps = atHeight.maxOfOrNull { fpsByItag[it.itag] ?: 0 } ?: 0,
