@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.update_allow_install
 import io.ymusic.ui.resources.update_ask_later
 import io.ymusic.ui.resources.update_available_title
 import io.ymusic.ui.resources.update_check
@@ -39,10 +40,12 @@ import io.ymusic.ui.resources.update_check_failed
 import io.ymusic.ui.resources.update_checking
 import io.ymusic.ui.resources.update_close
 import io.ymusic.ui.resources.update_download
+import io.ymusic.ui.resources.update_download_in_browser
 import io.ymusic.ui.resources.update_downloading
 import io.ymusic.ui.resources.update_failed
 import io.ymusic.ui.resources.update_full_changelog
 import io.ymusic.ui.resources.update_install_now
+import io.ymusic.ui.resources.update_install_permission
 import io.ymusic.ui.resources.update_manual_hint
 import io.ymusic.ui.resources.update_official_site
 import io.ymusic.ui.resources.update_ready
@@ -58,7 +61,8 @@ import org.jetbrains.compose.resources.stringResource
  * download is invisible until then (it prompts only once ready), and "Download" joins it, retries
  * it, or starts it. A ready
  * installer turns the button into "Install now" however it was downloaded. A failure links the
- * official download site.
+ * official download site. Without the OS's install permission the user picks between granting it
+ * and downloading the release in the browser.
  *
  * "Ask later" hides it for the rest of this run (the update itself stays offered: the drawer still
  * flags it), except that a download the user started brings it back once ready; the next cold
@@ -99,6 +103,9 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
             when {
                 !inPlace -> TextButton(onClick = { openDownloadPage?.invoke() }, enabled = openDownloadPage != null) {
                     Text(stringResource(Res.string.update_download))
+                }
+                download is UpdateDownload.NeedsInstallPermission -> TextButton(onClick = { updates.allowInstall() }) {
+                    Text(stringResource(Res.string.update_allow_install))
                 }
                 download is UpdateDownload.Ready -> TextButton(onClick = { updates.installAndRestart() }) {
                     Text(stringResource(Res.string.update_install_now))
@@ -146,6 +153,13 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
                     progress = { if (download.total > 0) (download.done.toFloat() / download.total) else 0f },
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+            if (download is UpdateDownload.NeedsInstallPermission) {
+                Text(
+                    stringResource(Res.string.update_install_permission),
+                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+                )
+                openDownloadPage?.let { LinkText(stringResource(Res.string.update_download_in_browser), it) }
             }
             if (requested && download is UpdateDownload.Failed) {
                 Text(

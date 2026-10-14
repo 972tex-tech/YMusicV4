@@ -21,6 +21,10 @@ interface AppUpdates {
     /** Apply a ready update and relaunch. */
     fun installAndRestart()
 
+    /** [UpdateDownload.NeedsInstallPermission]'s "Allow": open the system screen that grants it. The
+     *  download or install the user asked for continues once they come back with it granted. */
+    fun allowInstall() {}
+
     /**
      * "Check for update": ask the service now, ignoring the refresh throttle and any earlier "Ask
      * later". A found update lands in [status] as usual, so the update prompt shows it.
@@ -55,4 +59,8 @@ sealed interface UpdateDownload {
     data class Running(val done: Long, val total: Long) : UpdateDownload
     data object Ready : UpdateDownload
     data class Failed(val code: String) : UpdateDownload
+
+    /** The OS will not let this app install packages until the user allows it ("Install unknown
+     *  apps"); the alternative is downloading the release in the browser. */
+    data object NeedsInstallPermission : UpdateDownload
 }

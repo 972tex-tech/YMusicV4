@@ -350,6 +350,7 @@ class MainActivity : FragmentActivity() {
         (application as YMusicApplication).refreshPremium()
         (application as YMusicApplication).resumedActivity = WeakReference(this)
         val g = appGraph
+        (g?.updates as? AndroidAppUpdates)?.onResume()
         if (pipExitPending) {
             pipExitPending = false
             g?.pip?.onPipStopped(appInForeground = true)

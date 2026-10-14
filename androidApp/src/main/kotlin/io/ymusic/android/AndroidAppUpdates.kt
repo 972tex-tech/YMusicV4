@@ -5,6 +5,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import io.ymusic.remoteconfig.AppUpdate
 import io.ymusic.remoteconfig.DownloadMismatchException
 import io.ymusic.remoteconfig.downloadResumable
@@ -38,6 +41,10 @@ import java.io.File
  * entry's size and sha256, hand it to [PackageInstaller]. The entry needs no signature of ours —
  * the session is pinned to our package, and Android installs an update only when it is signed with
  * the installed app's certificate and has a higher versionCode.
+ *
+ * A download or install the user asks for first needs the OS's install permission ("Install unknown
+ * apps"); without it the user either grants it ([allowInstall], continued in [onResume]) or takes
+ * the release from the browser.
  */
 class AndroidAppUpdates(
     private val context: Context,
@@ -67,6 +74,9 @@ class AndroidAppUpdates(
 
     @Volatile private var pending: AppUpdate? = null
 
+    /** What the user asked for before being sent to grant the install permission: install, or download. */
+    @Volatile private var installAfterPermission = false
+
     private val log get() = logger?.fork("update")
 
     private val currentDownload get() = (_status.value as? AppUpdateStatus.Offered)?.download
@@ -86,7 +96,9 @@ class AndroidAppUpdates(
         mutex.withLock {
             if (update == null || update.versionCode <= currentVersionCode) {
                 pending = null
-                if (currentDownload is UpdateDownload.Idle || currentDownload is UpdateDownload.Failed) _status.value = AppUpdateStatus.None
+                if (currentDownload.let { it is UpdateDownload.Idle || it is UpdateDownload.Failed || it is UpdateDownload.NeedsInstallPermission }) {
+                    _status.value = AppUpdateStatus.None
+                }
                 return
             }
             if (update == pending) return
@@ -112,7 +124,9 @@ class AndroidAppUpdates(
         }
     }
 
-    override fun download() = start(auto = false)
+    override fun download() {
+        if (canInstall()) start(auto = false) else needInstallPermission(install = false)
+    }
 
     /**
      * Fetch [pending]. Any failure deletes the partial file: the next attempt starts fresh (only a
@@ -166,6 +180,7 @@ class AndroidAppUpdates(
     override fun installAndRestart() {
         val update = pending ?: return
         if (currentDownload !is UpdateDownload.Ready) return
+        if (!canInstall()) return needInstallPermission(install = true)
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { commit(apkFile(update)) }
@@ -176,6 +191,42 @@ class AndroidAppUpdates(
                 _status.value = offered(update, UpdateDownload.Failed("E91013"))
             }
         }
+    }
+
+    private fun needInstallPermission(install: Boolean) {
+        val update = pending ?: return
+        installAfterPermission = install
+        _status.value = offered(update, UpdateDownload.NeedsInstallPermission)
+    }
+
+    override fun allowInstall() {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+        } else {
+            Intent(Settings.ACTION_SECURITY_SETTINGS)
+        }
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    /** Back in the app: a request held for the install permission continues once it is granted. */
+    fun onResume() {
+        val update = pending ?: return
+        if (currentDownload !is UpdateDownload.NeedsInstallPermission || !canInstall()) return
+        if (installAfterPermission) {
+            _status.value = offered(update, UpdateDownload.Ready)
+            installAndRestart()
+        } else {
+            _status.value = offered(update, UpdateDownload.Idle)
+            start(auto = false)
+        }
+    }
+
+    private fun canInstall(): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.packageManager.canRequestPackageInstalls()
+    } else {
+        // API 24-25 have no per-app grant, only the global "Unknown sources" switch.
+        @Suppress("DEPRECATION")
+        Settings.Secure.getInt(context.contentResolver, Settings.Secure.INSTALL_NON_MARKET_APPS, 0) == 1
     }
 
     private fun commit(apk: File) {

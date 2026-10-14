@@ -447,6 +447,9 @@
     <string name="update_version">Version %1$s</string>
     <string name="update_download">Download</string>
     <string name="update_install_now">Install now</string>
+    <string name="update_install_permission">Android needs your permission before YMusic can install updates. Allow it, or download the new version in your browser instead.</string>
+    <string name="update_allow_install">Allow</string>
+    <string name="update_download_in_browser">Download in browser</string>
     <string name="update_ask_later">Ask later</string>
     <string name="update_full_changelog">Full changelog</string>
     <string name="update_downloading">Downloading… %1$s of %2$s</string>

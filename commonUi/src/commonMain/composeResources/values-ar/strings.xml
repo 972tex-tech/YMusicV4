@@ -430,6 +430,9 @@
     <string name="update_version">الإصدار %1$s</string>
     <string name="update_download">تنزيل</string>
     <string name="update_install_now">التثبيت الآن</string>
+    <string name="update_install_permission">يحتاج Android إلى إذنك قبل أن يتمكن YMusic من تثبيت التحديثات. امنح الإذن، أو نزّل الإصدار الجديد من المتصفح بدلًا من ذلك.</string>
+    <string name="update_allow_install">السماح</string>
+    <string name="update_download_in_browser">التنزيل من المتصفح</string>
     <string name="update_ask_later">ذكّرني لاحقًا</string>
     <string name="update_full_changelog">سجل التغييرات الكامل</string>
     <string name="update_downloading">جارٍ التنزيل… %1$s من %2$s</string>

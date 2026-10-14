@@ -425,6 +425,9 @@
     <string name="update_version">Phiên bản %1$s</string>
     <string name="update_download">Tải xuống</string>
     <string name="update_install_now">Cài đặt ngay</string>
+    <string name="update_install_permission">Android cần bạn cho phép trước khi YMusic có thể cài đặt bản cập nhật. Hãy cho phép, hoặc tải bản mới bằng trình duyệt.</string>
+    <string name="update_allow_install">Cho phép</string>
+    <string name="update_download_in_browser">Tải bằng trình duyệt</string>
     <string name="update_ask_later">Nhắc lại sau</string>
     <string name="update_full_changelog">Xem toàn bộ thay đổi</string>
     <string name="update_downloading">Đang tải… %1$s / %2$s</string>
