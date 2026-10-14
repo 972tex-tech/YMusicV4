@@ -33,6 +33,7 @@ import okio.buffer
 import okio.use
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /** One format stream to download and where its bytes go. */
@@ -218,7 +219,7 @@ class SabrSession(
                 if (outcome.completedSegments == 0) {
                     retryCount++
                     lastError = "received zero segments"
-                    delay(maxOf(outcome.backoffMs, 2000).toLong())
+                    delay(maxOf(outcome.backoffMs.milliseconds, MIN_EMPTY_ROUND_BACKOFF))
                 } else {
                     retryCount = 0
                 }
@@ -569,6 +570,9 @@ class SabrSession(
         private val PROGRESS_INTERVAL = 150.milliseconds
 
         private const val ROUND_TRAIL_LINES = 60
+
+        /** Floor on the wait after a zero-segment round, even when the server asks for no backoff. */
+        private val MIN_EMPTY_ROUND_BACKOFF = 3.seconds
     }
 }
 
