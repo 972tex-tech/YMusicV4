@@ -85,9 +85,11 @@ import io.ymusic.ui.resources.settings_versions_player
 import io.ymusic.ui.resources.sound_eq
 import io.ymusic.ui.resources.sound_speed
 import kmpcommon.log.Logger
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.runSuspendCatching
@@ -113,13 +115,14 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             .onFailure { graph.logger?.fork("settings")?.log(Logger.Level.WARN, "locale options fetch failed", it) }
         loadingOptions = false
     }
+    suspend fun applyLocale(gl: String) {
+        runSuspendCatching { graph.engines.applyYtLocale(gl) }
+            .onFailure { graph.logger?.fork("settings")?.captureError(it, "applyYtLocale failed — UI reloads as if it changed") }
+        localeRevision++ // re-ask: the labels and the automatic answer follow the new locale
+        graph.localeEpoch.value++ // locale-shaped caches (Discover feeds) refetch
+    }
     fun pickLocale(gl: String) {
-        scope.launch {
-            runSuspendCatching { graph.engines.applyYtLocale(gl) }
-                .onFailure { graph.logger?.fork("settings")?.captureError(it, "applyYtLocale failed — UI reloads as if it changed") }
-            localeRevision++ // re-ask: the labels and the automatic answer follow the new locale
-            graph.localeEpoch.value++ // locale-shaped caches (Discover feeds) refetch
-        }
+        scope.launch { applyLocale(gl) }
     }
 
     // Report scroll to the shell so the app bar lifts once the content scrolls under it (every other
@@ -136,9 +139,13 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
                 current = uiLanguage.ifBlank { defaultUiLanguageTag() },
                 onSelect = { tag ->
                     scope.launch {
-                        // Persist FIRST: apply is only the notify — the engine re-pulls this setting.
-                        graph.settings.put(AppSettings.uiLanguage, tag)
-                        pickLocale(gl = options.gl)
+                        // The put rebuilds the app under key(tag), cancelling this screen's scope —
+                        // the engine notify must outlive it.
+                        withContext(NonCancellable) {
+                            // Persist FIRST: apply is only the notify — the engine re-pulls this setting.
+                            graph.settings.put(AppSettings.uiLanguage, tag)
+                            applyLocale(gl = options.gl)
+                        }
                     }
                 },
             )
