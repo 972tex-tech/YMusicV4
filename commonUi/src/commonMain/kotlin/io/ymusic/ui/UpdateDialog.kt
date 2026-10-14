@@ -279,7 +279,7 @@ private fun ChangeNotes(notes: String) {
     Text(
         notes,
         style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
-        maxLines = 6,
+        maxLines = 7,
         overflow = TextOverflow.Ellipsis,
     )
 }
