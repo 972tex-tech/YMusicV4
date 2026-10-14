@@ -356,17 +356,22 @@ private fun DownloadCard(
     }
 }
 
+@Composable
+private fun downloadErrorText(task: DownloadTask): String = downloadErrorUiText(task).resolve()
+
+/** A failed task's message off composition — the shell's download notification shows the card's text. */
+suspend fun downloadErrorMessage(task: DownloadTask): String = downloadErrorUiText(task).load()
+
 /** A failed task's message: a category the user acts on as its own text, else the origin-minted
  *  userMessage with its code, else "Something went wrong (code)". */
-@Composable
-private fun downloadErrorText(task: DownloadTask): String {
-    val code = task.errorCode ?: return task.errorMessage ?: stringResource(Res.string.downloads_failed)
+private fun downloadErrorUiText(task: DownloadTask): UiText {
+    val code = task.errorCode ?: return task.errorMessage?.let(UiText::Plain) ?: UiText.Resource(Res.string.downloads_failed)
     return when {
-        code == DownloadFolderAccessException.CODE -> stringResource(Res.string.downloads_error_folder_access)
-        playabilityOf(code) == Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
-        playabilityOf(code) == Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
-        task.errorMessage != null -> "${task.errorMessage} ($code)"
-        else -> errorMessage(code)
+        code == DownloadFolderAccessException.CODE -> UiText.Resource(Res.string.downloads_error_folder_access)
+        playabilityOf(code) == Playability.SignInRequired -> UiText.Resource(Res.string.playback_sign_in_required)
+        playabilityOf(code) == Playability.Unavailable -> UiText.Resource(Res.string.playback_unavailable)
+        task.errorMessage != null -> UiText.Plain("${task.errorMessage} ($code)")
+        else -> errorText(code)
     }
 }
 

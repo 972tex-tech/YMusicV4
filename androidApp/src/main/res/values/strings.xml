@@ -29,8 +29,6 @@
     <string name="download_state_processing">Processing…</string>
     <string name="download_state_paused">Paused</string>
     <string name="notification_download_finished">Download finished</string>
-    <string name="notification_download_failed">Download failed</string>
-    <string name="notification_download_folder_access">Can’t save to the download folder — pick it again</string>
     <string name="downloads_summary_finished">%1$d finished</string>
     <string name="downloads_summary_failed">%1$d failed</string>
     <string name="downloads_summary_paused">%1$d paused</string>

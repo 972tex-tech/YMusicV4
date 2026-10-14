@@ -5,7 +5,27 @@ import io.ymusic.settings.SettingsStore
 import io.ymusic.settings.ensureUiLanguage
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.startup_failed
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
+
+/** A message that is final text or a string resource still to resolve — read both in composition and
+ *  off it (a notification). */
+internal sealed interface UiText {
+    class Plain(val text: String) : UiText
+    class Resource(val res: StringResource, vararg val args: Any) : UiText
+}
+
+@Composable
+internal fun UiText.resolve(): String = when (this) {
+    is UiText.Plain -> text
+    is UiText.Resource -> stringResource(res, *args)
+}
+
+internal suspend fun UiText.load(): String = when (this) {
+    is UiText.Plain -> text
+    is UiText.Resource -> getString(res, *args)
+}
 
 /**
  * A language the in-app picker offers. [nativeName] is the language's own name for itself — it must

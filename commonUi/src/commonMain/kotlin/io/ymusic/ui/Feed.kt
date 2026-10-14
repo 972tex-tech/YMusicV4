@@ -483,10 +483,12 @@ internal fun EmptyState(
 /** A failure for the user: a known category as its own message, any other code as "Something went
  *  wrong (E…)" for them to report. */
 @Composable
-internal fun errorMessage(code: String): String = when (code) {
-    "network" -> stringResource(Res.string.error_network)
-    CAPTCHA_CODE -> stringResource(Res.string.error_captcha)
-    else -> stringResource(Res.string.error_generic, code)
+internal fun errorMessage(code: String): String = errorText(code).resolve()
+
+internal fun errorText(code: String): UiText = when (code) {
+    "network" -> UiText.Resource(Res.string.error_network)
+    CAPTCHA_CODE -> UiText.Resource(Res.string.error_captcha)
+    else -> UiText.Resource(Res.string.error_generic, code)
 }
 
 /** YouTube's bot challenge — the engine's category for a google.com/sorry / reCAPTCHA answer. */

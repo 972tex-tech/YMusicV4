@@ -15,12 +15,12 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
-import io.ymusic.download.DownloadFolderAccessException
 import io.ymusic.download.DownloadService
 import io.ymusic.download.DownloadState
 import io.ymusic.download.DownloadTask
 import io.ymusic.download.DownloadTasksAggregator
 import io.ymusic.imageloader.ImageLoader
+import io.ymusic.ui.downloadErrorMessage
 import kmpcommon.log.Logger
 import kmpcommon.log.debug
 import kotlinx.coroutines.CancellationException
@@ -135,7 +135,7 @@ class DownloadForegroundService : Service() {
         super.onDestroy()
     }
 
-    private fun render(tasks: List<DownloadTask>) {
+    private suspend fun render(tasks: List<DownloadTask>) {
         val nm = NotificationManagerCompat.from(this)
         val byId = tasks.associateBy { it.id }
 
@@ -221,8 +221,9 @@ class DownloadForegroundService : Service() {
         return task.state.ordinal * 100_000 + permille * 10 + icon
     }
 
-    private fun taskCard(task: DownloadTask): Notification =
-        NotificationCompat.Builder(this, CHANNEL_ID)
+    private suspend fun taskCard(task: DownloadTask): Notification {
+        val status = statusLine(task)
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(
                 when (task.state) {
                     DownloadState.COMPLETED -> android.R.drawable.stat_sys_download_done
@@ -234,8 +235,8 @@ class DownloadForegroundService : Service() {
             // The platform template gives the progress bar the content-text row, so the status
             // rides the HEADER (subText) where it is always visible; contentText still covers
             // the barless states (finished/failed).
-            .setContentText(statusLine(task))
-            .setSubText(statusLine(task))
+            .setContentText(status)
+            .setSubText(status)
             .setLargeIcon(icons[task.id])
             .setGroup(GROUP_KEY)
             // Non-dismissible while in flight (isActive includes queued); a card that left the
@@ -262,18 +263,16 @@ class DownloadForegroundService : Service() {
                 }
             }
             .build()
+    }
 
-    private fun statusLine(task: DownloadTask): String = when (task.state) {
+    private suspend fun statusLine(task: DownloadTask): String = when (task.state) {
         DownloadState.QUEUED -> getString(R.string.download_state_queued)
         DownloadState.PREPARING -> getString(R.string.download_state_preparing)
         DownloadState.DOWNLOADING -> getString(R.string.download_state_downloading)
         DownloadState.PROCESSING -> getString(R.string.download_state_processing)
         DownloadState.PAUSED -> getString(R.string.download_state_paused)
         DownloadState.COMPLETED -> getString(R.string.notification_download_finished)
-        DownloadState.FAILED -> when (task.errorCode) {
-            DownloadFolderAccessException.CODE -> getString(R.string.notification_download_folder_access)
-            else -> task.errorMessage ?: getString(R.string.notification_download_failed)
-        }
+        DownloadState.FAILED -> downloadErrorMessage(task)
         DownloadState.CANCELED -> "" // never rendered
     }
 
