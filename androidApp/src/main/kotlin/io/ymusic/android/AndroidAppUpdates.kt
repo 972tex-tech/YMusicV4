@@ -36,8 +36,8 @@ import java.io.File
 /**
  * Updates the app from the config service's `appUpdate`: download the APK, check it against the
  * entry's size and sha256, hand it to [PackageInstaller]. The entry needs no signature of ours —
- * Android installs an update only when it is signed with the installed app's certificate and has a
- * higher versionCode.
+ * the session is pinned to our package, and Android installs an update only when it is signed with
+ * the installed app's certificate and has a higher versionCode.
  */
 class AndroidAppUpdates(
     private val context: Context,
@@ -181,6 +181,8 @@ class AndroidAppUpdates(
     private fun commit(apk: File) {
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+        // Without it a session installs whatever package the APK holds, as a new app.
+        params.setAppPackageName(context.packageName)
         params.setSize(apk.length())
         val sessionId = installer.createSession(params)
         installer.openSession(sessionId).use { session ->
