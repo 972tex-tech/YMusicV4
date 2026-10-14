@@ -623,6 +623,9 @@ class YMusicApplication : Application() {
                 }
             },
             appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
+            appVersionName = versionName,
+            appVersionCode = BuildConfig.VERSION_CODE,
+            runningBundles = shared.runningBundles,
             imageLoader = shared.imageLoader,
             settings = shared.settings,
             loginBrowser = { url, userAgent, state, onPageChanged, modifier ->
