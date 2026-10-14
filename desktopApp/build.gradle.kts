@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.nio.file.Files
 import java.util.zip.ZipEntry
@@ -315,11 +316,14 @@ compose.desktop {
                 // Stable across releases: the updater and Gatekeeper both identify the app by it.
                 bundleID = "io.ymusic.desktop"
                 // The rounded-square dock tile; the runtime Taskbar icon (dev runs) is the same
-                // artwork from src/jvmMain/resources/ymusic_dock.png.
+                // artwork from src/jvmMain/resources/ymusic_dock.png. macOS 26+ draws the
+                // CFBundleIconName icon from macos/Assets.car instead (installMacIconAssets).
                 iconFile.set(project.file("ymusic.icns"))
                 // ymusic:// links open the app (Main.kt's open-URI handler takes them).
                 infoPlist {
                     extraKeysRawXml = """
+                        <key>CFBundleIconName</key>
+                        <string>YMusic</string>
                         <key>CFBundleURLTypes</key>
                         <array>
                             <dict>
@@ -391,6 +395,33 @@ val hostArm64 = System.getProperty("os.arch").lowercase() in setOf("aarch64", "a
 
 /** `macos-x64`, `windows-x64`, …: the update service's platform key, and the installer's suffix. */
 val hostPlatform = "$hostOs-${if (hostArm64) "arm64" else "x64"}"
+
+// macOS 26 re-renders a bundle that has only an .icns into a flat Liquid Glass tile, dropping
+// the rings. Assets.car is compiled from macos/YMusic.icon (macos/build-icon.sh, needs Xcode 26);
+// jpackage cannot place it in Contents/Resources, so it goes in after, and the outer seal it
+// breaks is re-signed with the same identity, entitlements and flags.
+val macIconAssets = project.file("macos/Assets.car")
+if (hostOs == "macos") {
+    tasks.withType<AbstractJPackageTask>().matching { it.name == "createDistributable" || it.name == "createReleaseDistributable" }.configureEach {
+        val signingIdentity = macSigningIdentity()
+        inputs.file(macIconAssets)
+        inputs.property("macIconSigningIdentity", signingIdentity)
+        doLast("installMacIconAssets") {
+            val app = destinationDir.get().asFile.listFiles().orEmpty().single { it.name.endsWith(".app") }
+            macIconAssets.copyTo(File(app, "Contents/Resources/Assets.car"), overwrite = true)
+            val identity = signingIdentity.ifBlank { "-" }
+            val command = listOf(
+                "codesign", "--force", "--sign", identity,
+                if (identity == "-") "--timestamp=none" else "--timestamp",
+                "--preserve-metadata=identifier,entitlements,requirements,flags,runtime",
+                app.path,
+            )
+            val process = ProcessBuilder(command).redirectErrorStream(true).start()
+            val output = process.inputStream.readBytes().decodeToString()
+            check(process.waitFor() == 0) { "re-signing ${app.name} failed: $output" }
+        }
+    }
+}
 
 tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
     val proguardOut = layout.buildDirectory.dir("compose/tmp/main-release/proguard")
