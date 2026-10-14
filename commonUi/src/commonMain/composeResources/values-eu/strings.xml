@@ -386,6 +386,7 @@
     <string name="update_ready">Instalatzeko prest</string>
     <string name="update_manual_hint">Kopia honek ezin du bere burua eguneratu (%1$s). Deskargatu bertsio berria.</string>
     <string name="update_failed">Eguneratzeak huts egin du: %1$s</string>
+    <string name="update_official_site">Deskargatu webgune ofizialetik</string>
     <string name="download_title">Deskargatu</string>
     <string name="download_audio_only">Audioa soilik</string>
     <string name="download_video">Bideoa</string>

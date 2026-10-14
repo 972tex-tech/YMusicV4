@@ -386,6 +386,7 @@
     <string name="update_ready">آماده نصب</string>
     <string name="update_manual_hint">این نسخه نمی‌تواند خودش را به‌روز کند (%1$s). به‌جای آن نسخه جدید را دانلود کنید.</string>
     <string name="update_failed">به‌روزرسانی ناموفق بود: %1$s</string>
+    <string name="update_official_site">از وب‌سایت رسمی دانلود کنید</string>
     <string name="download_title">دانلود</string>
     <string name="download_audio_only">فقط صدا</string>
     <string name="download_video">ویدیو</string>

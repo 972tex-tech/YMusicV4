@@ -386,6 +386,7 @@
     <string name="update_ready">Yüklemeye hazır</string>
     <string name="update_manual_hint">Bu kopya kendini güncelleyemiyor (%1$s). Bunun yerine yeni sürümü indirin.</string>
     <string name="update_failed">Güncelleme başarısız: %1$s</string>
+    <string name="update_official_site">Resmi web sitesinden indirin</string>
     <string name="download_title">İndir</string>
     <string name="download_audio_only">Yalnızca ses</string>
     <string name="download_video">Video</string>

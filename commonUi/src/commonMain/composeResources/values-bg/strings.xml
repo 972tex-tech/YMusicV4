@@ -386,6 +386,7 @@
     <string name="update_ready">Готово за инсталиране</string>
     <string name="update_manual_hint">Това копие не може да се актуализира само (%1$s). Изтеглете новата версия ръчно.</string>
     <string name="update_failed">Неуспешна актуализация: %1$s</string>
+    <string name="update_official_site">Изтеглете от официалния сайт</string>
     <string name="download_title">Изтегляне</string>
     <string name="download_audio_only">Само аудио</string>
     <string name="download_video">Видео</string>

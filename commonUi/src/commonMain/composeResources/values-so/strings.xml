@@ -386,6 +386,7 @@
     <string name="update_ready">Diyaar u ah in lagu shubo</string>
     <string name="update_manual_hint">Nuskhadani iskeed isuma cusboonaysiin karto (%1$s). Taa beddelkeeda soo daji nooca cusub.</string>
     <string name="update_failed">Cusboonaysiintu way guuldaraysatay: %1$s</string>
+    <string name="update_official_site">Ka soo deji websaydhka rasmiga ah</string>
     <string name="download_title">Daji</string>
     <string name="download_audio_only">Cod kaliya</string>
     <string name="download_video">Muuqaal</string>

@@ -14,15 +14,12 @@ interface AppUpdates {
      *  manual download so a blocked user is told what to do instead of silently getting nothing. */
     val blockedReason: StringResource?
 
-    /** Start fetching now (the "Download" button). No-op once downloading or ready. */
+    /** The "Download" button: start the download, retry a failed one, or join one already running.
+     *  No-op once ready. */
     fun download()
 
     /** Apply a ready update and relaunch. */
     fun installAndRestart()
-
-    /** Open the release's download page (or its installer) in the browser — the fallback whenever
-     *  this release cannot be installed in place, self-update is blocked, or it has failed. */
-    fun openDownloadPage()
 
     /**
      * "Check for update": ask the service now, ignoring the refresh throttle and any earlier "Ask
@@ -36,16 +33,26 @@ enum class UpdateCheck { UpToDate, Found, Failed }
 /** What the UI renders. Mirrors the shell's state machine without exposing its internals. */
 sealed interface AppUpdateStatus {
     data object None : AppUpdateStatus
-    /** [installInApp] false: this release cannot replace the installed copy; offer the download page. */
-    data class Available(
+
+    /**
+     * A newer release, whatever its download is doing. [installInApp] false: it cannot replace the
+     * installed copy, so "Download" opens [downloadPage] — the release's page or the official
+     * download site, null when neither is known.
+     */
+    data class Offered(
         val versionCode: Int,
         val versionName: String,
         val notes: String,
-        val downloadBytes: Long,
         val changelogUrl: String?,
         val installInApp: Boolean,
+        val downloadPage: String?,
+        val download: UpdateDownload,
     ) : AppUpdateStatus
-    data class Downloading(val versionCode: Int, val versionName: String, val done: Long, val total: Long) : AppUpdateStatus
-    data class Ready(val versionCode: Int, val versionName: String, val notes: String, val changelogUrl: String?) : AppUpdateStatus
-    data class Failed(val reason: String) : AppUpdateStatus
+}
+
+sealed interface UpdateDownload {
+    data object Idle : UpdateDownload
+    data class Running(val done: Long, val total: Long) : UpdateDownload
+    data object Ready : UpdateDownload
+    data class Failed(val code: String) : UpdateDownload
 }

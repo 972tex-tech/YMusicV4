@@ -387,6 +387,7 @@
     <string name="update_ready">Pronto per l'installazione</string>
     <string name="update_manual_hint">Questa copia non può aggiornarsi da sola (%1$s). Scarica invece la nuova versione.</string>
     <string name="update_failed">Aggiornamento non riuscito: %1$s</string>
+    <string name="update_official_site">Scaricala dal sito ufficiale</string>
     <string name="download_title">Scarica</string>
     <string name="download_audio_only">Solo audio</string>
     <string name="download_video">Video</string>

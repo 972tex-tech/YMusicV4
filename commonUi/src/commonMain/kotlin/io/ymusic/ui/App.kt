@@ -1137,7 +1137,7 @@ private fun AppRoot(
                         }
                     }
                 }
-                UpdateDialog(graph, recheck = updateRecheck, showMessage = showSnackbar)
+                UpdateDialog(graph, recheck = updateRecheck)
                 if (checkingUpdate) {
                     CheckUpdateDialog(graph) { found ->
                         checkingUpdate = false

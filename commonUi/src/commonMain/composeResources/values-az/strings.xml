@@ -386,6 +386,7 @@
     <string name="update_ready">Quraşdırmağa hazırdır</string>
     <string name="update_manual_hint">Bu nüsxə özünü yeniləyə bilmir (%1$s). Əvəzinə yeni versiyanı yükləyin.</string>
     <string name="update_failed">Yeniləmə uğursuz oldu: %1$s</string>
+    <string name="update_official_site">Rəsmi saytdan endirin</string>
     <string name="download_title">Yüklə</string>
     <string name="download_audio_only">Yalnız audio</string>
     <string name="download_video">Video</string>

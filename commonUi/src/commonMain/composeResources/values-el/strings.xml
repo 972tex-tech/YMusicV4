@@ -386,6 +386,7 @@
     <string name="update_ready">Έτοιμο για εγκατάσταση</string>
     <string name="update_manual_hint">Αυτό το αντίγραφο δεν μπορεί να ενημερωθεί μόνο του (%1$s). Κατεβάστε τη νέα έκδοση.</string>
     <string name="update_failed">Η ενημέρωση απέτυχε: %1$s</string>
+    <string name="update_official_site">Λήψη από τον επίσημο ιστότοπο</string>
     <string name="download_title">Λήψη</string>
     <string name="download_audio_only">Μόνο ήχος</string>
     <string name="download_video">Βίντεο</string>

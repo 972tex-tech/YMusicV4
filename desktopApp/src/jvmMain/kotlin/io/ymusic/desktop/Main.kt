@@ -845,6 +845,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
             updateScope,
             refreshConfig = { remoteConfig?.refreshNow() ?: false },
             latestUpdate = { remoteConfig?.getConfig()?.appUpdate },
+            downloadSite = { remoteConfig?.config?.replayCache?.lastOrNull()?.downloadPageUrl },
         )
     } else {
         null

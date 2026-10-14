@@ -386,6 +386,7 @@
     <string name="update_ready">Telepítésre kész</string>
     <string name="update_manual_hint">Ez a példány nem tudja frissíteni magát (%1$s). Töltsd le inkább az új verziót.</string>
     <string name="update_failed">A frissítés sikertelen: %1$s</string>
+    <string name="update_official_site">Letöltés a hivatalos webhelyről</string>
     <string name="download_title">Letöltés</string>
     <string name="download_audio_only">Csak hang</string>
     <string name="download_video">Videó</string>

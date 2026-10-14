@@ -448,7 +448,6 @@
     <string name="update_download">Download</string>
     <string name="update_install_now">Install now</string>
     <string name="update_ask_later">Ask later</string>
-    <string name="update_background">Background</string>
     <string name="update_full_changelog">Full changelog</string>
     <string name="update_downloading">Downloading… %1$s of %2$s</string>
     <string name="update_ready">Ready to install</string>
@@ -460,7 +459,7 @@
     <string name="update_blocked_not_deb">this copy was not installed from the .deb package</string>
     <string name="update_blocked_no_pkexec">pkexec or apt-get is missing</string>
     <string name="update_failed">Update failed: %1$s</string>
-    <string name="update_download_failed">Update download failed</string>
+    <string name="update_official_site">Get it from the official website</string>
     <string name="update_check">Check for update</string>
     <string name="update_checking">Checking for update…</string>
     <string name="update_up_to_date">You’re on the latest version</string>

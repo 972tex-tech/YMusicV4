@@ -426,7 +426,6 @@
     <string name="update_download">Tải xuống</string>
     <string name="update_install_now">Cài đặt ngay</string>
     <string name="update_ask_later">Nhắc lại sau</string>
-    <string name="update_background">Chạy nền</string>
     <string name="update_full_changelog">Xem toàn bộ thay đổi</string>
     <string name="update_downloading">Đang tải… %1$s / %2$s</string>
     <string name="update_ready">Sẵn sàng cài đặt</string>
@@ -437,7 +436,7 @@
     <string name="update_blocked_not_deb">bản này không được cài từ gói .deb</string>
     <string name="update_blocked_no_pkexec">thiếu pkexec hoặc apt-get</string>
     <string name="update_failed">Cập nhật thất bại: %1$s</string>
-    <string name="update_download_failed">Tải bản cập nhật thất bại</string>
+    <string name="update_official_site">Tải từ trang web chính thức</string>
     <string name="update_check">Kiểm tra cập nhật</string>
     <string name="update_checking">Đang kiểm tra cập nhật…</string>
     <string name="update_up_to_date">Bạn đang dùng phiên bản mới nhất</string>

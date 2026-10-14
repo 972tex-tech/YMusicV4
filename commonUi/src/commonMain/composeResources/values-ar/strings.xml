@@ -431,7 +431,6 @@
     <string name="update_download">تنزيل</string>
     <string name="update_install_now">التثبيت الآن</string>
     <string name="update_ask_later">ذكّرني لاحقًا</string>
-    <string name="update_background">في الخلفية</string>
     <string name="update_full_changelog">سجل التغييرات الكامل</string>
     <string name="update_downloading">جارٍ التنزيل… %1$s من %2$s</string>
     <string name="update_ready">جاهز للتثبيت</string>
@@ -442,7 +441,7 @@
     <string name="update_blocked_not_deb">لم تُثبَّت هذه النسخة من حزمة ‎.deb</string>
     <string name="update_blocked_no_pkexec">pkexec أو apt-get غير موجود</string>
     <string name="update_failed">فشل التحديث: %1$s</string>
-    <string name="update_download_failed">فشل تنزيل التحديث</string>
+    <string name="update_official_site">نزّله من الموقع الرسمي</string>
     <string name="update_check">التحقق من التحديثات</string>
     <string name="update_checking">جارٍ التحقق من التحديثات…</string>
     <string name="update_up_to_date">أنت تستخدم أحدث إصدار</string>
