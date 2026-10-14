@@ -1,0 +1,117 @@
+#!/usr/bin/env node
+// Builds the update part of the server's App config (`releases`, `engineJs`, `playerJs` — shape:
+// ymusic-server src/appConfig.ts) for the files of one GitHub release, ready to paste into the dashboard.
+//
+//   node update-config.mjs <release dir> <owner/repo> <tag> <YMusicV4 checkout> [notes file]
+//
+// Urls are the release's asset download links, live once the draft is published. Signatures need
+// YM_UPDATE_SIGNING_KEY (installers) and YM_BUNDLE_SIGNING_KEY (JS bundles), base64 PKCS#8 P-256;
+// without one its entries carry an empty signature, which the apps refuse, and the message to sign
+// is printed instead (sign offline with ymusic-server's scripts/sign-*.mjs).
+
+import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
+import { createReadStream, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+
+const [dir, repo, tag, root, notesFile] = process.argv.slice(2)
+if (!dir || !repo || !tag || !root) {
+  console.error('usage: update-config.mjs <release dir> <owner/repo> <tag> <YMusicV4 checkout> [notes file]')
+  process.exit(2)
+}
+
+const read = (path) => readFileSync(join(root, path), 'utf8')
+const match = (path, regex, what) => {
+  const found = read(path).match(regex)
+  if (!found) {
+    console.error(`${what} not found in ${path}`)
+    process.exit(1)
+  }
+  return found[1]
+}
+
+const versionName = match('gradle.properties', /^ymusic\.versionName=(.+)$/m, 'ymusic.versionName').trim()
+const androidVersionCode = Number(match('androidApp/build.gradle.kts', /^\s*versionCode = (\d+)/m, 'versionCode'))
+const desktopVersionCode = Number(match('desktopApp/build.gradle.kts', /^val desktopVersionCode = (\d+)/m, 'desktopVersionCode'))
+const engineVersion = Number(match('buildSrc/src/main/kotlin/Dependencies.kt', /const val engineJsVersion = (\d+)L/, 'engineJsVersion'))
+const playerVersion = Number(match('buildSrc/src/main/kotlin/Dependencies.kt', /const val playerJsVersion = (\d+)L/, 'playerJsVersion'))
+
+const notes = notesFile ? readFileSync(notesFile, 'utf8').trim() : ''
+const changelogUrl = `https://github.com/${repo}/blob/${tag}/CHANGELOG.md`
+const assetUrl = (file) => `https://github.com/${repo}/releases/download/${tag}/${file}`
+
+const signer = (envName) => {
+  const keyBase64 = process.env[envName]
+  if (!keyBase64) return null
+  const privateKey = createPrivateKey({ key: Buffer.from(keyBase64, 'base64'), format: 'der', type: 'pkcs8' })
+  if (privateKey.asymmetricKeyDetails?.namedCurve !== 'prime256v1') {
+    console.error(`${envName} is not a P-256 key`)
+    process.exit(1)
+  }
+  const publicKey = createPublicKey(privateKey)
+  console.error(`${envName} public key: ${publicKey.export({ format: 'der', type: 'spki' }).toString('base64')}`)
+  return (text) => {
+    const message = Buffer.from(text, 'utf8')
+    const signature = sign('sha256', message, privateKey)
+    if (!verify('sha256', message, publicKey, signature)) {
+      console.error(`signature over "${text}" failed its own verification`)
+      process.exit(1)
+    }
+    return signature.toString('base64')
+  }
+}
+const signUpdate = signer('YM_UPDATE_SIGNING_KEY')
+const signBundle = signer('YM_BUNDLE_SIGNING_KEY')
+const unsigned = []
+const signOrNote = (signFn, message) => {
+  if (signFn) return signFn(message)
+  unsigned.push(message)
+  return ''
+}
+
+const sha256Of = async (path) => {
+  const hash = createHash('sha256')
+  for await (const chunk of createReadStream(path)) hash.update(chunk)
+  return hash.digest('hex')
+}
+
+const INSTALLERS = [
+  { platform: 'android', file: 'android-universal.apk', versionCode: androidVersionCode },
+  { platform: 'android-arm64-v8a', file: 'android-arm64.apk', versionCode: androidVersionCode },
+  { platform: 'android-x86_64', file: 'android-x86_64.apk', versionCode: androidVersionCode },
+  { platform: 'macos-arm64', file: 'macos-arm64.dmg', versionCode: desktopVersionCode },
+  { platform: 'macos-x64', file: 'macos-intel.dmg', versionCode: desktopVersionCode },
+]
+
+const releases = {}
+for (const { platform, file, versionCode } of INSTALLERS) {
+  const path = join(dir, file)
+  const sha256 = await sha256Of(path)
+  releases[platform] = {
+    versionCode,
+    versionName,
+    notes,
+    url: assetUrl(file),
+    size: statSync(path).size,
+    sha256,
+    signature: signOrNote(signUpdate, `app-${platform}:${versionCode}:${sha256}`),
+    changelogUrl,
+  }
+}
+
+const bundle = async (name, version) => {
+  const file = `${name}.${version}.js`
+  const sha256 = await sha256Of(join(dir, file))
+  return { version, url: assetUrl(file), signature: signOrNote(signBundle, `${name}:${version}:${sha256}`) }
+}
+
+const config = {
+  releases,
+  engineJs: await bundle('engine', engineVersion),
+  playerJs: await bundle('player', playerVersion),
+}
+console.log(JSON.stringify(config, null, 2))
+
+if (unsigned.length > 0) {
+  console.error('UNSIGNED: the apps refuse these entries until each message below is signed:')
+  for (const message of unsigned) console.error(`  ${message}`)
+}

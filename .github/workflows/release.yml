@@ -297,6 +297,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: YMusicV4
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
@@ -315,6 +319,36 @@ jobs:
           cp "$(one 'artifacts/js-bundles/engine.*.js')" "$(one 'artifacts/js-bundles/player.*.js')" release/
           (cd release && sha256sum * > SHA256SUMS)
           ls -l release
+
+      # update-config.json: the releases/engineJs/playerJs entries for the server's App config.
+      # The update dialog's notes are an annotated tag's message (git tag -a … -m "notes"); a
+      # lightweight tag gives none. The dialog shows 7 lines (UpdateDialog.kt ChangeNotes).
+      - name: Build the update config
+        env:
+          TAG: ${{ github.ref_name }}
+          YM_UPDATE_SIGNING_KEY: ${{ secrets.YM_UPDATE_SIGNING_KEY }}
+          YM_BUNDLE_SIGNING_KEY: ${{ secrets.YM_BUNDLE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/notes.txt"
+          git -C YMusicV4 fetch --depth=1 origin "+refs/tags/$TAG:refs/tags/$TAG"
+          if [ "$(git -C YMusicV4 cat-file -t "refs/tags/$TAG")" = tag ]; then
+            git -C YMusicV4 for-each-ref "refs/tags/$TAG" --format='%(contents)' | sed -e 's/[[:space:]]*$//' -e '/./,$!d' > "$notes"
+          else
+            : > "$notes"
+          fi
+          if [ "$(grep -c . "$notes")" -gt 7 ] || [ "$(awk 'length > 40' "$notes" | wc -l)" -gt 0 ]; then
+            echo "::warning::release notes exceed 7 lines of 40 chars; the update dialog cuts them off"
+          fi
+          node YMusicV4/.github/update-config.mjs release "$GITHUB_REPOSITORY" "$TAG" YMusicV4 "$notes" \
+            > release/update-config.json
+          { echo '### update-config.json'; echo '```json'; cat release/update-config.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: update-config
+          path: release/update-config.json
+          if-no-files-found: error
 
       - name: Create the draft release
         env:
