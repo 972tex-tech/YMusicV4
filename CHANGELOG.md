@@ -48,9 +48,11 @@
 
 ### Accessibility
 - Icon-only buttons announce as buttons to screen readers ([72a0bdeab](https://github.com/ymusic-io/YMusicV4/commit/72a0bdeab089aadf35c3c5e2ab7f6fb0b4718287))
+- Player and sort toggles expose their state to screen readers ([d9bf93310](https://github.com/ymusic-io/YMusicV4/commit/d9bf9331020a6b22bd51a6d884fb9d7eefd566b7))
 
 ### Localization
 - Replace hardcoded UI labels with en/vi/ar resources ([46bca8060..30a2e1c7b](https://github.com/ymusic-io/YMusicV4/compare/72a0bdeab089aadf35c3c5e2ab7f6fb0b4718287...30a2e1c7b594a7b625162be8de195ce13f2fc91c))
+- Translate repeat-state and sort-direction labels ([11566d4c1](https://github.com/ymusic-io/YMusicV4/commit/11566d4c13d928035117f51abf9099d8fb50a306))
 
 ## 4.0.0 ([3bac880ac](https://github.com/ymusic-io/YMusicV4/commit/3bac880acdd9598051c3c706e72d62318be3b4c3))
 - First release of YMusic V4.
