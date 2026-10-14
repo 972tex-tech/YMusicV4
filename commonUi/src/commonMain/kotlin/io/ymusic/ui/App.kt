@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -908,6 +909,8 @@ private fun AppRoot(
                             Scaffold(
                                 modifier = Modifier.nestedScroll(collapseConnection),
                                 containerColor = Color.Transparent,
+                                // The shell box above already pads safeDrawing; the Scaffold adds no insets.
+                                contentWindowInsets = WindowInsets(0),
                                 topBar = {
                                     // Search and the detail pages carry their own app bars.
                                     if (layers.isEmpty()) {
