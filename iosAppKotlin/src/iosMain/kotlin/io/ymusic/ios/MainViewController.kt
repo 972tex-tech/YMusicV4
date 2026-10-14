@@ -194,7 +194,9 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     val appVersionName = NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: ""
     val api = REMOTE_CONFIG_URL.takeIf { it.isNotBlank() }?.let { baseUrl ->
         HttpApiService(
-            client = KmpHttpClient.create { cookieJar = cookies },
+            client = http.engine.newBuilder().apply {
+                cookieJar = cookies
+            }.build(),
             os = "ios",
             osVersion = UIDevice.currentDevice.systemVersion,
             appVersionCode = appVersionCode,
