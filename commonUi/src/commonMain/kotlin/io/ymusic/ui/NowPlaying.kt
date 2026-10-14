@@ -281,7 +281,7 @@ fun MiniPlayer(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        item.displaySubtitle?.let {
+                        artistText(item, status)?.let {
                             Text(
                                 it,
                                 style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
@@ -376,14 +376,20 @@ fun NowPlayingScreen(
     }
 }
 
+/** The item's artist, or for a YouTube video queued without one, the channel its player response names. */
+private fun artistText(current: PlayableItem?, status: PlaybackStatus): String? =
+    current?.displaySubtitle ?: currentDetails(current as? PlayableItem.YtMedia, status)?.channelTitle
+
+private fun currentDetails(video: PlayableItem.YtMedia?, status: PlaybackStatus) =
+    status.details?.takeIf { video != null && it.videoId == video.videoId }
+
 /** The current item's artist line. A YouTube video's opens its channel — from the queue item, or
  *  once the player response names it. */
 @Composable
 private fun ArtistLine(current: PlayableItem?, status: PlaybackStatus, style: TextStyle, modifier: Modifier) {
+    val text = artistText(current, status) ?: return
     val video = current as? PlayableItem.YtMedia
-    val details = status.details?.takeIf { video != null && it.videoId == video.videoId }
-    val text = current?.displaySubtitle ?: details?.channelTitle ?: return
-    val url = video?.channelUrl ?: details?.channelUrl
+    val url = video?.channelUrl ?: currentDetails(video, status)?.channelUrl
     val openChannel = LocalOpenChannel.current
     Text(
         text,
