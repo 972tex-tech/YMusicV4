@@ -3,6 +3,7 @@ package io.ymusic.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -12,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -31,7 +33,7 @@ fun ActionIcon(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    ActionIconBox(modifier, hitSize, enabled, onClick) {
+    ActionIconBox(modifier, Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick), hitSize) {
         Icon(icon, contentDescription, Modifier.size(iconSize), tint = tint)
     }
 }
@@ -47,24 +49,45 @@ fun ActionIcon(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    ActionIconBox(modifier, hitSize, enabled, onClick) {
+    ActionIconBox(modifier, Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick), hitSize) {
         Icon(painter, contentDescription, Modifier.size(iconSize), tint = tint)
+    }
+}
+
+/** An on/off [ActionIcon]. Keep [contentDescription] fixed — screen readers announce [checked] themselves. */
+@Composable
+fun ToggleActionIcon(
+    icon: ImageVector,
+    contentDescription: String,
+    checked: Boolean,
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 22.dp,
+    hitSize: Dp = 32.dp,
+    tint: Color = DesignColors.InkMuted,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    ActionIconBox(
+        modifier,
+        Modifier.toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange),
+        hitSize,
+    ) {
+        Icon(icon, contentDescription, Modifier.size(iconSize), tint = tint)
     }
 }
 
 @Composable
 private fun ActionIconBox(
     modifier: Modifier,
+    interaction: Modifier,
     hitSize: Dp,
-    enabled: Boolean,
-    onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
     Box(
         modifier
             .size(hitSize)
             .clip(CircleShape)
-            .clickable(enabled = enabled, onClick = onClick),
+            .then(interaction),
         contentAlignment = Alignment.Center,
     ) {
         content()

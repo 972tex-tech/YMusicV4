@@ -12,7 +12,7 @@ import kotlinx.coroutines.sync.withLock
  *  view without re-reading the whole queue. The DB write always precedes the event. */
 sealed interface DownloadChange {
     data class Added(val task: DownloadTask) : DownloadChange
-    data class StateChanged(val id: String, val state: DownloadState, val error: String?) : DownloadChange
+    data class StateChanged(val id: String, val state: DownloadState, val error: DownloadError?) : DownloadChange
     data class ProgressChanged(val id: String, val downloaded: Long, val total: Long) : DownloadChange
     data class Completed(val id: String, val fileUri: String, val bytes: Long) : DownloadChange
     data class Removed(val id: String) : DownloadChange
@@ -53,7 +53,9 @@ class DownloadTasksAggregator(
             is DownloadChange.Added -> byId[change.task.id] = change.task
             is DownloadChange.Removed -> byId.remove(change.id)
             is DownloadChange.StateChanged ->
-                byId[change.id]?.let { byId[change.id] = it.copy(state = change.state, errorMessage = change.error) }
+                byId[change.id]?.let {
+                    byId[change.id] = it.copy(state = change.state, errorMessage = change.error?.userMessage, errorCode = change.error?.code)
+                }
             is DownloadChange.ProgressChanged ->
                 byId[change.id]?.let { byId[change.id] = it.copy(downloadedBytes = change.downloaded, totalBytes = change.total) }
             is DownloadChange.Completed ->
@@ -64,6 +66,7 @@ class DownloadTasksAggregator(
                         downloadedBytes = change.bytes,
                         totalBytes = change.bytes,
                         errorMessage = null,
+                        errorCode = null,
                     )
                 }
         }

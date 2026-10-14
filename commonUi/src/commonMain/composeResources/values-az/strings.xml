@@ -138,7 +138,8 @@
     <string name="sort_duration">Müddət</string>
     <string name="sort_song_count">Mahnı sayı</string>
     <string name="cd_sort">Sırala</string>
-    <string name="cd_sort_order">Sıralama qaydası</string>
+    <string name="cd_sort_ascending">Sıralama qaydası: artan</string>
+    <string name="cd_sort_descending">Sıralama qaydası: azalan</string>
     <string name="library_unavailable">Bu platformada lokal kitabxana qurulmayıb</string>
     <string name="library_empty">Kitabxananız boşdur</string>
     <string name="library_scan_folder">+  Qovluğu skan et</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">Daha çox</string>
     <string name="cd_collapse">Yığ</string>
     <string name="cd_expand">Genişləndir</string>
-    <string name="cd_play_pause">Oxut/Fasilə</string>
     <string name="cd_next">Növbəti</string>
     <string name="cd_previous">Əvvəlki</string>
     <string name="cd_download">Yüklə</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">Ekranı doldur</string>
     <string name="cd_rewind10">10 saniyə geri</string>
     <string name="cd_forward10">10 saniyə irəli</string>
-    <string name="cd_repeat">Təkrarla</string>
+    <string name="cd_repeat_off">Təkrarla: söndürülüb</string>
+    <string name="cd_repeat_all">Təkrarla: hamısı</string>
+    <string name="cd_repeat_one">Təkrarla: biri</string>
     <string name="play_all">Hamısını oxut</string>
     <string name="shuffle_all">Hamısını qarışıq oxut</string>
     <string name="cd_shuffle">Qarışdır</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">Quraşdırmağa hazırdır</string>
     <string name="update_manual_hint">Bu nüsxə özünü yeniləyə bilmir (%1$s). Əvəzinə yeni versiyanı yükləyin.</string>
     <string name="update_failed">Yeniləmə uğursuz oldu: %1$s</string>
+    <string name="update_official_site">Rəsmi saytdan endirin</string>
     <string name="download_title">Yüklə</string>
     <string name="download_audio_only">Yalnız audio</string>
     <string name="download_video">Video</string>

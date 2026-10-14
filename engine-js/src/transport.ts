@@ -414,7 +414,8 @@ function makePipe(id: number, command: string): TransportPipe {
             const wrote = nB64urlInto(b, off, rem, wbuf!, wlen);
             if (wrote <= 0) break;
             wlen += wrote;
-            if (rem >= 3) off += 3 * ((wrote / 4) | 0);
+            // A non-multiple of 4 means the native also encoded the 1–2 byte tail: all consumed.
+            if (wrote % 4 === 0) off += 3 * (wrote / 4);
             else off = n;
           }
         };

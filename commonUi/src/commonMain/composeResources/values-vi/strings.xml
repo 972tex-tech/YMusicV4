@@ -22,6 +22,41 @@
     <string name="downloads_none_title">Chưa có bản tải xuống nào</string>
     <string name="downloads_none_message">Bài hát và video đã tải phát được khi không có mạng.</string>
     <string name="downloads_failed">Tải xuống thất bại</string>
+    <string name="downloads_error_folder_access">Không thể lưu vào thư mục tải xuống — hãy chọn lại thư mục</string>
+    <string name="downloads_sign_in_title">Đăng nhập để tải xuống</string>
+    <string name="downloads_sign_in_message">YouTube yêu cầu đăng nhập trước khi tải video này. Sau khi bạn đăng nhập, video sẽ được tải lại.</string>
+    <string name="downloads_unavailable_title">Video không khả dụng</string>
+    <string name="downloads_unavailable_message">YouTube cho biết video này không khả dụng nên thử lại cũng không được. Bạn có thể xóa nó khỏi danh sách tải xuống.</string>
+    <string name="downloads_state_queued">Đang chờ</string>
+    <string name="downloads_state_preparing">Đang chuẩn bị</string>
+    <string name="downloads_state_downloading">Đang tải</string>
+    <string name="downloads_state_processing">Đang xử lý</string>
+    <string name="downloads_state_failed">Thất bại</string>
+    <string name="downloads_state_done">Xong</string>
+    <string name="downloads_state_canceled">Đã hủy</string>
+    <string name="downloads_action_pause">Tạm dừng</string>
+    <string name="downloads_action_resume">Tiếp tục</string>
+    <string name="downloads_action_reveal_library">Hiện trong Thư viện</string>
+    <string name="downloads_action_reveal_finder">Hiện trong Finder</string>
+    <string name="downloads_completed_date">%2$d %1$s, %3$d</string>
+    <string-array name="month_abbr">
+        <item>thg 1</item>
+        <item>thg 2</item>
+        <item>thg 3</item>
+        <item>thg 4</item>
+        <item>thg 5</item>
+        <item>thg 6</item>
+        <item>thg 7</item>
+        <item>thg 8</item>
+        <item>thg 9</item>
+        <item>thg 10</item>
+        <item>thg 11</item>
+        <item>thg 12</item>
+    </string-array>
+    <string name="download_size_kb">%1$s KB</string>
+    <string name="download_location_prompt_not_now">Để sau</string>
+    <string name="download_location_prompt_set_default">Đặt làm mặc định</string>
+    <string name="download_location_prompt_message">Lưu các bản tải xuống vào “%1$s”? Bạn có thể đổi lại trong Cài đặt.</string>
     <string name="section_settings">Cài đặt</string>
     <string name="section_donate">Ủng hộ</string>
     <string name="section_telegram">Thông báo trên Telegram</string>
@@ -62,6 +97,7 @@
 
     <string name="feed_empty">Không có gì ở đây</string>
     <string name="error_generic">Đã xảy ra lỗi (%1$s)</string>
+    <string name="startup_failed">Khởi động thất bại: %1$s</string>
     <string name="retry">Thử lại</string>
     <string name="reload">Tải lại</string>
     <string name="search_videos">Tìm video</string>
@@ -131,7 +167,8 @@
     <string name="sort_duration">Thời lượng</string>
     <string name="sort_song_count">Số bài hát</string>
     <string name="cd_sort">Sắp xếp</string>
-    <string name="cd_sort_order">Thứ tự sắp xếp</string>
+    <string name="cd_sort_ascending">Thứ tự sắp xếp: tăng dần</string>
+    <string name="cd_sort_descending">Thứ tự sắp xếp: giảm dần</string>
     <string name="library_unavailable">Nền tảng này chưa hỗ trợ thư viện cục bộ</string>
     <string name="library_empty">Thư viện của bạn đang trống</string>
     <string name="library_scan_folder">+  Quét thư mục</string>
@@ -140,6 +177,10 @@
     <string name="library_scanning">Đang quét…</string>
     <string name="library_scanning_count">Đang quét %1$d…</string>
     <string name="library_scan_failed">Quét thất bại (%1$s)</string>
+    <string name="library_scan_summary">Đã quét %1$d: thêm %2$d, cập nhật %3$d, xóa %4$d</string>
+    <string name="library_scan_summary_failed">Đã quét %1$d: thêm %2$d, cập nhật %3$d, xóa %4$d, lỗi %5$d</string>
+    <string name="library_scan_no_folders">Không có thư mục nào để quét lại — hãy thêm một thư mục trước</string>
+    <string name="library_scan_ffmpeg_missing">Không tìm thấy ffmpeg</string>
     <string name="library_empty_folder">Thư mục trống</string>
     <string name="library_crumb_root">Thư viện</string>
     <string name="library_folder">Thư mục</string>
@@ -193,6 +234,9 @@
     <string name="sleep_hours_minutes">%1$d giờ %2$d phút</string>
     <string name="sleep_add_minutes">+%1$d phút</string>
     <string name="playback_failed">Phát thất bại (%1$s)</string>
+    <string name="playback_sign_in_required">YouTube yêu cầu đăng nhập để phát video này</string>
+    <string name="playback_unavailable">Video này không khả dụng</string>
+    <string name="menu_reload_player">Tải lại trình phát</string>
 
 
     <string name="settings_language">Ngôn ngữ</string>
@@ -209,6 +253,10 @@
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_changelog">Nhật ký thay đổi</string>
     <string name="settings_licenses">Giấy phép mã nguồn mở</string>
+    <string name="settings_versions">Phiên bản</string>
+    <string name="settings_versions_app">Ứng dụng v%1$s/%2$s</string>
+    <string name="settings_versions_engine">EngineJs %1$s</string>
+    <string name="settings_versions_player">PlayerJs %1$s</string>
     <string name="settings_licenses_intro">YMusic là phần mềm mã nguồn mở theo giấy phép GNU GPL v3.0. Ứng dụng bao gồm các thành phần sau:</string>
     <string name="feedback_hint">Cho chúng tôi biết lỗi bạn gặp hoặc điều bạn muốn thấy. Ảnh chụp màn hình hoặc tệp log sẽ rất hữu ích.</string>
     <string name="feedback_message_label">Điều gì đã xảy ra?</string>
@@ -230,17 +278,21 @@
     <string name="cd_more">Thêm</string>
     <string name="cd_collapse">Thu gọn</string>
     <string name="cd_expand">Mở rộng</string>
-    <string name="cd_play_pause">Phát/Tạm dừng</string>
+    <string name="cd_play">Phát</string>
+    <string name="cd_pause">Tạm dừng</string>
     <string name="cd_next">Bài tiếp theo</string>
     <string name="cd_previous">Bài trước</string>
     <string name="cd_download">Tải xuống</string>
     <string name="cd_fullscreen">Toàn màn hình</string>
     <string name="cd_exit_fullscreen">Thoát toàn màn hình</string>
+    <string name="cd_minimize">Thu nhỏ</string>
     <string name="cd_fit_video">Vừa khít</string>
     <string name="cd_fill_video">Phóng đầy</string>
     <string name="cd_rewind10">Tua lùi 10 giây</string>
     <string name="cd_forward10">Tua tới 10 giây</string>
-    <string name="cd_repeat">Lặp lại</string>
+    <string name="cd_repeat_off">Lặp lại: tắt</string>
+    <string name="cd_repeat_all">Lặp lại: tất cả</string>
+    <string name="cd_repeat_one">Lặp lại: một bài</string>
     <string name="play_all">Phát tất cả</string>
     <string name="shuffle_all">Phát ngẫu nhiên tất cả</string>
     <string name="cd_shuffle">Phát ngẫu nhiên</string>
@@ -249,6 +301,10 @@
     <string name="cd_drag_to_reorder">Kéo để sắp xếp lại</string>
     <string name="cd_send">Gửi</string>
     <string name="cd_vote">Bình chọn</string>
+    <string name="cd_open_app">Mở YMusic</string>
+    <string name="cd_stop_dismiss">Dừng và đóng</string>
+    <string name="mini_player_nothing_playing">Không có gì đang phát</string>
+    <string name="folder_picker_title">Chọn thư mục nhạc</string>
     <string name="menu_remove_from_disk">Xóa khỏi ổ đĩa</string>
     <string name="delete_from_disk_title">Xóa tệp?</string>
     <string name="delete_from_disk_message">“%1$s” sẽ bị xóa vĩnh viễn khỏi thiết bị này. Không thể hoàn tác.</string>
@@ -306,6 +362,7 @@
     <string name="signin_paste_guide_network">Mở bảng Network</string>
     <string name="signin_paste_guide_request">Tải lại, rồi bấm request Fetch/XHR</string>
     <string name="signin_paste_guide_copy">Nhấp phải → Copy as cURL, rồi dán vào đây</string>
+    <string name="signin_paste_guide_right_click">Nhấp phải</string>
     <string name="cd_signin_paste_guide">Hoạt ảnh hướng dẫn sao chép cookie YouTube từ trình duyệt</string>
     <string name="cd_signin_paste_pause">Tạm dừng hướng dẫn</string>
     <string name="cd_signin_paste_play">Phát hướng dẫn</string>
@@ -351,6 +408,7 @@
     <string name="sound_pitch">Cao độ %1$s</string>
     <string name="sound_eq">Equalizer</string>
     <string name="sound_eq_band">%1$s Hz  %2$d dB</string>
+    <string name="sound_db">%1$s dB</string>
     <string name="sound_reset">Đặt lại</string>
     <string name="sound_ok">OK</string>
     <string name="sound_preset_flat">Phẳng</string>
@@ -367,14 +425,21 @@
     <string name="update_version">Phiên bản %1$s</string>
     <string name="update_download">Tải xuống</string>
     <string name="update_install_now">Cài đặt ngay</string>
+    <string name="update_install_permission">Android cần bạn cho phép trước khi YMusic có thể cài đặt bản cập nhật. Hãy cho phép, hoặc tải bản mới bằng trình duyệt.</string>
+    <string name="update_allow_install">Cho phép</string>
+    <string name="update_download_in_browser">Tải bằng trình duyệt</string>
     <string name="update_ask_later">Nhắc lại sau</string>
-    <string name="update_background">Chạy nền</string>
     <string name="update_full_changelog">Xem toàn bộ thay đổi</string>
     <string name="update_downloading">Đang tải… %1$s / %2$s</string>
     <string name="update_ready">Sẵn sàng cài đặt</string>
     <string name="update_manual_hint">Bản này không thể tự cập nhật (%1$s). Hãy tải bản mới theo cách thủ công.</string>
+    <string name="update_blocked_not_installed">ứng dụng không chạy từ bản đã cài đặt</string>
+    <string name="update_blocked_mac_swap">phiên bản macOS này không thể thay thế ứng dụng tại chỗ</string>
+    <string name="update_blocked_folder_read_only">không thể ghi vào thư mục chứa YMusic</string>
+    <string name="update_blocked_not_deb">bản này không được cài từ gói .deb</string>
+    <string name="update_blocked_no_pkexec">thiếu pkexec hoặc apt-get</string>
     <string name="update_failed">Cập nhật thất bại: %1$s</string>
-    <string name="update_download_failed">Tải bản cập nhật thất bại</string>
+    <string name="update_official_site">Tải từ trang web chính thức</string>
     <string name="update_check">Kiểm tra cập nhật</string>
     <string name="update_checking">Đang kiểm tra cập nhật…</string>
     <string name="update_up_to_date">Bạn đang dùng phiên bản mới nhất</string>
@@ -451,6 +516,9 @@
         <item quantity="other">%1$d video đã chọn đã có trong Thư viện.</item>
     </plurals>
     <string name="error_network">Không kết nối được YouTube. Hãy kiểm tra mạng và thử lại.</string>
+    <string name="error_captcha">YouTube muốn xác nhận bạn không phải là robot</string>
+    <string name="captcha_verify">Xác minh</string>
+    <string name="captcha_verify_hint">Giải captcha nếu bạn thấy trên màn hình, rồi nhấn Xong</string>
     <string name="settings_player_cache">Bộ nhớ đệm trình phát</string>
     <string name="settings_player_cache_summary">Tối đa %1$s · Đã dùng %2$s · Tiết kiệm %3$s</string>
     <string name="settings_player_cache_off">Không dùng bộ nhớ đệm</string>

@@ -16,7 +16,7 @@ const ORIGIN = "https://www.youtube.com";
 /**
  * POST `youtubei/v1/<endpoint>` with `fields` merged next to the context. The hl/gl pair is the
  * ENGINE's own (the pick, else the session's server-echoed answer) — callers never assert one —
- * and the session supplies clientVersion + visitorData. Non-2xx throws classified "network"; a 403 is retried once
+ * and the session supplies clientVersion + visitorData. A 403 is retried once
  * against a freshly-scraped session. The parsed body comes back via the streaming parser.
  */
 export async function innertubeJson(
@@ -27,7 +27,7 @@ export async function innertubeJson(
   const res = await innertubeResponse(endpoint, fields, log);
   if (!res.ok) {
     res.close();
-    throw JsEngineErrorImpl.network("yt " + endpoint + " HTTP " + res.status);
+    throw JsEngineErrorImpl.httpStatus("yt " + endpoint, res.status, "E20140");
   }
   return res.jsonObject();
 }
@@ -45,7 +45,7 @@ export async function innertubeJsonOrNotFound(
   }
   if (!res.ok) {
     res.close();
-    throw JsEngineErrorImpl.network("yt " + endpoint + " HTTP " + res.status);
+    throw JsEngineErrorImpl.httpStatus("yt " + endpoint, res.status, "E20141");
   }
   return res.jsonObject();
 }

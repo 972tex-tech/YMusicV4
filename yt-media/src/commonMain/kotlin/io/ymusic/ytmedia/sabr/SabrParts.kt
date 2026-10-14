@@ -15,7 +15,7 @@ object SabrParts {
     /** UMP part 43 payload → replacement /videoplayback URL. */
     fun parseRedirectUrl(payload: ByteArray): String? = parseStringField1(payload)
 
-    /** UMP part 58 payload → status. 1 = ok; 2/3 = PO token rejected, media will stop. */
+    /** UMP part 58 payload → status. 1 = ok; 2 = attestation pending; 3 = invalid PO token, media will stop. */
     fun parseStreamProtectionStatus(payload: ByteArray): Int? = runCatching {
         ProtoReader(payload).readAllFields().varint(1)?.toInt()
     }.getOrNull()

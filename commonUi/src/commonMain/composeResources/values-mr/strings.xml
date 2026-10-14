@@ -138,7 +138,8 @@
     <string name="sort_duration">कालावधी</string>
     <string name="sort_song_count">गाण्यांची संख्या</string>
     <string name="cd_sort">क्रमवारी लावा</string>
-    <string name="cd_sort_order">क्रम</string>
+    <string name="cd_sort_ascending">क्रम: चढता</string>
+    <string name="cd_sort_descending">क्रम: उतरता</string>
     <string name="library_unavailable">या प्लॅटफॉर्मवर कोणतीही स्थानिक लायब्ररी सेट केलेली नाही</string>
     <string name="library_empty">तुमची लायब्ररी रिकामी आहे</string>
     <string name="library_scan_folder">+  फोल्डर स्कॅन करा</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">अधिक</string>
     <string name="cd_collapse">लहान करा</string>
     <string name="cd_expand">विस्तृत करा</string>
-    <string name="cd_play_pause">प्ले/पॉज</string>
     <string name="cd_next">पुढील</string>
     <string name="cd_previous">मागील</string>
     <string name="cd_download">डाउनलोड करा</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">स्क्रीन भरा</string>
     <string name="cd_rewind10">10 सेकंद मागे</string>
     <string name="cd_forward10">10 सेकंद पुढे</string>
-    <string name="cd_repeat">पुन्हा करा</string>
+    <string name="cd_repeat_off">पुन्हा करा: बंद</string>
+    <string name="cd_repeat_all">पुन्हा करा: सर्व</string>
+    <string name="cd_repeat_one">पुन्हा करा: एक</string>
     <string name="play_all">सर्व प्ले करा</string>
     <string name="shuffle_all">सर्व शफल करा</string>
     <string name="cd_shuffle">शफल</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">इंस्टॉल करण्यास तयार</string>
     <string name="update_manual_hint">ही प्रत स्वतः अपडेट होऊ शकत नाही (%1$s). त्याऐवजी नवीन आवृत्ती डाउनलोड करा.</string>
     <string name="update_failed">अपडेट अयशस्वी: %1$s</string>
+    <string name="update_official_site">अधिकृत वेबसाइटवरून डाउनलोड करा</string>
     <string name="download_title">डाउनलोड</string>
     <string name="download_audio_only">फक्त ऑडिओ</string>
     <string name="download_video">व्हिडिओ</string>

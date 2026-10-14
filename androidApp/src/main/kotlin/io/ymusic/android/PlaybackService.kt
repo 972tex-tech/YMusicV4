@@ -26,6 +26,7 @@ import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import io.ymusic.player.PlayableItem
@@ -81,6 +82,9 @@ class PlaybackService : MediaLibraryService() {
      *  service, so the flag is authoritative: promotes are skipped when already foreground, and
      *  a media3-triggered promotion that never leads to playback can be detected and demoted. */
     private var foreground = false
+
+    /** media3 asks for a promotion on every player event while playing: a refusal streak logs once. */
+    private var foregroundRefused = false
     // Set in onCreate — getApplication() is null until the service is attached.
     private var log: Logger? = null
 
@@ -107,7 +111,7 @@ class PlaybackService : MediaLibraryService() {
     private fun init(graph: AppGraph) {
         val player = graph.player.also { this.player = it }
         val tree = MediaBrowseTree(this, graph).also { this.tree = it }
-        coordinator = io.ymusic.ui.PlaybackCoordinator(graph, serviceScope)
+        coordinator = graph.playback
         playAgain = graph.playHistory?.playAgain
         val adapter = Media3PlayerAdapter(
             player,
@@ -256,7 +260,9 @@ class PlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<MediaItem>> =
-            future { LibraryResult.ofItem(tree.rootItem(), params) }
+            // Must be already done: the legacy onGetRoot blocks the main thread until this resolves,
+            // and its completion callback is posted to that same main thread — a pending future deadlocks.
+            Futures.immediateFuture(LibraryResult.ofItem(tree.rootItem(), params))
 
         override fun onGetChildren(
             session: MediaLibrarySession,
@@ -340,10 +346,7 @@ class PlaybackService : MediaLibraryService() {
      *  the same notification. */
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         if (startInForegroundRequired) {
-            if (!foreground) {
-                startForeground(NOTIFICATION_ID, buildNotification())
-                foreground = true
-            }
+            if (!foreground) foreground = promote(buildNotification())
         } else if (foreground && player?.let { isPlaying(it.status.value, it.queue.value) } != true) {
             // The contract-promotion that never became playback (media-button start on a dead
             // process, nothing restored): no (playing × item) transition will ever fire the
@@ -370,6 +373,7 @@ class PlaybackService : MediaLibraryService() {
         // The startForegroundService contract: enter foreground now; the collector demotes on pause.
         startForeground(NOTIFICATION_ID, buildNotification())
         foreground = true
+        foregroundRefused = false
         return result
     }
 
@@ -406,12 +410,28 @@ class PlaybackService : MediaLibraryService() {
         if (playing) {
             // Repeat startForeground while already foreground is the content refresh, not a
             // state change; the flag only records that the promotion happened.
-            startForeground(NOTIFICATION_ID, notification)
-            foreground = true
+            foreground = promote(notification)
         } else {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
             foreground = false
+        }
+    }
+
+    /** startForeground, or the notification alone when Android 12+ refuses a promotion from the
+     *  background (playback resumed by Bluetooth, a car, or audio focus coming back while the app is
+     *  backgrounded). Playback continues; the service stays background until a later promotion. */
+    private fun promote(notification: android.app.Notification): Boolean {
+        return try {
+            startForeground(NOTIFICATION_ID, notification)
+            foregroundRefused = false
+            true
+        } catch (e: IllegalStateException) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || e !is android.app.ForegroundServiceStartNotAllowedException) throw e
+            if (!foregroundRefused) log?.log(Logger.Level.WARN, "foreground start refused in background", e)
+            foregroundRefused = true
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+            false
         }
     }
 

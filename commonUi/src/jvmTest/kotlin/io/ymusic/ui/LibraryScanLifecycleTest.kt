@@ -46,9 +46,9 @@ class LibraryScanLifecycleTest {
                     player = StubPlayer(),
                     playerSurface = {},
                     mediaStore = store,
-                    scanLibraryFolder = { "picked" },
+                    scanLibraryFolder = { ScanResult.NoFolders },
                     // Report 129 then park, so the scan stays in-flight for the whole test.
-                    rescanLibrary = { _, onProgress -> onProgress(129); CompletableDeferred<String?>().await() },
+                    rescanLibrary = { _, onProgress -> onProgress(129); CompletableDeferred<ScanResult?>().await() },
                 )
                 val section = androidx.compose.runtime.mutableStateOf(AppSection.Library)
                 setContent { App(graph, section) }

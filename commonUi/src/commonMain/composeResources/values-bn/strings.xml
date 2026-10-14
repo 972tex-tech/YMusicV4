@@ -138,7 +138,8 @@
     <string name="sort_duration">সময়কাল</string>
     <string name="sort_song_count">গানের সংখ্যা</string>
     <string name="cd_sort">সাজান</string>
-    <string name="cd_sort_order">সাজানোর ক্রম</string>
+    <string name="cd_sort_ascending">সাজানোর ক্রম: ঊর্ধ্বক্রম</string>
+    <string name="cd_sort_descending">সাজানোর ক্রম: অধঃক্রম</string>
     <string name="library_unavailable">এই প্ল্যাটফর্মে কোনো লোকাল লাইব্রেরি কনফিগার করা নেই</string>
     <string name="library_empty">আপনার লাইব্রেরি খালি</string>
     <string name="library_scan_folder">+  ফোল্ডার স্ক্যান করুন</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">আরও</string>
     <string name="cd_collapse">ছোট করুন</string>
     <string name="cd_expand">বড় করুন</string>
-    <string name="cd_play_pause">চালান/বিরতি</string>
     <string name="cd_next">পরবর্তী</string>
     <string name="cd_previous">পূর্ববর্তী</string>
     <string name="cd_download">ডাউনলোড</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">স্ক্রিন ভরাট করুন</string>
     <string name="cd_rewind10">10 সেকেন্ড পিছিয়ে যান</string>
     <string name="cd_forward10">10 সেকেন্ড এগিয়ে যান</string>
-    <string name="cd_repeat">পুনরাবৃত্তি</string>
+    <string name="cd_repeat_off">পুনরাবৃত্তি: বন্ধ</string>
+    <string name="cd_repeat_all">পুনরাবৃত্তি: সবগুলি</string>
+    <string name="cd_repeat_one">পুনরাবৃত্তি: একটি</string>
     <string name="play_all">সব চালান</string>
     <string name="shuffle_all">সব শাফল করুন</string>
     <string name="cd_shuffle">শাফল</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">ইনস্টলের জন্য প্রস্তুত</string>
     <string name="update_manual_hint">এই কপিটি নিজে আপডেট হতে পারে না (%1$s)। এর বদলে নতুন সংস্করণটি ডাউনলোড করুন।</string>
     <string name="update_failed">আপডেট ব্যর্থ: %1$s</string>
+    <string name="update_official_site">অফিসিয়াল ওয়েবসাইট থেকে ডাউনলোড করুন</string>
     <string name="download_title">ডাউনলোড</string>
     <string name="download_audio_only">শুধু অডিও</string>
     <string name="download_video">ভিডিও</string>

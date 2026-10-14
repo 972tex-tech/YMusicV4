@@ -99,3 +99,15 @@ tell what used to work, what broke it, or why (engine-js vs native MSE vs player
 - **This is a public repository — every commit is publicly visible.** Never commit personal data (recorded fixtures carrying a real account's history or identity — fixtures must hold mock data only), credentials or tokens, machine-local paths/infra notes, or private working notes. When pushing, push ONLY the current public branch — never `git push --all` / `--mirror`: other local branches may hold unpublished history.
 - **Never push. The user pushes.** Agents commit locally only — no `git push`, no force-push, ever, even when the push seems like the natural completion of a requested merge or rewrite. State the push command(s) for the user to run instead.
 - **Never make one big commit that bundles everything.** Split a batch into the smallest still-meaningful units and commit them separately, in dependency order — e.g. a toolchain/dependency bump (Kotlin/Gradle/AGP) is its own commit, separate from standalone refactors, feature work, and tests. Use path-scoped `git add <paths>` (or `git add -p` when one file's hunks belong to different units). Keep each commit building. When asked to "commit", default to this rather than a single sweep.
+
+### Release flow
+On the current working branch:
+1. Bump `ymusic.versionName` (`gradle.properties`) and versionCode +1 in `androidApp/build.gradle.kts`, `desktopApp/build.gradle.kts` (`desktopVersionCode`), `iosApp/iosApp/Info.plist`.
+2. In `CHANGELOG.md`, rename `## Unreleased` to the version.
+3. In `error-codes.txt`, flip shipped `-` rows to `D`.
+4. Tag the commit: `hotfix-v<version>` for a hotfix, `release-v<version>` for a release. The tag message is the update dialog's release notes: at most 7 lines of ≤40 chars (the dialog cuts off the rest), no title (the dialog shows the version); when there is more, the last line says so and points to the full changelog:
+   ```
+   git tag -a hotfix-v4.0.1 -m "Fix crash when …
+   Fix …
+   And more, see the full changelog"
+   ```

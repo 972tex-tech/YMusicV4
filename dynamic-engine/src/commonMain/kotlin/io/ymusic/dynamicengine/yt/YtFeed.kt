@@ -235,6 +235,10 @@ data class YtAccountInfo(
     val thumbs: List<YtThumb> = emptyList(),
 )
 
+/** Where the user clears a `captcha` bot challenge: a browser on [url] presenting [userAgent] (the
+ *  scrape's own) over the shared cookie jar. */
+data class YtVerifyTarget(val url: String, val userAgent: String)
+
 /** One pickable content language / region: the InnerTube code and YouTube's own label for it. */
 data class YtLocaleOption(val code: String, val label: String)
 

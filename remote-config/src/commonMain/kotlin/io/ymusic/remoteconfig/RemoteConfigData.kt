@@ -124,6 +124,8 @@ data class RemoteConfigData(
     val telegramUrl: String = "https://t.me/ymusic_io",
     /** Settings › About's "Changelog" link; null hides the row. */
     val changelogUrl: String? = null,
+    /** The official download site, where a failed or impossible in-app update sends the user. */
+    val downloadPageUrl: String? = null,
     val appUpdate: AppUpdate? = null,
     val engineJs: BundleVersion? = null,
     val playerJs: BundleVersion? = null,
@@ -138,6 +140,7 @@ data class RemoteConfigData(
         private const val KEY_FEATURE_X = "featureX"
         private const val KEY_TELEGRAM_URL = "telegramUrl"
         private const val KEY_CHANGELOG_URL = "changelogUrl"
+        private const val KEY_DOWNLOAD_PAGE_URL = "downloadPageUrl"
         private const val KEY_APP_UPDATE = "appUpdate"
         private const val KEY_ENGINE_JS = "engineJs"
         private const val KEY_PLAYER_JS = "playerJs"
@@ -158,6 +161,7 @@ data class RemoteConfigData(
                 featureX = features?.boolOrNull(KEY_FEATURE_X) ?: DEFAULTS.featureX,
                 telegramUrl = features?.stringOrNull(KEY_TELEGRAM_URL) ?: DEFAULTS.telegramUrl,
                 changelogUrl = features?.stringOrNull(KEY_CHANGELOG_URL),
+                downloadPageUrl = features?.stringOrNull(KEY_DOWNLOAD_PAGE_URL),
                 appUpdate = root.objectOrNull(KEY_APP_UPDATE)?.let(AppUpdate::from),
                 engineJs = root.objectOrNull(KEY_ENGINE_JS)?.let(BundleVersion::from),
                 playerJs = root.objectOrNull(KEY_PLAYER_JS)?.let(BundleVersion::from),
@@ -172,6 +176,7 @@ data class RemoteConfigData(
             name(KEY_FEATURE_X).value(data.featureX)
             name(KEY_TELEGRAM_URL).value(data.telegramUrl)
             data.changelogUrl?.let { name(KEY_CHANGELOG_URL).value(it) }
+            data.downloadPageUrl?.let { name(KEY_DOWNLOAD_PAGE_URL).value(it) }
             endObject()
             data.appUpdate?.let { name(KEY_APP_UPDATE).value(it) }
             data.engineJs?.let { name(KEY_ENGINE_JS).value(it) }

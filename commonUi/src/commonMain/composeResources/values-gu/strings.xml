@@ -138,7 +138,8 @@
     <string name="sort_duration">સમયગાળો</string>
     <string name="sort_song_count">ગીતોની સંખ્યા</string>
     <string name="cd_sort">સૉર્ટ કરો</string>
-    <string name="cd_sort_order">સૉર્ટ ક્રમ</string>
+    <string name="cd_sort_ascending">સૉર્ટ ક્રમ: ચડતો</string>
+    <string name="cd_sort_descending">સૉર્ટ ક્રમ: ઊતરતો</string>
     <string name="library_unavailable">આ પ્લેટફોર્મ પર કોઈ લોકલ લાઇબ્રેરી ગોઠવેલી નથી</string>
     <string name="library_empty">તમારી લાઇબ્રેરી ખાલી છે</string>
     <string name="library_scan_folder">+  ફોલ્ડર સ્કૅન કરો</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">વધુ</string>
     <string name="cd_collapse">સંકુચિત કરો</string>
     <string name="cd_expand">વિસ્તૃત કરો</string>
-    <string name="cd_play_pause">વગાડો/થોભાવો</string>
     <string name="cd_next">આગળનું</string>
     <string name="cd_previous">પાછલું</string>
     <string name="cd_download">ડાઉનલોડ</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">સ્ક્રીન ભરો</string>
     <string name="cd_rewind10">10 સેકન્ડ પાછળ</string>
     <string name="cd_forward10">10 સેકન્ડ આગળ</string>
-    <string name="cd_repeat">પુનરાવર્તન</string>
+    <string name="cd_repeat_off">પુનરાવર્તન: બંધ</string>
+    <string name="cd_repeat_all">પુનરાવર્તન: બધા</string>
+    <string name="cd_repeat_one">પુનરાવર્તન: એક</string>
     <string name="play_all">બધા વગાડો</string>
     <string name="shuffle_all">બધા શફલ કરો</string>
     <string name="cd_shuffle">શફલ</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">ઇન્સ્ટોલ કરવા તૈયાર</string>
     <string name="update_manual_hint">આ કૉપિ પોતાને અપડેટ કરી શકતી નથી (%1$s). તેના બદલે નવું સંસ્કરણ ડાઉનલોડ કરો.</string>
     <string name="update_failed">અપડેટ નિષ્ફળ: %1$s</string>
+    <string name="update_official_site">સત્તાવાર વેબસાઇટ પરથી ડાઉનલોડ કરો</string>
     <string name="download_title">ડાઉનલોડ</string>
     <string name="download_audio_only">ફક્ત ઑડિયો</string>
     <string name="download_video">વીડિયો</string>

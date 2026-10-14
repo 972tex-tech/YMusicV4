@@ -1,7 +1,11 @@
 package io.ymusic.ui
 
+import androidx.compose.runtime.Composable
 import io.ymusic.settings.SettingsStore
 import io.ymusic.settings.ensureUiLanguage
+import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.startup_failed
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * A language the in-app picker offers. [nativeName] is the language's own name for itself — it must
@@ -123,3 +127,7 @@ private val RTL_LANGUAGES = setOf("ar", "fa", "he", "iw", "ur", "ug", "ps", "sd"
 
 internal fun isRtlLanguage(languageTag: String): Boolean =
     languageTag.substringBefore('-').substringBefore('_').lowercase() in RTL_LANGUAGES
+
+/** The shells' boot-failure line, shown when the app graph could not be built. */
+@Composable
+fun startupFailedMessage(detail: String): String = stringResource(Res.string.startup_failed, detail)

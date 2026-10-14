@@ -2,6 +2,7 @@ package io.ymusic.ytmedia.proxy
 
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SegmentFill
+import io.ymusic.ytmedia.cache.isMediaCacheStorageFault
 import io.ymusic.ytmedia.proto.ProtoFieldFixed32
 import io.ymusic.ytmedia.proto.ProtoFieldFixed64
 import io.ymusic.ytmedia.proto.ProtoFieldLen
@@ -44,6 +45,7 @@ internal class SabrCacheTee(
     private val cache: MediaCache,
     logger: Logger? = null,
     private val verbose: Boolean = false, // per-part chatter; WARN events (errors, protection rejects) always log
+    private val onStorageFault: (Throwable) -> Unit = {},
 ) : AsyncSource {
 
     private val logger = logger?.fork("sabr-fill")
@@ -90,6 +92,7 @@ internal class SabrCacheTee(
             } catch (t: Throwable) {
                 // A thrown parse (bad varint / proto) or cache write (disk / index) — never trust the rest.
                 markIllegal("parse or cache-write error: ${t.message}", t)
+                if (t.isMediaCacheStorageFault()) onStorageFault(t)
             }
         }
         return n
@@ -322,8 +325,8 @@ internal class SabrCacheTee(
 
             UmpPart.STREAM_PROTECTION_STATUS -> {
                 val s = SabrParts.parseStreamProtectionStatus(payload)
-                if (s == 2 || s == 3) { // PO token rejected → media will stop — always warn
-                    log.log(Logger.Level.WARN, "stream-protection-status=$s (PO token rejected — media will stop)")
+                if (s == 3) {
+                    log.log(Logger.Level.WARN, "stream-protection-status=3 (invalid PO token — media will stop)")
                 } else {
                     logVerbose { "stream-protection-status=$s" }
                 }

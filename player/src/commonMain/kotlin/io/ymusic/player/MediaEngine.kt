@@ -143,6 +143,9 @@ interface MediaEngine<in S : PlayableItem> {
      */
     fun reset()
 
+    /** [reset], naming why — for engines that log their session lifecycle. */
+    fun reset(reason: String) = reset()
+
     /**
      * Push the full playback settings ([PlaybackConfig]) — the single runtime-tunable path, the same
      * object [load] applies atomically. The engine diffs against its current config and applies only

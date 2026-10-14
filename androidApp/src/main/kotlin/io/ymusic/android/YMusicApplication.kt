@@ -69,6 +69,7 @@ import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
+import io.ymusic.ui.ScanResult
 import io.ymusic.ui.YtEngineSabrSpecResolver
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
@@ -239,6 +240,9 @@ class YMusicApplication : Application() {
                     it.dsn = BuildConfig.SENTRY_DSN
                     // The commit in the release traces an event to git history (no source upload).
                     it.release = "${BuildConfig.APPLICATION_ID}@${BuildConfig.VERSION_NAME}+${BuildConfig.GIT_COMMIT}"
+                    // Explicit and persisted: without it, ANR/tombstone events replayed by the next
+                    // process take dist from the text after '+' in the release (the commit).
+                    it.dist = BuildConfig.VERSION_CODE.toString()
                     it.environment = if (BuildConfig.DEBUG) "debug" else "production"
                 }
                 installSentryDeviceId(deviceId)
@@ -385,6 +389,7 @@ class YMusicApplication : Application() {
             rememberAutoDownloadFailed = { settings.put(AppSettings.updateAutoDownloadFailed, it) },
             refreshConfig = { remoteConfig.refreshNow() },
             latestUpdate = { remoteConfig.getConfig().appUpdate },
+            downloadSite = { remoteConfig.config.replayCache.lastOrNull()?.downloadPageUrl },
         )
         updates.pruneDownloads()
         scope.launch { remoteConfig.config.collect { updates.offer(it.appUpdate) } }
@@ -471,7 +476,12 @@ class YMusicApplication : Application() {
             val cacheRoot = File(applicationContext.cacheDir, "player-cache").apply { mkdirs() }
             val driver = androidSegmentDatabaseDriver(applicationContext) // shared: span index + segment index
             MediaCache(
-                DiskMediaBlobCache(cacheRoot.toOkioPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
+                DiskMediaBlobCache(
+                    cacheRoot.toOkioPath(),
+                    FileSystem.SYSTEM,
+                    SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() }),
+                    logger = rootLogger.fork("player-cache"),
+                ),
                 SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
                 SqlDelightCacheStats(driver),
             )
@@ -544,6 +554,8 @@ class YMusicApplication : Application() {
                 withContext(Dispatchers.Main) { player.prepareYoutubeEngine() }
                 ytEngine ?: error("youtube engine missing")
             }
+            // Leftover scratch root of beta builds; best-effort, the OS may trim it anyway.
+            File(cacheDir, "download-work").deleteRecursively()
             io.ymusic.download.DownloadService(
                 store = io.ymusic.download.DownloadStore(io.ymusic.download.downloadDatabaseAndroidDriver(applicationContext), rootLogger),
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + uncaught("downloads")),
@@ -553,10 +565,12 @@ class YMusicApplication : Application() {
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),
                 ffmpeg = ffmpegBin?.let { bin -> io.ymusic.download.Ffmpeg(bin) },
                 // Handles file:// (app dirs) via okio and user-picked SAF folders (content://) via SAF.
+                // App data, not cacheDir (trimmed mid-download under storage pressure); no_backup keeps
+                // multi-MB scratch out of Auto Backup's quota.
                 storage = AndroidDownloadStorage(
                     applicationContext,
                     FileSystem.SYSTEM,
-                    File(cacheDir, "download-work").absolutePath.toPath(),
+                    File(noBackupFilesDir, "download-work").absolutePath.toPath(),
                 ),
                 mediaCache = playerCache, // read-only (see YtStreamDownloader): reuse cached playback bytes
                 // Own segment index for SABR resume (byte range per segment), separate from the player cache DB.
@@ -602,15 +616,21 @@ class YMusicApplication : Application() {
                         android.provider.DocumentsContract.deleteDocument(contentResolver, uri)
                     } catch (e: java.io.FileNotFoundException) {
                         true
+                    } catch (e: IllegalArgumentException) {
+                        if (!isConfirmedMissing(uri, e)) throw e
+                        true
                     }
                     check(deleted) { "Android refused to delete this document" }
                 }
             },
             appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
+            appVersionName = versionName,
+            appVersionCode = BuildConfig.VERSION_CODE,
+            runningBundles = shared.runningBundles,
             imageLoader = shared.imageLoader,
             settings = shared.settings,
-            loginBrowser = { url, state, onPageChanged, modifier ->
-                AndroidLoginBrowser(url, state, onPageChanged, modifier)
+            loginBrowser = { url, userAgent, state, onPageChanged, modifier ->
+                AndroidLoginBrowser(url, userAgent, state, onPageChanged, modifier)
             },
             exportSessionCookies = { shared.cookies.exportSessionCookies() },
             scanQrCode = { qrScanner?.invoke() },
@@ -669,8 +689,24 @@ class YMusicApplication : Application() {
         }
     }
 
-    /** SAF folder pick + full scan into [store]; returns the summary line, or null when canceled. */
-    private suspend fun scanPickedFolder(store: BetterMediaStore, onProgress: (Int) -> Unit): String? {
+    /** Whether [error] from deleting [uri] proves the file is gone. ExternalStorageProvider's tree
+     *  check carries the cause only as message text; just "Missing file for <this docId>" means absent
+     *  ("No root for" is an unmounted volume). Any other provider must answer a query with zero rows. */
+    private fun isConfirmedMissing(uri: android.net.Uri, error: IllegalArgumentException): Boolean {
+        val documentId = android.provider.DocumentsContract.getDocumentId(uri)
+        if (error.message?.contains("FileNotFoundException: Missing file for $documentId at ") == true) return true
+        val cursor = try {
+            contentResolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
+        } catch (probe: Exception) {
+            error.addSuppressed(probe)
+            return false
+        }
+        // A null cursor is no evidence: the resolver also returns null when the provider is unavailable.
+        return cursor?.use { it.count == 0 } == true
+    }
+
+    /** SAF folder pick + full scan into [store]; returns how it ended, or null when canceled. */
+    private suspend fun scanPickedFolder(store: BetterMediaStore, onProgress: (Int) -> Unit): ScanResult? {
         val treeUri = folderPicker?.invoke() ?: return null
         return scanUris(store, listOf(treeUri), onProgress)
     }
@@ -685,20 +721,20 @@ class YMusicApplication : Application() {
     }
 
     /** Re-scans [folderUri] (and its children) in place, or every already-added root when null. */
-    private suspend fun rescanKnownRoots(store: BetterMediaStore, folderUri: String?, onProgress: (Int) -> Unit): String? {
+    private suspend fun rescanKnownRoots(store: BetterMediaStore, folderUri: String?, onProgress: (Int) -> Unit): ScanResult? {
         val uris = if (folderUri != null) {
             listOf(Uri.parse(folderUri))
         } else {
             val roots = store.childBuckets(null)
-            if (roots.isEmpty()) return "No folders to rescan — add one first"
+            if (roots.isEmpty()) return ScanResult.NoFolders
             roots.map { it.uri }
         }
         return scanUris(store, uris, onProgress)
     }
 
     /** Scans each root [uris] into [store] via SAF + the bundled ffmpeg (content:// proxied over ymix),
-     *  reporting the running file count and returning one combined summary line. */
-    private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgress: (Int) -> Unit): String {
+     *  reporting the running file count and returning the combined result. */
+    private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgress: (Int) -> Unit): ScanResult {
         val ffmpeg = File(applicationInfo.nativeLibraryDir, "libffmpeg.so").absolutePath
         val scanner = MediaScanner.create(
             store,
@@ -719,10 +755,7 @@ class YMusicApplication : Application() {
             deleted += progress.deleted
             failed += progress.errors.size
         }
-        return buildString {
-            append("Scanned $scanned: $added added, $updated updated, $deleted removed")
-            if (failed > 0) append(", $failed failed")
-        }
+        return ScanResult.Done(scanned, added, updated, deleted, failed)
     }
 
     override fun onTrimMemory(level: Int) {

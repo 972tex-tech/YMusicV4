@@ -1,13 +1,16 @@
 package io.ymusic.ytmedia.cache
 
 import kmpcommon.WorkerThread
+import kmpcommon.log.Logger
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import okio.Buffer
 import okio.BufferedSink
 import okio.BufferedSource
 import okio.FileHandle
+import okio.FileNotFoundException
 import okio.FileSystem
+import okio.IOException
 import okio.Path
 import okio.Sink
 import okio.Timeout
@@ -36,8 +39,10 @@ import okio.buffer
  * 4. **Read pinning** — [read] ref-count-pins its covering spans; eviction never touches a pinned span.
  * 5. **Plan-then-reacquire** — [isCached] is a hint; [read] re-plans coverage under the lock (over the
  *    in-memory span cache, which is kept in sync with eviction), returning null (→ network) on any gap and
- *    holding no lock across plan→serve. Each span's file is validated once, when its key loads into the
- *    span cache (a phantom row whose file is gone is dropped then) — not on every read.
+ *    holding no lock across plan→serve. Each span's file is validated when its key loads into the
+ *    span cache (a phantom row whose file is gone is dropped then), and [read] opens every planned file
+ *    before returning, so a file deleted behind the index (the OS trimming the cache dir) is a miss.
+ *    Any other storage IO failure (open/read of a span, span write/commit) throws [MediaCacheStorageException].
  * 6. **LRU eviction** — on commit, delete least-recently-used **unpinned** spans (rows + files) until
  *    `SUM(len) ≤` the budget ([budgetBytes] until [setMaxSize]).
  */
@@ -48,6 +53,7 @@ class DiskMediaBlobCache(
     private val index: BlobIndex,
     budgetBytes: Long = DEFAULT_BUDGET_BYTES,
     private val maxSpanBytes: Long = DEFAULT_MAX_SPAN_BYTES,
+    private val logger: Logger? = null,
 ) : MediaBlobCache {
 
     /** One contiguous slice to read from one span: `[skip, skip+take)` of the span `(key,start,len)`. */
@@ -104,7 +110,27 @@ class DiskMediaBlobCache(
             }
             plan
         } ?: return null
-        return StitchedSource(chunks)
+        val handles = ArrayList<FileHandle>(chunks.size)
+        for (chunk in chunks) {
+            try {
+                handles += fileSystem.openReadOnly(pathOf(chunk.key, chunk.start, chunk.len))
+            } catch (e: Throwable) {
+                handles.forEach { it.close() }
+                val missing = e is FileNotFoundException
+                synchronized(lock) {
+                    chunks.forEach { unpin(spanId(it.key, it.start, it.len)) }
+                    if (missing) {
+                        index.delete(chunk.key, chunk.start, chunk.len)
+                        // Drop the key's resident list so its next load re-validates every row against disk.
+                        spanCache.remove(chunk.key)
+                    }
+                }
+                if (!missing) throw if (e is IOException) MediaCacheStorageException("span open: ${e.message}", e) else e
+                logger?.log(Logger.Level.WARN, "span file missing, cache miss", e)
+                return null
+            }
+        }
+        return StitchedSource(chunks, handles)
     }
 
     override fun writer(key: String, position: Long, length: Long): BlobWriter {
@@ -267,7 +293,7 @@ class DiskMediaBlobCache(
         /** Spills the region to disk block-by-block: each `write` fills the current temp until it reaches
          *  [maxSpanBytes], then seals it as an immutable span and starts the next. */
         private inner class RelaySink : Sink {
-            override fun write(source: Buffer, byteCount: Long) {
+            override fun write(source: Buffer, byteCount: Long) = storage("span write") {
                 var remaining = byteCount
                 while (remaining > 0) {
                     val s = tmpSink ?: openBlock()
@@ -286,20 +312,20 @@ class DiskMediaBlobCache(
         // Temp name = `{blockStart}__{writerId}.tmp`. blockStart alone can collide between two writers whose
         // current block starts at the same offset (e.g. a progressive and a SABR writer), so the per-writer
         // [id] keeps it unique; both parts are plain numbers, so the name needs no escaping.
-        private fun openBlock(): BufferedSink {
+        private fun openBlock(): BufferedSink = storage("span open") {
             fileSystem.createDirectories(dir)
             val t = dir / "${blockStart}__$id.$TMP_EXT"
             tmp = t
-            return fileSystem.sink(t).buffer().also { tmpSink = it }
+            fileSystem.sink(t).buffer().also { tmpSink = it }
         }
 
         /** Seal the current temp into `{start}_{len}.span` and index it. No-op on an empty block. */
-        private fun commitBlock() {
-            val t = tmp ?: return
+        private fun commitBlock(): Unit = storage("span commit") {
+            val t = tmp ?: return@storage
             tmpSink?.close(); tmpSink = null; tmp = null
             val len = blockBytes; blockBytes = 0
             val start = blockStart; blockStart += len
-            if (len == 0L) { fileSystem.delete(t, mustExist = false); return }
+            if (len == 0L) { fileSystem.delete(t, mustExist = false); return@storage }
             val spanPath = dir / spanName(start, len)
             if (fileSystem.exists(spanPath)) {
                 // Identical range already committed (resume, or a concurrent equal writer beat us). Bytes are
@@ -307,7 +333,7 @@ class DiskMediaBlobCache(
                 // reader may hold open. Make sure it's indexed (INSERT OR IGNORE).
                 fileSystem.delete(t, mustExist = false)
                 synchronized(lock) { index.insert(key, start, len); addSpanToCache(key, start, len) }
-                return
+                return@storage
             }
             fileSystem.atomicMove(t, spanPath)
             val victims = synchronized(lock) {
@@ -324,28 +350,35 @@ class DiskMediaBlobCache(
         private fun finish(commitTail: Boolean) {
             if (released) return
             released = true
-            if (commitTail) {
-                sink.flush() // push whatever the buffered façade still holds into RelaySink → the temp
-                commitBlock()
-            } else {
-                tmpSink?.close()
-                tmp?.let { fileSystem.delete(it, mustExist = false) }
-                tmpSink = null; tmp = null
+            try {
+                if (commitTail) {
+                    sink.flush() // push whatever the buffered façade still holds into RelaySink → the temp
+                    commitBlock()
+                } else {
+                    tmpSink?.close()
+                    tmp?.let { fileSystem.delete(it, mustExist = false) }
+                    tmpSink = null; tmp = null
+                }
+            } finally {
+                // Released even when the tail fails, or the region stays "in flight" (unwritable) forever.
+                val victims = synchronized(lock) {
+                    regionToken?.let { inFlight -= it } // known-length only
+                    activeWriters -= id
+                    planEviction(0)
+                }
+                victims.forEach { fileSystem.delete(it, mustExist = false) }
             }
-            val victims = synchronized(lock) {
-                regionToken?.let { inFlight -= it } // known-length only
-                activeWriters -= id
-                planEviction(0)
-            }
-            victims.forEach { fileSystem.delete(it, mustExist = false) }
         }
     }
 
-    /** Reads pre-planned, pinned [chunks] in order; [close] unpins (idempotent). Inner so it shares [lock]. */
-    private inner class StitchedSource(private val chunks: List<Chunk>) : PinnedSource {
+    /** Reads pre-planned, pinned [chunks] in order from their already-open [handles]; [close] closes the
+     *  handles and unpins (idempotent). Inner so it shares [lock]. */
+    private inner class StitchedSource(
+        private val chunks: List<Chunk>,
+        private val handles: List<FileHandle>,
+    ) : PinnedSource {
         private var idx = 0
         private var current: BufferedSource? = null
-        private var handle: FileHandle? = null
         private var currentRemaining = 0L
         private var closed = false
 
@@ -354,19 +387,18 @@ class DiskMediaBlobCache(
             while (true) {
                 val src = current
                 if (src != null && currentRemaining > 0) {
-                    val n = src.read(sink, minOf(byteCount, currentRemaining))
+                    val n = storage("span read") { src.read(sink, minOf(byteCount, currentRemaining)) }
                     if (n == -1L) { currentRemaining = 0; continue }
                     currentRemaining -= n
                     return n
                 }
                 closeCurrent()
                 if (idx >= chunks.size) return -1
-                val chunk = chunks[idx++]
-                // openReadOnly + seek to the span offset. `source().skip(skip)` would read-and-discard the
-                // prefix — up to a whole span for a read starting deep into it.
-                val h = fileSystem.openReadOnly(pathOf(chunk.key, chunk.start, chunk.len))
-                handle = h
-                current = h.source(fileOffset = chunk.skip).buffer()
+                val chunk = chunks[idx]
+                // Seek to the span offset. `source().skip(skip)` would read-and-discard the prefix — up to a
+                // whole span for a read starting deep into it.
+                current = handles[idx].source(fileOffset = chunk.skip).buffer()
+                idx++
                 currentRemaining = chunk.take
             }
         }
@@ -377,15 +409,24 @@ class DiskMediaBlobCache(
             if (closed) return
             closed = true
             closeCurrent()
+            handles.forEach { it.close() }
             synchronized(lock) { chunks.forEach { unpin(spanId(it.key, it.start, it.len)) } }
         }
 
-        /** Close the current span's source then its file handle (order matters — the handle's OS resource
-         *  is released once it's closed and its last stream is closed). */
+        /** Close the current span's source then its handle (okio handle close is idempotent, so [close]
+         *  closing every handle again is safe). */
         private fun closeCurrent() {
             current?.close(); current = null
-            handle?.close(); handle = null
+            if (idx > 0) handles[idx - 1].close()
         }
+    }
+
+    private inline fun <T> storage(op: String, block: () -> T): T = try {
+        block()
+    } catch (e: MediaCacheStorageException) {
+        throw e
+    } catch (e: IOException) {
+        throw MediaCacheStorageException("$op: ${e.message}", e)
     }
 
     private fun pathOf(key: String, start: Long, len: Long): Path = root / key / spanName(start, len)

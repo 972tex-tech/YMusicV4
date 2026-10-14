@@ -362,6 +362,22 @@ internal suspend fun readLoginUrl(r: JsonReader): String {
     return url
 }
 
+/** The `yt/verify/target` result: `{"url","userAgent"}`. */
+internal suspend fun readVerifyTarget(r: JsonReader): YtVerifyTarget {
+    var url = ""
+    var userAgent = ""
+    r.beginObject()
+    while (r.hasNextObjectKey()) {
+        when (r.nextKey()) {
+            "url" -> url = r.stringOrNull() ?: ""
+            "userAgent" -> userAgent = r.stringOrNull() ?: ""
+            else -> r.skipValue()
+        }
+    }
+    r.endObject()
+    return YtVerifyTarget(url, userAgent)
+}
+
 /** The `yt/locale` / `yt/locales` result: `{"hl","gl","languages"?,"regions"?}`. */
 internal suspend fun readLocales(r: JsonReader): YtLocales {
     var gl = ""

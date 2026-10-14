@@ -662,6 +662,8 @@ class DiskLruCache(
             val dirtyFile = dirtyFiles[index] ?: (tempDir / (newUniqueFileName() + ".tmp")).also {
                 dirtyFiles[index] = it
             }
+            // The OS may wipe the cache dir while we run (Android, low storage).
+            fileSystem.createDirectories(tempDir)
             val delegate = fileSystem.sink(dirtyFile)
             return object : ForwardingOkioSink(delegate) {
                 override fun close() {

@@ -138,7 +138,8 @@
     <string name="sort_duration">अवधि</string>
     <string name="sort_song_count">गीत सङ्ख्या</string>
     <string name="cd_sort">क्रमबद्ध गर्नुहोस्</string>
-    <string name="cd_sort_order">क्रम</string>
+    <string name="cd_sort_ascending">क्रम: बढ्दो</string>
+    <string name="cd_sort_descending">क्रम: घट्दो</string>
     <string name="library_unavailable">यो प्लेटफर्ममा कुनै स्थानीय लाइब्रेरी सेट गरिएको छैन</string>
     <string name="library_empty">तपाईंको लाइब्रेरी खाली छ</string>
     <string name="library_scan_folder">+  फोल्डर स्क्यान गर्नुहोस्</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">थप</string>
     <string name="cd_collapse">खुम्च्याउनुहोस्</string>
     <string name="cd_expand">विस्तार गर्नुहोस्</string>
-    <string name="cd_play_pause">बजाउनुहोस्/पज</string>
     <string name="cd_next">अर्को</string>
     <string name="cd_previous">अघिल्लो</string>
     <string name="cd_download">डाउनलोड गर्नुहोस्</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">स्क्रिन भर्नुहोस्</string>
     <string name="cd_rewind10">10 सेकेन्ड पछाडि</string>
     <string name="cd_forward10">10 सेकेन्ड अगाडि</string>
-    <string name="cd_repeat">दोहोर्याउनुहोस्</string>
+    <string name="cd_repeat_off">दोहोर्याउनुहोस्: बन्द</string>
+    <string name="cd_repeat_all">दोहोर्याउनुहोस्: सबै</string>
+    <string name="cd_repeat_one">दोहोर्याउनुहोस्: एउटा</string>
     <string name="play_all">सबै बजाउनुहोस्</string>
     <string name="shuffle_all">सबै सफ्फल गर्नुहोस्</string>
     <string name="cd_shuffle">सफ्फल</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">इन्स्टल गर्न तयार</string>
     <string name="update_manual_hint">यो प्रतिले आफैँ अपडेट गर्न सक्दैन (%1$s)। बरु नयाँ संस्करण डाउनलोड गर्नुहोस्।</string>
     <string name="update_failed">अपडेट असफल भयो: %1$s</string>
+    <string name="update_official_site">आधिकारिक वेबसाइटबाट डाउनलोड गर्नुहोस्</string>
     <string name="download_title">डाउनलोड</string>
     <string name="download_audio_only">अडियो मात्र</string>
     <string name="download_video">भिडियो</string>

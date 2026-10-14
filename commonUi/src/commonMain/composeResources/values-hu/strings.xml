@@ -138,7 +138,8 @@
     <string name="sort_duration">Időtartam</string>
     <string name="sort_song_count">Dalok száma</string>
     <string name="cd_sort">Rendezés</string>
-    <string name="cd_sort_order">Rendezési sorrend</string>
+    <string name="cd_sort_ascending">Rendezési sorrend: növekvő</string>
+    <string name="cd_sort_descending">Rendezési sorrend: csökkenő</string>
     <string name="library_unavailable">Ezen a platformon nincs helyi könyvtár beállítva</string>
     <string name="library_empty">A könyvtárad üres</string>
     <string name="library_scan_folder">+  Mappa beolvasása</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">Továbbiak</string>
     <string name="cd_collapse">Összecsukás</string>
     <string name="cd_expand">Kibontás</string>
-    <string name="cd_play_pause">Lejátszás/Szünet</string>
     <string name="cd_next">Következő</string>
     <string name="cd_previous">Előző</string>
     <string name="cd_download">Letöltés</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">Képernyő kitöltése</string>
     <string name="cd_rewind10">10 másodperc vissza</string>
     <string name="cd_forward10">10 másodperc előre</string>
-    <string name="cd_repeat">Ismétlés</string>
+    <string name="cd_repeat_off">Ismétlés: ki</string>
+    <string name="cd_repeat_all">Ismétlés: összes</string>
+    <string name="cd_repeat_one">Ismétlés: egy</string>
     <string name="play_all">Összes lejátszása</string>
     <string name="shuffle_all">Összes keverése</string>
     <string name="cd_shuffle">Keverés</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">Telepítésre kész</string>
     <string name="update_manual_hint">Ez a példány nem tudja frissíteni magát (%1$s). Töltsd le inkább az új verziót.</string>
     <string name="update_failed">A frissítés sikertelen: %1$s</string>
+    <string name="update_official_site">Letöltés a hivatalos webhelyről</string>
     <string name="download_title">Letöltés</string>
     <string name="download_audio_only">Csak hang</string>
     <string name="download_video">Videó</string>

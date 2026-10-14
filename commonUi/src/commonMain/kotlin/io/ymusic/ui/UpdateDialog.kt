@@ -32,131 +32,93 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.update_allow_install
 import io.ymusic.ui.resources.update_ask_later
 import io.ymusic.ui.resources.update_available_title
-import io.ymusic.ui.resources.update_background
 import io.ymusic.ui.resources.update_check
 import io.ymusic.ui.resources.update_check_failed
 import io.ymusic.ui.resources.update_checking
 import io.ymusic.ui.resources.update_close
 import io.ymusic.ui.resources.update_download
-import io.ymusic.ui.resources.update_download_failed
+import io.ymusic.ui.resources.update_download_in_browser
 import io.ymusic.ui.resources.update_downloading
 import io.ymusic.ui.resources.update_failed
 import io.ymusic.ui.resources.update_full_changelog
 import io.ymusic.ui.resources.update_install_now
+import io.ymusic.ui.resources.update_install_permission
 import io.ymusic.ui.resources.update_manual_hint
+import io.ymusic.ui.resources.update_official_site
 import io.ymusic.ui.resources.update_ready
 import io.ymusic.ui.resources.update_up_to_date
 import io.ymusic.ui.resources.update_version
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * The update prompt: the version, its brief notes and a link to the full changelog.
+ * The update prompt, one shape for every state of the release: the version, its brief notes, the
+ * full changelog, and below them what the user's own download is doing.
  *
- * - Available: "Ask later" / "Download". Download starts the download with progress here; when this
- *   release cannot replace the installed copy (`installInApp` false, or self-update blocked) it
- *   opens the release's web page instead.
- * - Downloading (started here): "Background" hides the dialog and lets the download go on;
- *   "Install now" stays disabled until it finishes.
- * - Ready: "Ready to install" beside the version; "Ask later" / "Install now". A download hidden or
- *   finished in the background brings the dialog back here — nothing installs without a tap.
+ * Progress and failure show only once the user has tapped "Download" this run: a background
+ * download is invisible until then (it prompts only once ready), and "Download" joins it, retries
+ * it, or starts it. A ready
+ * installer turns the button into "Install now" however it was downloaded. A failure links the
+ * official download site. Without the OS's install permission the user picks between granting it
+ * and downloading the release in the browser.
  *
  * "Ask later" hides it for the rest of this run (the update itself stays offered: the drawer still
- * flags it); the next cold start or a "Check for update" asks again.
+ * flags it), except that a download the user started brings it back once ready; the next cold
+ * start or a "Check for update" asks again.
  */
 @Composable
-fun UpdateDialog(graph: AppGraph, recheck: Int = 0, showMessage: (String) -> Unit = {}) {
+fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
     val updates = graph.updates ?: return
     val status by updates.status.collectAsState()
     val uriHandler = LocalUriHandler.current
     // Keyed on [recheck]: a manual "Check for update" brings back a release asked about later.
     var dismissedVersion by remember(recheck) { mutableStateOf<Int?>(null) }
-    var failureDismissed by remember(recheck) { mutableStateOf(false) }
-    // The download was started here and not sent to the background: show its progress. A manual
-    // "Check for update" ([recheck]) that lands on an automatic download in flight shows it too.
-    var watching by remember(recheck) {
-        mutableStateOf(recheck > 0 && updates.status.value is AppUpdateStatus.Downloading)
+    var requestedVersion by remember { mutableStateOf<Int?>(null) }
+    val offer = status as? AppUpdateStatus.Offered ?: return
+    val requested = requestedVersion == offer.versionCode
+    val download = offer.download
+    LaunchedEffect(requested && download is UpdateDownload.Ready) {
+        if (requested && download is UpdateDownload.Ready) dismissedVersion = null
     }
-    // Sent to the background: a failure there is a short message, not this dialog; the next launch
-    // offers the update afresh.
-    var backgrounded by remember(recheck) { mutableStateOf(false) }
-    val failedMessage = stringResource(Res.string.update_download_failed)
-    LaunchedEffect(status) {
-        when {
-            status is AppUpdateStatus.Ready -> backgrounded = false
-            backgrounded && status is AppUpdateStatus.Failed -> {
-                backgrounded = false
-                failureDismissed = true
-                showMessage(failedMessage)
-            }
-        }
-    }
-
-    val versionCode = when (val s = status) {
-        is AppUpdateStatus.Available -> s.versionCode
-        is AppUpdateStatus.Downloading -> s.versionCode
-        is AppUpdateStatus.Ready -> s.versionCode
-        else -> null
-    }
-    when (status) {
-        AppUpdateStatus.None -> return
-        is AppUpdateStatus.Failed -> if (failureDismissed || backgrounded) return
-        is AppUpdateStatus.Downloading -> if (!watching || versionCode == dismissedVersion) return
-        else -> if (versionCode == dismissedVersion) return
-    }
+    if (offer.versionCode == dismissedVersion) return
+    // A background download in flight never prompts on its own; it does once ready, or on "Check for update".
+    if (!requested && download is UpdateDownload.Running && recheck == 0) return
 
     val blocked = updates.blockedReason
-    val inPlace = blocked == null && (status as? AppUpdateStatus.Available)?.installInApp != false
-    val changelogUrl = when (val s = status) {
-        is AppUpdateStatus.Available -> s.changelogUrl
-        is AppUpdateStatus.Ready -> s.changelogUrl
-        else -> null
-    }
-    val askLater: () -> Unit = {
-        if (status is AppUpdateStatus.Failed) failureDismissed = true else dismissedVersion = versionCode
-        watching = false
-    }
-    val background: () -> Unit = {
-        watching = false
-        backgrounded = true
-    }
+    val inPlace = blocked == null && offer.installInApp
+    val askLater: () -> Unit = { dismissedVersion = offer.versionCode }
+    val openDownloadPage: (() -> Unit)? = offer.downloadPage?.let { url -> { uriHandler.openUri(url) } }
 
     ElevatedBarDialog(
         title = stringResource(Res.string.update_available_title),
         // Back acts as the first button; a tap outside does nothing — only the buttons close it.
-        onDismiss = if (status is AppUpdateStatus.Downloading) background else askLater,
+        onDismiss = askLater,
         dismissOnClickOutside = false,
         canScrollBackward = false,
         canScrollForward = false,
         buttons = {
-            when (status) {
-                is AppUpdateStatus.Available -> {
-                    DialogSecondaryButton(stringResource(Res.string.update_ask_later), onClick = askLater)
-                    TextButton(
-                        onClick = {
-                            if (inPlace) {
-                                watching = true
-                                updates.download()
-                            } else {
-                                updates.openDownloadPage()
-                            }
-                        },
-                    ) { Text(stringResource(Res.string.update_download)) }
+            DialogSecondaryButton(stringResource(Res.string.update_ask_later), onClick = askLater)
+            when {
+                !inPlace -> TextButton(onClick = { openDownloadPage?.invoke() }, enabled = openDownloadPage != null) {
+                    Text(stringResource(Res.string.update_download))
                 }
-                is AppUpdateStatus.Downloading -> {
-                    DialogSecondaryButton(stringResource(Res.string.update_background), onClick = background)
-                    TextButton(onClick = {}, enabled = false) { Text(stringResource(Res.string.update_install_now)) }
+                download is UpdateDownload.NeedsInstallPermission -> TextButton(onClick = { updates.allowInstall() }) {
+                    Text(stringResource(Res.string.update_allow_install))
                 }
-                is AppUpdateStatus.Ready -> {
-                    DialogSecondaryButton(stringResource(Res.string.update_ask_later), onClick = askLater)
-                    TextButton(onClick = { updates.installAndRestart() }) { Text(stringResource(Res.string.update_install_now)) }
+                download is UpdateDownload.Ready -> TextButton(onClick = { updates.installAndRestart() }) {
+                    Text(stringResource(Res.string.update_install_now))
                 }
-                is AppUpdateStatus.Failed -> {
-                    DialogSecondaryButton(stringResource(Res.string.update_ask_later), onClick = askLater)
-                    TextButton(onClick = { updates.openDownloadPage() }) { Text(stringResource(Res.string.update_download)) }
+                requested && download is UpdateDownload.Running -> TextButton(onClick = {}, enabled = false) {
+                    Text(stringResource(Res.string.update_install_now))
                 }
-                AppUpdateStatus.None -> Unit
+                else -> TextButton(
+                    onClick = {
+                        requestedVersion = offer.versionCode
+                        updates.download()
+                    },
+                ) { Text(stringResource(Res.string.update_download)) }
             }
         },
     ) {
@@ -165,68 +127,64 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0, showMessage: (String) -> Uni
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
         ) {
-            val name = when (val s = status) {
-                is AppUpdateStatus.Available -> s.versionName
-                is AppUpdateStatus.Ready -> s.versionName
-                is AppUpdateStatus.Downloading -> s.versionName
-                else -> ""
-            }
-            if (name.isNotEmpty()) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(Res.string.update_version, offer.versionName),
+                    style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+                )
+                if (inPlace && download is UpdateDownload.Ready) {
                     Text(
-                        stringResource(Res.string.update_version, name),
-                        style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+                        stringResource(Res.string.update_ready),
+                        style = TextStyle(fontSize = 13.sp, color = DesignColors.Accent),
                     )
-                    if (status is AppUpdateStatus.Ready) {
-                        Text(
-                            stringResource(Res.string.update_ready),
-                            style = TextStyle(fontSize = 13.sp, color = DesignColors.Accent),
-                        )
-                    }
                 }
             }
-            when (val s = status) {
-                is AppUpdateStatus.Available -> ChangeNotes(s.notes)
-                is AppUpdateStatus.Ready -> ChangeNotes(s.notes)
-                is AppUpdateStatus.Downloading -> {
-                    Text(
-                        stringResource(
-                            Res.string.update_downloading,
-                            formatBytes(s.done),
-                            formatBytes(s.total),
-                        ),
-                        style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
-                    )
-                    LinearProgressIndicator(
-                        progress = { if (s.total > 0) (s.done.toFloat() / s.total) else 0f },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                is AppUpdateStatus.Failed -> Text(
-                    stringResource(Res.string.update_failed, s.reason),
+            ChangeNotes(offer.notes)
+            offer.changelogUrl?.let { url -> LinkText(stringResource(Res.string.update_full_changelog)) { uriHandler.openUri(url) } }
+            if (requested && download is UpdateDownload.Running) {
+                Text(
+                    stringResource(Res.string.update_downloading, formatBytes(download.done), formatBytes(download.total)),
                     style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
                 )
-                AppUpdateStatus.None -> Unit
-            }
-            if (changelogUrl != null) {
-                Text(
-                    stringResource(Res.string.update_full_changelog),
-                    style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Accent),
-                    modifier = Modifier.clickable { uriHandler.openUri(changelogUrl) }
-                        .padding(vertical = DesignSpacing.Space4),
+                LinearProgressIndicator(
+                    progress = { if (download.total > 0) (download.done.toFloat() / download.total) else 0f },
+                    modifier = Modifier.fillMaxWidth(),
                 )
+            }
+            if (download is UpdateDownload.NeedsInstallPermission) {
+                Text(
+                    stringResource(Res.string.update_install_permission),
+                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+                )
+                openDownloadPage?.let { LinkText(stringResource(Res.string.update_download_in_browser), it) }
+            }
+            if (requested && download is UpdateDownload.Failed) {
+                Text(
+                    stringResource(Res.string.update_failed, download.code),
+                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+                )
+                openDownloadPage?.let { LinkText(stringResource(Res.string.update_official_site), it) }
             }
             if (blocked != null) {
                 Text(
-                    stringResource(Res.string.update_manual_hint, blocked),
+                    stringResource(Res.string.update_manual_hint, stringResource(blocked)),
                     style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
                 )
             }
         }
     }
+}
+
+@Composable
+private fun LinkText(text: String, onClick: () -> Unit) {
+    Text(
+        text,
+        style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Accent),
+        modifier = Modifier.clickable(onClick = onClick).padding(vertical = DesignSpacing.Space4),
+    )
 }
 
 /**
@@ -279,7 +237,7 @@ private fun ChangeNotes(notes: String) {
     Text(
         notes,
         style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
-        maxLines = 6,
+        maxLines = 7,
         overflow = TextOverflow.Ellipsis,
     )
 }

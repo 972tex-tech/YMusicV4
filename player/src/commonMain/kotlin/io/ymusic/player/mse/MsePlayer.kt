@@ -66,6 +66,9 @@ import projectcommon.json.longOrNull
 import projectcommon.json.objectOrNull
 import projectcommon.json.objects
 import projectcommon.json.stringOrNull
+import projectcommon.log.markTrail
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * YouTube [YtEngine] over engine-js + C MSE, mirroring legacy `WebViewYtPlayer`. Each [init]/[reset]
@@ -81,10 +84,12 @@ import projectcommon.json.stringOrNull
 class MsePlayer internal constructor(
     private val newEngineThread: () -> CloseableCoroutineDispatcher,
     val videoSurface: MseVideoSurface,
-    private val log: Logger?,
+    logger: Logger?,
     private val playerJs: JsSourceProvider,
     private val buildPlayer: (engineThread: CoroutineDispatcher, playerJs: String) -> DynamicEnginePlayer,
 ) : YtEngine {
+    private val log = logger?.fork("mse")
+
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /** Fire-and-forget teardown of abandoned sessions; deliberately outlives [release]. */
@@ -116,6 +121,7 @@ class MsePlayer internal constructor(
     private class Session(val job: Job) {
         val scope = CoroutineScope(Dispatchers.Main.immediate + job)
         val commands = Channel<suspend (DynamicEnginePlayer) -> Unit>(Channel.UNLIMITED)
+        val startedAt = TimeSource.Monotonic.markNow()
         var player: DynamicEnginePlayer? = null
         var captionJob: Job? = null
 
@@ -125,6 +131,10 @@ class MsePlayer internal constructor(
         /** Loop as last sent to JS: `config.loop` forced off while a live stream is loaded. */
         var loop: Boolean? = null
         var live = false
+
+        /** Commands sent but not yet started, and when the running one started — for [MseLoadTrace]. */
+        var queued = 0
+        var runningSince: TimeMark? = null
     }
 
     private var session: Session? = null
@@ -139,6 +149,7 @@ class MsePlayer internal constructor(
     private var loadingVideoId: String? = null
     private var loadedVideoId: String? = null
     private var loadTimeoutJob: Job? = null
+    private var loadTrace: MseLoadTrace? = null
     private var pendingVideoSurface: MseVideoSurface? = null
     private var hasPendingVideoSurface = false
     private var viewportW: Int = 640
@@ -153,14 +164,16 @@ class MsePlayer internal constructor(
     override fun init() {
         requireMainThread()
         if (released || session != null) return
-        startSession()
+        startSession("init")
     }
 
-    override fun reset() {
+    override fun reset() = reset("unspecified")
+
+    override fun reset(reason: String) {
         requireMainThread()
         if (released) return
-        tearDownSession()
-        startSession()
+        tearDownSession("reset: $reason")
+        startSession("reset: $reason")
     }
 
     override fun load(
@@ -189,12 +202,23 @@ class MsePlayer internal constructor(
         val width = viewportW
         val height = viewportH
         if (captionChanged(previous, config)) send { applyCaptionConfig(it, config) }
+        val quality = config.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY }
+        val trace = MseLoadTrace(
+            source.videoId,
+            config.audioOnly,
+            quality,
+            queuedAhead = activeSession.queued,
+            runningCommandMs = activeSession.runningSince?.elapsedNow()?.inWholeMilliseconds,
+            framesAtQueue = if (hostLive()) videoSurface.presentedFrames() else null,
+        )
+        loadTrace = trace
         send { enginePlayer ->
+            trace.commandStarted()
             try {
                 enginePlayer.load(
                     source.videoId,
                     log,
-                    quality = config.preferVideoQuality.first.takeIf { it != VideoQualityState.AUDIO_ONLY },
+                    quality = quality,
                     width = width,
                     height = height,
                     audioOnly = config.audioOnly,
@@ -204,6 +228,7 @@ class MsePlayer internal constructor(
                     pitch = config.pitchFactor.coerceIn(0.5f, 2f),
                     loop = loop,
                 )
+                trace.commandAcked()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -216,8 +241,17 @@ class MsePlayer internal constructor(
         loadTimeoutJob = mainScope.launch {
             delay(LOAD_TIMEOUT_MS)
             loadTimeoutJob = null
-            tearDownSession()
-            fail(TechnicalException("E60051", "load timeout ${source.videoId}"), "load timeout", needReset = true)
+            val loadLog = log?.fork("load", mapOf("videoId" to source.videoId))
+            val stalled = trace.describe(
+                presentedFrames = if (hostLive()) videoSurface.presentedFrames() else null,
+                runningNowMs = session?.runningSince?.elapsedNow()?.inWholeMilliseconds,
+                queuedNow = session?.queued,
+            )
+            loadLog?.log(Logger.Level.WARN, "E60051 load stalled $stalled")
+            tearDownSession("load timeout")
+            val timeout = TechnicalException("E60051", "load timeout ${source.videoId}")
+                .markTrail(loadLog)
+            fail(timeout, "load timeout", needReset = true)
         }
     }
 
@@ -252,7 +286,7 @@ class MsePlayer internal constructor(
         when (_status.value.state) {
             is PlaybackState.Uninitialized -> return
             is PlaybackState.Error -> {
-                tearDownSession()
+                tearDownSession("stop in error")
                 return
             }
             else -> Unit
@@ -340,7 +374,7 @@ class MsePlayer internal constructor(
         requireMainThread()
         if (released) return
         released = true
-        tearDownSession()
+        tearDownSession("release")
         val lastClose = closing
         mainScope.launch {
             lastClose?.join()
@@ -364,8 +398,9 @@ class MsePlayer internal constructor(
         }
     }
 
-    private fun startSession() {
+    private fun startSession(reason: String) {
         check(session == null) { "mse session already running" }
+        log?.log(Logger.Level.INFO, "mse session start ($reason) freshConfig=$freshConfigNext")
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true), videoSize = null) }
         val newSession = Session(SupervisorJob(mainScope.coroutineContext[Job]))
         session = newSession
@@ -401,12 +436,16 @@ class MsePlayer internal constructor(
                 }
                 cleanupScope.launch { prefetchPlayerJs(version) }
                 for (command in newSession.commands) {
+                    newSession.queued--
+                    newSession.runningSince = TimeSource.Monotonic.markNow()
                     try {
                         command(enginePlayer)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Throwable) {
                         log?.log(Logger.Level.WARN, "mse command failed", error)
+                    } finally {
+                        newSession.runningSince = null
                     }
                 }
             } catch (error: CancellationException) {
@@ -454,11 +493,19 @@ class MsePlayer internal constructor(
     }
 
     /** Legacy `resetInternal(loadBlank = true)`: kill the session, leave [status] as is. */
-    private fun tearDownSession() {
+    private fun tearDownSession(reason: String) {
+        session?.let {
+            log?.log(
+                Logger.Level.INFO,
+                "mse session teardown ($reason) age=${it.startedAt.elapsedNow().inWholeMilliseconds}ms " +
+                    "loaded=${loadedVideoId ?: "-"} loading=${loadingVideoId ?: "-"}",
+            )
+        }
         loadingVideoId = null
         loadedVideoId = null
         loadTimeoutJob?.cancel()
         loadTimeoutJob = null
+        loadTrace = null
         _captionLines.value = emptyList()
         val oldSession = session ?: return
         session = null
@@ -468,7 +515,8 @@ class MsePlayer internal constructor(
     }
 
     private fun send(command: suspend (DynamicEnginePlayer) -> Unit) {
-        session?.commands?.trySend(command)
+        val activeSession = session ?: return
+        if (activeSession.commands.trySend(command).isSuccess) activeSession.queued++
     }
 
     private suspend fun readyPlayer(): DynamicEnginePlayer = withContext(Dispatchers.Main.immediate) {
@@ -540,7 +588,10 @@ class MsePlayer internal constructor(
     private fun listen(activeSession: Session, enginePlayer: DynamicEnginePlayer) {
         activeSession.scope.launch {
             try {
-                enginePlayer.collectStatus({ applyListen(it) }, log)
+                enginePlayer.collectStatus({
+                    if (session === activeSession) loadTrace?.engineEvent()
+                    applyListen(it)
+                }, log)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -575,6 +626,7 @@ class MsePlayer internal constructor(
     private fun applyDetails(json: JsonObject) {
         val videoId = json.stringOrNull("videoId") ?: return
         if (videoId != (loadingVideoId ?: loadedVideoId)) return
+        if (videoId == loadingVideoId) loadTrace?.details(hasPlayerResponse = json.stringOrNull("channelTitle") != null)
         val details = MediaDetails(videoId, json.stringOrNull("channelTitle"), json.stringOrNull("channelUrl"))
         _status.update { it.copy(details = details) }
     }
@@ -583,11 +635,15 @@ class MsePlayer internal constructor(
         val videoId = json.stringOrNull("videoId")
         val loading = loadingVideoId
         if (loading != null) {
-            if (videoId != loading) return
+            if (videoId != loading) {
+                loadTrace?.progressFor(videoId)
+                return
+            }
             loadingVideoId = null
             loadedVideoId = videoId
             loadTimeoutJob?.cancel()
             loadTimeoutJob = null
+            loadTrace = null
         } else if (videoId != loadedVideoId) {
             return
         }
@@ -609,6 +665,7 @@ class MsePlayer internal constructor(
 
     private fun applyState(json: JsonObject) {
         val newState = json.stringOrNull("newState") ?: return
+        if (loadingVideoId != null) loadTrace?.state(newState)
         val playWhenReady = json.boolOrNull("playWhenReady") ?: false
         val live = json.boolOrNull("live") ?: false
         val state = when (newState) {
@@ -637,6 +694,7 @@ class MsePlayer internal constructor(
         val videoWidth = json.intOrNull("videoWidth") ?: 0
         val videoHeight = json.intOrNull("videoHeight") ?: 0
         if (videoWidth <= 0 || videoHeight <= 0) return
+        if (loadingVideoId != null) loadTrace?.picture()
         _status.update { it.copy(videoSize = VideoSize(videoWidth, videoHeight)) }
     }
 
@@ -670,6 +728,8 @@ class MsePlayer internal constructor(
             ?: Regex("""E\d{5}""").find(error.message.orEmpty())?.value
             ?: "E60033"
         log?.log(Logger.Level.WARN, "$code $message", error)
+        // The state change, not a throw, carries this failure out — its capture site must still see the mse trail.
+        error.markTrail(log)
         loadTimeoutJob?.cancel()
         loadTimeoutJob = null
         _status.update {

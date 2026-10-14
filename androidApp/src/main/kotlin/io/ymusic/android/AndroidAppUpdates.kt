@@ -6,12 +6,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import io.ymusic.remoteconfig.AppUpdate
 import io.ymusic.remoteconfig.DownloadMismatchException
 import io.ymusic.remoteconfig.downloadResumable
 import io.ymusic.ui.AppUpdateStatus
 import io.ymusic.ui.AppUpdates
 import io.ymusic.ui.UpdateCheck
+import io.ymusic.ui.UpdateDownload
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CancellationException
@@ -30,13 +33,18 @@ import okio.blackholeSink
 import okio.buffer
 import okio.sink
 import okio.source
+import org.jetbrains.compose.resources.StringResource
 import java.io.File
 
 /**
  * Updates the app from the config service's `appUpdate`: download the APK, check it against the
  * entry's size and sha256, hand it to [PackageInstaller]. The entry needs no signature of ours —
- * Android installs an update only when it is signed with the installed app's certificate and has a
- * higher versionCode.
+ * the session is pinned to our package, and Android installs an update only when it is signed with
+ * the installed app's certificate and has a higher versionCode.
+ *
+ * A download or install the user asks for first needs the OS's install permission ("Install unknown
+ * apps"); without it the user either grants it ([allowInstall], continued in [onResume]) or takes
+ * the release from the browser.
  */
 class AndroidAppUpdates(
     private val context: Context,
@@ -53,42 +61,54 @@ class AndroidAppUpdates(
     private val refreshConfig: suspend () -> Boolean,
     /** The config's current update entry. */
     private val latestUpdate: suspend () -> AppUpdate?,
+    /** The config's official download site, if it names one. */
+    private val downloadSite: () -> String?,
 ) : AppUpdates {
 
     private val _status = MutableStateFlow<AppUpdateStatus>(AppUpdateStatus.None)
     override val status: StateFlow<AppUpdateStatus> = _status
-    override val blockedReason: String? = null
+    override val blockedReason: StringResource? = null
 
     private val mutex = Mutex()
     private val downloadDir = File(context.cacheDir, "update")
 
     @Volatile private var pending: AppUpdate? = null
 
+    /** What the user asked for before being sent to grant the install permission: install, or download. */
+    @Volatile private var installAfterPermission = false
+
     private val log get() = logger?.fork("update")
+
+    private val currentDownload get() = (_status.value as? AppUpdateStatus.Offered)?.download
+
+    private fun offered(update: AppUpdate, download: UpdateDownload) = AppUpdateStatus.Offered(
+        versionCode = update.versionCode,
+        versionName = update.versionName,
+        notes = update.notes,
+        changelogUrl = update.changelogUrl,
+        installInApp = update.installInApp,
+        downloadPage = update.downloadPage ?: downloadSite() ?: update.url,
+        download = download,
+    )
 
     /** Take the config's latest answer. */
     suspend fun offer(update: AppUpdate?) {
         mutex.withLock {
             if (update == null || update.versionCode <= currentVersionCode) {
                 pending = null
-                if (_status.value is AppUpdateStatus.Available) _status.value = AppUpdateStatus.None
+                if (currentDownload.let { it is UpdateDownload.Idle || it is UpdateDownload.Failed || it is UpdateDownload.NeedsInstallPermission }) {
+                    _status.value = AppUpdateStatus.None
+                }
                 return
             }
             if (update == pending) return
             pending = update
             val apk = apkFile(update)
             val downloaded = withContext(Dispatchers.IO) { apk.isFile && sha256Of(apk) == update.sha256 }
-            _status.value = when {
-                downloaded && update.installInApp ->
-                    AppUpdateStatus.Ready(update.versionCode, update.versionName, update.notes, update.changelogUrl)
-                else -> AppUpdateStatus.Available(
-                    update.versionCode, update.versionName, update.notes, update.size, update.changelogUrl, update.installInApp,
-                )
-            }
+            _status.value = offered(update, if (downloaded && update.installInApp) UpdateDownload.Ready else UpdateDownload.Idle)
         }
         // Automatically: once per release. A release that already failed that way waits for a tap.
-        val status = _status.value
-        if (status is AppUpdateStatus.Available && status.installInApp && autoDownload() &&
+        if (currentDownload is UpdateDownload.Idle && pending?.installInApp == true && autoDownload() &&
             pending?.sha256 != autoDownloadFailed()
         ) {
             start(auto = true)
@@ -104,7 +124,9 @@ class AndroidAppUpdates(
         }
     }
 
-    override fun download() = start(auto = false)
+    override fun download() {
+        if (canInstall()) start(auto = false) else needInstallPermission(install = false)
+    }
 
     /**
      * Fetch [pending]. Any failure deletes the partial file: the next attempt starts fresh (only a
@@ -117,13 +139,13 @@ class AndroidAppUpdates(
             val update = mutex.withLock {
                 val update = pending ?: return@launch
                 if (!update.installInApp) return@launch
-                if (_status.value is AppUpdateStatus.Downloading || _status.value is AppUpdateStatus.Ready) return@launch
-                _status.value = AppUpdateStatus.Downloading(update.versionCode, update.versionName, 0, update.size)
+                if (currentDownload is UpdateDownload.Running || currentDownload is UpdateDownload.Ready) return@launch
+                _status.value = offered(update, UpdateDownload.Running(0, update.size))
                 update
             }
             try {
                 withContext(Dispatchers.IO) { fetch(update) }
-                _status.value = AppUpdateStatus.Ready(update.versionCode, update.versionName, update.notes, update.changelogUrl)
+                _status.value = offered(update, UpdateDownload.Ready)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Exception) {
@@ -131,15 +153,13 @@ class AndroidAppUpdates(
                 if (auto) {
                     log?.log(Logger.Level.WARN, "automatic download of update ${update.versionCode} failed; offering it instead", error)
                     rememberAutoDownloadFailed(update.sha256)
-                    _status.value = AppUpdateStatus.Available(
-                        update.versionCode, update.versionName, update.notes, update.size, update.changelogUrl, update.installInApp,
-                    )
+                    _status.value = offered(update, UpdateDownload.Idle)
                 } else if (error is DownloadMismatchException) {
                     log?.captureError(error, "update ${update.versionCode} failed verification")
-                    _status.value = AppUpdateStatus.Failed("E91011")
+                    _status.value = offered(update, UpdateDownload.Failed("E91011"))
                 } else {
                     log?.captureError(error, "downloading update ${update.versionCode} failed")
-                    _status.value = AppUpdateStatus.Failed("E91012")
+                    _status.value = offered(update, UpdateDownload.Failed("E91012"))
                 }
             }
         }
@@ -151,7 +171,7 @@ class AndroidAppUpdates(
         // Another release's leftovers can never be resumed into this one.
         downloadDir.listFiles().orEmpty().filter { it.name.endsWith(".part") && it != part }.forEach { it.delete() }
         downloadResumable(client, update.url, part.toOkioPath(), FileSystem.SYSTEM, update.size, update.sha256) { done ->
-            _status.value = AppUpdateStatus.Downloading(update.versionCode, update.versionName, done, update.size)
+            _status.value = offered(update, UpdateDownload.Running(done, update.size))
         }
         check(part.renameTo(apkFile(update))) { "could not move the APK into place" }
     }
@@ -159,7 +179,8 @@ class AndroidAppUpdates(
     /** Opens the system install prompt; Android restarts nothing — the user reopens the app. */
     override fun installAndRestart() {
         val update = pending ?: return
-        if (_status.value !is AppUpdateStatus.Ready) return
+        if (currentDownload !is UpdateDownload.Ready) return
+        if (!canInstall()) return needInstallPermission(install = true)
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { commit(apkFile(update)) }
@@ -167,14 +188,52 @@ class AndroidAppUpdates(
                 throw cancel
             } catch (error: Exception) {
                 log?.captureError(error, "installing update ${update.versionCode} failed")
-                _status.value = AppUpdateStatus.Failed("E91013")
+                _status.value = offered(update, UpdateDownload.Failed("E91013"))
             }
         }
+    }
+
+    private fun needInstallPermission(install: Boolean) {
+        val update = pending ?: return
+        installAfterPermission = install
+        _status.value = offered(update, UpdateDownload.NeedsInstallPermission)
+    }
+
+    override fun allowInstall() {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+        } else {
+            Intent(Settings.ACTION_SECURITY_SETTINGS)
+        }
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    /** Back in the app: a request held for the install permission continues once it is granted. */
+    fun onResume() {
+        val update = pending ?: return
+        if (currentDownload !is UpdateDownload.NeedsInstallPermission || !canInstall()) return
+        if (installAfterPermission) {
+            _status.value = offered(update, UpdateDownload.Ready)
+            installAndRestart()
+        } else {
+            _status.value = offered(update, UpdateDownload.Idle)
+            start(auto = false)
+        }
+    }
+
+    private fun canInstall(): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.packageManager.canRequestPackageInstalls()
+    } else {
+        // API 24-25 have no per-app grant, only the global "Unknown sources" switch.
+        @Suppress("DEPRECATION")
+        Settings.Secure.getInt(context.contentResolver, Settings.Secure.INSTALL_NON_MARKET_APPS, 0) == 1
     }
 
     private fun commit(apk: File) {
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+        // Without it a session installs whatever package the APK holds, as a new app.
+        params.setAppPackageName(context.packageName)
         params.setSize(apk.length())
         val sessionId = installer.createSession(params)
         installer.openSession(sessionId).use { session ->
@@ -193,11 +252,6 @@ class AndroidAppUpdates(
             )
             session.commit(callback.intentSender)
         }
-    }
-
-    override fun openDownloadPage() {
-        val url = pending?.let { it.downloadPage ?: it.url } ?: return
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     override suspend fun checkNow(): UpdateCheck {

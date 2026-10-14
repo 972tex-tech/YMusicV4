@@ -138,7 +138,8 @@
     <string name="sort_duration">Dĺžka</string>
     <string name="sort_song_count">Počet skladieb</string>
     <string name="cd_sort">Zoradiť</string>
-    <string name="cd_sort_order">Poradie zoradenia</string>
+    <string name="cd_sort_ascending">Poradie zoradenia: vzostupne</string>
+    <string name="cd_sort_descending">Poradie zoradenia: zostupne</string>
     <string name="library_unavailable">Na tejto platforme nie je nastavená žiadna miestna knižnica</string>
     <string name="library_empty">Vaša knižnica je prázdna</string>
     <string name="library_scan_folder">+  Prehľadať priečinok</string>
@@ -244,7 +245,6 @@
     <string name="cd_more">Viac</string>
     <string name="cd_collapse">Zbaliť</string>
     <string name="cd_expand">Rozbaliť</string>
-    <string name="cd_play_pause">Prehrať/Pozastaviť</string>
     <string name="cd_next">Ďalšie</string>
     <string name="cd_previous">Predchádzajúce</string>
     <string name="cd_download">Stiahnuť</string>
@@ -254,7 +254,9 @@
     <string name="cd_fill_video">Vyplniť obrazovku</string>
     <string name="cd_rewind10">Pretočiť o 10 sekúnd späť</string>
     <string name="cd_forward10">Pretočiť o 10 sekúnd dopredu</string>
-    <string name="cd_repeat">Opakovať</string>
+    <string name="cd_repeat_off">Opakovať: vypnuté</string>
+    <string name="cd_repeat_all">Opakovať: všetko</string>
+    <string name="cd_repeat_one">Opakovať: jednu</string>
     <string name="play_all">Prehrať všetko</string>
     <string name="shuffle_all">Prehrať všetko náhodne</string>
     <string name="cd_shuffle">Náhodne</string>
@@ -386,6 +388,7 @@
     <string name="update_ready">Pripravené na inštaláciu</string>
     <string name="update_manual_hint">Táto kópia sa nemôže sama aktualizovať (%1$s). Stiahnite si novú verziu ručne.</string>
     <string name="update_failed">Aktualizácia zlyhala: %1$s</string>
+    <string name="update_official_site">Stiahnuť z oficiálnej stránky</string>
     <string name="download_title">Stiahnuť</string>
     <string name="download_audio_only">Len zvuk</string>
     <string name="download_video">Video</string>

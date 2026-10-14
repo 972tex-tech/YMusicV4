@@ -23,6 +23,7 @@ import io.ymusic.ui.sponsorblock.ServiceSponsorBlockApi
 import io.ymusic.ui.sponsorblock.SponsorBlockApi
 import io.ymusic.ui.sponsorblock.SponsorBlockService
 import io.ymusic.ui.sponsorblock.SponsorBlockStore
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,18 +40,29 @@ const val PlaybackSpeedKey = "player.speed"
 const val PlaybackPitchKey = "player.pitch"
 const val PlaybackEqKey = "player.eq"
 
+/** How a shell scan ended; the shared UI renders it as the user-facing summary. */
+sealed interface ScanResult {
+    data class Done(val scanned: Int, val added: Int, val updated: Int, val removed: Int, val failed: Int) : ScanResult
+
+    /** A rescan of every library root found none to rescan. */
+    data object NoFolders : ScanResult
+
+    /** The metadata extractor (ffmpeg) is missing from this install. */
+    data object ExtractorMissing : ScanResult
+}
+
 /**
  * A shell scan/rescan action: reports the running scanned-file count through [onProgress] while it
- * works, and returns a user-facing summary line (or null when a folder pick was canceled).
+ * works, and returns how it ended (or null when a folder pick was canceled).
  */
-typealias ScanAction = suspend (onProgress: (scanned: Int) -> Unit) -> String?
+typealias ScanAction = suspend (onProgress: (scanned: Int) -> Unit) -> ScanResult?
 
 /**
  * Re-scan already-indexed folders. [folderUri] null means every library root; otherwise only that
  * folder and its children. Reports the running scanned-file count through [onProgress] and returns
- * a user-facing summary line.
+ * how it ended.
  */
-typealias RescanAction = suspend (folderUri: String?, onProgress: (scanned: Int) -> Unit) -> String?
+typealias RescanAction = suspend (folderUri: String?, onProgress: (scanned: Int) -> Unit) -> ScanResult?
 
 /**
  * Everything the shared UI needs, built once by the platform shell (the composition root): the
@@ -101,6 +113,11 @@ class AppGraph(
     val revealInFolder: (suspend (uri: String) -> Unit)? = null,
     /** Display version for the drawer header (e.g. "4.0.1 · arm64"); null hides the line. */
     val appVersion: String? = null,
+    /** Settings › Versions: the build's versionName and versionCode; null hides the app line. */
+    val appVersionName: String? = null,
+    val appVersionCode: Int? = null,
+    /** Settings › Versions: the engine.js / player.js revisions actually running. */
+    val runningBundles: io.ymusic.remoteconfig.RunningBundles? = null,
     /** Thumbnail loading; null keeps the placeholder boxes (e.g. a shell without a cache dir yet). */
     val imageLoader: ImageLoader? = null,
     /** The app's root logger (Sentry-backed in the shells); screens fork their own scope off it. */
@@ -208,6 +225,13 @@ class AppGraph(
      * LIVES in the engine — the app only hears "it changed" and throws locale-shaped caches away.
      */
     val pip = PipCoordinator(player, settings)
+
+    /** One per process — a second instance double-captures playback failures and double-credits watch time.
+     *  Lazy: its collectors start at once and must only see a fully constructed graph. */
+    val playback by lazy {
+        val onFailure = CoroutineExceptionHandler { _, e -> logger?.fork("playback")?.captureError(e, "playback coordinator failed") }
+        PlaybackCoordinator(this, CoroutineScope(SupervisorJob() + Dispatchers.Default + onFailure))
+    }
 
     init {
         // Process-lifetime like the graph itself: every queue is recorded, whatever screen is up.

@@ -1,8 +1,15 @@
 package io.ymusic.desktop.update
 
 import io.ymusic.remoteconfig.AppUpdate
+import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.update_blocked_folder_read_only
+import io.ymusic.ui.resources.update_blocked_mac_swap
+import io.ymusic.ui.resources.update_blocked_no_pkexec
+import io.ymusic.ui.resources.update_blocked_not_deb
+import io.ymusic.ui.resources.update_blocked_not_installed
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.StringResource
 import java.io.File
 import java.nio.file.Files
 import java.security.MessageDigest
@@ -17,7 +24,7 @@ internal interface Installer {
     val extension: String
 
     /** Null when an in-place update is possible here; otherwise why not, shown to the user. */
-    val blockedReason: String?
+    val blockedReason: StringResource?
 
     /**
      * Install [file], already checked against [update]'s signed hash. True: the new version is
@@ -50,12 +57,12 @@ private const val NOT_INSTALLED = "the app is not running from an installed copy
 internal class MacDmgInstaller(private val bundle: File?) : Installer {
     override val extension = "dmg"
 
-    override val blockedReason: String?
+    override val blockedReason: StringResource?
         get() = when {
-            bundle == null -> NOT_INSTALLED
-            !MacBundleSwap.isSupported -> "this macOS cannot swap the app in place"
+            bundle == null -> Res.string.update_blocked_not_installed
+            !MacBundleSwap.isSupported -> Res.string.update_blocked_mac_swap
             // The swap renames inside the folder holding the .app.
-            bundle.parentFile?.canWrite() != true -> "the folder holding YMusic is not writable"
+            bundle.parentFile?.canWrite() != true -> Res.string.update_blocked_folder_read_only
             else -> null
         }
 
@@ -108,7 +115,7 @@ internal class MacDmgInstaller(private val bundle: File?) : Installer {
 internal class WindowsMsiInstaller(private val launcher: File?) : Installer {
     override val extension = "msi"
 
-    override val blockedReason: String? get() = if (launcher == null) NOT_INSTALLED else null
+    override val blockedReason: StringResource? get() = if (launcher == null) Res.string.update_blocked_not_installed else null
 
     override suspend fun install(file: File, update: AppUpdate): Boolean = withContext(Dispatchers.IO) {
         val launcher = checkNotNull(launcher) { NOT_INSTALLED }
@@ -139,11 +146,11 @@ internal class WindowsMsiInstaller(private val launcher: File?) : Installer {
 internal class LinuxDebInstaller(private val launcher: File?) : Installer {
     override val extension = "deb"
 
-    override val blockedReason: String?
+    override val blockedReason: StringResource?
         get() = when {
-            launcher == null -> NOT_INSTALLED
-            !launcher.path.startsWith("/opt/") -> "this copy was not installed from the .deb package"
-            !File(PKEXEC).canExecute() || !File(APT_GET).canExecute() -> "pkexec or apt-get is missing"
+            launcher == null -> Res.string.update_blocked_not_installed
+            !launcher.path.startsWith("/opt/") -> Res.string.update_blocked_not_deb
+            !File(PKEXEC).canExecute() || !File(APT_GET).canExecute() -> Res.string.update_blocked_no_pkexec
             else -> null
         }
 

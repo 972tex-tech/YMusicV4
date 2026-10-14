@@ -128,6 +128,7 @@ import io.ymusic.ui.CatalogueScreen
 import io.ymusic.ui.DarkDesignColors
 import io.ymusic.ui.IncomingLinks
 import io.ymusic.ui.LightDesignColors
+import io.ymusic.ui.ScanResult
 import io.ymusic.ui.VideoOverlayNative
 import io.ymusic.ui.YtEngineSabrSpecResolver
 import io.ymusic.ui.downloadLocationFolder
@@ -139,9 +140,15 @@ import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.playhistory.playHistoryJdbcDriver
 import io.ymusic.ui.registerCompletedDownload
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.cd_close
+import io.ymusic.ui.resources.cd_fullscreen
+import io.ymusic.ui.resources.cd_minimize
+import io.ymusic.ui.resources.feedback_attach
+import io.ymusic.ui.resources.folder_picker_title
 import io.ymusic.ui.resources.ymusic_logo
 import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
 import io.ymusic.ui.sponsorblock.sponsorBlockJdbcDriver
+import io.ymusic.ui.startupFailedMessage
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -172,7 +179,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toPath
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 import projectcommon.log.FileLogger
 import projectcommon.log.LoggingWorker
 import java.awt.BorderLayout
@@ -391,15 +400,15 @@ fun main() {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            MacTrafficLight(Color(0xFFFF5F57), "Close", "✕", closeApp)
+                            MacTrafficLight(Color(0xFFFF5F57), stringResource(Res.string.cd_close), "✕", closeApp)
                             MacTrafficLight(
                                 Color(0xFFFEBC2E),
-                                "Minimize",
+                                stringResource(Res.string.cd_minimize),
                                 "─",
                             ) { window.extendedState = java.awt.Frame.ICONIFIED }
                             MacTrafficLight(
                                 Color(0xFF28C840),
-                                "Full screen",
+                                stringResource(Res.string.cd_fullscreen),
                                 "＋",
                                 onClick = { frame.toggleFullscreen() },
                             )
@@ -487,7 +496,7 @@ fun main() {
                     Box(Modifier.weight(1f)) {
                         when {
                             bootError != null -> Booting {
-                                Text("Startup failed: $bootError", color = MaterialTheme.colorScheme.error)
+                                Text(startupFailedMessage("$bootError"), color = MaterialTheme.colorScheme.error)
                             }
                             graph == null && lockedCookies != null -> CookieUnlockScreen(
                                 locked = lockedCookies!!,
@@ -681,7 +690,12 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         // One persistent DB for both the blob-span index and the segment index.
         val driver = jvmSegmentDatabaseDriver("jdbc:sqlite:${File(cacheRoot, "cache-index.db").absolutePath}")
         MediaCache(
-            DiskMediaBlobCache(cacheRoot.absolutePath.toPath(), FileSystem.SYSTEM, SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() })),
+            DiskMediaBlobCache(
+                cacheRoot.absolutePath.toPath(),
+                FileSystem.SYSTEM,
+                SqlDelightBlobIndex(driver, now = { System.currentTimeMillis() }),
+                logger = rootLogger.fork("player-cache"),
+            ),
             SqlDelightSegmentIndex(driver, now = { System.currentTimeMillis() }),
             SqlDelightCacheStats(driver),
         )
@@ -831,6 +845,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
             updateScope,
             refreshConfig = { remoteConfig?.refreshNow() ?: false },
             latestUpdate = { remoteConfig?.getConfig()?.appUpdate },
+            downloadSite = { remoteConfig?.config?.replayCache?.lastOrNull()?.downloadPageUrl },
         )
     } else {
         null
@@ -864,7 +879,10 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
                     .onFailure { rootLogger.fork("reveal").log(Logger.Level.WARN, "Finder reveal failed for $path", it) }
             }
         },
-        appVersion = "dev · jvm",
+        appVersion = "$APP_VERSION_NAME · ${desktopArch()}",
+        appVersionName = APP_VERSION_NAME,
+        appVersionCode = APP_VERSION_CODE,
+        runningBundles = runningBundles,
         imageLoader = imageLoader,
         settings = settings,
         // MSE blit and ffmpeg frames scale; safe to display at art-tile size.
@@ -1233,8 +1251,8 @@ private fun bgraToRgb(width: Int, height: Int, bgra: ByteArray): BufferedImage {
     return img
 }
 
-/** FileDialog pick + full scan into [store]; returns the summary line, or null when the pick was canceled. */
-private suspend fun scanPickedFolder(store: BetterMediaStore, onProgress: (Int) -> Unit): String? {
+/** FileDialog pick + full scan into [store]; returns how it ended, or null when the pick was canceled. */
+private suspend fun scanPickedFolder(store: BetterMediaStore, onProgress: (Int) -> Unit): ScanResult? {
     val picked = pickFolder() ?: return null
     val rootUri = UriBuilder().scheme("file").authority("").path(picked.absolutePath).build()
     return scanUris(store, listOf(rootUri), onProgress)
@@ -1250,22 +1268,22 @@ private suspend fun pickAndRegisterFolder(store: BetterMediaStore): String? {
 }
 
 /** Re-scans [folderUri] (and its children) in place, or every already-added root when null. */
-private suspend fun rescanKnownRoots(store: BetterMediaStore, folderUri: String?, onProgress: (Int) -> Unit): String? {
+private suspend fun rescanKnownRoots(store: BetterMediaStore, folderUri: String?, onProgress: (Int) -> Unit): ScanResult? {
     val uris = if (folderUri != null) {
         listOf(Uri.parse(folderUri))
     } else {
         val roots = store.childBuckets(null)
-        if (roots.isEmpty()) return "No folders to rescan — add one first"
+        if (roots.isEmpty()) return ScanResult.NoFolders
         roots.map { it.uri }
     }
     return scanUris(store, uris, onProgress)
 }
 
 /** Scans each root [uris] into [store], reporting the running file count through [onProgress] and
- *  returning one combined summary line. */
-private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgress: (Int) -> Unit): String? {
+ *  returning the combined result. */
+private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgress: (Int) -> Unit): ScanResult {
     val ffmpeg = resolveFfmpeg()
-        ?: return "ffmpeg not found"
+        ?: return ScanResult.ExtractorMissing
     val scanner = MediaScanner.create(
         store,
         FileSystemDocumentsProvider(FileSystem.SYSTEM),
@@ -1285,10 +1303,7 @@ private suspend fun scanUris(store: BetterMediaStore, uris: List<Uri>, onProgres
         deleted += progress.deleted
         failed += progress.errors.size
     }
-    return buildString {
-        append("Scanned $scanned: $added added, $updated updated, $deleted removed")
-        if (failed > 0) append(", $failed failed")
-    }
+    return ScanResult.Done(scanned, added, updated, deleted, failed)
 }
 
 // The window-geometry memory lives in its OWN tiny file, read synchronously before the first
@@ -1375,8 +1390,9 @@ private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = {
 /** Multi-select file pick for feedback attachments; an over-limit file comes back name-only (null
  *  bytes) so the form can refuse it with its name. */
 private suspend fun pickFeedbackFiles(): List<io.ymusic.ui.FeedbackFile> {
+    val title = getString(Res.string.feedback_attach)
     val picked = withContext(Dispatchers.Main) {
-        val dialog = FileDialog(null as Frame?, "Attach files", FileDialog.LOAD)
+        val dialog = FileDialog(null as Frame?, title, FileDialog.LOAD)
         dialog.isMultipleMode = true
         dialog.isVisible = true
         dialog.files.toList()
@@ -1392,16 +1408,19 @@ private suspend fun pickFeedbackFiles(): List<io.ymusic.ui.FeedbackFile> {
 
 // macOS's AWT FileDialog only picks directories while this property is set; elsewhere the dialog
 // picks a single file, which the scanner indexes on its own (a supported single-file scan).
-private suspend fun pickFolder(): File? = withContext(Dispatchers.Main) {
-    val prop = "apple.awt.fileDialogForDirectories"
-    val previous = System.getProperty(prop)
-    System.setProperty(prop, "true")
-    try {
-        val dialog = FileDialog(null as Frame?, "Choose a music folder", FileDialog.LOAD)
-        dialog.isVisible = true
-        dialog.file?.let { File(dialog.directory, it) }
-    } finally {
-        if (previous == null) System.clearProperty(prop) else System.setProperty(prop, previous)
+private suspend fun pickFolder(): File? {
+    val title = getString(Res.string.folder_picker_title)
+    return withContext(Dispatchers.Main) {
+        val prop = "apple.awt.fileDialogForDirectories"
+        val previous = System.getProperty(prop)
+        System.setProperty(prop, "true")
+        try {
+            val dialog = FileDialog(null as Frame?, title, FileDialog.LOAD)
+            dialog.isVisible = true
+            dialog.file?.let { File(dialog.directory, it) }
+        } finally {
+            if (previous == null) System.clearProperty(prop) else System.setProperty(prop, previous)
+        }
     }
 }
 

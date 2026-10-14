@@ -138,7 +138,8 @@
     <string name="sort_duration">Времетраење</string>
     <string name="sort_song_count">Број на песни</string>
     <string name="cd_sort">Подреди</string>
-    <string name="cd_sort_order">Редослед на подредување</string>
+    <string name="cd_sort_ascending">Редослед на подредување: растечки</string>
+    <string name="cd_sort_descending">Редослед на подредување: опаѓачки</string>
     <string name="library_unavailable">На оваа платформа нема поставено локална библиотека</string>
     <string name="library_empty">Вашата библиотека е празна</string>
     <string name="library_scan_folder">+  Скенирај папка</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">Повеќе</string>
     <string name="cd_collapse">Собери</string>
     <string name="cd_expand">Прошири</string>
-    <string name="cd_play_pause">Пушти/паузирај</string>
     <string name="cd_next">Следна</string>
     <string name="cd_previous">Претходна</string>
     <string name="cd_download">Преземи</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">Пополни го екранот</string>
     <string name="cd_rewind10">Премотај 10 секунди назад</string>
     <string name="cd_forward10">Премотај 10 секунди напред</string>
-    <string name="cd_repeat">Повторувај</string>
+    <string name="cd_repeat_off">Повторувај: исклучено</string>
+    <string name="cd_repeat_all">Повторувај: сè</string>
+    <string name="cd_repeat_one">Повторувај: една</string>
     <string name="play_all">Пушти ги сите</string>
     <string name="shuffle_all">Измешај ги сите</string>
     <string name="cd_shuffle">Измешај</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">Подготвено за инсталирање</string>
     <string name="update_manual_hint">Оваа копија не може сама да се ажурира (%1$s). Наместо тоа, преземете ја новата верзија.</string>
     <string name="update_failed">Ажурирањето не успеа: %1$s</string>
+    <string name="update_official_site">Преземете од официјалната веб-страница</string>
     <string name="download_title">Преземи</string>
     <string name="download_audio_only">Само аудио</string>
     <string name="download_video">Видео</string>

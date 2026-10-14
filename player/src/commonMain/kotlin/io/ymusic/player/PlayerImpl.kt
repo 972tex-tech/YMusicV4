@@ -60,6 +60,10 @@ internal class PlayerImpl(
     private val engineJobs = mutableListOf<Job>()
     private var sleepJob: Job? = null
     private var prepareJob: Job? = null
+
+    /** The bound engine missed the prepare deadline: its not-yet-loaded states (Uninitialized,
+     *  Idle) must not replace the published E60052 until it plays, fails, or the user moves on. */
+    private var holdPrepareTimeout = false
     /** Cookie identity changed; next YouTube load [MediaEngine.reset]s first. */
     private var ytResetOnNext = false
 
@@ -409,7 +413,7 @@ internal class PlayerImpl(
         if (controller.state.currentItem == null) return
         val resumeMs = _progress.value.positionMs
         if (_currentEngine.value === ytEngine) ytEngine?.refreshOnNext()
-        _currentEngine.value?.reset()
+        _currentEngine.value?.reset("reload")
         loadCurrent(resumeMs)
     }
 
@@ -590,6 +594,7 @@ internal class PlayerImpl(
         when (item) {
             is PlayableItem.LocalMedia -> {
                 val engine = localEngine ?: engines.local().also { localEngine = it }
+                resetUnshownError(engine)
                 bind(engine)
                 requestLoad(engine, item, startPositionMs, gen)
             }
@@ -608,11 +613,22 @@ internal class PlayerImpl(
                     return
                 }
                 val engine = ytEngine ?: factory().also { ytEngine = it }
+                resetUnshownError(engine)
                 bind(engine)
                 requestLoad(engine, item, startPositionMs, gen)
             }
         }
         refreshPrepareNext()
+    }
+
+    /** An unbound engine's error (a failed [prepareYoutubeEngine] pre-warm) was never shown; binding
+     *  it as-is would publish a stale failure the load is about to recover from. */
+    private fun resetUnshownError(engine: MediaEngine<*>) {
+        if (engine === _currentEngine.value) return
+        val error = (engine.status.value.state as? PlaybackState.Error)?.error ?: return
+        if (!error.canRetry || !error.needReset) return
+        if (engine is YtEngine) ytResetOnNext = false
+        engine.reset("unshown error ${error.code}")
     }
 
     private fun requestLoad(
@@ -622,6 +638,7 @@ internal class PlayerImpl(
         gen: Int,
     ) {
         prepareJob?.cancel()
+        holdPrepareTimeout = false
         val resetFirst = ytResetOnNext && engine is YtEngine
         if (engine.status.value.state.readyToLoad && !resetFirst) {
             loadOn(engine, item, startPositionMs)
@@ -630,9 +647,33 @@ internal class PlayerImpl(
         prepareJob = scope.launch {
             val error = tryMakePlayerReady(engine)
             if (released || loadGeneration != gen) return@launch
-            if (error != null) return@launch
+            if (error != null) {
+                if (holdPrepareTimeout) recoverFromPrepareTimeout(engine, item, startPositionMs, gen)
+                return@launch
+            }
             loadOn(engine, item, startPositionMs)
         }
+    }
+
+    /**
+     * A slow engine often turns ready just after the prepare deadline: load this same item then, once,
+     * instead of leaving the user on E60052 with nothing loading. Runs inside [prepareJob], so a new
+     * load / stop cancels it; a pause since the timeout leaves the item unloaded.
+     */
+    private suspend fun recoverFromPrepareTimeout(
+        engine: MediaEngine<*>,
+        item: PlayableItem,
+        startPositionMs: Long,
+        gen: Int,
+    ) {
+        val intent = playWhenReadyIntent
+        val reached = withTimeoutOrNull(PREPARE_RECOVERY_MS) {
+            engine.status.first { it.state.readyToLoad || it.state is PlaybackState.Error }.state
+        }
+        if (reached == null || reached is PlaybackState.Error || !reached.readyToLoad) return
+        if (released || loadGeneration != gen || _currentEngine.value !== engine) return
+        if (playWhenReadyIntent != intent) return
+        loadOn(engine, item, startPositionMs)
     }
 
     private fun loadOn(engine: MediaEngine<*>, item: PlayableItem, startPositionMs: Long) {
@@ -651,7 +692,7 @@ internal class PlayerImpl(
     private suspend fun tryMakePlayerReady(engine: MediaEngine<*>): PlayerError? {
         if (ytResetOnNext && engine is YtEngine) {
             ytResetOnNext = false
-            engine.reset()
+            engine.reset("refresh requested")
         }
         val first = engine.status.value.state
         if (first.readyToLoad) return null
@@ -661,7 +702,7 @@ internal class PlayerImpl(
             }
             is PlaybackState.Error -> {
                 if (!first.error.canRetry) return first.error
-                if (first.error.needReset) engine.reset() else return null
+                if (first.error.needReset) engine.reset("error ${first.error.code} needs reset") else return null
             }
             else -> return null
         }
@@ -677,6 +718,7 @@ internal class PlayerImpl(
         if (next == null) {
             val err = PlayerError("E60052", "engine prepare timeout", canRetry = true, needReset = true)
             publishStatus(PlaybackStatus(state = PlaybackState.Error(err)))
+            holdPrepareTimeout = _currentEngine.value === engine
             return err
         }
         return (next as? PlaybackState.Error)?.error
@@ -688,11 +730,17 @@ internal class PlayerImpl(
         if (previous === engine) return
         engineJobs.forEach { it.cancel() }
         engineJobs.clear()
+        holdPrepareTimeout = false
         previous?.stop()
         _currentEngine.value = engine
         if (engine == null) return
         engineJobs += scope.launch {
             engine.status.collect { snapshot ->
+                if (holdPrepareTimeout && snapshot.state.notYetLoaded()) {
+                    maybePreloadNext()
+                    return@collect
+                }
+                holdPrepareTimeout = false
                 publishStatus(snapshot)
                 if (snapshot.state.isEnded()) onTrackEnded() else maybePreloadNext()
             }
@@ -756,6 +804,7 @@ internal class PlayerImpl(
 
     private fun stopActive() {
         prepareJob?.cancel()
+        holdPrepareTimeout = false
         clearPendingSeek()
         val engine = _currentEngine.value
         if (engine != null) {
@@ -864,6 +913,9 @@ internal class PlayerImpl(
         val skipSegments: Map<Long, SkipSegment>,
     )
 
+    private fun PlaybackState.notYetLoaded(): Boolean =
+        this is PlaybackState.Uninitialized || this == PlaybackState.Idle
+
     private companion object {
         /** Played longer than this, "previous" restarts the current track instead. */
         const val SMART_PREV_THRESHOLD_MS = 3_000L
@@ -887,5 +939,8 @@ internal class PlayerImpl(
 
         /** A skip segment ending this close to the duration counts as running out the track. */
         const val OUTRO_TOLERANCE_MS = 1_000L
+
+        /** How long after an E60052 a late-ready engine still gets the item loaded automatically. */
+        const val PREPARE_RECOVERY_MS = 15_000L
     }
 }

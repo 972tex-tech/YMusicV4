@@ -28,9 +28,9 @@ fun SentryOptions.applyYMusicTelemetry() {
 /**
  * Grouping for [SentryLogger.captureError] events (async stacks make frame-based grouping
  * meaningless here): a site code (`E#####`) groups alone — one code, one throw site, one issue;
- * a category code ("network", "parse", "oom") and a non-coded exception group per trail, so the
- * same failure shape in two subsystems stays two issues. Events with no trail tag (uncaught
- * crashes the SDK captured itself) keep Sentry's default grouping.
+ * a category code ("parse", "oom"; "network" and "captcha" are never captured) and a non-coded exception
+ * group per trail, so the same failure shape in two subsystems stays two issues. Events with no
+ * trail tag (uncaught crashes the SDK captured itself) keep Sentry's default grouping.
  */
 internal fun fingerprintPolicy(event: SentryEvent): SentryEvent {
     // TrailMark rides throws as a SUPPRESSED marker, but sentry-java serializes suppressed
@@ -38,12 +38,20 @@ internal fun fingerprintPolicy(event: SentryEvent): SentryEvent {
     if (event.exceptions.any { it.type == "TrailMark" }) {
         event.exceptions = event.exceptions.filterNot { it.type == "TrailMark" }.toMutableList()
     }
+    // An ANR or native crash is reported by the NEXT process, enriched from the scope Sentry persisted
+    // before the death — including the trail/code tags of the last event captureError sent. They don't
+    // describe this event and would group every such ANR under that unrelated code.
+    if (event.exceptions.any { it.type in NEXT_PROCESS_REPORTS }) {
+        event.removeTag(SentryLogger.TRAIL_TAG)
+        event.removeTag(SentryLogger.CODE_TAG)
+        return event
+    }
     val code = event.getTag(SentryLogger.CODE_TAG)
     val trail = event.getTag(SentryLogger.TRAIL_TAG)
     if (code != null) {
-        // A site code (E#####) IS one throw site — it groups alone. Category codes ("network",
-        // "parse", "oom") are shared by every subsystem, so they group per trail: a search timeout
-        // and a download timeout are different issues.
+        // A site code (E#####) IS one throw site — it groups alone. Category codes ("parse",
+        // "oom") are shared by every subsystem, so they group per trail: a search parse failure
+        // and a download parse failure are different issues.
         event.fingerprint =
             if (SITE_CODE.matches(code) || trail == null) mutableListOf(code) else mutableListOf(code, trail)
     } else if (trail != null) {
@@ -53,6 +61,8 @@ internal fun fingerprintPolicy(event: SentryEvent): SentryEvent {
 }
 
 private val SITE_CODE = Regex("""E\d{5}""")
+
+private val NEXT_PROCESS_REPORTS = setOf("ApplicationNotResponding", "SIGSEGV", "SIGABRT", "SIGBUS", "SIGILL", "SIGFPE", "SIGTRAP")
 
 /** Attach the anonymous stable device id to every event this process sends (crash grouping across
  *  sessions, "how many devices" triage). No-op until Sentry.init ran. */

@@ -97,6 +97,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -136,14 +137,21 @@ import io.ymusic.ui.resources.cd_forward10
 import io.ymusic.ui.resources.cd_fullscreen
 import io.ymusic.ui.resources.cd_more
 import io.ymusic.ui.resources.cd_next
-import io.ymusic.ui.resources.cd_play_pause
+import io.ymusic.ui.resources.cd_pause
+import io.ymusic.ui.resources.cd_play
 import io.ymusic.ui.resources.cd_previous
-import io.ymusic.ui.resources.cd_repeat
+import io.ymusic.ui.resources.cd_repeat_all
+import io.ymusic.ui.resources.cd_repeat_off
+import io.ymusic.ui.resources.cd_repeat_one
 import io.ymusic.ui.resources.cd_rewind10
 import io.ymusic.ui.resources.cd_shuffle
+import io.ymusic.ui.resources.error_captcha
 import io.ymusic.ui.resources.ic_sponsor_block
 import io.ymusic.ui.resources.menu_add_to_playlist
+import io.ymusic.ui.resources.menu_reload_player
 import io.ymusic.ui.resources.playback_failed
+import io.ymusic.ui.resources.playback_sign_in_required
+import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.queue_end
 import io.ymusic.ui.resources.queue_load_failed
 import io.ymusic.ui.resources.queue_load_more
@@ -151,6 +159,7 @@ import io.ymusic.ui.resources.queue_loading_more
 import io.ymusic.ui.resources.queue_save_as_yt_playlist
 import io.ymusic.ui.resources.remove_from_queue
 import io.ymusic.ui.resources.retry
+import io.ymusic.ui.resources.signin_button
 import io.ymusic.ui.resources.sound_eq
 import io.ymusic.ui.resources.sound_speed
 import io.ymusic.ui.resources.sponsor_block_excluded
@@ -165,6 +174,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.Playability
 import projectcommon.error.errorCode
 
 internal fun formatMillis(ms: Long): String {
@@ -281,7 +291,7 @@ fun MiniPlayer(
                     IconButton(onClick = { coordinator.player.togglePlay() }) {
                         Icon(
                             if (status.playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            stringResource(Res.string.cd_play_pause),
+                            stringResource(if (status.playWhenReady) Res.string.cd_pause else Res.string.cd_play),
                             tint = DesignColors.InkMuted,
                         )
                     }
@@ -303,6 +313,8 @@ fun MiniPlayer(
  */
 private val LocalOpenChannel = staticCompositionLocalOf<(url: String, title: String) -> Unit> { { _, _ -> } }
 
+private val LocalOpenLogin = staticCompositionLocalOf<() -> Unit> { {} }
+
 @Composable
 fun NowPlayingScreen(
     graph: AppGraph,
@@ -310,6 +322,7 @@ fun NowPlayingScreen(
     onClose: () -> Unit,
     onPeek: (Float) -> Unit = {},
     onOpenChannel: (url: String, title: String) -> Unit = { _, _ -> },
+    onLogin: () -> Unit = {},
 ) {
     var fullscreen by remember { mutableStateOf(false) }
     DisposableEffect(fullscreen) {
@@ -355,7 +368,7 @@ fun NowPlayingScreen(
     ) {
         // No full-screen fill: the video hole is opaque (TextureView) and the chrome paints
         // Surface itself. A wrapping Surface under the picture is 1× overdraw on every pixel.
-        CompositionLocalProvider(LocalOpenChannel provides onOpenChannel) {
+        CompositionLocalProvider(LocalOpenChannel provides onOpenChannel, LocalOpenLogin provides onLogin) {
             Box(Modifier.fillMaxSize(), content = { shell() })
         }
     }
@@ -882,30 +895,51 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
 /** Engine track kind for YouTube auto-translate languages (clones of a source track, one per language). */
 private const val AUTO_TRANSLATE_KIND = "asrt"
 
-/** "Failed (code)" + a Retry action when the error is retryable. */
+/** A playability verdict or a captcha as its own message (with its action), else "Failed (code)"; + a
+ *  Retry action when retryable. */
 @Composable
 private fun PlaybackErrorRow(player: io.ymusic.player.Player, error: io.ymusic.player.PlayerError) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        val captcha = error.code == CAPTCHA_CODE
         Text(
-            stringResource(Res.string.playback_failed, error.code),
+            when {
+                captcha -> stringResource(Res.string.error_captcha)
+                else -> when (error.playability()) {
+                    Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
+                    Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
+                    null -> stringResource(Res.string.playback_failed, error.code)
+                }
+            },
             color = MaterialTheme.colorScheme.error,
             fontSize = 12.sp,
         )
+        if (error.playability() == Playability.SignInRequired) {
+            ErrorRowAction(stringResource(Res.string.signin_button), LocalOpenLogin.current)
+        }
+        val resolver = LocalCaptchaResolver.current
+        if (captcha && resolver != null) {
+            ErrorRowAction(stringResource(resolver.label)) { resolver.resolve { player.play() } }
+        }
         if (error.canRetry) {
             // play() reloads the current item after a retryable error (the facade's port
             // of the legacy recovery path), so retry is just play.
-            Text(
-                stringResource(Res.string.retry),
-                color = DesignColors.Accent,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable { player.play() }
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
+            ErrorRowAction(stringResource(Res.string.retry)) { player.play() }
         }
     }
+}
+
+@Composable
+private fun ErrorRowAction(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = DesignColors.Accent,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
 }
 
 /** chevron-down · [right:] download · sponsorblock · sleep timer · quality chip · ⋮ (reload + tracks). */
@@ -1104,10 +1138,8 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
                 text = { Text(stringResource(Res.string.sound_eq)) },
                 onClick = { eqOpen = true; open = false },
             )
-            // Recovery/debug action — hardcoded label (adding a Res string here crosses the compose
-            // accessor chunk boundary, whose second file isn't compiled; revisit once that's fixed).
             DropdownMenuItem(
-                text = { Text("Reload player") },
+                text = { Text(stringResource(Res.string.menu_reload_player)) },
                 onClick = { player.reload(); open = false },
             )
             if (audioTracks.tracks.size > 1) {
@@ -1245,12 +1277,12 @@ private fun TransportRow(
                 onClick = { player.skipPrev() },
             )
             Box(
-                Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable { player.togglePlay() },
+                Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable(role = Role.Button) { player.togglePlay() },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    stringResource(Res.string.cd_play_pause),
+                    stringResource(if (playing) Res.string.cd_pause else Res.string.cd_play),
                     Modifier.size(26.dp),
                     tint = playForeground,
                 )
@@ -1343,7 +1375,13 @@ private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, tot
         Box(Modifier.weight(1f))
         ActionIcon(
             if (loopMode == LoopMode.One) Icons.Default.RepeatOne else Icons.Default.Repeat,
-            stringResource(Res.string.cd_repeat),
+            stringResource(
+                when (loopMode) {
+                    LoopMode.None -> Res.string.cd_repeat_off
+                    LoopMode.All -> Res.string.cd_repeat_all
+                    LoopMode.One -> Res.string.cd_repeat_one
+                },
+            ),
             iconSize = 20.dp,
             tint = if (loopMode != LoopMode.None) DesignColors.Accent else DesignColors.InkSoft,
             onClick = {
@@ -1356,12 +1394,13 @@ private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, tot
                 )
             },
         )
-        ActionIcon(
+        ToggleActionIcon(
             Icons.Default.Shuffle,
             stringResource(Res.string.cd_shuffle),
+            checked = shuffle,
             iconSize = 20.dp,
             tint = if (shuffle) DesignColors.Accent else DesignColors.InkSoft,
-            onClick = { player.setShuffle(!shuffle) },
+            onCheckedChange = { player.setShuffle(it) },
         )
     }
 }

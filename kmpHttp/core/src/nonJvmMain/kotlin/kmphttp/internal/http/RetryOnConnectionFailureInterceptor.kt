@@ -11,15 +11,19 @@ import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
+/** An engine's connectivity failure (offline, reset, dropped mid-transfer) — see [kmphttp.isTransportFailure]. */
+internal open class TransportIOException(message: String, cause: Throwable? = null) :
+    IOException(message, cause)
+
 /**
- * An [IOException] for a failure that happened while *establishing* the connection — DNS, TCP
+ * A [TransportIOException] for a failure that happened while *establishing* the connection — DNS, TCP
  * connect, or the TLS handshake — i.e. before the request was (necessarily) delivered, so retrying on
  * a fresh connection is safe. Engines throw this for their recoverable connection-level error codes;
  * [RetryOnConnectionFailureInterceptor] is what retries it. Cert/pin verification failures are NOT
  * recoverable and must stay a plain [IOException] so they surface immediately.
  */
 internal class RecoverableIOException(message: String, cause: Throwable? = null) :
-    IOException(message, cause)
+    TransportIOException(message, cause)
 
 /**
  * Retries a request that failed with a [RecoverableIOException] (a transient connection-establishment

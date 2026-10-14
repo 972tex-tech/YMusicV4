@@ -4,12 +4,12 @@ import io.ymusic.remoteconfig.AppUpdate
 import io.ymusic.ui.AppUpdateStatus
 import io.ymusic.ui.AppUpdates
 import io.ymusic.ui.UpdateCheck
+import io.ymusic.ui.UpdateDownload
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.awt.Desktop
-import java.net.URI
+import org.jetbrains.compose.resources.StringResource
 import kotlin.system.exitProcess
 
 /**
@@ -25,11 +25,13 @@ class DesktopAppUpdates(
     private val refreshConfig: suspend () -> Boolean,
     /** The config's current update entry. */
     private val latestUpdate: suspend () -> AppUpdate?,
+    /** The config's official download site, if it names one. */
+    private val downloadSite: () -> String?,
 ) : AppUpdates {
 
     private val _status = MutableStateFlow<AppUpdateStatus>(AppUpdateStatus.None)
     override val status: StateFlow<AppUpdateStatus> = _status
-    override val blockedReason: String? get() = service.selfUpdateBlockedReason
+    override val blockedReason: StringResource? get() = service.selfUpdateBlockedReason
 
     init {
         scope.launch {
@@ -38,18 +40,23 @@ class DesktopAppUpdates(
     }
 
     private fun statusOf(s: UpdateState): AppUpdateStatus = when (s) {
-        is UpdateState.Available ->
-            AppUpdateStatus.Available(
-                s.update.versionCode, s.update.versionName, s.update.notes, s.update.size,
-                s.update.changelogUrl, s.update.installInApp,
-            )
-        is UpdateState.Downloading ->
-            AppUpdateStatus.Downloading(s.update.versionCode, s.update.versionName, s.done, s.total)
-        is UpdateState.Ready ->
-            AppUpdateStatus.Ready(s.update.versionCode, s.update.versionName, s.update.notes, s.update.changelogUrl)
-        is UpdateState.Failed -> AppUpdateStatus.Failed(s.code)
         UpdateState.Idle -> AppUpdateStatus.None
+        is UpdateState.Available -> offered(s.update, UpdateDownload.Idle)
+        is UpdateState.Downloading -> offered(s.update, UpdateDownload.Running(s.done, s.total))
+        is UpdateState.Ready -> offered(s.update, UpdateDownload.Ready)
+        is UpdateState.Failed -> offered(s.update, UpdateDownload.Failed(s.code), trusted = s.trusted)
     }
+
+    /** An untrusted entry's own links are never followed: only the official site is offered. */
+    private fun offered(update: AppUpdate, download: UpdateDownload, trusted: Boolean = true) = AppUpdateStatus.Offered(
+        versionCode = update.versionCode,
+        versionName = update.versionName,
+        notes = update.notes,
+        changelogUrl = update.changelogUrl.takeIf { trusted },
+        installInApp = trusted && update.installInApp,
+        downloadPage = if (trusted) update.downloadPage ?: downloadSite() ?: update.url else downloadSite(),
+        download = download,
+    )
 
     override suspend fun checkNow(): UpdateCheck {
         if (!refreshConfig()) return UpdateCheck.Failed
@@ -66,12 +73,5 @@ class DesktopAppUpdates(
         // The new version is already starting; this process must go, or two copies fight over
         // the data dir — and on Windows the installer waits for it.
         scope.launch { if (service.install()) exitProcess(0) }
-    }
-
-    override fun openDownloadPage() {
-        val url = (service.state.value as? UpdateState.Failed)?.let { it.manualDownloadUrl ?: return }
-            ?: service.pendingUpdate?.let { it.downloadPage ?: it.url }
-            ?: return
-        runCatching { Desktop.getDesktop().browse(URI(url)) }
     }
 }

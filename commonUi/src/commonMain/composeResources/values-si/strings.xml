@@ -138,7 +138,8 @@
     <string name="sort_duration">කාලය</string>
     <string name="sort_song_count">ගීත ගණන</string>
     <string name="cd_sort">පිළිවෙළට සකසන්න</string>
-    <string name="cd_sort_order">අනුපිළිවෙළ</string>
+    <string name="cd_sort_ascending">අනුපිළිවෙළ: ආරෝහණ</string>
+    <string name="cd_sort_descending">අනුපිළිවෙළ: අවරෝහණ</string>
     <string name="library_unavailable">මෙම වේදිකාවේ දේශීය පුස්තකාලයක් සකසා නැත</string>
     <string name="library_empty">ඔබගේ පුස්තකාලය හිස්ය</string>
     <string name="library_scan_folder">+  ෆෝල්ඩරය ස්කෑන් කරන්න</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">තව</string>
     <string name="cd_collapse">හකුළන්න</string>
     <string name="cd_expand">දිග හරින්න</string>
-    <string name="cd_play_pause">වාදනය/විරාමය</string>
     <string name="cd_next">ඊළඟ</string>
     <string name="cd_previous">පෙර</string>
     <string name="cd_download">බාගන්න</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">තිරය පුරවන්න</string>
     <string name="cd_rewind10">තත්පර 10 ක් පසුපසට</string>
     <string name="cd_forward10">තත්පර 10 ක් ඉදිරියට</string>
-    <string name="cd_repeat">පුනරාවර්තනය</string>
+    <string name="cd_repeat_off">පුනරාවර්තනය: අක්‍රිය</string>
+    <string name="cd_repeat_all">පුනරාවර්තනය: සියල්ල</string>
+    <string name="cd_repeat_one">පුනරාවර්තනය: එකක්</string>
     <string name="play_all">සියල්ල වාදනය කරන්න</string>
     <string name="shuffle_all">සියල්ල කලවම් කරන්න</string>
     <string name="cd_shuffle">කලවම් කරන්න</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">ස්ථාපනයට සූදානම්</string>
     <string name="update_manual_hint">මෙම පිටපතට තමන්ම යාවත්කාලීන විය නොහැක (%1$s). ඒ වෙනුවට නව අනුවාදය බාගන්න.</string>
     <string name="update_failed">යාවත්කාලීනය අසාර්ථකයි: %1$s</string>
+    <string name="update_official_site">නිල වෙබ් අඩවියෙන් බාගන්න</string>
     <string name="download_title">බාගන්න</string>
     <string name="download_audio_only">ශ්‍රව්‍ය පමණි</string>
     <string name="download_video">වීඩියෝ</string>

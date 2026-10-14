@@ -138,7 +138,8 @@
     <string name="sort_duration">Muddada</string>
     <string name="sort_song_count">Tirada heesaha</string>
     <string name="cd_sort">Kala horraysii</string>
-    <string name="cd_sort_order">Habka kala horraynta</string>
+    <string name="cd_sort_ascending">Habka kala horraynta: kor u kac</string>
+    <string name="cd_sort_descending">Habka kala horraynta: hoos u dhac</string>
     <string name="library_unavailable">Nidaamkan laguma habayn Gudaha maxalli ah</string>
     <string name="library_empty">Gudahaagu waa madhan yahay</string>
     <string name="library_scan_folder">+  Baadh khaanad</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">Wax kale</string>
     <string name="cd_collapse">Isku laab</string>
     <string name="cd_expand">Fidi</string>
-    <string name="cd_play_pause">Daar/Qabo</string>
     <string name="cd_next">Ka xiga</string>
     <string name="cd_previous">Kii hore</string>
     <string name="cd_download">Daji</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">Buuxi shaashadda</string>
     <string name="cd_rewind10">Dib u celi 10 ilbiriqsi</string>
     <string name="cd_forward10">Hore u wad 10 ilbiriqsi</string>
-    <string name="cd_repeat">Ku celceli</string>
+    <string name="cd_repeat_off">Ku celceli: dansan</string>
+    <string name="cd_repeat_all">Ku celceli: dhammaan</string>
+    <string name="cd_repeat_one">Ku celceli: mid</string>
     <string name="play_all">Wada daar</string>
     <string name="shuffle_all">Isku dhexqas dhammaan</string>
     <string name="cd_shuffle">Isku dhexqas</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">Diyaar u ah in lagu shubo</string>
     <string name="update_manual_hint">Nuskhadani iskeed isuma cusboonaysiin karto (%1$s). Taa beddelkeeda soo daji nooca cusub.</string>
     <string name="update_failed">Cusboonaysiintu way guuldaraysatay: %1$s</string>
+    <string name="update_official_site">Ka soo deji websaydhka rasmiga ah</string>
     <string name="download_title">Daji</string>
     <string name="download_audio_only">Cod kaliya</string>
     <string name="download_video">Muuqaal</string>

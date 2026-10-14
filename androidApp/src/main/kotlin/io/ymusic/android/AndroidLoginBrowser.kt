@@ -14,13 +14,15 @@ import io.ymusic.ui.LoginWebViewState
 /**
  * The Android sign-in WebView (the shell's [io.ymusic.ui.AppGraph.loginBrowser]). Cookies land in
  * the WebView [CookieManager], which [WebViewCookieJar] wraps for engine HTTP.
- * Reports title / URL / progress into [state]; a mobile default User-Agent is correct for the
- * m.youtube.com sign-in (matching the legacy WebViewLoginFragment).
+ * Reports title / URL / progress into [state]. A null [userAgent] keeps the mobile default, correct
+ * for the m.youtube.com sign-in (matching the legacy WebViewLoginFragment); the captcha browser
+ * passes the engine scrape's UA so the cleared challenge matches the identity it scrapes with.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun AndroidLoginBrowser(
     url: String,
+    userAgent: String?,
     state: LoginWebViewState,
     onPageChanged: () -> Unit,
     modifier: Modifier,
@@ -34,6 +36,7 @@ fun AndroidLoginBrowser(
                 cookies.setAcceptThirdPartyCookies(this, true)
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                if (userAgent != null) settings.userAgentString = userAgent
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView, u: String?, favicon: Bitmap?) {
                         state.currentUrl = u

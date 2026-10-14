@@ -715,6 +715,14 @@ async function fetchImpl(input: unknown, init?: unknown): Promise<FetchResponseJ
   return out;
 }
 
+/** Where a fetch() response's body came from: "hit" | "conditional" (host disk cache),
+ *  "network", or "synthetic" (a constructed or denied Response, no host exchange). */
+export function fetchCacheState(res: FetchResponse): string {
+  const http = (res as unknown as FetchResponseJs)._http;
+  if (!http) return "synthetic";
+  return http.cache ?? "network";
+}
+
 export function installFetch(): void {
   const g = globalThis as unknown as Record<string, unknown>;
   g["Headers"] = HeadersImpl;

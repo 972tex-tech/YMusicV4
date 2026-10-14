@@ -63,6 +63,7 @@ import io.ymusic.dynamicengine.yt.YtSectionHeader
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_download
 import io.ymusic.ui.resources.cd_sort
+import io.ymusic.ui.resources.error_captcha
 import io.ymusic.ui.resources.error_generic
 import io.ymusic.ui.resources.error_network
 import io.ymusic.ui.resources.feed_empty
@@ -483,9 +484,14 @@ internal fun EmptyState(
 @Composable
 internal fun errorMessage(code: String): String = when (code) {
     "network" -> stringResource(Res.string.error_network)
+    CAPTCHA_CODE -> stringResource(Res.string.error_captcha)
     else -> stringResource(Res.string.error_generic, code)
 }
 
+/** YouTube's bot challenge — the engine's category for a google.com/sorry / reCAPTCHA answer. */
+internal const val CAPTCHA_CODE = "captcha"
+
+/** A captcha failure leads with the resolver's action (which retries once cleared), Retry beside it. */
 @Composable
 internal fun ErrorState(code: String, modifier: Modifier = Modifier, onRetry: () -> Unit) {
     CenteredBox(modifier) {
@@ -496,9 +502,30 @@ internal fun ErrorState(code: String, modifier: Modifier = Modifier, onRetry: ()
                 Modifier.size(56.dp).padding(bottom = 4.dp),
                 tint = DesignColors.PlaceholderIcon,
             )
-            Text(errorMessage(code), color = MaterialTheme.colorScheme.error)
-            Button(onClick = onRetry, modifier = Modifier.padding(top = 8.dp)) {
-                Text(stringResource(Res.string.retry))
+            Text(
+                errorMessage(code),
+                color = MaterialTheme.colorScheme.error,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            val captcha = LocalCaptchaResolver.current?.takeIf { code == CAPTCHA_CODE }
+            if (captcha == null) {
+                Button(onClick = onRetry, modifier = Modifier.padding(top = DesignSpacing.Space8)) {
+                    Text(stringResource(Res.string.retry))
+                }
+            } else {
+                Row(
+                    Modifier.padding(top = DesignSpacing.Space8),
+                    horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+                ) {
+                    OutlinedButton(
+                        onClick = onRetry,
+                        border = BorderStroke(1.dp, DesignColors.Outline),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DesignColors.Ink),
+                    ) {
+                        Text(stringResource(Res.string.retry))
+                    }
+                    Button(onClick = { captcha.resolve(onRetry) }) { Text(stringResource(captcha.label)) }
+                }
             }
         }
     }

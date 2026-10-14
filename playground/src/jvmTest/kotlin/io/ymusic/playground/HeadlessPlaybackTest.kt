@@ -98,7 +98,7 @@ class HeadlessPlaybackTest {
             for (line in spsLines.takeLast(12)) println("sps $line")
             assertTrue(minter != null, "player minter did not run")
             assertTrue(sps1, "no SABR SPS=1 (ok) after hole-seek spsLines=$spsLines")
-            assertTrue(!sps3, "SABR SPS=3 po-rejected minter=$minter")
+            assertTrue(!sps3, "SABR SPS=3 po-invalid minter=$minter")
         } finally {
             frameWatch.cancel()
             session.close()

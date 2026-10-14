@@ -152,6 +152,10 @@ interface JsEngineErrorConstructor {
   new (message: string, code: string, opts?: JsEngineErrorOptions): JsEngineError;
   parse(message: string, opts?: JsEngineErrorOptions): JsEngineError;
   network(message: string, opts?: JsEngineErrorOptions): JsEngineError;
+  /** YouTube served a bot challenge the user must clear in a browser. */
+  captcha(message: string, opts?: JsEngineErrorOptions): JsEngineError;
+  /** A non-2xx response: 408/429/5xx → "network", else `siteCode`. */
+  httpStatus(message: string, status: number, siteCode: string): JsEngineError;
 }
 
 declare var JsEngineError: JsEngineErrorConstructor;
@@ -182,6 +186,8 @@ interface HttpResponse {
     get(name: string): string | null;
     has(name: string): boolean;
   };
+  /** Host disk-cache provenance: "hit" | "conditional"; undefined = network. */
+  readonly cache?: string | undefined;
   text(): Promise<string>;
   bytes(): Promise<Uint8Array>;
   jsonObject(): Promise<Record<string, unknown>>;

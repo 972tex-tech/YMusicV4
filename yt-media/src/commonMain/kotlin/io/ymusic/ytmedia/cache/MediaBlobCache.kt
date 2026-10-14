@@ -2,6 +2,7 @@ package io.ymusic.ytmedia.cache
 
 import kmpcommon.WorkerThread
 import okio.BufferedSink
+import okio.IOException
 import okio.Source
 
 /**
@@ -46,7 +47,8 @@ interface MediaBlobCache {
      * Pin the spans covering `[position, position+length)` and return an immutable, stitched [Source] over
      * exactly those bytes — or **null if not fully covered at this instant**. Pinned spans are never
      * evicted while the returned source is open; the caller **must close it** to unpin. A null result is
-     * the signal to fall through to the network.
+     * the signal to fall through to the network — including when a planned span's file was deleted behind the
+     * index. Throws [MediaCacheStorageException] on any other storage failure opening or reading a span.
      */
     fun read(key: String, position: Long, length: Long): PinnedSource?
 
@@ -79,6 +81,16 @@ interface MediaBlobCache {
      */
     fun setMaxSize(bytes: Long)
 }
+
+/**
+ * The cache's backing storage failed under it — a span open/read or a span write/commit hit an IO error
+ * (disk full, directory gone). Unlike a miss, this means the whole on-disk cache is suspect.
+ */
+class MediaCacheStorageException(message: String, cause: Throwable) : IOException(message, cause)
+
+/** True when this failure, or any cause under it, is a [MediaCacheStorageException]. */
+fun Throwable.isMediaCacheStorageFault(): Boolean =
+    generateSequence(this) { it.cause }.any { it is MediaCacheStorageException }
 
 /** A stitched read over pinned, immutable spans. Closing it unpins them (idempotent). */
 interface PinnedSource : Source

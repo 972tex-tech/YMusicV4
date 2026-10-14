@@ -27,6 +27,42 @@
     <string name="downloads_none_title">No downloads yet</string>
     <string name="downloads_none_message">Downloaded songs and videos play offline.</string>
     <string name="downloads_failed">Download failed</string>
+    <string name="downloads_error_folder_access">Can’t save to the download folder — pick it again</string>
+    <string name="downloads_sign_in_title">Sign in to download</string>
+    <string name="downloads_sign_in_message">YouTube asks you to sign in before this video can be downloaded. Once you’re signed in, the download starts again.</string>
+    <string name="downloads_unavailable_title">Video unavailable</string>
+    <string name="downloads_unavailable_message">YouTube says this video is unavailable, so retrying won’t help. You can remove it from your downloads.</string>
+    <string name="downloads_state_queued">Queued</string>
+    <string name="downloads_state_preparing">Preparing</string>
+    <string name="downloads_state_downloading">Downloading</string>
+    <string name="downloads_state_processing">Processing</string>
+    <string name="downloads_state_failed">Failed</string>
+    <string name="downloads_state_done">Done</string>
+    <string name="downloads_state_canceled">Canceled</string>
+    <string name="downloads_action_pause">Pause</string>
+    <string name="downloads_action_resume">Resume</string>
+    <string name="downloads_action_reveal_library">Reveal in Library</string>
+    <string name="downloads_action_reveal_finder">Reveal in Finder</string>
+    <!-- A finished download's date: %1$s = month from month_abbr, %2$d = day, %3$d = year. -->
+    <string name="downloads_completed_date">%1$s %2$d, %3$d</string>
+    <string-array name="month_abbr">
+        <item>Jan</item>
+        <item>Feb</item>
+        <item>Mar</item>
+        <item>Apr</item>
+        <item>May</item>
+        <item>Jun</item>
+        <item>Jul</item>
+        <item>Aug</item>
+        <item>Sep</item>
+        <item>Oct</item>
+        <item>Nov</item>
+        <item>Dec</item>
+    </string-array>
+    <string name="download_size_kb">%1$s KB</string>
+    <string name="download_location_prompt_not_now">Not now</string>
+    <string name="download_location_prompt_set_default">Set as default</string>
+    <string name="download_location_prompt_message">Save downloads to “%1$s”? You can change this in Settings.</string>
     <string name="section_settings">Settings</string>
     <string name="section_catalogue">UI catalogue</string>
     <string name="section_donate">Donate</string>
@@ -73,6 +109,7 @@
     <!-- Feed -->
     <string name="feed_empty">Nothing here</string>
     <string name="error_generic">Something went wrong (%1$s)</string>
+    <string name="startup_failed">Startup failed: %1$s</string>
     <string name="retry">Retry</string>
     <string name="reload">Reload</string>
     <string name="search_videos">Search videos</string>
@@ -144,7 +181,8 @@
     <string name="sort_duration">Duration</string>
     <string name="sort_song_count">Song count</string>
     <string name="cd_sort">Sort</string>
-    <string name="cd_sort_order">Sort order</string>
+    <string name="cd_sort_ascending">Sort order: ascending</string>
+    <string name="cd_sort_descending">Sort order: descending</string>
     <string name="library_unavailable">No local library configured on this platform</string>
     <string name="library_empty">Your library is empty</string>
     <string name="library_scan_folder">+  Scan folder</string>
@@ -153,6 +191,10 @@
     <string name="library_scanning">Scanning…</string>
     <string name="library_scanning_count">Scanning %1$d…</string>
     <string name="library_scan_failed">Scan failed (%1$s)</string>
+    <string name="library_scan_summary">Scanned %1$d: %2$d added, %3$d updated, %4$d removed</string>
+    <string name="library_scan_summary_failed">Scanned %1$d: %2$d added, %3$d updated, %4$d removed, %5$d failed</string>
+    <string name="library_scan_no_folders">No folders to rescan — add one first</string>
+    <string name="library_scan_ffmpeg_missing">ffmpeg not found</string>
     <string name="library_empty_folder">Empty folder</string>
     <string name="library_crumb_root">Library</string>
     <string name="library_folder">Folder</string>
@@ -208,6 +250,9 @@
     <string name="sleep_hours_minutes">%1$d h %2$d min</string>
     <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Failed (%1$s)</string>
+    <string name="playback_sign_in_required">YouTube asks you to sign in to play this video</string>
+    <string name="playback_unavailable">This video is unavailable</string>
+    <string name="menu_reload_player">Reload player</string>
 
 
     <!-- Settings -->
@@ -225,6 +270,10 @@
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_changelog">Changelog</string>
     <string name="settings_licenses">Open source licenses</string>
+    <string name="settings_versions">Versions</string>
+    <string name="settings_versions_app">App v%1$s/%2$s</string>
+    <string name="settings_versions_engine">EngineJs %1$s</string>
+    <string name="settings_versions_player">PlayerJs %1$s</string>
     <string name="settings_licenses_intro">YMusic is open source under the GNU GPL v3.0. It includes these components:</string>
 
     <!-- Feedback -->
@@ -249,17 +298,21 @@
     <string name="cd_more">More</string>
     <string name="cd_collapse">Collapse</string>
     <string name="cd_expand">Expand</string>
-    <string name="cd_play_pause">Play/Pause</string>
+    <string name="cd_play">Play</string>
+    <string name="cd_pause">Pause</string>
     <string name="cd_next">Next</string>
     <string name="cd_previous">Previous</string>
     <string name="cd_download">Download</string>
     <string name="cd_fullscreen">Full screen</string>
     <string name="cd_exit_fullscreen">Exit full screen</string>
+    <string name="cd_minimize">Minimize</string>
     <string name="cd_fit_video">Fit video</string>
     <string name="cd_fill_video">Fill screen</string>
     <string name="cd_rewind10">Rewind 10 seconds</string>
     <string name="cd_forward10">Forward 10 seconds</string>
-    <string name="cd_repeat">Repeat</string>
+    <string name="cd_repeat_off">Repeat: off</string>
+    <string name="cd_repeat_all">Repeat: all</string>
+    <string name="cd_repeat_one">Repeat: one</string>
     <string name="play_all">Play all</string>
     <string name="shuffle_all">Shuffle all</string>
     <string name="cd_shuffle">Shuffle</string>
@@ -268,6 +321,10 @@
     <string name="cd_drag_to_reorder">Drag to reorder</string>
     <string name="cd_send">Send</string>
     <string name="cd_vote">Vote</string>
+    <string name="cd_open_app">Open YMusic</string>
+    <string name="cd_stop_dismiss">Stop and dismiss</string>
+    <string name="mini_player_nothing_playing">Nothing playing</string>
+    <string name="folder_picker_title">Choose a music folder</string>
     <string name="menu_remove_from_disk">Remove from disk</string>
     <string name="delete_from_disk_title">Delete file?</string>
     <string name="delete_from_disk_message">“%1$s” will be permanently deleted from this device. This cannot be undone.</string>
@@ -309,6 +366,7 @@
     <string name="signin_paste_guide_network">Open the Network panel</string>
     <string name="signin_paste_guide_request">Reload, then click a Fetch/XHR request</string>
     <string name="signin_paste_guide_copy">Right-click → Copy as cURL, then paste here</string>
+    <string name="signin_paste_guide_right_click">Right click</string>
     <string name="cd_signin_paste_guide">Animation showing how to copy YouTube cookies from a browser</string>
     <string name="cd_signin_paste_pause">Pause the guide</string>
     <string name="cd_signin_paste_play">Play the guide</string>
@@ -372,6 +430,7 @@
     <string name="sound_pitch">Pitch %1$s</string>
     <string name="sound_eq">Equalizer</string>
     <string name="sound_eq_band">%1$s Hz  %2$d dB</string>
+    <string name="sound_db">%1$s dB</string>
     <string name="sound_reset">Reset</string>
     <string name="sound_ok">OK</string>
     <string name="sound_preset_flat">Flat</string>
@@ -388,14 +447,22 @@
     <string name="update_version">Version %1$s</string>
     <string name="update_download">Download</string>
     <string name="update_install_now">Install now</string>
+    <string name="update_install_permission">Android needs your permission before YMusic can install updates. Allow it, or download the new version in your browser instead.</string>
+    <string name="update_allow_install">Allow</string>
+    <string name="update_download_in_browser">Download in browser</string>
     <string name="update_ask_later">Ask later</string>
-    <string name="update_background">Background</string>
     <string name="update_full_changelog">Full changelog</string>
     <string name="update_downloading">Downloading… %1$s of %2$s</string>
     <string name="update_ready">Ready to install</string>
     <string name="update_manual_hint">This copy cannot update itself (%1$s). Download the new version instead.</string>
+    <!-- Why this desktop copy cannot update itself; each fills update_manual_hint's %1$s. -->
+    <string name="update_blocked_not_installed">the app is not running from an installed copy</string>
+    <string name="update_blocked_mac_swap">this macOS cannot swap the app in place</string>
+    <string name="update_blocked_folder_read_only">the folder holding YMusic is not writable</string>
+    <string name="update_blocked_not_deb">this copy was not installed from the .deb package</string>
+    <string name="update_blocked_no_pkexec">pkexec or apt-get is missing</string>
     <string name="update_failed">Update failed: %1$s</string>
-    <string name="update_download_failed">Update download failed</string>
+    <string name="update_official_site">Get it from the official website</string>
     <string name="update_check">Check for update</string>
     <string name="update_checking">Checking for update…</string>
     <string name="update_up_to_date">You’re on the latest version</string>
@@ -476,6 +543,9 @@
         <item quantity="other">%1$d of the selected videos are already in your Library.</item>
     </plurals>
     <string name="error_network">Can’t reach YouTube. Check your connection and try again.</string>
+    <string name="error_captcha">YouTube wants to confirm you’re not a robot</string>
+    <string name="captcha_verify">Verify</string>
+    <string name="captcha_verify_hint">Solve any captcha you see on the screen, then tap Done</string>
     <string name="settings_player_cache">Player cache</string>
     <string name="settings_player_cache_summary">Max %1$s · Used %2$s · Saved %3$s</string>
     <string name="settings_player_cache_off">No cache</string>

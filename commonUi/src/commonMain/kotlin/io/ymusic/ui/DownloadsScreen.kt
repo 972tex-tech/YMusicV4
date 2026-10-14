@@ -45,18 +45,28 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.ymusic.download.DownloadFolderAccessException
 import io.ymusic.download.DownloadFormat
 import io.ymusic.download.DownloadService
 import io.ymusic.download.DownloadState
 import io.ymusic.download.DownloadTask
 import io.ymusic.download.DownloadTasksAggregator
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.dialog_cancel
+import io.ymusic.ui.resources.download_size_kb
+import io.ymusic.ui.resources.download_size_mb
+import io.ymusic.ui.resources.downloads_action_pause
+import io.ymusic.ui.resources.downloads_action_resume
+import io.ymusic.ui.resources.downloads_action_reveal_finder
+import io.ymusic.ui.resources.downloads_action_reveal_library
+import io.ymusic.ui.resources.downloads_completed_date
 import io.ymusic.ui.resources.downloads_empty_all
 import io.ymusic.ui.resources.downloads_empty_completed
 import io.ymusic.ui.resources.downloads_empty_error
 import io.ymusic.ui.resources.downloads_empty_paused
 import io.ymusic.ui.resources.downloads_empty_running
 import io.ymusic.ui.resources.downloads_empty_waiting
+import io.ymusic.ui.resources.downloads_error_folder_access
 import io.ymusic.ui.resources.downloads_failed
 import io.ymusic.ui.resources.downloads_filter_all
 import io.ymusic.ui.resources.downloads_filter_completed
@@ -68,7 +78,19 @@ import io.ymusic.ui.resources.downloads_none_message
 import io.ymusic.ui.resources.downloads_none_title
 import io.ymusic.ui.resources.downloads_pause_all
 import io.ymusic.ui.resources.downloads_resume_all
+import io.ymusic.ui.resources.downloads_state_canceled
+import io.ymusic.ui.resources.downloads_state_done
+import io.ymusic.ui.resources.downloads_state_downloading
+import io.ymusic.ui.resources.downloads_state_failed
+import io.ymusic.ui.resources.downloads_state_preparing
+import io.ymusic.ui.resources.downloads_state_processing
+import io.ymusic.ui.resources.downloads_state_queued
 import io.ymusic.ui.resources.downloads_unavailable
+import io.ymusic.ui.resources.menu_play
+import io.ymusic.ui.resources.menu_remove
+import io.ymusic.ui.resources.month_abbr
+import io.ymusic.ui.resources.playback_sign_in_required
+import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.retry
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.launch
@@ -76,7 +98,10 @@ import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.Playability
+import projectcommon.error.playabilityOf
 
 /**
  * The Download Manager: a status filter chip row over one flat adaptive grid (one column on a phone,
@@ -126,6 +151,18 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val folderReveal = LocalLibraryFolderReveal.current
     val store = graph.mediaStore
     val scope = rememberCoroutineScope()
+    val signIn = LocalSignInResolver.current
+    var retryBlock by remember { mutableStateOf<RetryBlock?>(null) }
+    retryBlock?.let { block ->
+        val dismiss = { retryBlock = null }
+        when (block.verdict) {
+            Playability.SignInRequired -> DownloadSignInDialog(
+                onSignIn = { signIn?.signIn { service.retry(block.taskId) } },
+                onDismiss = dismiss,
+            )
+            Playability.Unavailable -> DownloadUnavailableDialog(onRemove = { service.remove(block.taskId) }, onDismiss = dismiss)
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
@@ -159,6 +196,19 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 DownloadCard(
                     task, service,
                     modifier = Modifier.animateItem(),
+                    onRetry = {
+                        val playability = playabilityOf(task.errorCode)
+                        when {
+                            // The folder lost its write grant: only a fresh pick restores it, so Retry re-picks first.
+                            task.errorCode == DownloadFolderAccessException.CODE && graph.libraryFolderPicker != null ->
+                                scope.launch { if (pickDownloadFolder(graph)) service.retry(task.id) }
+                            // Signed out only: once signed in, the stored verdict may predate the sign-in, so it re-runs.
+                            playability == Playability.SignInRequired && signIn != null && !signIn.signedIn ->
+                                retryBlock = RetryBlock(task.id, playability)
+                            playability == Playability.Unavailable -> retryBlock = RetryBlock(task.id, playability)
+                            else -> service.retry(task.id)
+                        }
+                    },
                     onPlay = {
                         task.fileUri?.let { uri ->
                             scope.launch { coordinator.playDownloaded(uri, task.videoId, task.title, task.artist) }
@@ -203,6 +253,9 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     }
 }
 
+/** A Retry that a playability [verdict] answers before any re-run: its resolve dialog is up. */
+private class RetryBlock(val taskId: String, val verdict: Playability)
+
 /** The filter chips, in display order. CANCELED matches none (it's filtered out of the screen). */
 private enum class DownloadFilter(val label: StringResource, val empty: StringResource) {
     ALL(Res.string.downloads_filter_all, Res.string.downloads_empty_all),
@@ -231,6 +284,7 @@ private fun DownloadCard(
     task: DownloadTask,
     service: DownloadService,
     modifier: Modifier,
+    onRetry: () -> Unit,
     onPlay: () -> Unit,
     onRevealLibrary: (() -> Unit)?,
     onRevealFolder: (() -> Unit)?,
@@ -261,7 +315,7 @@ private fun DownloadCard(
                         }
                     }
                 }
-                MoreMenu(actionsFor(task, service, onPlay, onRevealLibrary, onRevealFolder))
+                MoreMenu(actionsFor(task, service, onRetry, onPlay, onRevealLibrary, onRevealFolder))
             }
             if (task.showsBar()) {
                 Box(Modifier.fillMaxWidth().padding(start = ContentIndent)) { DownloadBar(task, c) }
@@ -285,9 +339,9 @@ private fun DownloadCard(
                             Text(formatDownloadDate(task.updatedAt), style = MaterialTheme.typography.labelSmall, color = c.inkMuted)
                         }
                         DownloadState.FAILED -> {
-                            Text(task.errorMessage ?: stringResource(Res.string.downloads_failed), style = MaterialTheme.typography.bodySmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(downloadErrorText(task), style = MaterialTheme.typography.bodySmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             Button(
-                                onClick = { service.retry(task.id) },
+                                onClick = onRetry,
                                 shape = RoundedCornerShape(percent = 50),
                                 colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                                 contentPadding = PaddingValues(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space4),
@@ -298,6 +352,20 @@ private fun DownloadCard(
                 }
             }
         }
+    }
+}
+
+/** A failed task's message: a category the user acts on as its own text, else the origin-minted
+ *  userMessage with its code, else "Something went wrong (code)". */
+@Composable
+private fun downloadErrorText(task: DownloadTask): String {
+    val code = task.errorCode ?: return task.errorMessage ?: stringResource(Res.string.downloads_failed)
+    return when {
+        code == DownloadFolderAccessException.CODE -> stringResource(Res.string.downloads_error_folder_access)
+        playabilityOf(code) == Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
+        playabilityOf(code) == Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
+        task.errorMessage != null -> "${task.errorMessage} ($code)"
+        else -> errorMessage(code)
     }
 }
 
@@ -332,16 +400,16 @@ private fun DownloadBar(task: DownloadTask, c: DownloadColors) {
 @Composable
 private fun StatusPill(task: DownloadTask, c: DownloadColors) {
     val (label, bg, fg) = when (task.state) {
-        DownloadState.QUEUED -> Triple("Queued", c.neutral, c.inkMuted)
-        DownloadState.PREPARING -> Triple("Preparing", c.accentSoft, c.accent)
-        DownloadState.DOWNLOADING -> Triple("Downloading", c.accentSoft, c.accent)
-        DownloadState.PROCESSING -> Triple("Processing", c.accentSoft, c.accent)
-        DownloadState.PAUSED -> Triple("Paused", c.warningSoft, c.warning)
-        DownloadState.FAILED -> Triple("Failed", c.dangerSoft, c.danger)
-        DownloadState.COMPLETED -> Triple("Done", c.successSoft, c.success)
-        DownloadState.CANCELED -> Triple("Canceled", c.neutral, c.inkMuted)
+        DownloadState.QUEUED -> Triple(Res.string.downloads_state_queued, c.neutral, c.inkMuted)
+        DownloadState.PREPARING -> Triple(Res.string.downloads_state_preparing, c.accentSoft, c.accent)
+        DownloadState.DOWNLOADING -> Triple(Res.string.downloads_state_downloading, c.accentSoft, c.accent)
+        DownloadState.PROCESSING -> Triple(Res.string.downloads_state_processing, c.accentSoft, c.accent)
+        DownloadState.PAUSED -> Triple(Res.string.downloads_filter_paused, c.warningSoft, c.warning)
+        DownloadState.FAILED -> Triple(Res.string.downloads_state_failed, c.dangerSoft, c.danger)
+        DownloadState.COMPLETED -> Triple(Res.string.downloads_state_done, c.successSoft, c.success)
+        DownloadState.CANCELED -> Triple(Res.string.downloads_state_canceled, c.neutral, c.inkMuted)
     }
-    StatusChip(label, bg, fg)
+    StatusChip(stringResource(label), bg, fg)
 }
 
 @Composable
@@ -356,11 +424,11 @@ private fun StatusChip(label: String, container: Color, content: Color) {
     }
 }
 
-/** Build the per-state overflow menu. Labels are hardcoded (English) to steer clear of the
- *  compose-resources accessor-chunk boundary hazard when adding many new strings at once. */
+@Composable
 private fun actionsFor(
     task: DownloadTask,
     service: DownloadService,
+    onRetry: () -> Unit,
     onPlay: () -> Unit,
     onRevealLibrary: (() -> Unit)?,
     onRevealFolder: (() -> Unit)?,
@@ -368,25 +436,25 @@ private fun actionsFor(
     val entries = buildList<Pair<String, () -> Unit>> {
         when (task.state) {
             DownloadState.QUEUED, DownloadState.PREPARING, DownloadState.DOWNLOADING, DownloadState.PROCESSING -> {
-                add("Pause" to { service.pause(task.id) })
-                add("Cancel" to { service.cancel(task.id) })
+                add(stringResource(Res.string.downloads_action_pause) to { service.pause(task.id) })
+                add(stringResource(Res.string.dialog_cancel) to { service.cancel(task.id) })
             }
             DownloadState.PAUSED -> {
-                add("Resume" to { service.resume(task.id) })
-                add("Cancel" to { service.cancel(task.id) })
+                add(stringResource(Res.string.downloads_action_resume) to { service.resume(task.id) })
+                add(stringResource(Res.string.dialog_cancel) to { service.cancel(task.id) })
             }
             DownloadState.FAILED -> {
-                add("Retry" to { service.retry(task.id) })
-                add("Remove" to { service.remove(task.id) })
+                add(stringResource(Res.string.retry) to onRetry)
+                add(stringResource(Res.string.menu_remove) to { service.remove(task.id) })
             }
             DownloadState.COMPLETED -> {
-                add("Play" to onPlay)
-                onRevealLibrary?.let { add("Reveal in Library" to it) }
-                onRevealFolder?.let { add("Reveal in Finder" to it) }
-                add("Remove" to { service.remove(task.id) })
+                add(stringResource(Res.string.menu_play) to onPlay)
+                onRevealLibrary?.let { add(stringResource(Res.string.downloads_action_reveal_library) to it) }
+                onRevealFolder?.let { add(stringResource(Res.string.downloads_action_reveal_finder) to it) }
+                add(stringResource(Res.string.menu_remove) to { service.remove(task.id) })
             }
             DownloadState.CANCELED -> {
-                add("Remove" to { service.remove(task.id) })
+                add(stringResource(Res.string.menu_remove) to { service.remove(task.id) })
             }
         }
     }
@@ -423,17 +491,22 @@ private fun DownloadFormat.badgeColor(): Color = when (this) {
 }
 
 /** `updatedAt` (a completed task's finish time) as e.g. "Jul 31, 2026", in the device's time zone. */
+@Composable
 private fun formatDownloadDate(epochMs: Long): String {
     val dt = Instant.fromEpochMilliseconds(epochMs).toLocalDateTime(TimeZone.currentSystemDefault())
-    return "${MONTH_ABBR[dt.monthNumber - 1]} ${dt.dayOfMonth}, ${dt.year}"
+    val month = stringArrayResource(Res.array.month_abbr)[dt.monthNumber - 1]
+    return stringResource(Res.string.downloads_completed_date, month, dt.dayOfMonth, dt.year)
 }
 
-private val MONTH_ABBR = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-
+@Composable
 private fun humanSize(bytes: Long): String {
-    if (bytes <= 0) return "0 MB"
+    if (bytes <= 0) return stringResource(Res.string.download_size_mb, "0")
     val mb = bytes / (1024.0 * 1024.0)
-    return if (mb >= 1) "${(mb * 10).toLong() / 10.0} MB" else "${bytes / 1024} KB"
+    return if (mb >= 1) {
+        stringResource(Res.string.download_size_mb, "${(mb * 10).toLong() / 10.0}")
+    } else {
+        stringResource(Res.string.download_size_kb, "${bytes / 1024}")
+    }
 }
 
 /** The download screen's semantic palette — the app's surfaces/ink/accent plus amber/green for the

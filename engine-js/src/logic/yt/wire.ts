@@ -226,6 +226,12 @@ export interface WireLoginUrl {
   url: string;
 }
 
+/** The `yt/verify/target` result — where a `captcha` challenge is cleared, and the UA to present. */
+export interface WireVerifyTarget {
+  url: string;
+  userAgent: string;
+}
+
 /** One pickable content language / region: the InnerTube code and YouTube's own label for it. */
 export interface WireLocaleOption {
   code: string;

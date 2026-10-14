@@ -92,7 +92,7 @@ Codes come in two kinds (AGENTS.md "Error Handling"):
 - **Site codes** — `E#####`, one hardcoded literal at one throw/classification site; grep is the
   registry. `E2xxxx` = `:dynamic-engine` incl. its remote JS, `E9xxxx` = server-minted. Reserved so
   far: `E20001` uncaught script error (commandHandler's classifier fallback), `E20002` no engine handler for
-  the command, `E20003` unstructured pipe reset (decoder fallback), `E20010` / `E20011` — §1.
+  the command, `E20003` unstructured pipe reset (decoder fallback), `E20010` / `E20011` / `E20154` — §1.
 
 Carriers, per hop:
 - **JS**: `throw JsEngineError.parse("…")` / `throw new JsEngineError("…", "E29999", {userMessage})`
@@ -182,9 +182,12 @@ JS → K:  {"method":"POST","url":"https://…","headers":[["k","v"],…],
           "opts":{"timeoutMs":5000,"followRedirects":false},"bodyCmd":"http/body/8",
           "log":{"key":3,"trail":[["js:yt-home"],["js:browse"]]}}
          …then NOTHING; END = done, RESET = cancel                   (write side stays open)
-K → JS:  {"status":200,"message":"OK","url":"<final URL after redirects>","headers":[["k","v"],…]}
+K → JS:  {"status":200,"message":"OK","url":"<final URL after redirects>","headers":[["k","v"],…],
+          "cache":"hit"|"conditional"?}
          <raw response body bytes> … then close() (END)
 ```
+- `"cache"` (diagnostic, optional): `"hit"` = served from the host's HTTP disk cache without the
+  network, `"conditional"` = a revalidated cache entry; absent = a plain network response.
 - The server's cancel **watcher arms right after the head** — the JS→K direction is otherwise
   empty, so a RESET of that direction is observable at **every** stage, including a
   transport parked in `execute` with the body never pulled. Clean EOF = the client closed after
@@ -236,6 +239,8 @@ still trust:
 - Failure mid-body → `{code:"network", message:"response body failed: …"}`; the client's in-flight
   read throws the reason (§6). Never a clean EOF — that would read as a complete, silently
   truncated body.
+- The exchange cancelled by anything but the client's RESET → `{code:"E20154", message:"exchange
+  aborted: …"}` — likewise never a clean EOF.
 - Protocol violations (any data after the head → `E20010`) and server bugs throw
   out of the handler; the runtime's backstop RESETs with the raw message.
 - Client abandons the body → `res.close()` / `res.cancel()` = RESET of the control pipe's request direction + closing our read end: the

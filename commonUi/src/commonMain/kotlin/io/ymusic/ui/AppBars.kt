@@ -91,6 +91,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -834,7 +835,7 @@ private fun TabOverflowHint(towardStart: Boolean, modifier: Modifier, onClick: (
         modifier
             .fillMaxHeight()
             .background(Brush.horizontalGradient(if (towardStart) colors else colors.reversed()))
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 2.dp),
         contentAlignment = Alignment.Center,
     ) {

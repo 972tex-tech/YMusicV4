@@ -59,7 +59,7 @@ async function chartsBrowse(log?: JsLogger): Promise<Record<string, unknown>> {
   const res = await executeWithCookies(url, builder);
   if (!res.ok) {
     res.close();
-    throw JsEngineErrorImpl.network("yt charts HTTP " + res.status);
+    throw JsEngineErrorImpl.httpStatus("yt charts", res.status, "E20143");
   }
   return res.jsonObject();
 }

@@ -138,7 +138,8 @@
     <string name="sort_duration">Duur</string>
     <string name="sort_song_count">Aantal liedjies</string>
     <string name="cd_sort">Sorteer</string>
-    <string name="cd_sort_order">Sorteervolgorde</string>
+    <string name="cd_sort_ascending">Sorteervolgorde: stygend</string>
+    <string name="cd_sort_descending">Sorteervolgorde: dalend</string>
     <string name="library_unavailable">Geen plaaslike biblioteek op hierdie platform opgestel nie</string>
     <string name="library_empty">Jou biblioteek is leeg</string>
     <string name="library_scan_folder">+  Skandeer vouer</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">Meer</string>
     <string name="cd_collapse">Vou in</string>
     <string name="cd_expand">Vou uit</string>
-    <string name="cd_play_pause">Speel/Onderbreek</string>
     <string name="cd_next">Volgende</string>
     <string name="cd_previous">Vorige</string>
     <string name="cd_download">Laai af</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">Vul skerm</string>
     <string name="cd_rewind10">Spoel 10 sekondes terug</string>
     <string name="cd_forward10">Spoel 10 sekondes vorentoe</string>
-    <string name="cd_repeat">Herhaal</string>
+    <string name="cd_repeat_off">Herhaal: af</string>
+    <string name="cd_repeat_all">Herhaal: alles</string>
+    <string name="cd_repeat_one">Herhaal: een</string>
     <string name="play_all">Speel alles</string>
     <string name="shuffle_all">Skommel alles</string>
     <string name="cd_shuffle">Skommel</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">Gereed om te installeer</string>
     <string name="update_manual_hint">Hierdie kopie kan homself nie opdateer nie (%1$s). Laai eerder die nuwe weergawe af.</string>
     <string name="update_failed">Opdatering het misluk: %1$s</string>
+    <string name="update_official_site">Kry dit van die amptelike webwerf</string>
     <string name="download_title">Laai af</string>
     <string name="download_audio_only">Net oudio</string>
     <string name="download_video">Video</string>

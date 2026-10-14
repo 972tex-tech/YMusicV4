@@ -565,7 +565,7 @@ onAccept(
     const res = await HttpRequest.get(url).logger(hostLogger(args, "yt/suggest")).build().execute();
     if (!res.ok) {
       res.close();
-      throw JsEngineErrorImpl.network("yt suggest HTTP " + res.status);
+      throw JsEngineErrorImpl.httpStatus("yt suggest", res.status, "E20144");
     }
     const text = await res.text();
     // JSONP wrapper (non-firefox clients) stripped by slicing, not regex: a "(" before any "["

@@ -9,17 +9,18 @@
 //   yt/account        -> the account card (name/email/channel), from account_menu — called ONLY once
 //                        the gate has passed and the cookies are settled.
 //   yt/logout         -> drop the auth cookies, keeping the anonymous identity (PREF/visitor/YSC).
+//   yt/verify/target  -> where the user clears a "captcha" bot challenge, + the UA to present.
 
 import { debug } from "../../debug";
 import { onAccept } from "../../transport";
 import { commandHandler } from "../../protocol/command";
 import { Cookies } from "../../protocol/cookie";
 import { Cache } from "../../protocol/cache";
-import { getSession, invalidateSession } from "./session";
+import { DESKTOP_UA, getSession, invalidateSession } from "./session";
 import { innertubeJson } from "./innertube";
 import { setLoginInfoWipedHandler } from "./cookies";
 import { asString, get, isObj, textOf, thumbsOf, walk } from "./scan";
-import type { WireAccount } from "./wire";
+import type { WireAccount, WireVerifyTarget } from "./wire";
 
 const YT = "https://www.youtube.com";
 const YT_MOBILE = "https://m.youtube.com";
@@ -190,6 +191,18 @@ onAccept(
   commandHandler(async (src, out) => {
     await src.readJsonObject();
     await writeJson(out, { "url": SWITCH_URL });
+  }),
+);
+
+// Where the user clears a "captcha" bot challenge -> WireVerifyTarget. The browser must present the
+// scrape's own User-Agent and write the shared jar, or the cleared challenge belongs to another
+// identity. No polling: closing the browser is the completion signal.
+onAccept(
+  "yt/verify/target",
+  commandHandler(async (src, out) => {
+    await src.readJsonObject();
+    const target: WireVerifyTarget = { "url": YT + "/", "userAgent": DESKTOP_UA };
+    await writeJson(out, target);
   }),
 );
 

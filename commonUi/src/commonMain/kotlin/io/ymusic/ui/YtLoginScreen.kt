@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,15 +46,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtAccountInfo
+import io.ymusic.dynamicengine.yt.YtVerifyTarget
 import io.ymusic.dynamicengine.yt.ytAccountInfo
 import io.ymusic.dynamicengine.yt.ytLoginStatus
 import io.ymusic.dynamicengine.yt.ytLoginUrl
 import io.ymusic.dynamicengine.yt.ytLogout
 import io.ymusic.dynamicengine.yt.ytRefreshSession
 import io.ymusic.dynamicengine.yt.ytSwitchAccountUrl
+import io.ymusic.dynamicengine.yt.ytVerifyTarget
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.captcha_verify
+import io.ymusic.ui.resources.captcha_verify_hint
 import io.ymusic.ui.resources.cd_back
 import io.ymusic.ui.resources.cd_close
+import io.ymusic.ui.resources.dialog_ok_done
 import io.ymusic.ui.resources.signin_button
 import io.ymusic.ui.resources.signin_enables
 import io.ymusic.ui.resources.signin_feature_history
@@ -78,6 +84,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.Playability
+import projectcommon.error.errorCode
 import projectcommon.error.runSuspendCatching
 
 /**
@@ -112,12 +120,14 @@ class LoginWebViewState {
 
 /**
  * A platform browser WebView, injected by the platform shell (like [AppGraph.playerSurface]) so the
- * pure shared UI never depends on a WebView stack. It loads [url], reports title / URL / progress
- * into [state], and calls [onPageChanged] after each navigation. The shell copies sign-in cookies
- * into the persistent jar the engine reads so the login gate sees them.
+ * pure shared UI never depends on a WebView stack. It loads [url] presenting [userAgent] (null = the
+ * platform default), reports title / URL / progress into [state], and calls [onPageChanged] after
+ * each navigation. The shell copies sign-in cookies into the persistent jar the engine reads so the
+ * login gate sees them.
  */
 typealias LoginBrowser = @Composable (
     url: String,
+    userAgent: String?,
     state: LoginWebViewState,
     onPageChanged: () -> Unit,
     modifier: Modifier,
@@ -184,8 +194,9 @@ internal class AccountController(
     }
 
     /** After the login screen's cookie gate passed: pull the account card, reload every feed, and
-     *  stale the player's page so the next track re-fetches /embed authenticated. */
-    fun onLoginComplete() {
+     *  stale the player's page so the next track re-fetches /embed authenticated. [then] runs last,
+     *  under the refreshed session. */
+    fun onLoginComplete(then: (() -> Unit)? = null) {
         scope.launch {
             _profileReady.value = false
             _signedIn.value = true
@@ -201,7 +212,22 @@ internal class AccountController(
             loginEpoch.value += 1
             _profileReady.value = true
             graph.player.refreshOnNext()
+            val playerError = graph.player.status.value.error
+            if (playerError?.playability() == Playability.SignInRequired || playerError?.code == CAPTCHA_CODE) {
+                graph.player.play()
+            }
             graph.requestRefresh()
+            then?.invoke()
+        }
+    }
+
+    /** After the captcha browser closes: re-scrape the session under the cookies the cleared
+     *  challenge left, then [retry] what failed (a still-blocked scrape fails it again, visibly). */
+    fun onCaptchaVerified(retry: () -> Unit) {
+        scope.launch {
+            runSuspendCatching { graph.engines.ytRefreshSession() }
+                .onFailure { log?.log(Logger.Level.WARN, "post-verify session refresh failed", it) }
+            retry()
         }
     }
 
@@ -285,7 +311,7 @@ internal fun YtLoginScreen(
         LoginChrome(state, onBack = onBack)
         var hintDismissed by remember { mutableStateOf(false) }
         if (switchAccount && !hintDismissed) {
-            SwitchAccountHint { hintDismissed = true }
+            BrowserHint(stringResource(Res.string.switch_account_hint), onDismiss = { hintDismissed = true })
         }
         val url = entryUrl
         when {
@@ -293,14 +319,62 @@ internal fun YtLoginScreen(
                 Text(stringResource(Res.string.signin_unavailable), color = DesignColors.InkMuted)
             }
             url == null -> CenteredBox { CircularProgressIndicator(color = DesignColors.Accent) }
-            else -> browser(url, state, {}, Modifier.fillMaxWidth().weight(1f))
+            else -> browser(url, null, state, {}, Modifier.fillMaxWidth().weight(1f))
         }
     }
 }
 
-/** The switcher's dismissable instruction strip — closing the screen is what commits the switch. */
+/**
+ * The captcha browser: the login chrome over the shell's WebView on the engine's verify target,
+ * presenting the scrape's own User-Agent so the cleared challenge belongs to the identity the engine
+ * scrapes with (cookies land in the same jar). Nothing tells us the challenge was solved, so Done,
+ * the back arrow and closing all mean the same: [onDone] — App refreshes the session and retries.
+ */
 @Composable
-private fun SwitchAccountHint(onDismiss: () -> Unit) {
+internal fun YtVerifyScreen(graph: AppGraph, state: LoginWebViewState, onDone: () -> Unit) {
+    var target by remember { mutableStateOf<YtVerifyTarget?>(null) }
+    var failedCode by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(graph) {
+        runSuspendCatching { graph.engines.ytVerifyTarget() }
+            .onSuccess { target = it }
+            .onFailure {
+                graph.logger?.fork("verify")?.captureError(it, "verify target failed")
+                failedCode = it.errorCode() ?: "E20147"
+            }
+    }
+    Column(Modifier.fillMaxSize().background(DesignColors.Surface)) {
+        // A double tap must not pop the layer underneath too.
+        var finished by remember { mutableStateOf(false) }
+        val finish = {
+            if (!finished) {
+                finished = true
+                onDone()
+            }
+        }
+        LoginChrome(
+            state,
+            onBack = finish,
+            fallbackTitle = stringResource(Res.string.captcha_verify),
+            onDone = finish,
+        )
+        val browser = graph.loginBrowser
+        if (browser != null) BrowserHint(stringResource(Res.string.captcha_verify_hint))
+        val verify = target
+        val failed = failedCode
+        when {
+            browser == null -> CenteredBox {
+                Text(stringResource(Res.string.signin_unavailable), color = DesignColors.InkMuted)
+            }
+            failed != null -> CenteredBox { Text(errorMessage(failed), color = MaterialTheme.colorScheme.error) }
+            verify == null -> CenteredBox { CircularProgressIndicator(color = DesignColors.Accent) }
+            else -> browser(verify.url, verify.userAgent, state, {}, Modifier.fillMaxWidth().weight(1f))
+        }
+    }
+}
+
+/** An instruction strip under the browser chrome; [onDismiss] null = not dismissable. */
+@Composable
+private fun BrowserHint(text: String, onDismiss: (() -> Unit)? = null) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -309,26 +383,33 @@ private fun SwitchAccountHint(onDismiss: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            stringResource(Res.string.switch_account_hint),
+            text,
             style = TextStyle(fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onPrimaryContainer),
             modifier = Modifier.weight(1f).padding(vertical = DesignSpacing.Space8),
         )
-        ActionIcon(
-            Icons.Default.Close,
-            stringResource(Res.string.cd_close),
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-            onClick = onDismiss,
-        )
+        if (onDismiss != null) {
+            ActionIcon(
+                Icons.Default.Close,
+                stringResource(Res.string.cd_close),
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                onClick = onDismiss,
+            )
+        }
     }
 }
 
 @Composable
-private fun LoginChrome(state: LoginWebViewState, onBack: () -> Unit) = ElevatedBarColumn {
+private fun LoginChrome(
+    state: LoginWebViewState,
+    onBack: () -> Unit,
+    fallbackTitle: String = stringResource(Res.string.signin_screen_title),
+    onDone: (() -> Unit)? = null,
+) = ElevatedBarColumn {
     AppBarRow {
         ActionIcon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(Res.string.cd_back), onClick = onBack)
         Column(Modifier.weight(1f)) {
             Text(
-                state.title?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.signin_screen_title),
+                state.title?.takeIf { it.isNotBlank() } ?: fallbackTitle,
                 style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -344,6 +425,14 @@ private fun LoginChrome(state: LoginWebViewState, onBack: () -> Unit) = Elevated
         }
         state.openDevTools?.let { open ->
             ActionIcon(Icons.Default.Code, "DevTools", onClick = open)
+        }
+        if (onDone != null) {
+            TextButton(onClick = onDone) {
+                Text(
+                    stringResource(Res.string.dialog_ok_done),
+                    style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Accent),
+                )
+            }
         }
     }
     // The load bar shows only mid-navigation; a finished (1f) or idle (0f) page hides it.

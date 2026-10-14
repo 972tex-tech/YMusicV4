@@ -138,7 +138,8 @@
     <string name="sort_duration">Тривалість</string>
     <string name="sort_song_count">Кількість пісень</string>
     <string name="cd_sort">Сортування</string>
-    <string name="cd_sort_order">Порядок сортування</string>
+    <string name="cd_sort_ascending">Порядок сортування: за зростанням</string>
+    <string name="cd_sort_descending">Порядок сортування: за спаданням</string>
     <string name="library_unavailable">На цій платформі локальну бібліотеку не налаштовано</string>
     <string name="library_empty">Ваша бібліотека порожня</string>
     <string name="library_scan_folder">+  Сканувати папку</string>
@@ -244,7 +245,6 @@
     <string name="cd_more">Більше</string>
     <string name="cd_collapse">Згорнути</string>
     <string name="cd_expand">Розгорнути</string>
-    <string name="cd_play_pause">Відтворення/пауза</string>
     <string name="cd_next">Наступний</string>
     <string name="cd_previous">Попередній</string>
     <string name="cd_download">Завантажити</string>
@@ -254,7 +254,9 @@
     <string name="cd_fill_video">Заповнити екран</string>
     <string name="cd_rewind10">Назад на 10 секунд</string>
     <string name="cd_forward10">Уперед на 10 секунд</string>
-    <string name="cd_repeat">Повтор</string>
+    <string name="cd_repeat_off">Повтор: вимк.</string>
+    <string name="cd_repeat_all">Повтор: усі</string>
+    <string name="cd_repeat_one">Повтор: один трек</string>
     <string name="play_all">Відтворити все</string>
     <string name="shuffle_all">Перемішати все</string>
     <string name="cd_shuffle">Перемішати</string>
@@ -386,6 +388,7 @@
     <string name="update_ready">Готово до встановлення</string>
     <string name="update_manual_hint">Ця копія не може оновитися сама (%1$s). Завантажте нову версію вручну.</string>
     <string name="update_failed">Помилка оновлення: %1$s</string>
+    <string name="update_official_site">Завантажити з офіційного сайту</string>
     <string name="download_title">Завантажити</string>
     <string name="download_audio_only">Лише аудіо</string>
     <string name="download_video">Відео</string>

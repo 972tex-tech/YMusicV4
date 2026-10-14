@@ -138,7 +138,8 @@
     <string name="sort_duration">재생 시간</string>
     <string name="sort_song_count">곡 수</string>
     <string name="cd_sort">정렬</string>
-    <string name="cd_sort_order">정렬 순서</string>
+    <string name="cd_sort_ascending">정렬 순서: 오름차순</string>
+    <string name="cd_sort_descending">정렬 순서: 내림차순</string>
     <string name="library_unavailable">이 플랫폼에는 로컬 보관함이 설정되어 있지 않습니다</string>
     <string name="library_empty">보관함이 비어 있습니다</string>
     <string name="library_scan_folder">+  폴더 스캔</string>
@@ -241,7 +242,6 @@
     <string name="cd_more">더보기</string>
     <string name="cd_collapse">접기</string>
     <string name="cd_expand">펼치기</string>
-    <string name="cd_play_pause">재생/일시정지</string>
     <string name="cd_next">다음</string>
     <string name="cd_previous">이전</string>
     <string name="cd_download">다운로드</string>
@@ -251,7 +251,9 @@
     <string name="cd_fill_video">화면 채우기</string>
     <string name="cd_rewind10">10초 뒤로</string>
     <string name="cd_forward10">10초 앞으로</string>
-    <string name="cd_repeat">반복</string>
+    <string name="cd_repeat_off">반복: 끄기</string>
+    <string name="cd_repeat_all">반복: 전체</string>
+    <string name="cd_repeat_one">반복: 한 곡</string>
     <string name="play_all">모두 재생</string>
     <string name="shuffle_all">모두 셔플</string>
     <string name="cd_shuffle">셔플</string>
@@ -383,6 +385,7 @@
     <string name="update_ready">설치 준비 완료</string>
     <string name="update_manual_hint">이 버전은 자동으로 업데이트할 수 없습니다(%1$s). 새 버전을 직접 다운로드하세요.</string>
     <string name="update_failed">업데이트 실패: %1$s</string>
+    <string name="update_official_site">공식 웹사이트에서 다운로드</string>
     <string name="download_title">다운로드</string>
     <string name="download_audio_only">오디오만</string>
     <string name="download_video">동영상</string>

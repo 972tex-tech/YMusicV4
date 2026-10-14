@@ -30,6 +30,16 @@ suspend fun DynamicEngineManager.ytSwitchAccountUrl(): String = use { engine ->
 }
 
 /**
+ * Where the user clears a [io.ymusic.dynamicengine.EngineError.Captcha] bot challenge. Open a browser
+ * on it with its User-Agent; no gate to poll — closing the browser is completion, then
+ * [ytRefreshSession] and retry.
+ */
+suspend fun DynamicEngineManager.ytVerifyTarget(): YtVerifyTarget = use { engine ->
+    engine.jsonCommand("yt/verify/target", { w ->
+    }) { readVerifyTarget(it) }
+}
+
+/**
  * The sign-in gate — COOKIE-ONLY, no network. The login screen polls this while the user signs in;
  * `true` means the essential cookies are present in both jars, so it is safe to dismiss, fetch the
  * account card, and refresh the feeds. It deliberately never touches the network: an authenticated

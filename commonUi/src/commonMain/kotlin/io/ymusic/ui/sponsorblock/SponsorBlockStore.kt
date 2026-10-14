@@ -79,21 +79,26 @@ class SqliteSponsorBlockStore(
     override suspend fun cache(videoId: String, segments: List<SponsorBlockSegment>) = withContext(io) {
         val now = nowMs()
         val json = encodeSkipSegments(segments)
+        // INSERT OR IGNORE + UPDATE, not an upsert: ON CONFLICT … DO UPDATE needs SQLite 3.24 (Android 11+).
         driver.execute(
             null,
-            """
-            INSERT INTO sponsorBlockCache(videoId, segments, updatedAt, usedAt) VALUES (?, ?, ?, ?)
-            ON CONFLICT(videoId) DO UPDATE SET
-                segments = excluded.segments,
-                updatedAt = excluded.updatedAt,
-                usedAt = excluded.usedAt
-            """.trimIndent(),
+            "INSERT OR IGNORE INTO sponsorBlockCache(videoId, segments, updatedAt, usedAt) VALUES (?, ?, ?, ?)",
             4,
         ) {
             bindString(0, videoId)
             bindString(1, json)
             bindLong(2, now)
             bindLong(3, now)
+        }
+        driver.execute(
+            null,
+            "UPDATE sponsorBlockCache SET segments = ?, updatedAt = ?, usedAt = ? WHERE videoId = ?",
+            4,
+        ) {
+            bindString(0, json)
+            bindLong(1, now)
+            bindLong(2, now)
+            bindString(3, videoId)
         }
         writes++
         if (writes % 15 == 0) cleanUpUnused()

@@ -6,6 +6,8 @@ import io.ymusic.ytmedia.sabr.AdaptiveFormat
 import io.ymusic.ytmedia.sabr.SabrStreamSpec
 import kmpcommon.log.Logger
 import kmphttp.KmpHttpClient
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import okio.buffer
 import okio.use
 import projectcommon.error.TechnicalException
@@ -34,6 +36,9 @@ class ResolvedVideo(val spec: SabrStreamSpec, val artist: String? = null)
  *
  * Audio elementary streams are already valid container files, so audio-only + no-ffmpeg (iOS M4A) skips
  * step 2 — the raw stream is published as-is and its metadata lives in the DB task row.
+ *
+ * The final scratch is marked ready before step 4, so a run that fails only to publish is retried from
+ * step 4 alone (the scratch folder outlives the failure; only cancel or a successful publish deletes it).
  */
 class DownloadPipeline(
     resolver: SabrSpecResolver,
@@ -49,8 +54,8 @@ class DownloadPipeline(
     private val downloader = YtStreamDownloader(resolver, client, userAgent, storage, mediaCache, segmentIndex, logger)
     private val coverArt = CoverArt(client, userAgent, storage, logger)
 
-    /** A completed run: the published file's uri + byte size, and the formats (for library ingest). */
-    class Result(val uri: String, val bytes: Long, val audio: AdaptiveFormat, val video: AdaptiveFormat?)
+    /** A completed run: the published file's uri + byte size, and the media facts library ingest uses. */
+    class Result(val uri: String, val bytes: Long, val durationMs: Long?, val width: Int?, val height: Int?)
 
     suspend fun run(
         task: DownloadTask,
@@ -60,22 +65,24 @@ class DownloadPipeline(
         onProcessing: () -> Unit,
         onProgress: (done: Long, total: Long) -> Unit,
     ): Result {
+        // A previous run already produced the final file and failed only to publish it (e.g. the download
+        // folder lost its write grant): publish that again, skipping steps 1-2.
+        readyOutput(task.id)?.let { ready ->
+            onProcessing()
+            return publish(task, ready, destinationFolder)
+        }
+
         // 1. download the elementary streams (+ captions) to scratch files.
         val streams = downloader.download(task, onPreparing, onDownloading, onProgress)
         val audioFmt = streams.audio.format
         val videoFmt = streams.video?.format
-        val base = baseName(task)
-        val fileName = "$base.${task.format.fileExtension}"
 
         onProcessing()
 
         // No-ffmpeg M4A (iOS): the raw best-AAC stream IS a playable .m4a — publish it as-is, no step 2
         // (metadata lives in the DB task row). Captions can't be muxed without ffmpeg here, so drop them.
         if (task.format == DownloadFormat.M4A && ffmpeg == null) {
-            val bytes = streams.audio.scratch.length()
-            val uri = storage.publish(streams.audio.scratch, fileName, destinationFolder)
-            storage.deleteScratch(task.id)
-            return Result(uri, bytes, audioFmt, null)
+            return publish(task, markReady(task.id, AUDIO_SCRATCH, audioFmt, null), destinationFolder)
         }
 
         // 2. mux/convert + metadata into the final scratch, reporting ffmpeg's output-time progress. The
@@ -94,13 +101,14 @@ class DownloadPipeline(
 
         val audio = streams.audio.scratch
         val video = streams.video?.scratch
-        var out = storage.scratch(task.id, "out")
+        val out = storage.scratch(task.id, OUT_SCRATCH)
+        var outName = OUT_SCRATCH
         val meta = task.tags(streams.artist)
         val subs = streams.captions.map { SubtitleInput(it.scratch.path, it.languageCode, it.name) }
         when (task.format) {
             DownloadFormat.MP3 -> {
                 withCover(task) { cover -> ff.toMp3(audio.path, out.path, cover, meta, onFfProgress) }
-                if (streams.captions.isNotEmpty()) out = withLyrics(task.id, out, streams.captions)
+                if (streams.captions.isNotEmpty()) outName = withLyrics(task.id, out, streams.captions)
             }
             DownloadFormat.M4A -> withCover(task) { cover ->
                 ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), captions = subs, cover = cover, metadata = meta, onProgressUs = onFfProgress)
@@ -111,14 +119,53 @@ class DownloadPipeline(
             DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
             DownloadFormat.VIDEO_MP4 -> ff.muxMp4(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
         }
-        val bytes = out.length()
 
-        // 3. publish the final file (moved out of the scratch folder), then drop the task's whole scratch
-        //    folder — elementary streams + captions in one delete.
-        val uri = storage.publish(out, fileName, destinationFolder)
-        storage.deleteScratch(task.id)
-        return Result(uri, bytes, audioFmt, videoFmt)
+        // 3. publish the final file (moved out of the scratch folder).
+        return publish(task, markReady(task.id, outName, audioFmt, videoFmt), destinationFolder)
     }
+
+    /** The finished scratch [scratchName] plus the media facts the [Result] carries — persisted as the
+     *  task's [READY_SCRATCH] marker so a run that failed at publish can be retried from publish alone. */
+    private class ReadyOutput(val scratchName: String, val durationMs: Long?, val width: Int?, val height: Int?)
+
+    private fun markReady(taskId: String, scratchName: String, audio: AdaptiveFormat, video: AdaptiveFormat?): ReadyOutput {
+        val ready = ReadyOutput(scratchName, audio.approxDurationMs.toLong().takeIf { it > 0 }, video?.width, video?.height)
+        val marker = storage.scratch(taskId, READY_SCRATCH)
+        marker.delete()
+        marker.appendSink().use { sink ->
+            sink.writeUtf8(listOf(ready.scratchName, ready.durationMs ?: "", ready.width ?: "", ready.height ?: "").joinToString("\n"))
+        }
+        return ready
+    }
+
+    /** The task's [READY_SCRATCH] marker, or null when there is none or the file it names is gone. */
+    private fun readyOutput(taskId: String): ReadyOutput? {
+        val marker = storage.scratch(taskId, READY_SCRATCH)
+        if (marker.length() == 0L) return null
+        val fields = marker.source().buffer().use { it.readUtf8() }.split('\n')
+        val ready = ReadyOutput(
+            scratchName = fields[0],
+            durationMs = fields.getOrNull(1)?.toLongOrNull(),
+            width = fields.getOrNull(2)?.toIntOrNull(),
+            height = fields.getOrNull(3)?.toIntOrNull(),
+        )
+        if (storage.scratch(taskId, ready.scratchName).length() > 0) return ready
+        marker.delete()
+        return null
+    }
+
+    /** Publish [ready]'s scratch into [destinationFolder], then drop the task's whole scratch folder —
+     *  elementary streams, captions and the marker in one delete. */
+    // Not cancellable: a pause landing mid-copy would leave the file published but the task resumable,
+    // and its resume would publish a second copy.
+    private suspend fun publish(task: DownloadTask, ready: ReadyOutput, destinationFolder: String): Result =
+        withContext(NonCancellable) {
+            val scratch = storage.scratch(task.id, ready.scratchName)
+            val bytes = scratch.length()
+            val uri = storage.publish(scratch, "${baseName(task)}.${task.format.fileExtension}", destinationFolder)
+            storage.deleteScratch(task.id)
+            Result(uri, bytes, ready.durationMs, ready.width, ready.height)
+        }
 
     /** Run [convert] with the cover art's path; a cover ffmpeg rejects is dropped and the conversion rerun
      *  without it, so the song still publishes — cover art is best-effort like lyrics. */
@@ -137,28 +184,29 @@ class DownloadPipeline(
         }
     }
 
-    /** [mp3] with [captions] written into its tag as LRC lyrics — a new scratch, or [mp3] itself when there
-     *  is nothing to write or the tag can't take it. Best-effort like the captions themselves: a failure is
-     *  logged and the song still publishes, just without lyrics. */
-    private fun withLyrics(taskId: String, mp3: DownloadScratch, captions: List<DownloadedCaption>): DownloadScratch {
-        val tagged = storage.scratch(taskId, "out-lyrics")
+    /** The name of the scratch holding [mp3] (the [OUT_SCRATCH]) with [captions] written into its tag as LRC
+     *  lyrics — a new scratch, or [OUT_SCRATCH] itself when there is nothing to write or the tag can't take
+     *  it. Best-effort like the captions themselves: a failure is logged and the song still publishes, just
+     *  without lyrics. */
+    private fun withLyrics(taskId: String, mp3: DownloadScratch, captions: List<DownloadedCaption>): String {
+        val tagged = storage.scratch(taskId, OUT_LYRICS_SCRATCH)
         try {
             val lyrics = captions.mapNotNull { cc ->
                 val lrc = cc.scratch.source().buffer().use { VttToLrc.convert(it.readUtf8()) }
                 lrc.takeIf { it.isNotEmpty() }?.let { Lyrics(iso639_2(cc.languageCode), cc.name, it) }
             }
-            if (lyrics.isEmpty()) return mp3
+            if (lyrics.isEmpty()) return OUT_SCRATCH
             tagged.delete()
             val written = mp3.source().buffer().use { source ->
                 tagged.appendSink().use { sink -> Id3Lyrics.insert(source, sink, lyrics) }
             }
-            if (written) return tagged
+            if (written) return OUT_LYRICS_SCRATCH
             logger?.log(Logger.Level.WARN, "mp3 tag can't take lyrics; publishing without them")
         } catch (e: Exception) {
             logger?.log(Logger.Level.WARN, "embedding lyrics failed; publishing without them", e)
         }
         tagged.delete()
-        return mp3
+        return OUT_SCRATCH
     }
 
     /** Container tags embedded into the finished file. The videoId goes in the standard `composer` field
@@ -183,3 +231,8 @@ class DownloadPipeline(
         return "$title-${task.videoId}"
     }
 }
+
+internal const val AUDIO_SCRATCH = "audio"
+private const val OUT_SCRATCH = "out"
+private const val OUT_LYRICS_SCRATCH = "out-lyrics"
+private const val READY_SCRATCH = "ready"

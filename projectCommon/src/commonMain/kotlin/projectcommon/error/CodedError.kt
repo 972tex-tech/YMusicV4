@@ -1,5 +1,7 @@
 package projectcommon.error
 
+import kmphttp.isTransportFailure
+
 /**
  * An error carrying a stable, boundary-crossing **code** (see AGENTS.md "Error Handling"): either a
  * **well-known category** the UI localizes (`"network"`, `"parse"`, …) or a **site code**
@@ -31,16 +33,29 @@ class TechnicalException(
     cause: Throwable? = null,
 ) : Exception("[$code] $message", cause), CodedError
 
+/** The well-known category for a connectivity failure — the UI's "check your connection". */
+const val NETWORK_CODE = "network"
+
+private object TransportFailure : CodedError {
+    override val code = NETWORK_CODE
+    override val userMessage: String? = null
+}
+
 /**
  * The deepest [CodedError] in the cause chain — the code closest to the root cause is the most
- * specific grep target, and outer wrappers must not shadow it.
+ * specific grep target, and outer wrappers must not shadow it. An uncoded transport failure from
+ * kmpHttp (timeout, DNS, reset, TLS) counts as [NETWORK_CODE] at its place in the chain.
  */
 fun Throwable.codedError(): CodedError? {
     var deepest: CodedError? = null
     var t: Throwable? = this
     var depth = 0 // cause chains can be cyclic on some platforms
     while (t != null && depth++ < 100) {
-        if (t is CodedError) deepest = t
+        if (t is CodedError) {
+            deepest = t
+        } else if (t.isTransportFailure()) {
+            deepest = TransportFailure
+        }
         t = t.cause
     }
     return deepest

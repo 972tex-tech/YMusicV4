@@ -138,7 +138,8 @@
     <string name="sort_duration">Durée</string>
     <string name="sort_song_count">Nombre de titres</string>
     <string name="cd_sort">Trier</string>
-    <string name="cd_sort_order">Ordre de tri</string>
+    <string name="cd_sort_ascending">Ordre de tri : croissant</string>
+    <string name="cd_sort_descending">Ordre de tri : décroissant</string>
     <string name="library_unavailable">Aucune bibliothèque locale configurée sur cette plateforme</string>
     <string name="library_empty">Votre bibliothèque est vide</string>
     <string name="library_scan_folder">+  Analyser un dossier</string>
@@ -243,7 +244,6 @@
     <string name="cd_more">Plus</string>
     <string name="cd_collapse">Réduire</string>
     <string name="cd_expand">Développer</string>
-    <string name="cd_play_pause">Lecture/Pause</string>
     <string name="cd_next">Suivant</string>
     <string name="cd_previous">Précédent</string>
     <string name="cd_download">Télécharger</string>
@@ -253,7 +253,9 @@
     <string name="cd_fill_video">Remplir l'écran</string>
     <string name="cd_rewind10">Reculer de 10 secondes</string>
     <string name="cd_forward10">Avancer de 10 secondes</string>
-    <string name="cd_repeat">Répéter</string>
+    <string name="cd_repeat_off">Répéter : désactivé</string>
+    <string name="cd_repeat_all">Répéter : tout</string>
+    <string name="cd_repeat_one">Répéter : un titre</string>
     <string name="play_all">Tout lire</string>
     <string name="shuffle_all">Tout lire en aléatoire</string>
     <string name="cd_shuffle">Lecture aléatoire</string>
@@ -385,6 +387,7 @@
     <string name="update_ready">Prête à installer</string>
     <string name="update_manual_hint">Cette copie ne peut pas se mettre à jour elle-même (%1$s). Téléchargez plutôt la nouvelle version.</string>
     <string name="update_failed">Échec de la mise à jour : %1$s</string>
+    <string name="update_official_site">Télécharger depuis le site officiel</string>
     <string name="download_title">Télécharger</string>
     <string name="download_audio_only">Audio uniquement</string>
     <string name="download_video">Vidéo</string>

@@ -273,9 +273,17 @@ async function scrapeSession(): Promise<YtSession> {
       .setHeader("Accept-Language", hl != null ? hl + ",en;q=0.8" : "en-US,en;q=0.9")
       .logger(jsLogger("yt/session")),
   );
-  if (!res.ok) {
+  const challenge = challengeUrl(res);
+  if (challenge !== undefined) {
     res.close();
-    throw JsEngineErrorImpl.network("yt session HTTP " + res.status);
+    throw JsEngineErrorImpl.captcha("yt session: bot challenge at " + challenge);
+  }
+  if (!res.ok) {
+    if (RE_CHALLENGE_BODY.test(await res.text()))
+      throw JsEngineErrorImpl.captcha(
+        "yt session: bot challenge page (" + res.status + ") at " + res.url,
+      );
+    throw JsEngineErrorImpl.httpStatus("yt session", res.status, "E20145");
   }
   const host = hostOf(res.url);
   if (host !== WWW_HOST) {
@@ -283,6 +291,8 @@ async function scrapeSession(): Promise<YtSession> {
     throw JsEngineErrorImpl.parse("yt session: homepage redirected to " + host);
   }
   const html = await res.text();
+  if (RE_CHALLENGE_BODY.test(html))
+    throw JsEngineErrorImpl.captcha("yt session: bot challenge page at " + res.url);
   if (html.indexOf("INNERTUBE_") === -1)
     throw JsEngineErrorImpl.parse("yt session: no ytcfg in homepage");
 
@@ -415,6 +425,28 @@ async function writeCache(s: YtSession): Promise<void> {
     });
   }
 }
+
+// Google's bot gate: a redirect to google.com/sorry (followed, or a bare 3xx when redirects are
+// off), or a 429 straight from the homepage. Answers the challenge URL, undefined when none.
+function challengeUrl(res: HttpResponse): string | undefined {
+  if (isSorryUrl(res.url)) return res.url;
+  if (res.status >= 300 && res.status < 400) {
+    const location = res.headers.get("location");
+    if (location != null && isSorryUrl(location)) return location;
+  }
+  if (res.status === 429) return res.url.length > 0 ? res.url : ORIGIN + "/";
+  return undefined;
+}
+
+function isSorryUrl(url: string): boolean {
+  const host = hostOf(url);
+  if (host !== "google.com" && host !== "www.google.com") return false;
+  return url.indexOf("/sorry", url.indexOf(host) + host.length) !== -1;
+}
+
+// The reCAPTCHA v2 widget element. The normal homepage mentions recaptcha too (RECAPTCHA_V3_SITEKEY,
+// .grecaptcha-badge) but never carries this class attribute.
+const RE_CHALLENGE_BODY = /\bclass\s*=\s*["'](?:[^"']*\s)?g-recaptcha["'\s]/i;
 
 function hostOf(url: string): string {
   const start = url.indexOf("//");

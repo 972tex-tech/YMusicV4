@@ -138,7 +138,8 @@
     <string name="sort_duration">Durată</string>
     <string name="sort_song_count">Număr de melodii</string>
     <string name="cd_sort">Sortează</string>
-    <string name="cd_sort_order">Ordine de sortare</string>
+    <string name="cd_sort_ascending">Ordine de sortare: crescătoare</string>
+    <string name="cd_sort_descending">Ordine de sortare: descrescătoare</string>
     <string name="library_unavailable">Nicio bibliotecă locală configurată pe această platformă</string>
     <string name="library_empty">Biblioteca ta este goală</string>
     <string name="library_scan_folder">+  Scanează un dosar</string>
@@ -243,7 +244,6 @@
     <string name="cd_more">Mai multe</string>
     <string name="cd_collapse">Restrânge</string>
     <string name="cd_expand">Extinde</string>
-    <string name="cd_play_pause">Redare/Pauză</string>
     <string name="cd_next">Următorul</string>
     <string name="cd_previous">Anteriorul</string>
     <string name="cd_download">Descarcă</string>
@@ -253,7 +253,9 @@
     <string name="cd_fill_video">Umple ecranul</string>
     <string name="cd_rewind10">Înapoi 10 secunde</string>
     <string name="cd_forward10">Înainte 10 secunde</string>
-    <string name="cd_repeat">Repetă</string>
+    <string name="cd_repeat_off">Repetă: dezactivat</string>
+    <string name="cd_repeat_all">Repetă: tot</string>
+    <string name="cd_repeat_one">Repetă: una</string>
     <string name="play_all">Redă tot</string>
     <string name="shuffle_all">Amestecă tot</string>
     <string name="cd_shuffle">Amestecă</string>
@@ -385,6 +387,7 @@
     <string name="update_ready">Gata de instalare</string>
     <string name="update_manual_hint">Această copie nu se poate actualiza singură (%1$s). Descarcă în schimb noua versiune.</string>
     <string name="update_failed">Actualizarea a eșuat: %1$s</string>
+    <string name="update_official_site">Descarc-o de pe site-ul oficial</string>
     <string name="download_title">Descarcă</string>
     <string name="download_audio_only">Doar audio</string>
     <string name="download_video">Video</string>

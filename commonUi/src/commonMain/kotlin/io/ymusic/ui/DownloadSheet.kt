@@ -108,8 +108,13 @@ import io.ymusic.ui.resources.download_save_quick
 import io.ymusic.ui.resources.download_save_to
 import io.ymusic.ui.resources.download_video
 import io.ymusic.ui.resources.download_webm_detail
+import io.ymusic.ui.resources.playback_sign_in_required
+import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.retry
+import io.ymusic.ui.resources.signin_button
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.Playability
+import projectcommon.error.playabilityOf
 
 /** The filled call-to-action: the accent, deepened so white text on it stays readable. */
 internal val downloadPrimary: Color @Composable get() = lerp(DesignColors.Accent, Color.Black, 0.22f)
@@ -127,6 +132,7 @@ internal fun DownloadSheet(
     locationName: String?,
     onPickLocation: () -> Unit,
     onRetry: () -> Unit,
+    onSignIn: (() -> Unit)?,
     onDownload: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -148,7 +154,7 @@ internal fun DownloadSheet(
             val options = state.options
             when {
                 state.isLive -> LiveNotDownloadable()
-                options == null && state.errorCode != null -> ProbeFailed(state.errorCode!!, onRetry)
+                options == null && state.errorCode != null -> ProbeFailed(state.errorCode!!, onRetry, onSignIn)
                 options == null -> ProbeLoading()
                 else -> {
                     if (state.hasVideo) TypeSegments(state)
@@ -238,14 +244,26 @@ internal fun LiveNotDownloadable() {
 }
 
 @Composable
-internal fun ProbeFailed(code: String, onRetry: () -> Unit) {
+internal fun ProbeFailed(code: String, onRetry: () -> Unit, onSignIn: (() -> Unit)?) {
     Column(
         Modifier.fillMaxWidth().padding(vertical = DesignSpacing.Space16),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
     ) {
-        Text(stringResource(Res.string.download_failed, code), style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary))
-        TextButton(onClick = onRetry) { Text(stringResource(Res.string.retry), color = DesignColors.Accent) }
+        val playability = playabilityOf(code)
+        val message = when (playability) {
+            Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
+            Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
+            null -> stringResource(Res.string.download_failed, code)
+        }
+        Text(message, style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary))
+        when {
+            playability == Playability.SignInRequired && onSignIn != null ->
+                TextButton(onClick = onSignIn) { Text(stringResource(Res.string.signin_button), color = DesignColors.Accent) }
+            // YouTube's verdict, not a fault: a re-probe gets the same answer.
+            playability == Playability.Unavailable -> Unit
+            else -> TextButton(onClick = onRetry) { Text(stringResource(Res.string.retry), color = DesignColors.Accent) }
+        }
     }
 }
 

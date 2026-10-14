@@ -71,19 +71,13 @@ class PlayHistoryStore(
             val ts = now()
             val replace = durationMs != null && durationMs > 0
             if (replace) {
+                // INSERT OR IGNORE + UPDATE, not an upsert: ON CONFLICT … DO UPDATE needs SQLite 3.24 (Android 11+).
                 driver.execute(
                     null,
                     """
-                    INSERT INTO yt_video_metadata(
+                    INSERT OR IGNORE INTO yt_video_metadata(
                         video_id, title, artist, thumbnail_url, duration, duration_ms, last_updated
                     ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(video_id) DO UPDATE SET
-                        title = excluded.title,
-                        artist = excluded.artist,
-                        thumbnail_url = excluded.thumbnail_url,
-                        duration = excluded.duration,
-                        duration_ms = excluded.duration_ms,
-                        last_updated = excluded.last_updated
                     """.trimIndent(),
                     7,
                 ) {
@@ -94,6 +88,23 @@ class PlayHistoryStore(
                     bindString(4, duration)
                     bindLong(5, durationMs)
                     bindLong(6, ts)
+                }
+                driver.execute(
+                    null,
+                    """
+                    UPDATE yt_video_metadata SET
+                        title = ?, artist = ?, thumbnail_url = ?, duration = ?, duration_ms = ?, last_updated = ?
+                    WHERE video_id = ?
+                    """.trimIndent(),
+                    7,
+                ) {
+                    bindString(0, title)
+                    bindString(1, artist)
+                    bindString(2, thumbnailUrl)
+                    bindString(3, duration)
+                    bindLong(4, durationMs)
+                    bindLong(5, ts)
+                    bindString(6, videoId)
                 }
             } else {
                 val updated = driver.execute(
@@ -210,19 +221,19 @@ class PlayHistoryStore(
 
     private fun upsertWatchTime(table: String, idColumn: String, id: String, watchTimeMs: Long) {
         val ts = now()
+        // INSERT OR IGNORE + UPDATE, not an upsert: ON CONFLICT … DO UPDATE needs SQLite 3.24 (Android 11+).
+        driver.execute(null, "INSERT OR IGNORE INTO $table($idColumn, watch_time, tracked_at) VALUES (?, 0, ?)", 2) {
+            bindString(0, id)
+            bindLong(1, ts)
+        }
         driver.execute(
             null,
-            """
-            INSERT INTO $table($idColumn, watch_time, tracked_at) VALUES (?, ?, ?)
-            ON CONFLICT($idColumn) DO UPDATE SET
-                watch_time = watch_time + excluded.watch_time,
-                tracked_at = excluded.tracked_at
-            """.trimIndent(),
+            "UPDATE $table SET watch_time = watch_time + ?, tracked_at = ? WHERE $idColumn = ?",
             3,
         ) {
-            bindString(0, id)
-            bindLong(1, watchTimeMs)
-            bindLong(2, ts)
+            bindLong(0, watchTimeMs)
+            bindLong(1, ts)
+            bindString(2, id)
         }
     }
 

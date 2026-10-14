@@ -49,7 +49,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * ```
  * control  JS→K: {"method":"POST","url":…,"headers":[["k","v"],…],"opts":{…},"bodyCmd":"http/body/8"}
  *                …then nothing: END = done, RESET = cancel
- * control  K→JS: {"status":…,"message":…,"url":"<final URL>","headers":[…]} + raw body bytes to EOF
+ * control  K→JS: {"status":…,"message":…,"url":"<final URL>","headers":[…],"cache":"hit"?} + raw body bytes to EOF
  * body     K opens `bodyCmd` lazily on the transport's FIRST pull; JS writes raw bytes, END = done
  * ```
  * Both heads are compact JSON (self-framing — [JsonReader] stops at the value's end); both bodies
@@ -192,6 +192,11 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
                             put("status", response.code)
                             put("message", response.message)
                             put("url", response.request.url.toString()) // final URL after redirects
+                            when {
+                                response.cacheResponse == null -> {}
+                                response.networkResponse == null -> put("cache", "hit")
+                                else -> put("cache", "conditional")
+                            }
                             putJsonArray("headers") {
                                 for ((name, value) in response.headers) {
                                     addJsonArray {
@@ -228,15 +233,26 @@ private suspend fun serveHttp(runtime: QuickJsRuntime, pipe: Pipe, client: KmpHt
             // so a RESET (the client's cancel) is observable at EVERY stage, even a transport
             // parked before pulling the body. Clean EOF = the client closed after consuming the
             // response. Any data is a protocol violation that throws to the backstop.
+            var clientCancelled = false
+            var exchangeEnd: Throwable? = null
+            exchange.invokeOnCompletion { exchangeEnd = it }
             val watcher = launch {
                 try {
                     if (src.request(1)) error("E20010 unexpected data on the control pipe")
                 } catch (_: PipeResetException) {
+                    clientCancelled = true
                     exchange.cancel()
                 }
             }
             exchange.join()
             watcher.cancel()
+            // A CancellationException the client didn't ask for (e.g. a timeout surfacing as one)
+            // ends the exchange quietly; the clean END below would hand JS a truncated body.
+            val abort = exchangeEnd
+            if (abort is CancellationException && !clientCancelled) {
+                log?.log(Logger.Level.WARN, "E20154 exchange aborted: ${abort.message}", abort)
+                pipe.sink.close(errorReason("E20154", "exchange aborted: ${abort.message}"))
+            }
         }
         pipe.sink.close() // clean END on every deliberate exit (no-op after an in-place RESET)
     } finally {

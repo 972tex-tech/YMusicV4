@@ -138,7 +138,8 @@
     <string name="sort_duration">Duur</string>
     <string name="sort_song_count">Aantal nummers</string>
     <string name="cd_sort">Sorteren</string>
-    <string name="cd_sort_order">Sorteervolgorde</string>
+    <string name="cd_sort_ascending">Sorteervolgorde: oplopend</string>
+    <string name="cd_sort_descending">Sorteervolgorde: aflopend</string>
     <string name="library_unavailable">Geen lokale bibliotheek ingesteld op dit platform</string>
     <string name="library_empty">Je bibliotheek is leeg</string>
     <string name="library_scan_folder">+  Map scannen</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">Meer</string>
     <string name="cd_collapse">Samenvouwen</string>
     <string name="cd_expand">Uitvouwen</string>
-    <string name="cd_play_pause">Afspelen/pauzeren</string>
     <string name="cd_next">Volgende</string>
     <string name="cd_previous">Vorige</string>
     <string name="cd_download">Downloaden</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">Scherm vullen</string>
     <string name="cd_rewind10">10 seconden terug</string>
     <string name="cd_forward10">10 seconden vooruit</string>
-    <string name="cd_repeat">Herhalen</string>
+    <string name="cd_repeat_off">Herhalen: uit</string>
+    <string name="cd_repeat_all">Herhalen: alles</string>
+    <string name="cd_repeat_one">Herhalen: één</string>
     <string name="play_all">Alles afspelen</string>
     <string name="shuffle_all">Alles shufflen</string>
     <string name="cd_shuffle">Shuffle</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">Klaar om te installeren</string>
     <string name="update_manual_hint">Deze kopie kan zichzelf niet updaten (%1$s). Download in plaats daarvan de nieuwe versie.</string>
     <string name="update_failed">Update mislukt: %1$s</string>
+    <string name="update_official_site">Download via de officiële website</string>
     <string name="download_title">Downloaden</string>
     <string name="download_audio_only">Alleen audio</string>
     <string name="download_video">Video</string>

@@ -236,15 +236,11 @@ onAccept(
   commandHandler(async (src, out) => {
     const a = await src.readJsonObject();
     const id = String(a["videoId"] ?? "");
-    if (!id) throw new JsEngineErrorImpl("player/playerResponse missing videoId", "E20087");
+    if (!id) throw new JsEngineErrorImpl("player/playerResponse missing videoId", "E20146");
     let rec = peekDownloadJson(id);
     if (!rec) {
       await preloadPlayer(id);
-      try {
-        rec = await waitDownloadJson(id, downloadWaitMs());
-      } catch (e) {
-        throw new JsEngineErrorImpl("player response not cached", "E20087", { cause: e });
-      }
+      rec = await waitDownloadJson(id, downloadWaitMs());
     }
     const p = out.writeObjectAsJson(rec);
     if (p) await p;

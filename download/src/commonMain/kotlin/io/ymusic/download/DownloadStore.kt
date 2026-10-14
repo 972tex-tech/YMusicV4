@@ -51,11 +51,12 @@ class DownloadStore(driver: SqlDriver, logger: Logger? = null) {
             caption_langs = task.captions?.languages?.joinToString(","),
             audio_language = task.audioLanguage,
             caption_language = task.captionLanguage,
+            error_code = task.errorCode,
         )
     }
 
-    suspend fun updateState(id: String, state: DownloadState, error: String?, updatedAt: Long): Unit =
-        withContext(downloadDbDispatcher()) { queries.updateState(state.name, error, updatedAt, id) }
+    suspend fun updateState(id: String, state: DownloadState, error: DownloadError?, updatedAt: Long): Unit =
+        withContext(downloadDbDispatcher()) { queries.updateState(state.name, error?.userMessage, error?.code, updatedAt, id) }
 
     suspend fun updateProgress(id: String, downloaded: Long, total: Long, updatedAt: Long): Unit =
         withContext(downloadDbDispatcher()) { queries.updateProgress(downloaded, total, updatedAt, id) }
@@ -94,6 +95,7 @@ class DownloadStore(driver: SqlDriver, logger: Logger? = null) {
         caption_langs: String?,
         audio_language: String?,
         caption_language: String?,
+        error_code: String?,
     ) = DownloadTask(
         id = id,
         videoId = video_id,
@@ -118,5 +120,6 @@ class DownloadStore(driver: SqlDriver, logger: Logger? = null) {
         captions = caption_langs?.let { langs -> CaptionChoice(langs.split(',').filter { it.isNotEmpty() }) },
         audioLanguage = audio_language,
         captionLanguage = caption_language,
+        errorCode = error_code,
     )
 }

@@ -1,5 +1,6 @@
 package io.ymusic.download
 
+import io.ymusic.download.internal.downloadDbDispatcher
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SegmentIndex
 import kmpcommon.log.Logger
@@ -10,6 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -19,6 +22,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import projectcommon.error.TechnicalException
 import projectcommon.error.codedError
+import projectcommon.error.errorCode
+import projectcommon.error.playabilityOf
 import kotlin.random.Random
 
 /**
@@ -96,13 +101,15 @@ class DownloadService(
      * One-time startup recovery, run lazily on first use (no explicit start-up call): anything left
      * running or queued — in-flight when the app was killed/crashed, or still waiting — is reset to
      * [DownloadState.PAUSED] so the queue never auto-starts and the user resumes explicitly.
-     * Terminal/failed/already-paused tasks are kept. Idempotent.
+     * Terminal/failed/already-paused tasks are kept. Scratch folders no resumable task owns are deleted —
+     * the scratch root is app data storage, which the OS never trims. Idempotent.
      */
     internal suspend fun initIfNotYet() {
         if (initialized) return
         initMutex.withLock {
             if (initialized) return
             store.pauseActiveAndQueued(now())
+            pruneOrphanScratch()
             initialized = true
         }
     }
@@ -248,72 +255,121 @@ class DownloadService(
                 if (queuePaused) return@withLock
                 while (active.size < maxConcurrent) {
                     val next = store.nextQueued() ?: break
+                    // Unreachable by construction (see runTask); never start a second run on one scratch dir.
+                    if (next.id in active) break
                     setState(next.id, DownloadState.PREPARING)
-                    val job = scope.launch { execute(next) }
-                    active[next.id] = job
-                    job.invokeOnCompletion {
-                        scope.launch {
-                            gate.withLock { active.remove(next.id); interrupts.remove(next.id) }
-                            fillSlots()
-                        }
-                    }
+                    active[next.id] = scope.launch { runTask(next) }
                 }
             }
         }
     }
 
-    private suspend fun execute(task: DownloadTask) {
+    /**
+     * One run of [task]. It holds its slot until it has fully unwound, and writes its end state
+     * (PAUSED / CANCELED / FAILED) in the same locked step that frees the slot: a task is only
+     * resumable once nothing of its previous run can still touch its scratch files or its row.
+     */
+    private suspend fun runTask(task: DownloadTask) {
+        var failure: DownloadError? = null
+        var interrupted = false
+        try {
+            failure = execute(task)
+        } catch (c: CancellationException) {
+            interrupted = true
+            throw c
+        } catch (e: Throwable) {
+            // Outside the pipeline (e.g. a state/progress DB write): still an end state, never a row
+            // stuck in DOWNLOADING with no slot.
+            log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))?.captureError(e, "download run failed")
+            failure = downloadError(e)
+        } finally {
+            withContext(NonCancellable) {
+                gate.withLock {
+                    val target = interrupts.remove(task.id)
+                    val completed = store.get(task.id)?.state == DownloadState.COMPLETED
+                    if (interrupted && !completed) {
+                        val state = target ?: DownloadState.PAUSED
+                        if (state == DownloadState.CANCELED) cleanupTemp(task.id)
+                        setState(task.id, state)
+                    } else if (failure != null) {
+                        setState(task.id, DownloadState.FAILED, error = failure)
+                    }
+                    active.remove(task.id)
+                }
+                fillSlots()
+            }
+        }
+    }
+
+    /** Runs the pipeline; returns null on success, the user-facing error on failure (already logged). */
+    private suspend fun execute(task: DownloadTask): DownloadError? = coroutineScope {
+        // Pipeline callbacks fire from any thread: one writer applies them in order, and all of them have
+        // landed (or been dropped, on cancel) before the run's final state is written.
+        val updates = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+        val writer = launch { for (update in updates) update() }
         try {
             val result = pipeline.run(
                 task,
                 destinationFolder = downloadFolder(),
-                onPreparing = { setStateAsync(task.id, DownloadState.PREPARING) },
-                onDownloading = { setStateAsync(task.id, DownloadState.DOWNLOADING) },
-                onProcessing = { setStateAsync(task.id, DownloadState.PROCESSING) },
-                onProgress = { done, total -> setProgressAsync(task.id, done, total) },
+                onPreparing = { updates.trySend { setState(task.id, DownloadState.PREPARING) } },
+                onDownloading = { updates.trySend { setState(task.id, DownloadState.DOWNLOADING) } },
+                onProcessing = { updates.trySend { setState(task.id, DownloadState.PROCESSING) } },
+                onProgress = { done, total -> updates.trySend { setProgress(task.id, done, total) } },
             )
-            store.updateCompleted(task.id, result.uri, result.bytes, now())
-            _changes.emit(DownloadChange.Completed(task.id, result.uri, result.bytes))
-            store.get(task.id)?.let { onCompleted?.invoke(it, result) }
-        } catch (c: CancellationException) {
+            // The file is published: record it even if a pause/cancel lands now.
             withContext(NonCancellable) {
-                val target = gate.withLock { interrupts[task.id] } ?: DownloadState.PAUSED
-                if (target == DownloadState.CANCELED) cleanupTemp(task.id)
-                setState(task.id, target)
+                updates.close()
+                writer.join()
+                store.updateCompleted(task.id, result.uri, result.bytes, now())
+                _changes.emit(DownloadChange.Completed(task.id, result.uri, result.bytes))
+                store.get(task.id)?.let { onCompleted?.invoke(it, result) }
             }
-            throw c // let the job complete as cancelled; invokeOnCompletion decides whether to advance
+            null
+        } catch (c: CancellationException) {
+            throw c
         } catch (e: Throwable) {
+            updates.close()
+            writer.join()
             // Log the full technical failure here; the user sees only a code. An uncoded exception
-            // (network, SABR, …) gets the E70001 fallback so every failure is reportable.
-            log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))
-                ?.captureError(e, "download failed")
-            setState(task.id, DownloadState.FAILED, error = userFacingError(e))
+            // (SABR, disk, …) gets the E70001 fallback so every failure is reportable.
+            val taskLog = log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))
+            val code = e.errorCode()
+            when {
+                playabilityOf(code) != null -> taskLog?.log(Logger.Level.WARN, "download refused by playability", e)
+                code == DownloadFolderAccessException.CODE -> taskLog?.log(Logger.Level.WARN, "download folder not writable", e)
+                else -> taskLog?.captureError(e, "download failed")
+            }
+            downloadError(e)
         }
     }
 
     // --- writes (DB + change event) ------------------------------------------------------------------
 
-    private suspend fun setState(id: String, state: DownloadState, error: String? = null) {
+    private suspend fun setState(id: String, state: DownloadState, error: DownloadError? = null) {
         store.updateState(id, state, error, now())
         _changes.emit(DownloadChange.StateChanged(id, state, error))
     }
 
-    private fun setStateAsync(id: String, state: DownloadState) {
-        scope.launch { setState(id, state) }
+    private suspend fun setProgress(id: String, done: Long, total: Long) {
+        store.updateProgress(id, done, total, now())
+        _changes.emit(DownloadChange.ProgressChanged(id, done, total))
     }
 
-    private fun setProgressAsync(id: String, done: Long, total: Long) {
-        scope.launch {
-            store.updateProgress(id, done, total, now())
-            _changes.emit(DownloadChange.ProgressChanged(id, done, total))
-        }
-    }
-
-    private fun userFacingError(e: Throwable): String {
+    private fun downloadError(e: Throwable): DownloadError {
         val coded = e.codedError()
-        return when {
-            coded?.userMessage != null -> "${coded.userMessage} (${coded.code})"
-            else -> "Something went wrong (${coded?.code ?: "E70001"})"
+        return DownloadError(coded?.code ?: "E70001", coded?.userMessage)
+    }
+
+    private suspend fun pruneOrphanScratch() {
+        val resumable = store.all().filter { !it.state.isTerminal }.mapTo(HashSet()) { it.id }
+        withContext(downloadDbDispatcher()) {
+            val owners = try {
+                storage.scratchTaskIds()
+            } catch (e: okio.IOException) {
+                log?.log(Logger.Level.WARN, "scratch listing failed (orphans leak until next run)", e)
+                return@withContext
+            }
+            owners.filter { it !in resumable }.forEach(::cleanupTemp)
         }
     }
 

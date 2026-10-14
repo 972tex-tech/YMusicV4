@@ -104,12 +104,14 @@ import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.captcha_verify
 import io.ymusic.ui.resources.coming_soon
 import io.ymusic.ui.resources.discover_needs_account
 import io.ymusic.ui.resources.discover_no_anonymous_home
 import io.ymusic.ui.resources.discover_no_recommendations
 import io.ymusic.ui.resources.discover_no_top_tracks
 import io.ymusic.ui.resources.discover_no_trending
+import io.ymusic.ui.resources.error_captcha
 import io.ymusic.ui.resources.error_generic
 import io.ymusic.ui.resources.error_network
 import io.ymusic.ui.resources.link_queued_last
@@ -126,6 +128,7 @@ import io.ymusic.ui.resources.section_play_again
 import io.ymusic.ui.resources.section_settings
 import io.ymusic.ui.resources.section_telegram
 import io.ymusic.ui.resources.section_yt_music
+import io.ymusic.ui.resources.signin_button
 import io.ymusic.ui.resources.tab_account_library
 import io.ymusic.ui.resources.tab_home
 import io.ymusic.ui.resources.tab_music
@@ -292,6 +295,20 @@ internal val LocalRefreshRequests = compositionLocalOf<kotlinx.coroutines.flow.F
 /** Show a transient message in the app's snackbar. No-op outside the app shell (tests, standalone). */
 internal val LocalSnackbar = compositionLocalOf<(String) -> Unit> { {} }
 
+/** The action that clears YouTube's "captcha" bot challenge: [label] names it, [resolve] runs it and
+ *  calls its `retry` once the session is refreshed. */
+internal class CaptchaResolver(val label: StringResource, val resolve: (retry: () -> Unit) -> Unit)
+
+/** Null outside the app shell: a captcha error then shows its message with no action. */
+internal val LocalCaptchaResolver = compositionLocalOf<CaptchaResolver?> { null }
+
+/** Opens the YouTube sign-in; [signIn]'s `onSignedIn` runs once the gate passed and the session is
+ *  re-scraped, never when the user backs out of the browser. */
+internal class SignInResolver(val signedIn: Boolean, val signIn: (onSignedIn: () -> Unit) -> Unit)
+
+/** Null outside the app shell: a sign-in-required failure then offers no sign-in action. */
+internal val LocalSignInResolver = compositionLocalOf<SignInResolver?> { null }
+
 /** Height of the mini player overlaid on the screens' bottom edge (0 when hidden or docked below them):
  *  scrolling content adds it as bottom padding so its last rows can scroll clear of the bar. */
 internal val LocalMiniPlayerInset = compositionLocalOf { 0.dp }
@@ -323,6 +340,10 @@ private sealed interface AppLayer {
     /** [switchAccount]: the browser opens YouTube's channel switcher instead of sign-in — no cookie
      *  polling; CLOSING the layer is the completion signal (popLayer refreshes session+account). */
     class Login(val state: LoginWebViewState, val switchAccount: Boolean = false) : AppLayer
+
+    /** The in-app browser on YouTube where the user clears a "captcha" bot challenge. No cookie gate:
+     *  closing it is completion — popLayer refreshes the session, then runs [onResolved]. */
+    class Verify(val state: LoginWebViewState, val onResolved: () -> Unit) : AppLayer
 }
 
 /** The layer's scope logger, the parent for anything opened on top of it (null = the root). */
@@ -333,7 +354,7 @@ private val AppLayer.log: kmpcommon.log.Logger?
         is AppLayer.Channel -> session.log
         is AppLayer.Feed -> session.log
         is AppLayer.MusicBrowse -> session.log
-        is AppLayer.LibrarySearch, is AppLayer.Login, is AppLayer.PlaylistDownload -> null
+        is AppLayer.LibrarySearch, is AppLayer.Login, is AppLayer.Verify, is AppLayer.PlaylistDownload -> null
     }
 
 @Composable
@@ -345,7 +366,7 @@ private fun AppRoot(
 ) {
     run {
         val scope = rememberCoroutineScope()
-        val coordinator = remember { PlaybackCoordinator(graph, scope) }
+        val coordinator = graph.playback
         remember { SponsorBlockCoordinator(graph, scope) }
         val inPip by graph.pip.inPip.collectAsState()
         if (inPip) {
@@ -580,6 +601,8 @@ private fun AppRoot(
         val openPlaylistDownload: ((title: String, pager: Pager) -> Unit)? = graph.downloads?.let {
             { title, pager -> layers.add(AppLayer.PlaylistDownload(PlaylistDownloadSession(title, pager, graph.quickDownload.value))) }
         }
+        // What a SignInResolver caller resumes after the sign-in browser's gate passes.
+        var afterSignIn by remember { mutableStateOf<(() -> Unit)?>(null) }
         val popLayer = {
             val top = layers.removeAt(layers.lastIndex)
             when (top) {
@@ -588,11 +611,13 @@ private fun AppRoot(
                 is AppLayer.Channel -> top.session.close()
                 is AppLayer.Feed -> top.session.close()
                 is AppLayer.MusicBrowse -> top.session.close()
-                is AppLayer.LibrarySearch, is AppLayer.Login, is AppLayer.PlaylistDownload -> Unit
+                is AppLayer.LibrarySearch, is AppLayer.Login, is AppLayer.Verify, is AppLayer.PlaylistDownload -> Unit
             }
+            if (top is AppLayer.Login) afterSignIn = null
             // Closing the account-switcher browser IS its completion (no cookie gate flips while
             // switching): refresh session + account + feeds under whatever identity was picked.
             if (top is AppLayer.Login && top.switchAccount) accountController.onLoginComplete()
+            if (top is AppLayer.Verify) accountController.onCaptchaVerified(top.onResolved)
         }
         // The YouTube sign-in browser — single-instance like search: reopening (from the Account tab
         // preface or a future gated action like Subscribe) raises the existing layer.
@@ -611,6 +636,32 @@ private fun AppRoot(
                 existing >= 0 && existing == layers.lastIndex -> Unit
                 existing >= 0 -> layers.add(layers.removeAt(existing))
                 else -> layers.add(AppLayer.Login(LoginWebViewState(), switchAccount = true))
+            }
+        }
+        val signInResolver = SignInResolver(signedIn) { onSignedIn ->
+            graph.pip.nowPlayingOpen.value = false
+            nowPlayingPeeking = false
+            afterSignIn = onSignedIn
+            openLogin()
+        }
+        // A "captcha" failure's action: the in-app browser where a shell has one, else sign-in (the
+        // desktop has no WebView; onLoginComplete refreshes the session and retries what failed).
+        val captchaResolver = if (graph.loginBrowser != null) {
+            CaptchaResolver(Res.string.captcha_verify) { retry ->
+                graph.pip.nowPlayingOpen.value = false
+                nowPlayingPeeking = false
+                val existing = layers.indexOfFirst { it is AppLayer.Verify }
+                when {
+                    existing >= 0 && existing == layers.lastIndex -> Unit
+                    existing >= 0 -> layers.add(layers.removeAt(existing))
+                    else -> layers.add(AppLayer.Verify(LoginWebViewState(), retry))
+                }
+            }
+        } else {
+            CaptchaResolver(Res.string.signin_button) { _ ->
+                graph.pip.nowPlayingOpen.value = false
+                nowPlayingPeeking = false
+                openLogin()
             }
         }
         // Library's own search flow (local files, filter-as-you-type) — a different surface from
@@ -669,6 +720,7 @@ private fun AppRoot(
                     showSnackbar(
                         when (val code = e.errorCode() ?: "E20113") {
                             "network" -> getString(Res.string.error_network)
+                            CAPTCHA_CODE -> getString(Res.string.error_captcha)
                             else -> getString(Res.string.error_generic, code)
                         },
                     )
@@ -746,6 +798,7 @@ private fun AppRoot(
                 top is AppLayer.LibrarySearch && top.session.drill != null -> top.session.drill = null
                 // In the sign-in browser, back walks the page's own history first, then leaves.
                 top is AppLayer.Login && top.state.canGoBack -> top.state.goBack()
+                top is AppLayer.Verify && top.state.canGoBack -> top.state.goBack()
                 layers.isNotEmpty() -> popLayer()
                 else -> onSection(AppSection.Discover)
             }
@@ -844,6 +897,8 @@ private fun AppRoot(
                             LocalAvailableOffline provides availableOffline,
                             LocalNavigateToSection provides { onSection(it) },
                             LocalLibraryFolderReveal provides libraryReveal,
+                            LocalCaptchaResolver provides captchaResolver,
+                            LocalSignInResolver provides signInResolver,
                         ) {
                             DefaultDownloadLocationPrompt(graph)
                             Scaffold(
@@ -975,11 +1030,15 @@ private fun AppRoot(
                                                 // the account card, reload feeds, and stale the player page.
                                                 // (The switcher never fires this — popLayer is its signal.)
                                                 onComplete = {
+                                                    val resume = afterSignIn
                                                     popLayer()
-                                                    accountController.onLoginComplete()
+                                                    accountController.onLoginComplete(resume)
                                                 },
                                                 switchAccount = top.switchAccount,
                                             )
+                                        }
+                                        is AppLayer.Verify -> key(top) {
+                                            YtVerifyScreen(graph, top.state, onDone = popLayer)
                                         }
                                         // Saveable state (tab picks, folder crumbs, scroll positions) is
                                         // kept per section while its content is out of composition —
@@ -1078,7 +1137,7 @@ private fun AppRoot(
                         }
                     }
                 }
-                UpdateDialog(graph, recheck = updateRecheck, showMessage = showSnackbar)
+                UpdateDialog(graph, recheck = updateRecheck)
                 if (checkingUpdate) {
                     CheckUpdateDialog(graph) { found ->
                         checkingUpdate = false
@@ -1091,6 +1150,8 @@ private fun AppRoot(
                 LocalDownloadLauncher provides downloadLauncher,
                 LocalAvailableOffline provides availableOffline,
                 LocalYtPlaylistActions provides ytPlaylistActions,
+                LocalCaptchaResolver provides captchaResolver,
+                LocalSignInResolver provides signInResolver,
             ) {
                 if (nowPlayingOpen) {
                     NowPlayingScreen(
@@ -1101,6 +1162,11 @@ private fun AppRoot(
                             nowPlayingPeeking = false
                         },
                         onPeek = { nowPlayingPeeking = it > 0.5f },
+                        onLogin = {
+                            graph.pip.nowPlayingOpen.value = false
+                            nowPlayingPeeking = false
+                            openLogin()
+                        },
                         onOpenChannel = { url, title ->
                             graph.pip.nowPlayingOpen.value = false
                             nowPlayingPeeking = false

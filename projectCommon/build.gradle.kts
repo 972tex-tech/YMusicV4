@@ -22,6 +22,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":kmpCommon"))
+            implementation(project(":kmpHttp:core")) // codedError(): a transport failure is the "network" category
             api(Libs.Kotlinx.serializationJson)
             implementation(Libs.Kotlinx.coroutinesCore) // LoggingWorker channel + IO writer
             implementation(Libs.Kotlinx.dateTime) // log line local HH.mm.ss.zzz

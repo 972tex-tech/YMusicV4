@@ -138,7 +138,8 @@
     <string name="sort_duration">長度</string>
     <string name="sort_song_count">歌曲數</string>
     <string name="cd_sort">排序</string>
-    <string name="cd_sort_order">排序方式</string>
+    <string name="cd_sort_ascending">排序方式：遞增</string>
+    <string name="cd_sort_descending">排序方式：遞減</string>
     <string name="library_unavailable">這個平台未設定本機音樂庫</string>
     <string name="library_empty">你的音樂庫是空的</string>
     <string name="library_scan_folder">+  掃描資料夾</string>
@@ -241,7 +242,6 @@
     <string name="cd_more">更多</string>
     <string name="cd_collapse">收合</string>
     <string name="cd_expand">展開</string>
-    <string name="cd_play_pause">播放/暫停</string>
     <string name="cd_next">下一首</string>
     <string name="cd_previous">上一首</string>
     <string name="cd_download">下載</string>
@@ -251,7 +251,9 @@
     <string name="cd_fill_video">填滿螢幕</string>
     <string name="cd_rewind10">倒轉 10 秒</string>
     <string name="cd_forward10">快轉 10 秒</string>
-    <string name="cd_repeat">重複播放</string>
+    <string name="cd_repeat_off">重複播放：關閉</string>
+    <string name="cd_repeat_all">重複播放：全部</string>
+    <string name="cd_repeat_one">重複播放：單曲</string>
     <string name="play_all">全部播放</string>
     <string name="shuffle_all">隨機播放全部</string>
     <string name="cd_shuffle">隨機播放</string>
@@ -383,6 +385,7 @@
     <string name="update_ready">可以安裝了</string>
     <string name="update_manual_hint">這個版本無法自行更新（%1$s）。請改為下載新版本。</string>
     <string name="update_failed">更新失敗：%1$s</string>
+    <string name="update_official_site">從官方網站下載</string>
     <string name="download_title">下載</string>
     <string name="download_audio_only">僅音訊</string>
     <string name="download_video">影片</string>

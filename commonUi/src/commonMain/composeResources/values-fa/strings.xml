@@ -138,7 +138,8 @@
     <string name="sort_duration">مدت</string>
     <string name="sort_song_count">تعداد آهنگ</string>
     <string name="cd_sort">مرتب‌سازی</string>
-    <string name="cd_sort_order">ترتیب مرتب‌سازی</string>
+    <string name="cd_sort_ascending">ترتیب مرتب‌سازی: صعودی</string>
+    <string name="cd_sort_descending">ترتیب مرتب‌سازی: نزولی</string>
     <string name="library_unavailable">کتابخانه محلی در این پلتفرم پیکربندی نشده است</string>
     <string name="library_empty">کتابخانه شما خالی است</string>
     <string name="library_scan_folder">+  اسکن پوشه</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">بیشتر</string>
     <string name="cd_collapse">جمع کردن</string>
     <string name="cd_expand">باز کردن</string>
-    <string name="cd_play_pause">پخش/توقف</string>
     <string name="cd_next">بعدی</string>
     <string name="cd_previous">قبلی</string>
     <string name="cd_download">دانلود</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">پر کردن صفحه</string>
     <string name="cd_rewind10">10 ثانیه عقب</string>
     <string name="cd_forward10">10 ثانیه جلو</string>
-    <string name="cd_repeat">تکرار</string>
+    <string name="cd_repeat_off">تکرار: خاموش</string>
+    <string name="cd_repeat_all">تکرار: همه</string>
+    <string name="cd_repeat_one">تکرار: یکی</string>
     <string name="play_all">پخش همه</string>
     <string name="shuffle_all">پخش تصادفی همه</string>
     <string name="cd_shuffle">پخش تصادفی</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">آماده نصب</string>
     <string name="update_manual_hint">این نسخه نمی‌تواند خودش را به‌روز کند (%1$s). به‌جای آن نسخه جدید را دانلود کنید.</string>
     <string name="update_failed">به‌روزرسانی ناموفق بود: %1$s</string>
+    <string name="update_official_site">از وب‌سایت رسمی دانلود کنید</string>
     <string name="download_title">دانلود</string>
     <string name="download_audio_only">فقط صدا</string>
     <string name="download_video">ویدیو</string>

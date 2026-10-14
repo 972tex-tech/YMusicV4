@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
+import io.ymusic.download.DownloadFolderAccessException
 import io.ymusic.download.DownloadService
 import io.ymusic.download.DownloadState
 import io.ymusic.download.DownloadTask
@@ -269,7 +270,10 @@ class DownloadForegroundService : Service() {
         DownloadState.PROCESSING -> getString(R.string.download_state_processing)
         DownloadState.PAUSED -> getString(R.string.download_state_paused)
         DownloadState.COMPLETED -> getString(R.string.notification_download_finished)
-        DownloadState.FAILED -> task.errorMessage ?: getString(R.string.notification_download_failed)
+        DownloadState.FAILED -> when (task.errorCode) {
+            DownloadFolderAccessException.CODE -> getString(R.string.notification_download_folder_access)
+            else -> task.errorMessage ?: getString(R.string.notification_download_failed)
+        }
         DownloadState.CANCELED -> "" // never rendered
     }
 

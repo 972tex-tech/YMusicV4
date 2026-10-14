@@ -138,7 +138,8 @@
     <string name="sort_duration">Muda</string>
     <string name="sort_song_count">Idadi ya nyimbo</string>
     <string name="cd_sort">Panga</string>
-    <string name="cd_sort_order">Mpangilio wa kupanga</string>
+    <string name="cd_sort_ascending">Mpangilio wa kupanga: kupanda</string>
+    <string name="cd_sort_descending">Mpangilio wa kupanga: kushuka</string>
     <string name="library_unavailable">Hakuna maktaba ya ndani iliyowekwa kwenye mfumo huu</string>
     <string name="library_empty">Maktaba yako ni tupu</string>
     <string name="library_scan_folder">+  Changanua folda</string>
@@ -242,7 +243,6 @@
     <string name="cd_more">Zaidi</string>
     <string name="cd_collapse">Kunja</string>
     <string name="cd_expand">Panua</string>
-    <string name="cd_play_pause">Cheza/Sitisha</string>
     <string name="cd_next">Inayofuata</string>
     <string name="cd_previous">Iliyotangulia</string>
     <string name="cd_download">Pakua</string>
@@ -252,7 +252,9 @@
     <string name="cd_fill_video">Jaza skrini</string>
     <string name="cd_rewind10">Rudisha nyuma sekunde 10</string>
     <string name="cd_forward10">Sogeza mbele sekunde 10</string>
-    <string name="cd_repeat">Rudia</string>
+    <string name="cd_repeat_off">Rudia: imezimwa</string>
+    <string name="cd_repeat_all">Rudia: zote</string>
+    <string name="cd_repeat_one">Rudia: moja</string>
     <string name="play_all">Cheza zote</string>
     <string name="shuffle_all">Changanya zote</string>
     <string name="cd_shuffle">Changanya</string>
@@ -384,6 +386,7 @@
     <string name="update_ready">Iko tayari kusakinishwa</string>
     <string name="update_manual_hint">Nakala hii haiwezi kujisasisha yenyewe (%1$s). Badala yake pakua toleo jipya.</string>
     <string name="update_failed">Imeshindwa kusasisha: %1$s</string>
+    <string name="update_official_site">Ipakue kutoka tovuti rasmi</string>
     <string name="download_title">Pakua</string>
     <string name="download_audio_only">Sauti pekee</string>
     <string name="download_video">Video</string>

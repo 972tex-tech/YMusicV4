@@ -22,6 +22,7 @@ import kmphttp.RedirectOptions
 import kmphttp.RequestBuilder
 import kmphttp.asyncSource
 import kmphttp.header
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import okio.Buffer
 import okio.BufferedSink
@@ -37,8 +38,8 @@ import kotlin.time.TimeSource
 /** One format stream to download and where its bytes go. */
 class SabrTrack(val format: AdaptiveFormat, val file: DownloadFile)
 
-/** Thrown when the server rejects the PO token (STREAM_PROTECTION_STATUS 2/3). Caller re-attests. */
-class SabrPoTokenExpired(message: String) : IOException(message)
+/** The session stalled after googlevideo answered STREAM_PROTECTION_STATUS 3 (invalid PO token). Caller re-attests. */
+class SabrPoTokenInvalid(message: String) : IOException(message)
 
 /** Thrown on UMP part 44. */
 class SabrServerError(message: String) : IOException(message)
@@ -75,6 +76,10 @@ class SabrSession(
     // so segment N+1 is recognized as continuing N (a per-request cursor would reset and stall).
     private var audioSegment: MediaHeader? = null
     private var videoSegment: MediaHeader? = null
+
+    // The last rounds (what we claimed to have, what the server sent, where the file ended up), dumped
+    // only when the session goes wrong so a gap or give-up shows how the cursor and the file diverged.
+    private val roundTrail = ArrayDeque<String>()
 
     suspend fun download(
         client: KmpHttpClient,
@@ -124,87 +129,105 @@ class SabrSession(
 
         var retryCount = 0
         var lastError: String? = null
+        var cacheUsable = mediaCache != null
 
-        while (true) {
-            if (retryCount > maxConsecutiveEmptyRounds) {
-                if (!poTokenValid) throw SabrPoTokenExpired("PO token rejected; re-attest and retry")
-                throw IOException("SABR exceeded max retries, last: $lastError")
-            }
+        try {
+            while (true) {
+                if (retryCount > maxConsecutiveEmptyRounds) {
+                    if (!poTokenValid) throw SabrPoTokenInvalid("PO token invalid (StreamProtectionStatus=3); re-attest and retry")
+                    throw IOException("SABR exceeded max retries, last: $lastError")
+                }
 
-            val request = nextRequest(spec, audio, video, fallbackVideoFormat, startMark.elapsedNow().inWholeMilliseconds.toInt())
+                val request = nextRequest(spec, audio, video, fallbackVideoFormat, startMark.elapsedNow().inWholeMilliseconds.toInt())
+                noteRequest(request, audio, video)
 
-            // Reuse the player cache first: if it can serve this request's segments locally, parse that
-            // synthesized UMP instead of hitting the network. A re-download of an already-cached track is
-            // served entirely from cache (zero network); a partial/absent cache falls through below.
-            // A throwing cache-serve degrades this round to full network — worth a trace, never fatal.
-            val served = mediaCache?.let {
-                runCatching { it.serveSabr(request) }
-                    .onFailure { e -> logger?.log(Logger.Level.WARN, "cache serve failed, using network", e) }
-                    .getOrNull()
-            }
-            if (served is SabrServe.Hit) {
-                logger?.debug { "cache-serve rn=$rn playerTime=${request.clientAbrState.playerTimeMs} segments=${served.segmentCount} bytes=${served.cachedBytes}" }
-                val outcome = BufferedAsyncSource(served.ump.asAsyncSource()).use {
-                    readResponse(it, audio, video, mediaCache, cacheReadOnly, segmentIndex, onProgress = { emitProgress() })
+                // Reuse the player cache first: if it can serve this request's segments locally, parse that
+                // synthesized UMP instead of hitting the network. A re-download of an already-cached track is
+                // served entirely from cache (zero network); a partial/absent cache falls through below.
+                // A throwing cache-serve degrades this round to full network — worth a trace, never fatal.
+                val served = mediaCache?.takeIf { cacheUsable }?.let {
+                    runCatching { it.serveSabr(request) }
+                        .onFailure { e -> logger?.log(Logger.Level.WARN, "cache serve failed, using network", e) }
+                        .getOrNull()
+                }
+                if (served is SabrServe.Hit) {
+                    logger?.debug { "cache-serve rn=$rn playerTime=${request.clientAbrState.playerTimeMs} segments=${served.segmentCount} bytes=${served.cachedBytes}" }
+                    // A cache read failing mid-round leaves at most a partial segment on disk, outside the cursor:
+                    // the network resends it and writeMediaData skips the prefix already written.
+                    val outcome = try {
+                        BufferedAsyncSource(served.ump.asAsyncSource()).use {
+                            readResponse(it, audio, video, mediaCache, cacheReadOnly, segmentIndex, fromCache = true, onProgress = { emitProgress() })
+                        }
+                    } catch (e: IOException) {
+                        logger?.log(Logger.Level.WARN, "cache-served round failed, continuing from network", e)
+                        cacheUsable = false
+                        null
+                    }
+                    if (isComplete(audio, video)) { emitProgress(force = true); return }
+                    if (outcome == null) continue
+                    if (outcome.completedSegments == 0) { retryCount++; lastError = "cache served zero segments" } else retryCount = 0
+                    continue
+                }
+
+                val requestUrl = url
+                    .setQueryParam("cpn", cpn)
+                    .setQueryParam("rn", (++rn).toString())
+                logger?.debug {
+                    "round rn=$rn playerTime=${request.clientAbrState.playerTimeMs} " +
+                        "audioSeg=${audioSegment?.segmentIndex} videoSeg=${videoSegment?.segmentIndex} " +
+                        "selected=${request.selectedFormats.size} cookieLen=${playbackCookie.size}"
+                }
+
+                val httpRequest = RequestBuilder()
+                    .url(requestUrl)
+                    .header("user-agent", userAgent)
+                    .post(request.encode().toRequestBody(PROTOBUF))
+                    .build()
+                val response = client.execute(httpRequest, RedirectOptions(followRedirects = false, followSslRedirects = false))
+
+                var outcome: RoundOutcome? = null
+                try {
+                    if (response.isRedirect) {
+                        val location = response.header("location")
+                        if (location == null || !location.contains("/videoplayback")) {
+                            throw IOException("Invalid SABR redirect: $location")
+                        }
+                        url = location
+                    } else if (!response.isSuccessful) {
+                        throw IOException("SABR response ${response.code}")
+                    } else {
+                        outcome = BufferedAsyncSource(response.body.asyncSource()).use {
+                            readResponse(it, audio, video, mediaCache, cacheReadOnly, segmentIndex, onProgress = { emitProgress() })
+                        }
+                    }
+                } finally {
+                    response.close()
+                }
+                if (outcome == null) continue // HTTP redirect — retry at the new url
+
+                logger?.debug {
+                    "  resp headers=${outcome.headers} seg=[${outcome.segRange()}] completed=${outcome.completedSegments} " +
+                        "backoffMs=${outcome.backoffMs} protection=${outcome.protectionStatus} audioBytes=${audio.file.length()}"
+                }
+                if (outcome.redirect != null) {
+                    url = outcome.redirect
+                    continue
                 }
                 if (isComplete(audio, video)) { emitProgress(force = true); return }
-                if (outcome.completedSegments == 0) { retryCount++; lastError = "cache served zero segments" } else retryCount = 0
-                continue
-            }
 
-            val requestUrl = url
-                .setQueryParam("cpn", cpn)
-                .setQueryParam("rn", (++rn).toString())
-            logger?.debug {
-                "round rn=$rn playerTime=${request.clientAbrState.playerTimeMs} " +
-                    "audioSeg=${audioSegment?.segmentIndex} videoSeg=${videoSegment?.segmentIndex} " +
-                    "selected=${request.selectedFormats.size} cookieLen=${playbackCookie.size}"
-            }
-
-            val httpRequest = RequestBuilder()
-                .url(requestUrl)
-                .header("user-agent", userAgent)
-                .post(request.encode().toRequestBody(PROTOBUF))
-                .build()
-            val response = client.execute(httpRequest, RedirectOptions(followRedirects = false, followSslRedirects = false))
-
-            var outcome: RoundOutcome? = null
-            try {
-                if (response.isRedirect) {
-                    val location = response.header("location")
-                    if (location == null || !location.contains("/videoplayback")) {
-                        throw IOException("Invalid SABR redirect: $location")
-                    }
-                    url = location
-                } else if (!response.isSuccessful) {
-                    throw IOException("SABR response ${response.code}")
+                if (outcome.completedSegments == 0) {
+                    retryCount++
+                    lastError = "received zero segments"
+                    delay(maxOf(outcome.backoffMs, 2000).toLong())
                 } else {
-                    outcome = BufferedAsyncSource(response.body.asyncSource()).use {
-                        readResponse(it, audio, video, mediaCache, cacheReadOnly, segmentIndex, onProgress = { emitProgress() })
-                    }
+                    retryCount = 0
                 }
-            } finally {
-                response.close()
             }
-            if (outcome == null) continue // HTTP redirect — retry at the new url
-
-            logger?.debug {
-                "  resp headers=${outcome.headers} seg=[${outcome.segRange()}] completed=${outcome.completedSegments} " +
-                    "backoffMs=${outcome.backoffMs} protection=${outcome.protectionStatus} audioBytes=${audio.file.length()}"
+        } catch (e: Throwable) {
+            if (e !is CancellationException) {
+                logger?.log(Logger.Level.WARN, "SABR session failed: ${e.message}\n${roundTrail.joinToString("\n")}")
             }
-            if (outcome.redirect != null) {
-                url = outcome.redirect
-                continue
-            }
-            if (isComplete(audio, video)) { emitProgress(force = true); return }
-
-            if (outcome.completedSegments == 0) {
-                retryCount++
-                lastError = "received zero segments"
-                delay(maxOf(outcome.backoffMs, 2000).toLong())
-            } else {
-                retryCount = 0
-            }
+            throw e
         }
     }
 
@@ -257,6 +280,8 @@ class SabrSession(
     private class PartState(val header: MediaHeader, val file: DownloadFile) {
         var sink: BufferedSink? = null
         var totalRead: Long = 0
+        /** Its data starts past the file end: skipped, and the cursor re-seeded from the file. */
+        var beyondFileEnd = false
         /** Set when this segment is also being mirrored into the player cache (see readResponse). */
         var cacheFill: SegmentFill? = null
     }
@@ -281,8 +306,10 @@ class SabrSession(
         mediaCache: MediaCache? = null,
         cacheReadOnly: Boolean = false,
         segmentIndex: SegmentIndex? = null,
+        fromCache: Boolean = false,
         onProgress: () -> Unit = {},
     ): RoundOutcome {
+        note("  ${if (fromCache) "cache" else "network"} response")
         val open = mutableMapOf<Int, PartState>()
         var completed = 0
         var backoffMs = 0
@@ -334,7 +361,9 @@ class SabrSession(
                         val headerId = body.readByte().toInt() and 0xFF
                         val state = checkNotNull(open[headerId]) { "media data for unknown header $headerId" }
                         val dataSize = partSize - 1
+                        val wasBeyond = state.beyondFileEnd
                         writeMediaData(body, state, dataSize)
+                        if (state.beyondFileEnd && !wasBeyond) reseedCursor(state, audio, video, segmentIndex, fromCache)
                         state.totalRead += dataSize
                         onProgress() // throttled by the caller; reflects the growing file length
                     }
@@ -346,7 +375,18 @@ class SabrSession(
                         state.sink = null
                         state.cacheFill?.commit() // seal the mirrored span (its index row was saved on the header)
                         state.cacheFill = null
-                        if (advanceIfContiguous(state.header, audio, video)) completed++
+                        val advanced = state.reachedFileEnd() && advanceIfContiguous(state.header, audio, video)
+                        if (advanced) completed++
+                        val h = state.header
+                        note(
+                            "    itag ${h.itag} seg ${h.segmentIndex} [${h.startRange}+${h.contentLength}] got=${state.totalRead} " +
+                                "file=${state.file.length()} " +
+                                when {
+                                    state.beyondFileEnd -> "beyond-file-end"
+                                    advanced -> "advanced"
+                                    else -> "held"
+                                },
+                        )
                     }
 
                     UmpPart.NEXT_REQUEST_POLICY -> {
@@ -358,7 +398,8 @@ class SabrSession(
                     UmpPart.STREAM_PROTECTION_STATUS -> {
                         val status = SabrParts.parseStreamProtectionStatus(body.readBytesFully(partSize))
                         protectionStatus = status
-                        if (status != null) poTokenValid = status != 2 && status != 3
+                        // 1 = ok, 2 = attestation pending (a verdict follows), 3 = invalid PO token.
+                        if (status != null && status != 2) poTokenValid = status != 3
                     }
 
                     UmpPart.SABR_CONTEXT_UPDATE -> {
@@ -393,6 +434,7 @@ class SabrSession(
                 state.cacheFill?.let { fill -> runCatching { fill.abort() }.onFailure(onCleanupFailure) }
             }
         }
+        note("  completed=$completed backoffMs=$backoffMs sps=$protectionStatus redirect=${redirect != null}")
         return RoundOutcome(completed, redirect, backoffMs, headers, minSeg, maxSeg, protectionStatus)
     }
 
@@ -403,6 +445,10 @@ class SabrSession(
     private suspend fun writeMediaData(body: BufferedAsyncSource, state: PartState, dataSize: Long) {
         state.sink?.let { sink ->
             body.copyFully(sink, dataSize)
+            return
+        }
+        if (state.beyondFileEnd) {
+            body.skipFully(dataSize)
             return
         }
         val fileEnd = state.file.length()
@@ -418,8 +464,12 @@ class SabrSession(
             state.sink = sink
             body.copyFully(sink, dataSize - skips)
         } else {
-            if (fileEnd < partStart) throw IOException("gap in download stream at ${state.header.itag}")
-            body.skipFully(dataSize) // already have these bytes
+            if (fileEnd < partStart) {
+                state.beyondFileEnd = true
+                state.cacheFill?.abort()
+                state.cacheFill = null
+            }
+            body.skipFully(dataSize) // already have these bytes, or past the file end
         }
     }
 
@@ -437,6 +487,40 @@ class SabrSession(
         } finally {
             if (buffer.size > remainderAfter) buffer.skip(buffer.size - remainderAfter)
         }
+    }
+
+    /** The segment counts as complete only once the file holds all of its bytes. */
+    private fun PartState.reachedFileEnd(): Boolean {
+        val length = if (header.contentLength > 0) header.contentLength else totalRead
+        return !beyondFileEnd && file.length() >= header.startRange + length
+    }
+
+    /** Data arrived past the file end, so the cursor claims bytes the file lacks: rebuild it from the file. */
+    private fun reseedCursor(state: PartState, audio: SabrTrack, video: SabrTrack?, segmentIndex: SegmentIndex?, fromCache: Boolean) {
+        val header = state.header
+        val track = if (header.cacheKey == audio.format.cacheKey) audio else video ?: return
+        val cursor = if (track === audio) audioSegment else videoSegment
+        val seeded = seedCursor(segmentIndex, track)
+        logger?.log(
+            Logger.Level.WARN,
+            "itag ${header.itag} seg ${header.segmentIndex} [${header.startRange}+${header.contentLength}] past file end " +
+                "${track.file.length()} (${if (fromCache) "cache" else "network"} round); cursor seg ${cursor?.segmentIndex} " +
+                "reseeded to ${seeded?.segmentIndex}\n${roundTrail.joinToString("\n")}",
+        )
+        if (track === audio) audioSegment = seeded else videoSegment = seeded
+    }
+
+    private fun note(line: String) {
+        if (roundTrail.size == ROUND_TRAIL_LINES) roundTrail.removeAt(0)
+        roundTrail.addLast(line)
+    }
+
+    private fun noteRequest(request: VideoPlaybackAbrRequest, audio: SabrTrack, video: SabrTrack?) {
+        val buffered = request.bufferedRanges.joinToString { "${it.formatId.itag}:${it.startSegmentIndex}-${it.endSegmentIndex}" }
+        note(
+            "request playerTime=${request.clientAbrState.playerTimeMs} cursor a=${audioSegment?.segmentIndex} " +
+                "v=${videoSegment?.segmentIndex} buffered=[$buffered] file a=${audio.file.length()} v=${video?.file?.length()}",
+        )
     }
 
     private fun advanceIfContiguous(header: MediaHeader, audio: SabrTrack, video: SabrTrack?): Boolean {
@@ -483,6 +567,8 @@ class SabrSession(
 
         /** Minimum gap between progress emits — caps DB/UI churn on a fast connection while staying smooth. */
         private val PROGRESS_INTERVAL = 150.milliseconds
+
+        private const val ROUND_TRAIL_LINES = 60
     }
 }
 

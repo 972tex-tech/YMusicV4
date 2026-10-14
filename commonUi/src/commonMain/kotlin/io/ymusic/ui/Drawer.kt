@@ -69,9 +69,7 @@ fun AppDrawer(
     ) {
         Column(Modifier.fillMaxHeight()) {
             val updateStatus = updates?.status?.collectAsState()?.value
-            val updateWaiting = updateStatus is AppUpdateStatus.Available ||
-                updateStatus is AppUpdateStatus.Downloading ||
-                updateStatus is AppUpdateStatus.Ready
+            val updateWaiting = updateStatus is AppUpdateStatus.Offered
             DrawerHeader(appVersion, premium, onCheckUpdate, updateWaiting)
             HorizontalDivider(color = DesignColors.Divider)
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {

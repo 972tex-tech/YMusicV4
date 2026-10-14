@@ -16,8 +16,18 @@ import kotlin.test.assertTrue
 
 class DownloadServiceQueueTest {
 
+    // Every scratch reads as empty (no ready output from an earlier run); anything else is unexpected.
+    private object EmptyScratch : DownloadScratch {
+        override val path: String get() = throw UnsupportedOperationException()
+        override fun length(): Long = 0
+        override fun appendSink(): okio.BufferedSink = throw UnsupportedOperationException()
+        override fun source(): okio.Source = throw UnsupportedOperationException()
+        override fun delete() = Unit
+        override fun close() = Unit
+    }
+
     private object ThrowingStorage : DownloadStorage {
-        override fun scratch(taskId: String, name: String): DownloadScratch = throw UnsupportedOperationException()
+        override fun scratch(taskId: String, name: String): DownloadScratch = EmptyScratch
         override fun deleteScratch(taskId: String) = Unit
         override suspend fun publish(scratch: DownloadScratch, fileName: String, destinationFolder: String): String = throw UnsupportedOperationException()
     }

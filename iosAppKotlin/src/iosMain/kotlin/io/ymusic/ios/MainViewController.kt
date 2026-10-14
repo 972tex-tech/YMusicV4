@@ -44,6 +44,7 @@ import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.playhistory.playHistoryNativeDriver
 import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
 import io.ymusic.ui.sponsorblock.sponsorBlockNativeDriver
+import io.ymusic.ui.startupFailedMessage
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -103,7 +104,7 @@ private fun IosAppRoot() {
 
     val g = graph
     when {
-        error != null -> Center { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
+        error != null -> Center { Text(startupFailedMessage("$error"), color = MaterialTheme.colorScheme.error) }
         g == null -> Center { CircularProgressIndicator() }
         else -> {
             LaunchedEffect(g) {
@@ -224,7 +225,12 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     FileSystem.SYSTEM.createDirectories(playerCacheRoot)
     val cacheDriver = nativeSegmentDatabaseDriver()
     val playerCache = MediaCache(
-        DiskMediaBlobCache(playerCacheRoot, FileSystem.SYSTEM, SqlDelightBlobIndex(cacheDriver, now = { (NSDate().timeIntervalSince1970 * 1000).toLong() })),
+        DiskMediaBlobCache(
+            playerCacheRoot,
+            FileSystem.SYSTEM,
+            SqlDelightBlobIndex(cacheDriver, now = { (NSDate().timeIntervalSince1970 * 1000).toLong() }),
+            logger = rootLogger.fork("player-cache"),
+        ),
         SqlDelightSegmentIndex(
             cacheDriver,
             now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
@@ -273,12 +279,15 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         imageLoader = imageLoader,
         settings = settings,
         appVersion = appVersionName,
+        appVersionName = appVersionName,
+        appVersionCode = appVersionCode,
+        runningBundles = runningBundles,
         stats = stats,
         api = api,
         remoteConfig = remoteConfig.config,
         surfaceScalesDown = true,
-        loginBrowser = { url, state, onPageChanged, modifier ->
-            IosLoginBrowser(url, state, onPageChanged, modifier)
+        loginBrowser = { url, userAgent, state, onPageChanged, modifier ->
+            IosLoginBrowser(url, userAgent, state, onPageChanged, modifier)
         },
         exportSessionCookies = { cookies.exportSessionCookies() },
         scanQrCode = { iosScanQrCode() },

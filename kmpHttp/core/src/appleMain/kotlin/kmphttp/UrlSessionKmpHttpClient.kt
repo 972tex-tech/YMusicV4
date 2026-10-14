@@ -13,6 +13,7 @@ import kmphttp.internal.http.BridgeInterceptor
 import kmphttp.internal.http.FollowUpInterceptor
 import kmphttp.internal.http.RecoverableIOException
 import kmphttp.internal.http.RetryOnConnectionFailureInterceptor
+import kmphttp.internal.http.TransportIOException
 import kmphttp.internal.write
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -35,11 +36,15 @@ import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLAuthenticationChallenge
 import platform.Foundation.NSURLCredential
+import platform.Foundation.NSURLErrorCallIsActive
 import platform.Foundation.NSURLErrorCannotConnectToHost
 import platform.Foundation.NSURLErrorCannotFindHost
 import platform.Foundation.NSURLErrorDNSLookupFailed
+import platform.Foundation.NSURLErrorDataNotAllowed
 import platform.Foundation.NSURLErrorDomain
+import platform.Foundation.NSURLErrorInternationalRoamingOff
 import platform.Foundation.NSURLErrorNetworkConnectionLost
+import platform.Foundation.NSURLErrorNotConnectedToInternet
 import platform.Foundation.NSURLErrorSecureConnectionFailed
 import platform.Foundation.NSURLErrorTimedOut
 import platform.Foundation.NSURLRequest
@@ -563,6 +568,15 @@ private val RECOVERABLE_NSURL_ERRORS: Set<Long> = setOf(
     NSURLErrorSecureConnectionFailed,
 ).map { it.toLong() }.toSet()
 
+/** Connectivity failures NOT retried: the device is offline or barred from data. */
+@OptIn(UnsafeNumber::class)
+private val OFFLINE_NSURL_ERRORS: Set<Long> = setOf(
+    NSURLErrorNotConnectedToInternet,
+    NSURLErrorInternationalRoamingOff,
+    NSURLErrorDataNotAllowed,
+    NSURLErrorCallIsActive,
+).map { it.toLong() }.toSet()
+
 @OptIn(UnsafeNumber::class)
 private fun NSError.toIOException(): IOException {
     // An engine-attached Kotlin exception (e.g. the SslException born at a trust rejection)
@@ -576,6 +590,8 @@ private fun NSError.toIOException(): IOException {
     }
     return if (domain == NSURLErrorDomain && code.toLong() in RECOVERABLE_NSURL_ERRORS) {
         RecoverableIOException(message, cause)
+    } else if (domain == NSURLErrorDomain && code.toLong() in OFFLINE_NSURL_ERRORS) {
+        TransportIOException(message, cause)
     } else {
         IOException(message, cause)
     }

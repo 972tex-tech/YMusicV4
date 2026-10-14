@@ -2,6 +2,7 @@ package io.ymusic.telemetry
 
 import io.sentry.kotlin.multiplatform.Attachment
 import io.sentry.kotlin.multiplatform.Sentry
+import io.sentry.kotlin.multiplatform.SentryLevel
 import io.sentry.kotlin.multiplatform.log.SentryLogLevel
 import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 import kmpcommon.log.Crumb
@@ -13,9 +14,10 @@ import projectcommon.log.trailMark
 
 /**
  * The app's root [Logger] over Sentry: an INFO+ [log] is a Sentry Log (attributes = the crumb-tag
- * path + the trail's merged props), every [captureError] a Sentry event whose grouping comes from
- * the coded error — else exception type + tag path — applied by [applyYMusicTelemetry]'s
- * `beforeSend` off the tags set here (`Scope` exposes no fingerprint).
+ * path + the trail's merged props), every [captureError] a Sentry event (the "network" and
+ * "captcha" categories excepted: a WARN log + breadcrumb) whose grouping comes from the coded error — else exception
+ * type + tag path — applied by [applyYMusicTelemetry]'s `beforeSend` off the tags set here
+ * (`Scope` exposes no fingerprint).
  */
 class SentryLogger private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs) {
 
@@ -67,6 +69,20 @@ class SentryLogger private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs
         val trail = error.trailMark() ?: crumbs
         val trailPath = trail.joinToString("/") { it.tag }
         val coded = error.codedError()
+        // The user's connectivity or YouTube's bot challenge, not a defect: the UI already shows the
+        // localized category, so it must not count against crash-free rate — a WARN log + breadcrumb only.
+        val userCategory = coded?.code?.takeIf { it in USER_CATEGORIES }
+        if (userCategory != null) {
+            SentryLogger(trail).log(Logger.Level.WARN, message ?: error.message ?: error.toString(), error)
+            Sentry.addBreadcrumb(
+                Breadcrumb(
+                    level = SentryLevel.WARNING,
+                    category = userCategory,
+                    message = "$trailPath: ${error.message}",
+                ),
+            )
+            return
+        }
         Sentry.captureException(error) { scope ->
             scope.setTag(TRAIL_TAG, trailPath)
             coded?.code?.let { scope.setTag(CODE_TAG, it) }
@@ -94,6 +110,7 @@ class SentryLogger private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs
     internal companion object {
         internal const val TRAIL_TAG = "trail"
         internal const val CODE_TAG = "error.code"
+        private val USER_CATEGORIES = setOf("network", "captcha")
         private const val STACK_CAP = 2000
     }
 }

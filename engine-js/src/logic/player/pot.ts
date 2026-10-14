@@ -93,6 +93,10 @@ async function waaJson(url: string, body: string): Promise<{ status: number; jso
     .timeout(30000)
     .build()
     .execute();
+  if (!r.ok) {
+    r.close();
+    throw JsEngineErrorImpl.httpStatus("generateIT", r.status, "E20149");
+  }
   return { "status": r.status, "json": await r.jsonArray() };
 }
 
@@ -156,7 +160,7 @@ async function buildMinter(
       );
       if (!ir.ok) {
         ir.close();
-        throw JsEngineErrorImpl.network("interpreter HTTP " + ir.status);
+        throw JsEngineErrorImpl.httpStatus("interpreter", ir.status, "E20148");
       }
       js = await ir.text();
     }

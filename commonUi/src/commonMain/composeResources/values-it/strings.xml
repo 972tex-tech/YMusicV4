@@ -138,7 +138,8 @@
     <string name="sort_duration">Durata</string>
     <string name="sort_song_count">Numero di brani</string>
     <string name="cd_sort">Ordina</string>
-    <string name="cd_sort_order">Ordinamento</string>
+    <string name="cd_sort_ascending">Ordinamento: crescente</string>
+    <string name="cd_sort_descending">Ordinamento: decrescente</string>
     <string name="library_unavailable">Nessuna libreria locale configurata su questa piattaforma</string>
     <string name="library_empty">La tua libreria è vuota</string>
     <string name="library_scan_folder">+  Scansiona cartella</string>
@@ -243,7 +244,6 @@
     <string name="cd_more">Altro</string>
     <string name="cd_collapse">Comprimi</string>
     <string name="cd_expand">Espandi</string>
-    <string name="cd_play_pause">Riproduci/Pausa</string>
     <string name="cd_next">Successivo</string>
     <string name="cd_previous">Precedente</string>
     <string name="cd_download">Scarica</string>
@@ -253,7 +253,9 @@
     <string name="cd_fill_video">Riempi schermo</string>
     <string name="cd_rewind10">Indietro di 10 secondi</string>
     <string name="cd_forward10">Avanti di 10 secondi</string>
-    <string name="cd_repeat">Ripeti</string>
+    <string name="cd_repeat_off">Ripeti: disattivato</string>
+    <string name="cd_repeat_all">Ripeti: tutto</string>
+    <string name="cd_repeat_one">Ripeti: uno</string>
     <string name="play_all">Riproduci tutto</string>
     <string name="shuffle_all">Riproduci tutto in ordine casuale</string>
     <string name="cd_shuffle">Riproduzione casuale</string>
@@ -385,6 +387,7 @@
     <string name="update_ready">Pronto per l'installazione</string>
     <string name="update_manual_hint">Questa copia non può aggiornarsi da sola (%1$s). Scarica invece la nuova versione.</string>
     <string name="update_failed">Aggiornamento non riuscito: %1$s</string>
+    <string name="update_official_site">Scaricala dal sito ufficiale</string>
     <string name="download_title">Scarica</string>
     <string name="download_audio_only">Solo audio</string>
     <string name="download_video">Video</string>

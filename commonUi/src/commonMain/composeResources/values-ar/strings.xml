@@ -22,6 +22,41 @@
     <string name="downloads_none_title">لا توجد تنزيلات بعد</string>
     <string name="downloads_none_message">تعمل الأغاني والفيديوهات التي تم تنزيلها بلا اتصال.</string>
     <string name="downloads_failed">فشل التنزيل</string>
+    <string name="downloads_error_folder_access">تعذّر الحفظ في مجلد التنزيلات — اختره مرة أخرى</string>
+    <string name="downloads_sign_in_title">سجّل الدخول للتنزيل</string>
+    <string name="downloads_sign_in_message">يطلب YouTube تسجيل الدخول قبل تنزيل هذا الفيديو. بعد تسجيل الدخول، يبدأ التنزيل من جديد.</string>
+    <string name="downloads_unavailable_title">الفيديو غير متاح</string>
+    <string name="downloads_unavailable_message">يفيد YouTube بأن هذا الفيديو غير متاح، لذا لن تفيد إعادة المحاولة. يمكنك إزالته من التنزيلات.</string>
+    <string name="downloads_state_queued">في قائمة الانتظار</string>
+    <string name="downloads_state_preparing">جارٍ التحضير</string>
+    <string name="downloads_state_downloading">جارٍ التنزيل</string>
+    <string name="downloads_state_processing">جارٍ المعالجة</string>
+    <string name="downloads_state_failed">فشل</string>
+    <string name="downloads_state_done">تم</string>
+    <string name="downloads_state_canceled">أُلغي</string>
+    <string name="downloads_action_pause">إيقاف مؤقت</string>
+    <string name="downloads_action_resume">استئناف</string>
+    <string name="downloads_action_reveal_library">إظهار في المكتبة</string>
+    <string name="downloads_action_reveal_finder">إظهار في Finder</string>
+    <string name="downloads_completed_date">%2$d %1$s %3$d</string>
+    <string-array name="month_abbr">
+        <item>يناير</item>
+        <item>فبراير</item>
+        <item>مارس</item>
+        <item>أبريل</item>
+        <item>مايو</item>
+        <item>يونيو</item>
+        <item>يوليو</item>
+        <item>أغسطس</item>
+        <item>سبتمبر</item>
+        <item>أكتوبر</item>
+        <item>نوفمبر</item>
+        <item>ديسمبر</item>
+    </string-array>
+    <string name="download_size_kb">%1$s كيلوبايت</string>
+    <string name="download_location_prompt_not_now">ليس الآن</string>
+    <string name="download_location_prompt_set_default">تعيين كافتراضي</string>
+    <string name="download_location_prompt_message">هل تريد حفظ التنزيلات في “%1$s”؟ يمكنك تغيير ذلك من الإعدادات.</string>
     <string name="section_settings">الإعدادات</string>
     <string name="section_donate">تبرّع</string>
     <string name="section_telegram">إعلانات تيليجرام</string>
@@ -62,6 +97,7 @@
 
     <string name="feed_empty">لا يوجد شيء هنا</string>
     <string name="error_generic">حدث خطأ ما (%1$s)</string>
+    <string name="startup_failed">تعذّر بدء التشغيل: %1$s</string>
     <string name="retry">إعادة المحاولة</string>
     <string name="reload">إعادة التحميل</string>
     <string name="search_videos">ابحث عن فيديوهات</string>
@@ -131,7 +167,8 @@
     <string name="sort_duration">المدة</string>
     <string name="sort_song_count">عدد الأغاني</string>
     <string name="cd_sort">فرز</string>
-    <string name="cd_sort_order">ترتيب الفرز</string>
+    <string name="cd_sort_ascending">ترتيب الفرز: تصاعدي</string>
+    <string name="cd_sort_descending">ترتيب الفرز: تنازلي</string>
     <string name="library_unavailable">لا توجد مكتبة محلية على هذه المنصة</string>
     <string name="library_empty">مكتبتك فارغة</string>
     <string name="library_scan_folder">+  فحص مجلد</string>
@@ -140,6 +177,10 @@
     <string name="library_scanning">جارٍ الفحص…</string>
     <string name="library_scanning_count">جارٍ فحص %1$d…</string>
     <string name="library_scan_failed">فشل الفحص (%1$s)</string>
+    <string name="library_scan_summary">تم فحص %1$d: أُضيف %2$d، وحُدِّث %3$d، وأُزيل %4$d</string>
+    <string name="library_scan_summary_failed">تم فحص %1$d: أُضيف %2$d، وحُدِّث %3$d، وأُزيل %4$d، وفشل %5$d</string>
+    <string name="library_scan_no_folders">لا توجد مجلدات لإعادة فحصها — أضف مجلدًا أولًا</string>
+    <string name="library_scan_ffmpeg_missing">لم يتم العثور على ffmpeg</string>
     <string name="library_empty_folder">مجلد فارغ</string>
     <string name="library_crumb_root">المكتبة</string>
     <string name="library_folder">مجلد</string>
@@ -198,6 +239,9 @@
     <string name="sleep_hours_minutes">%1$d س %2$d دقيقة</string>
     <string name="sleep_add_minutes">+%1$d دقيقة</string>
     <string name="playback_failed">فشل التشغيل (%1$s)</string>
+    <string name="playback_sign_in_required">يطلب YouTube تسجيل الدخول لتشغيل هذا الفيديو</string>
+    <string name="playback_unavailable">هذا الفيديو غير متاح</string>
+    <string name="menu_reload_player">إعادة تحميل المشغّل</string>
 
 
     <string name="settings_language">اللغة</string>
@@ -214,6 +258,10 @@
     <string name="overlay_fps">%1$d إطار/ث</string>
     <string name="settings_changelog">سجل التغييرات</string>
     <string name="settings_licenses">تراخيص المصادر المفتوحة</string>
+    <string name="settings_versions">الإصدارات</string>
+    <string name="settings_versions_app">التطبيق v%1$s/%2$s</string>
+    <string name="settings_versions_engine">EngineJs %1$s</string>
+    <string name="settings_versions_player">PlayerJs %1$s</string>
     <string name="settings_licenses_intro">‏YMusic مفتوح المصدر بموجب رخصة GNU GPL v3.0، ويتضمن المكوّنات التالية:</string>
     <string name="feedback_hint">أخبرنا بما تعطّل أو بما تودّ رؤيته. لقطات الشاشة أو ملفات السجلّ مفيدة.</string>
     <string name="feedback_message_label">ماذا حدث؟</string>
@@ -235,17 +283,21 @@
     <string name="cd_more">المزيد</string>
     <string name="cd_collapse">طي</string>
     <string name="cd_expand">توسيع</string>
-    <string name="cd_play_pause">تشغيل/إيقاف مؤقت</string>
+    <string name="cd_play">تشغيل</string>
+    <string name="cd_pause">إيقاف مؤقت</string>
     <string name="cd_next">التالي</string>
     <string name="cd_previous">السابق</string>
     <string name="cd_download">تنزيل</string>
     <string name="cd_fullscreen">ملء الشاشة</string>
     <string name="cd_exit_fullscreen">الخروج من ملء الشاشة</string>
+    <string name="cd_minimize">تصغير</string>
     <string name="cd_fit_video">ملاءمة الفيديو</string>
     <string name="cd_fill_video">ملء الشاشة</string>
     <string name="cd_rewind10">إرجاع 10 ثوانٍ</string>
     <string name="cd_forward10">تقديم 10 ثوانٍ</string>
-    <string name="cd_repeat">تكرار</string>
+    <string name="cd_repeat_off">التكرار: إيقاف</string>
+    <string name="cd_repeat_all">التكرار: الكل</string>
+    <string name="cd_repeat_one">التكرار: مقطع واحد</string>
     <string name="play_all">تشغيل الكل</string>
     <string name="shuffle_all">تشغيل الكل عشوائيًا</string>
     <string name="cd_shuffle">خلط</string>
@@ -254,6 +306,10 @@
     <string name="cd_drag_to_reorder">اسحب لإعادة الترتيب</string>
     <string name="cd_send">إرسال</string>
     <string name="cd_vote">تصويت</string>
+    <string name="cd_open_app">فتح YMusic</string>
+    <string name="cd_stop_dismiss">إيقاف وإغلاق</string>
+    <string name="mini_player_nothing_playing">لا شيء قيد التشغيل</string>
+    <string name="folder_picker_title">اختر مجلد موسيقى</string>
     <string name="menu_remove_from_disk">حذف من القرص</string>
     <string name="delete_from_disk_title">حذف الملف؟</string>
     <string name="delete_from_disk_message">سيتم حذف "%1$s" نهائيًا من هذا الجهاز. لا يمكن التراجع عن ذلك.</string>
@@ -311,6 +367,7 @@
     <string name="signin_paste_guide_network">افتح لوحة Network</string>
     <string name="signin_paste_guide_request">أعد التحميل ثم انقر طلب Fetch/XHR</string>
     <string name="signin_paste_guide_copy">انقر بزر الماوس الأيمن ← Copy as cURL ثم الصق هنا</string>
+    <string name="signin_paste_guide_right_click">انقر بزر الماوس الأيمن</string>
     <string name="cd_signin_paste_guide">رسم متحرك يوضح كيفية نسخ ملفات تعريف ارتباط YouTube من المتصفح</string>
     <string name="cd_signin_paste_pause">إيقاف الدليل مؤقتًا</string>
     <string name="cd_signin_paste_play">تشغيل الدليل</string>
@@ -356,6 +413,7 @@
     <string name="sound_pitch">طبقة الصوت %1$s</string>
     <string name="sound_eq">المعادل</string>
     <string name="sound_eq_band">%1$s هرتز  %2$d ديسيبل</string>
+    <string name="sound_db">%1$s ديسيبل</string>
     <string name="sound_reset">إعادة ضبط</string>
     <string name="sound_ok">حسنًا</string>
     <string name="sound_preset_flat">مسطّح</string>
@@ -372,14 +430,21 @@
     <string name="update_version">الإصدار %1$s</string>
     <string name="update_download">تنزيل</string>
     <string name="update_install_now">التثبيت الآن</string>
+    <string name="update_install_permission">يحتاج Android إلى إذنك قبل أن يتمكن YMusic من تثبيت التحديثات. امنح الإذن، أو نزّل الإصدار الجديد من المتصفح بدلًا من ذلك.</string>
+    <string name="update_allow_install">السماح</string>
+    <string name="update_download_in_browser">التنزيل من المتصفح</string>
     <string name="update_ask_later">ذكّرني لاحقًا</string>
-    <string name="update_background">في الخلفية</string>
     <string name="update_full_changelog">سجل التغييرات الكامل</string>
     <string name="update_downloading">جارٍ التنزيل… %1$s من %2$s</string>
     <string name="update_ready">جاهز للتثبيت</string>
     <string name="update_manual_hint">هذه النسخة لا يمكنها تحديث نفسها (%1$s). نزّل الإصدار الجديد يدويًا.</string>
+    <string name="update_blocked_not_installed">التطبيق لا يعمل من نسخة مثبّتة</string>
+    <string name="update_blocked_mac_swap">إصدار macOS هذا لا يمكنه استبدال التطبيق في مكانه</string>
+    <string name="update_blocked_folder_read_only">المجلد الذي يحتوي على YMusic غير قابل للكتابة</string>
+    <string name="update_blocked_not_deb">لم تُثبَّت هذه النسخة من حزمة ‎.deb</string>
+    <string name="update_blocked_no_pkexec">pkexec أو apt-get غير موجود</string>
     <string name="update_failed">فشل التحديث: %1$s</string>
-    <string name="update_download_failed">فشل تنزيل التحديث</string>
+    <string name="update_official_site">نزّله من الموقع الرسمي</string>
     <string name="update_check">التحقق من التحديثات</string>
     <string name="update_checking">جارٍ التحقق من التحديثات…</string>
     <string name="update_up_to_date">أنت تستخدم أحدث إصدار</string>
@@ -460,6 +525,9 @@
         <item quantity="other">%1$d من الفيديوهات المحددة موجودة بالفعل في مكتبتك.</item>
     </plurals>
     <string name="error_network">تعذّر الوصول إلى YouTube. تحقق من اتصالك وحاول مرة أخرى.</string>
+    <string name="error_captcha">يريد YouTube التأكد من أنك لست روبوتًا</string>
+    <string name="captcha_verify">تحقّق</string>
+    <string name="captcha_verify_hint">حُلّ أي اختبار captcha تراه على الشاشة، ثم انقر على تم</string>
     <string name="settings_player_cache">ذاكرة التخزين المؤقت للمشغّل</string>
     <string name="settings_player_cache_summary">الحد الأقصى %1$s · المستخدم %2$s · الموفَّر %3$s</string>
     <string name="settings_player_cache_off">بدون تخزين مؤقت</string>

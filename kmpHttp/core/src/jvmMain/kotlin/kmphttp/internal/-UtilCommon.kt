@@ -1,23 +1,26 @@
 package kmphttp.internal
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
 import java.io.InterruptedIOException
 import kotlin.coroutines.CoroutineContext
 
 internal suspend fun <T> runIoInterruptible(
-    // Default to Dispatchers.IO, not EmptyCoroutineContext: the block does a BLOCKING socket/okio
-    // read, so with the empty default it ran on the caller's dispatcher despite the "Io" in the
-    // name — response.body.utf8String() from Dispatchers.Main blocked the main thread (ANR). The
-    // project rule is that suspend functions are main-safe.
+    // Dispatchers.IO, not the caller's: the block is a BLOCKING socket/okio read (main-safety rule).
     context: CoroutineContext = Dispatchers.IO,
     block: () -> T
-): T {
-    return runInterruptible(context) {
+): T = withContext(context) {
+    val job = coroutineContext.job
+    runInterruptible {
         try {
             block()
         } catch (e: InterruptedIOException) {
-            // https://github.com/Kotlin/kotlinx.coroutines/issues/3551
+            // okio reports our cancel-interrupt as InterruptedIOException, which runInterruptible
+            // doesn't recognize (kotlinx.coroutines#3551). A live job means a genuine timeout
+            // (SocketTimeoutException, OkHttp call timeout): it must surface as the IOException it is.
+            if (job.isActive) throw e
             throw InterruptedException().initCause(e)
         }
     }

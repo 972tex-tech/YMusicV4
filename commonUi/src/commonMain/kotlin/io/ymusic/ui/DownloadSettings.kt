@@ -24,8 +24,15 @@ import io.ymusic.mediastore.model.MediaStoreBucket
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
+import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.download_location_not_set
+import io.ymusic.ui.resources.download_location_prompt_message
+import io.ymusic.ui.resources.download_location_prompt_not_now
+import io.ymusic.ui.resources.download_location_prompt_set_default
+import io.ymusic.ui.resources.menu_download_location
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * The Settings screen's "Downloads" group: where finished downloads land (a Library folder) and the Quick
@@ -47,7 +54,10 @@ private fun DownloadLocationRow(graph: AppGraph) {
 
     // No dialog: tapping goes straight to the OS folder picker (adds the folder to the Library and
     // sets it as the location). Existing folders are re-designated from the Library tab's menu instead.
-    SettingRow(title = "Download location", value = name ?: "Not set") {
+    SettingRow(
+        title = stringResource(Res.string.menu_download_location),
+        value = name ?: stringResource(Res.string.download_location_not_set),
+    ) {
         scope.launch { pickDownloadFolder(graph) }
     }
 }
@@ -123,20 +133,20 @@ internal fun DefaultDownloadLocationPrompt(graph: AppGraph) {
     val bucket = candidate
     if (bucket != null && location.isBlank()) {
         ElevatedBarDialog(
-            title = "Download location",
+            title = stringResource(Res.string.menu_download_location),
             onDismiss = { candidate = null },
             canScrollBackward = false,
             canScrollForward = false,
             buttons = {
-                DialogSecondaryButton("Not now") { candidate = null }
+                DialogSecondaryButton(stringResource(Res.string.download_location_prompt_not_now)) { candidate = null }
                 TextButton(onClick = {
                     scope.launch { graph.settings.put(AppSettings.downloadLocation, bucket.uri.toString()) }
                     candidate = null
-                }) { Text("Set as default") }
+                }) { Text(stringResource(Res.string.download_location_prompt_set_default)) }
             },
         ) {
             Text(
-                "Save downloads to “${bucket.name}”? You can change this in Settings.",
+                stringResource(Res.string.download_location_prompt_message, bucket.name),
                 style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink),
                 modifier = Modifier.padding(horizontal = DesignSpacing.DialogRowHorizontal, vertical = DesignSpacing.Space16),
             )

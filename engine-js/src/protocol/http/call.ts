@@ -169,6 +169,7 @@ export class HttpCallImpl implements HttpCall {
           self._retireBody(reason);
         },
         this._opts ? this._opts["timeoutMs"] : undefined,
+        typeof rh["cache"] === "string" ? rh["cache"] : undefined,
       );
       this._responseRef = new WeakRef(res);
       return res;

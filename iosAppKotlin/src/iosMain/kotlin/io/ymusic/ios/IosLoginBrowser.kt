@@ -20,12 +20,14 @@ import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.NSObject
 /**
  * The iOS sign-in WebView (the shell's [AppGraph.loginBrowser]). Cookies land in the default
- * [WKWebsiteDataStore], which [IosWebViewCookieJar] wraps for engine HTTP.
+ * [WKWebsiteDataStore], which [IosWebViewCookieJar] wraps for engine HTTP. A non-null [userAgent]
+ * (the captcha browser) replaces the default so the cleared challenge matches the engine's scrape.
  */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalForeignApi::class)
 @Composable
 internal fun IosLoginBrowser(
     url: String,
+    userAgent: String?,
     state: LoginWebViewState,
     onPageChanged: () -> Unit,
     modifier: Modifier,
@@ -35,6 +37,7 @@ internal fun IosLoginBrowser(
             websiteDataStore = WKWebsiteDataStore.defaultDataStore()
         }
         val webView = WKWebView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0), configuration = config)
+        if (userAgent != null) webView.customUserAgent = userAgent
         val delegate = LoginNavDelegate(state, onPageChanged)
         webView.navigationDelegate = delegate // strong ref kept in the holder below
         state.back = { if (webView.canGoBack) webView.goBack() }

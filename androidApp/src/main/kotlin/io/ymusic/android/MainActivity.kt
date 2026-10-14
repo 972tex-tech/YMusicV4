@@ -38,6 +38,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import io.ymusic.player.VideoSize
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.ui.App
@@ -49,6 +50,7 @@ import io.ymusic.ui.IncomingLinks
 import io.ymusic.ui.LightDesignColors
 import io.ymusic.ui.LinkAction
 import io.ymusic.ui.rememberStartSection
+import io.ymusic.ui.startupFailedMessage
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -92,8 +94,19 @@ class MainActivity : FragmentActivity() {
     private val openFolder =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
             if (treeUri != null) {
-                // Persist read access so a rescan (and next launch) can reach the folder without re-picking.
-                contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                // Any picked folder can become the download location; a read-only persisted grant fails
+                // only at publish, once the process holding the picker's transient write grant is gone.
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        treeUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                } catch (e: SecurityException) {
+                    // A provider that grants read-only: the folder still scans; a download there fails at publish.
+                    (application as YMusicApplication).rootLogger.fork("folder-pick")
+                        .log(kmpcommon.log.Logger.Level.WARN, "folder $treeUri has no write grant; persisting read-only", e)
+                    contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
             }
             pendingPick?.complete(treeUri?.let { Uri.parse(it.toString()) })
             pendingPick = null
@@ -295,7 +308,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
             when {
-                error != null -> Booting { Text("Startup failed: $error", color = MaterialTheme.colorScheme.error) }
+                error != null -> Booting { Text(startupFailedMessage("$error"), color = MaterialTheme.colorScheme.error) }
                 graph == null -> Booting { CircularProgressIndicator() }
                 else -> {
                     LaunchedEffect(graph) { attachPip(graph!!) }
@@ -337,6 +350,7 @@ class MainActivity : FragmentActivity() {
         (application as YMusicApplication).refreshPremium()
         (application as YMusicApplication).resumedActivity = WeakReference(this)
         val g = appGraph
+        (g?.updates as? AndroidAppUpdates)?.onResume()
         if (pipExitPending) {
             pipExitPending = false
             g?.pip?.onPipStopped(appInForeground = true)
@@ -395,13 +409,7 @@ class MainActivity : FragmentActivity() {
             ) { _, _, _, _, _ -> }
                 .combine(graph.player.config) { _, _ -> graph.pip.autoEnterEligible() }
                 .collect { eligible ->
-                    val size = graph.player.status.value.videoSize
-                    val ratio = if (size != null && size.width > 0 && size.height > 0) {
-                        Rational(size.width, size.height)
-                    } else {
-                        Rational(16, 9)
-                    }
-                    val b = PictureInPictureParams.Builder().setAspectRatio(ratio)
+                    val b = PictureInPictureParams.Builder().setAspectRatio(pipAspectRatio(graph.player.status.value.videoSize))
                     if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(eligible)
                     setPictureInPictureParams(b.build())
                 }
@@ -410,15 +418,20 @@ class MainActivity : FragmentActivity() {
 
     private fun enterPip() {
         if (Build.VERSION.SDK_INT < 26) return
-        val size = appGraph?.player?.status?.value?.videoSize
-        val ratio = if (size != null && size.width > 0 && size.height > 0) {
-            Rational(size.width, size.height)
-        } else {
-            Rational(16, 9)
-        }
         enterPictureInPictureMode(
-            PictureInPictureParams.Builder().setAspectRatio(ratio).build(),
+            PictureInPictureParams.Builder().setAspectRatio(pipAspectRatio(appGraph?.player?.status?.value?.videoSize)).build(),
         )
+    }
+
+    // Android rejects ratios outside [1/2.39, 2.39] (config_pictureInPictureMin/MaxAspectRatio); 2.35 keeps float rounding inside.
+    private fun pipAspectRatio(size: VideoSize?): Rational {
+        if (size == null || size.width <= 0 || size.height <= 0) return Rational(16, 9)
+        val ratio = size.aspectRatio
+        return when {
+            ratio > 2.35f -> Rational(235, 100)
+            ratio < 1 / 2.35f -> Rational(100, 235)
+            else -> Rational(size.width, size.height)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
