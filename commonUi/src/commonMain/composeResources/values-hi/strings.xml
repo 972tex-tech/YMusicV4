@@ -386,6 +386,7 @@
     <string name="update_ready">इंस्टॉल के लिए तैयार</string>
     <string name="update_manual_hint">यह कॉपी खुद अपडेट नहीं हो सकती (%1$s)। इसकी जगह नया वर्शन डाउनलोड करें।</string>
     <string name="update_failed">अपडेट विफल: %1$s</string>
+    <string name="update_official_site">आधिकारिक वेबसाइट से डाउनलोड करें</string>
     <string name="download_title">डाउनलोड करें</string>
     <string name="download_audio_only">सिर्फ़ ऑडियो</string>
     <string name="download_video">वीडियो</string>

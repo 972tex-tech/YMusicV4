@@ -387,6 +387,7 @@
     <string name="update_ready">Спремно за инсталирање</string>
     <string name="update_manual_hint">Ова копија не може сама да се ажурира (%1$s). Уместо тога преузмите нову верзију.</string>
     <string name="update_failed">Ажурирање није успело: %1$s</string>
+    <string name="update_official_site">Преузмите са званичног сајта</string>
     <string name="download_title">Преузимање</string>
     <string name="download_audio_only">Само звук</string>
     <string name="download_video">Видео</string>

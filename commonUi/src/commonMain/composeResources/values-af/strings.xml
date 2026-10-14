@@ -386,6 +386,7 @@
     <string name="update_ready">Gereed om te installeer</string>
     <string name="update_manual_hint">Hierdie kopie kan homself nie opdateer nie (%1$s). Laai eerder die nuwe weergawe af.</string>
     <string name="update_failed">Opdatering het misluk: %1$s</string>
+    <string name="update_official_site">Kry dit van die amptelike webwerf</string>
     <string name="download_title">Laai af</string>
     <string name="download_audio_only">Net oudio</string>
     <string name="download_video">Video</string>

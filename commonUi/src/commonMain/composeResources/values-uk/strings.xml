@@ -388,6 +388,7 @@
     <string name="update_ready">Готово до встановлення</string>
     <string name="update_manual_hint">Ця копія не може оновитися сама (%1$s). Завантажте нову версію вручну.</string>
     <string name="update_failed">Помилка оновлення: %1$s</string>
+    <string name="update_official_site">Завантажити з офіційного сайту</string>
     <string name="download_title">Завантажити</string>
     <string name="download_audio_only">Лише аудіо</string>
     <string name="download_video">Відео</string>

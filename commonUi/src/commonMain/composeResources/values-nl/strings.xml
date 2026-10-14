@@ -386,6 +386,7 @@
     <string name="update_ready">Klaar om te installeren</string>
     <string name="update_manual_hint">Deze kopie kan zichzelf niet updaten (%1$s). Download in plaats daarvan de nieuwe versie.</string>
     <string name="update_failed">Update mislukt: %1$s</string>
+    <string name="update_official_site">Download via de officiële website</string>
     <string name="download_title">Downloaden</string>
     <string name="download_audio_only">Alleen audio</string>
     <string name="download_video">Video</string>

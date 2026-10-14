@@ -385,6 +385,7 @@
     <string name="update_ready">พร้อมติดตั้ง</string>
     <string name="update_manual_hint">สำเนานี้อัปเดตตัวเองไม่ได้ (%1$s) โปรดดาวน์โหลดเวอร์ชันใหม่แทน</string>
     <string name="update_failed">อัปเดตไม่สำเร็จ: %1$s</string>
+    <string name="update_official_site">ดาวน์โหลดจากเว็บไซต์ทางการ</string>
     <string name="download_title">ดาวน์โหลด</string>
     <string name="download_audio_only">เสียงเท่านั้น</string>
     <string name="download_video">วิดีโอ</string>

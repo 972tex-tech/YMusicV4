@@ -28,8 +28,9 @@ sealed interface UpdateState {
 
     data class Ready(val update: AppUpdate, val installer: File) : UpdateState
 
-    /** [code] is shown to the user; [manualDownloadUrl] is null when the entry itself is untrusted. */
-    data class Failed(val code: String, val manualDownloadUrl: String?) : UpdateState
+    /** [code] is shown to the user. [trusted] false: [update]'s signature did not verify, so nothing
+     *  of it may be downloaded or opened — only its version and notes are shown. */
+    data class Failed(val code: String, val update: AppUpdate, val trusted: Boolean = true) : UpdateState
 }
 
 /**
@@ -82,7 +83,7 @@ class UpdateService internal constructor(
         if (!isEnabled) return
         mutex.withLock {
             if (update == null || update.versionCode <= currentVersionCode) {
-                if (_state.value is UpdateState.Available) _state.value = UpdateState.Idle
+                if (_state.value is UpdateState.Available || _state.value is UpdateState.Failed) _state.value = UpdateState.Idle
                 pendingUpdate = null
                 return
             }
@@ -94,7 +95,7 @@ class UpdateService internal constructor(
                 )
                 pendingUpdate = null
                 rejected = update
-                _state.value = UpdateState.Failed("E91001", null)
+                _state.value = UpdateState.Failed("E91001", update, trusted = false)
                 return
             }
             pendingUpdate = update
@@ -139,10 +140,10 @@ class UpdateService internal constructor(
                 _state.value = UpdateState.Available(update)
             } else if (error is DownloadMismatchException) {
                 log?.captureError(error, "update ${update.versionCode} failed verification")
-                _state.value = UpdateState.Failed("E91002", update.url)
+                _state.value = UpdateState.Failed("E91002", update)
             } else {
                 log?.captureError(error, "downloading update ${update.versionCode} failed")
-                _state.value = UpdateState.Failed("E91003", update.url)
+                _state.value = UpdateState.Failed("E91003", update)
             }
         }
     }
@@ -172,7 +173,7 @@ class UpdateService internal constructor(
             throw cancel
         } catch (error: Exception) {
             log?.captureError(error, "installing update ${ready.update.versionCode} failed")
-            _state.value = UpdateState.Failed("E91004", ready.update.url)
+            _state.value = UpdateState.Failed("E91004", ready.update)
             false
         }
     }

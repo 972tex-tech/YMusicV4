@@ -385,6 +385,7 @@
     <string name="update_ready">インストールの準備ができました</string>
     <string name="update_manual_hint">このコピーは自動更新できません（%1$s）。新しいバージョンをダウンロードしてください。</string>
     <string name="update_failed">アップデートに失敗しました：%1$s</string>
+    <string name="update_official_site">公式サイトからダウンロード</string>
     <string name="download_title">ダウンロード</string>
     <string name="download_audio_only">音声のみ</string>
     <string name="download_video">動画</string>

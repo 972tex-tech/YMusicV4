@@ -385,6 +385,7 @@
     <string name="update_ready">Sedia untuk dipasang</string>
     <string name="update_manual_hint">Salinan ini tidak dapat mengemas kini dirinya sendiri (%1$s). Muat turun versi baharu sebaliknya.</string>
     <string name="update_failed">Kemas kini gagal: %1$s</string>
+    <string name="update_official_site">Muat turun dari laman web rasmi</string>
     <string name="download_title">Muat turun</string>
     <string name="download_audio_only">Audio sahaja</string>
     <string name="download_video">Video</string>

@@ -389,6 +389,7 @@ class YMusicApplication : Application() {
             rememberAutoDownloadFailed = { settings.put(AppSettings.updateAutoDownloadFailed, it) },
             refreshConfig = { remoteConfig.refreshNow() },
             latestUpdate = { remoteConfig.getConfig().appUpdate },
+            downloadSite = { remoteConfig.config.replayCache.lastOrNull()?.downloadPageUrl },
         )
         updates.pruneDownloads()
         scope.launch { remoteConfig.config.collect { updates.offer(it.appUpdate) } }

@@ -387,6 +387,7 @@
     <string name="update_ready">A punt per instal·lar</string>
     <string name="update_manual_hint">Aquesta còpia no es pot actualitzar sola (%1$s). Descarrega la versió nova.</string>
     <string name="update_failed">L'actualització ha fallat: %1$s</string>
+    <string name="update_official_site">Baixa-la del lloc web oficial</string>
     <string name="download_title">Descarrega</string>
     <string name="download_audio_only">Només àudio</string>
     <string name="download_video">Vídeo</string>

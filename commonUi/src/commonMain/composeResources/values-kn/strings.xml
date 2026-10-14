@@ -386,6 +386,7 @@
     <string name="update_ready">ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲು ಸಿದ್ಧವಾಗಿದೆ</string>
     <string name="update_manual_hint">ಈ ಪ್ರತಿ ತಾನಾಗಿಯೇ ಅಪ್‌ಡೇಟ್ ಆಗಲು ಸಾಧ್ಯವಿಲ್ಲ (%1$s). ಬದಲಾಗಿ ಹೊಸ ಆವೃತ್ತಿಯನ್ನು ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ.</string>
     <string name="update_failed">ಅಪ್‌ಡೇಟ್ ವಿಫಲವಾಗಿದೆ: %1$s</string>
+    <string name="update_official_site">ಅಧಿಕೃತ ವೆಬ್‌ಸೈಟ್‌ನಿಂದ ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ</string>
     <string name="download_title">ಡೌನ್‌ಲೋಡ್</string>
     <string name="download_audio_only">ಆಡಿಯೊ ಮಾತ್ರ</string>
     <string name="download_video">ವೀಡಿಯೊ</string>

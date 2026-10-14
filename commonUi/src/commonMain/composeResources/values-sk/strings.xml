@@ -388,6 +388,7 @@
     <string name="update_ready">Pripravené na inštaláciu</string>
     <string name="update_manual_hint">Táto kópia sa nemôže sama aktualizovať (%1$s). Stiahnite si novú verziu ručne.</string>
     <string name="update_failed">Aktualizácia zlyhala: %1$s</string>
+    <string name="update_official_site">Stiahnuť z oficiálnej stránky</string>
     <string name="download_title">Stiahnuť</string>
     <string name="download_audio_only">Len zvuk</string>
     <string name="download_video">Video</string>
