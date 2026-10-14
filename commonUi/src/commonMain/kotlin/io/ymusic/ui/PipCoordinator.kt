@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 /**
  * Picture-in-picture eligibility and the AudioOnly demotion used when the app leaves
  * the screen without PiP, or when the user closes the PiP window (pause + AudioOnly;
- * a notification resume stays audio until foreground restores Auto).
+ * a notification resume stays audio until foreground restores the user's quality).
  */
 class PipCoordinator(
     private val player: Player,
@@ -21,8 +21,8 @@ class PipCoordinator(
     val videoFullscreen = MutableStateFlow(false)
     val inPip = MutableStateFlow(false)
 
-    /** True while quality was forced to AudioOnly for background; restore Auto on foreground. */
-    private var demotedToAudioOnly = false
+    /** True while AudioOnly is forced for background — not the user's choice, so never persisted. */
+    val demotedToAudioOnly = MutableStateFlow(false)
 
     fun enablePip(): Boolean = settings.flow(AppSettings.enablePip).value
 
@@ -66,13 +66,13 @@ class PipCoordinator(
     private fun demoteToAudioOnly() {
         if (player.config.value.audioOnly) return
         if (player.videoQuality.value.preferredQuality == VideoQualityState.AUDIO_ONLY) return
-        demotedToAudioOnly = true
+        demotedToAudioOnly.value = true
         player.setAudioOnly(true)
     }
 
     fun onEnterForeground() {
-        if (!demotedToAudioOnly) return
-        demotedToAudioOnly = false
-        player.selectVideoQuality(VideoQualityState.AUTO)
+        if (!demotedToAudioOnly.value) return
+        player.setAudioOnly(false)
+        demotedToAudioOnly.value = false
     }
 }

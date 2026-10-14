@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 /** The player-quality settings key — public because shell settings stores (iOS NSUserDefaults
  *  seeding) enumerate the keys they persist. */
 const val PlaybackQualitySettingKey = "player.preferVideoQuality"
+const val PlaybackAudioOnlyKey = "player.audioOnly"
 const val PlaybackVolumeKey = "player.volume"
 const val PlaybackSpeedKey = "player.speed"
 const val PlaybackPitchKey = "player.pitch"

@@ -139,9 +139,11 @@ import io.ymusic.ui.resources.yt_playlist_sign_in
 import io.ymusic.ui.sponsorblock.SponsorBlockCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -244,6 +246,7 @@ fun App(
     LaunchedEffect(graph.player, graph.settings) {
         val quality = graph.settings.string(PlaybackQualitySettingKey, VideoQualityState.AUTO).value
         if (quality != VideoQualityState.AUDIO_ONLY) graph.player.selectVideoQuality(quality)
+        graph.player.setAudioOnly(graph.settings.string(PlaybackAudioOnlyKey, "1").value != "0")
         graph.player.volume = graph.settings.string(PlaybackVolumeKey, "1").value.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f
         graph.player.speed = graph.settings.string(PlaybackSpeedKey, "1").value.toFloatOrNull()?.coerceIn(0.25f, 4f) ?: 1f
         graph.player.setPitch(graph.settings.string(PlaybackPitchKey, "1").value.toFloatOrNull()?.coerceIn(0.5f, 2f) ?: 1f)
@@ -258,6 +261,12 @@ fun App(
         launch {
             graph.player.config.map { it.preferVideoQuality.first }.distinctUntilChanged()
                 .collect { graph.settings.putString(PlaybackQualitySettingKey, it) }
+        }
+        launch {
+            combine(graph.player.config.map { it.audioOnly }, graph.pip.demotedToAudioOnly) { audioOnly, demoted ->
+                audioOnly.takeUnless { demoted }
+            }.filterNotNull().distinctUntilChanged()
+                .collect { graph.settings.putString(PlaybackAudioOnlyKey, if (it) "1" else "0") }
         }
         launch {
             graph.player.config.map { "${it.volume}|${it.speed}|${it.pitchFactor}|${it.bassBoostDb}|${it.virtualizer}|${it.eqBands.joinToString(",")}|${it.preampDb}" }
