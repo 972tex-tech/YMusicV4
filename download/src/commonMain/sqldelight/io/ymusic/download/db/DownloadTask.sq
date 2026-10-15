@@ -39,6 +39,9 @@ INSERT OR REPLACE INTO downloadTask(
 updateState:
 UPDATE downloadTask SET state = ?, error_message = ?, error_code = ?, updated_at = ? WHERE id = ?;
 
+updateFormat:
+UPDATE downloadTask SET format = ?, updated_at = ? WHERE id = ?;
+
 updateProgress:
 UPDATE downloadTask SET downloaded_bytes = ?, total_bytes = ?, updated_at = ? WHERE id = ?;
 

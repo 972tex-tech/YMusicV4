@@ -54,6 +54,9 @@ class DownloadedStreams(
     val captions: List<DownloadedCaption>,
     /** The artist read from the player response, for when the request carried none. */
     val artist: String? = null,
+    /** The output format these streams are for: the task's, or MP4 when it asked for WebM video and the
+     *  video has no WebM-muxable stream. */
+    val format: DownloadFormat,
 )
 
 /**
@@ -94,7 +97,8 @@ class YtStreamDownloader(
         onPreparing()
         val resolved = resolveSpec(task.videoId)
         var spec = resolved.spec
-        val (audioFmt, videoFmt) = selectFormats(task, spec.formats)
+        val format = outputFormat(task, spec.formats)
+        val (audioFmt, videoFmt) = selectFormats(task, format, spec.formats)
         val captionPicks = captionsToDownload(spec.captionTracks, task.captions, task.captionLanguage)
 
         val audioScratch = storage.scratch(task.id, AUDIO_SCRATCH)
@@ -122,6 +126,7 @@ class YtStreamDownloader(
             video = videoFmt?.let { DownloadedStream(it, videoScratch!!) },
             captions = captionFiles,
             artist = resolved.artist,
+            format = format,
         )
     }
 
@@ -136,13 +141,20 @@ class YtStreamDownloader(
             throw e
         }
 
-    /** Choose the audio (and, for video outputs, video) [AdaptiveFormat]s for the task. */
-    private fun selectFormats(task: DownloadTask, formats: List<AdaptiveFormat>): Pair<AdaptiveFormat, AdaptiveFormat?> {
-        val preferAac = task.format == DownloadFormat.M4A || task.format == DownloadFormat.VIDEO_MP4
+    private fun outputFormat(task: DownloadTask, formats: List<AdaptiveFormat>): DownloadFormat {
+        if (task.format != DownloadFormat.VIDEO_WEBM) return task.format
+        if (FormatSelection.videoNearest(formats, task.requestedHeight, DownloadFormat.VIDEO_WEBM) != null) return task.format
+        log?.log(Logger.Level.INFO, "${task.videoId} has no WebM video stream; downloading MP4")
+        return DownloadFormat.VIDEO_MP4
+    }
+
+    /** Choose the audio (and, for video outputs, video) [AdaptiveFormat]s for a [format] output. */
+    private fun selectFormats(task: DownloadTask, format: DownloadFormat, formats: List<AdaptiveFormat>): Pair<AdaptiveFormat, AdaptiveFormat?> {
+        val preferAac = format == DownloadFormat.M4A || format == DownloadFormat.VIDEO_MP4
         val audio = FormatSelection.bestAudio(formats, preferAac = preferAac, audioTrackId = task.audioTrackId, audioLanguage = task.audioLanguage)
             ?: throw TechnicalException("E70011", "no audio format for ${task.videoId}")
-        val video = if (task.format.kind == DownloadKind.VIDEO) {
-            FormatSelection.videoNearest(formats, task.requestedHeight, task.format)
+        val video = if (format.kind == DownloadKind.VIDEO) {
+            FormatSelection.videoNearest(formats, task.requestedHeight, format)
                 ?: throw TechnicalException("E70012", "no video format for ${task.videoId}")
         } else {
             null

@@ -134,6 +134,7 @@ class DownloadTask(
         get() = if (totalBytes > 0) (downloadedBytes.toFloat() / totalBytes).coerceIn(0f, 1f) else null
 
     fun copy(
+        format: DownloadFormat = this.format,
         state: DownloadState = this.state,
         downloadedBytes: Long = this.downloadedBytes,
         totalBytes: Long = this.totalBytes,

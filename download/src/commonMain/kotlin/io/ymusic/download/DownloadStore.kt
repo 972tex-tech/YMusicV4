@@ -59,6 +59,9 @@ class DownloadStore(driver: SqlDriver, logger: Logger? = null) {
     suspend fun updateState(id: String, state: DownloadState, error: DownloadError?, updatedAt: Long): Unit =
         withContext(downloadDbDispatcher()) { queries.updateState(state.name, error?.userMessage, error?.code, updatedAt, id) }
 
+    suspend fun updateFormat(id: String, format: DownloadFormat, updatedAt: Long): Unit =
+        withContext(downloadDbDispatcher()) { queries.updateFormat(format.name, updatedAt, id) }
+
     suspend fun updateProgress(id: String, downloaded: Long, total: Long, updatedAt: Long): Unit =
         withContext(downloadDbDispatcher()) { queries.updateProgress(downloaded, total, updatedAt, id) }
 

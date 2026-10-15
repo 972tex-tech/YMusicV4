@@ -316,6 +316,12 @@ class DownloadService(
                 onDownloading = { updates.trySend { setState(task.id, DownloadState.DOWNLOADING) } },
                 onProcessing = { updates.trySend { setState(task.id, DownloadState.PROCESSING) } },
                 onProgress = { done, total -> updates.trySend { setProgress(task.id, done, total) } },
+                onFormatChanged = { format ->
+                    updates.trySend {
+                        store.updateFormat(task.id, format, now())
+                        _changes.emit(DownloadChange.FormatChanged(task.id, format))
+                    }
+                },
             )
             // The file is published: record it even if a pause/cancel lands now.
             withContext(NonCancellable) {

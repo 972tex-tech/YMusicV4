@@ -15,6 +15,8 @@ sealed interface DownloadChange {
     data class StateChanged(val id: String, val state: DownloadState, val error: DownloadError?) : DownloadChange
     data class ProgressChanged(val id: String, val downloaded: Long, val total: Long) : DownloadChange
     data class Completed(val id: String, val fileUri: String, val bytes: Long) : DownloadChange
+
+    data class FormatChanged(val id: String, val format: DownloadFormat) : DownloadChange
     data class Removed(val id: String) : DownloadChange
 }
 
@@ -56,6 +58,7 @@ class DownloadTasksAggregator(
                 byId[change.id]?.let {
                     byId[change.id] = it.copy(state = change.state, errorMessage = change.error?.userMessage, errorCode = change.error?.code)
                 }
+            is DownloadChange.FormatChanged -> byId[change.id]?.let { byId[change.id] = it.copy(format = change.format) }
             is DownloadChange.ProgressChanged ->
                 byId[change.id]?.let { byId[change.id] = it.copy(downloadedBytes = change.downloaded, totalBytes = change.total) }
             is DownloadChange.Completed ->
