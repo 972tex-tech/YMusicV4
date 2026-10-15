@@ -98,6 +98,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -145,6 +150,7 @@ import io.ymusic.ui.resources.cd_repeat_off
 import io.ymusic.ui.resources.cd_repeat_one
 import io.ymusic.ui.resources.cd_rewind10
 import io.ymusic.ui.resources.cd_shuffle
+import io.ymusic.ui.resources.download_quality
 import io.ymusic.ui.resources.error_captcha
 import io.ymusic.ui.resources.ic_sponsor_block
 import io.ymusic.ui.resources.menu_add_to_playlist
@@ -862,24 +868,30 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
             DropdownMenu(expanded = true, onDismissRequest = { open = false }) {
                 val off = !config.captionVisible
                 DropdownMenuItem(
-                    text = { Text(if (off) "✓ ${stringResource(Res.string.captions_off)}" else stringResource(Res.string.captions_off)) },
+                    text = { Text(stringResource(Res.string.captions_off)) },
                     onClick = { player.setCaptionVisible(false); open = false },
+                    modifier = Modifier.menuChoice(off),
+                    trailingIcon = selectedCheck(off),
                 )
                 tracks.forEach { track ->
                     DropdownMenuItem(
-                        text = { Text(if (isOn(track)) "✓ ${track.displayName}" else track.displayName) },
+                        text = { Text(track.displayName) },
                         onClick = { pick(track) },
+                        modifier = Modifier.menuChoice(isOn(track)),
+                        trailingIcon = selectedCheck(isOn(track)),
                     )
                 }
                 if (translations.isNotEmpty()) {
                     val label = stringResource(Res.string.captions_auto_translate)
                     val current = translations.firstOrNull { isOn(it) }
                     DropdownMenuItem(
-                        text = { Text(if (current != null) "✓ $label · ${current.displayName}" else "$label ›") },
+                        text = { Text(if (current != null) "$label · ${current.displayName}" else "$label ›") },
                         onClick = {
                             open = false
                             translateOpen = true
                         },
+                        modifier = Modifier.menuChoice(current != null),
+                        trailingIcon = selectedCheck(current != null),
                     )
                 }
             }
@@ -890,8 +902,10 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
                 LazyColumn(Modifier.size(width = 240.dp, height = 360.dp)) {
                     items(translations, key = { it.id }) { track ->
                         DropdownMenuItem(
-                            text = { Text(if (isOn(track)) "✓ ${track.displayName}" else track.displayName) },
+                            text = { Text(track.displayName) },
                             onClick = { pick(track) },
+                            modifier = Modifier.menuChoice(isOn(track)),
+                            trailingIcon = selectedCheck(isOn(track)),
                         )
                     }
                 }
@@ -1063,6 +1077,7 @@ internal fun QualityChip(
 ) {
     var open by remember { mutableStateOf(false) }
     HoldVideoOverlay(open)
+    val qualityDescription = stringResource(Res.string.download_quality)
     Box {
         Text(
             label,
@@ -1070,6 +1085,11 @@ internal fun QualityChip(
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
                 .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(6.dp))
+                .semantics {
+                    contentDescription = qualityDescription
+                    stateDescription = label
+                    role = Role.DropdownList
+                }
                 .clickable { open = true }
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         )
@@ -1084,16 +1104,24 @@ internal fun QualityChip(
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                         )
                     },
-                    trailingIcon = if (selected) {
-                        { Icon(Icons.Default.Check, contentDescription = null, tint = DesignColors.Accent) }
-                    } else {
-                        null
-                    },
+                    trailingIcon = selectedCheck(selected),
                     onClick = { onSelect(id); open = false },
+                    modifier = Modifier.menuChoice(selected),
                 )
             }
         }
     }
+}
+
+private fun Modifier.menuChoice(selected: Boolean) = semantics {
+    this.selected = selected
+    role = Role.RadioButton
+}
+
+private fun selectedCheck(selected: Boolean): (@Composable () -> Unit)? = if (selected) {
+    { Icon(Icons.Default.Check, contentDescription = null, tint = DesignColors.Accent) }
+} else {
+    null
 }
 
 /** The ⋮ menu: reload + audio-track selection. Captions live on the video CC control; audio-only
