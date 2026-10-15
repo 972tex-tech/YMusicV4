@@ -2,7 +2,7 @@
 // Args head: one JSON object; result: one wire JSON value (wire.ts shapes) — command in, page out.
 
 import { onAccept } from "../../transport";
-import { JsEngineErrorImpl, commandHandler } from "../../protocol/command";
+import { JsEngineErrorImpl, commandHandler, errorCode } from "../../protocol/command";
 import { HttpRequest } from "../../protocol/http";
 import { innertubeJson } from "./innertube";
 import { hostLogger } from "../../protocol/logger";
@@ -364,11 +364,19 @@ onAccept(
     const log = hostLogger(args, "yt/channel");
     // The subscriptions feed leads with the subscribed channels, which only /guide lists.
     const withChannels = fields["browseId"] === "FEsubscriptions";
+    let guideError: string | undefined;
     const [browse, guide] = await Promise.all([
       innertubeJson("browse", fields, log),
-      withChannels ? innertubeJson("guide", {}, log) : Promise.resolve(undefined),
+      withChannels
+        ? innertubeJson("guide", {}, log).catch((e: unknown) => {
+            console.warn("yt/channel: guide failed, feed without channels:", e);
+            guideError = errorCode(e);
+            return undefined;
+          })
+        : Promise.resolve(undefined),
     ]);
     const page = collectPage(browse, { shorts: shortsTab });
+    if (guideError !== undefined) page["partialErrorCode"] = guideError;
     if (withChannels || subsTitle !== undefined) {
       // YouTube interleaves "Most relevant" into the latest uploads; here the titled shelves lead
       // and every latest upload folds into one "Latest" run the paging keeps feeding.

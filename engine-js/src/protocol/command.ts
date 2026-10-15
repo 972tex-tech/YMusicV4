@@ -107,6 +107,11 @@ function classify(e: unknown): WireError {
 // It runs handler(source, sink, pipe): the handler reads its own head off `source` (format not
 // assumed) and writes the result to `sink`, then END on success; ANY throw is classified and RESETs
 // the pipe with it. Always closes the source; EPIPE (the caller hung up) is the one silent path.
+/** The code [classify] gives a thrown value — for a failure reported inside a result, not as the command's error. */
+export function errorCode(e: unknown): string {
+  return classify(e)["code"];
+}
+
 export function commandHandler(handler: CommandHandlerFn): (pipe: Pipe) => Promise<void> {
   return async function (p: Pipe): Promise<void> {
     try {
