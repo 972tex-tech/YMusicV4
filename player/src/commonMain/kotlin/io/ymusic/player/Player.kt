@@ -32,6 +32,9 @@ interface Player {
     val captionLines: StateFlow<List<CaptionLine>>
     val audioTracks: StateFlow<AudioTrackState>
 
+    /** The active engine's [AudioSessionSource.audioSessionId]; 0 when it has none. */
+    val audioSessionId: StateFlow<Int>
+
     /** The current playback settings, pushed to the active engine on every change. Audio-only is
      *  [PlaybackConfig.audioOnly], not a quality token. */
     val config: StateFlow<PlaybackConfig>
@@ -137,6 +140,9 @@ interface Player {
     fun setVirtualizer(width: Float)
 
     fun setPreamp(db: Float)
+
+    /** Sets [PlaybackConfig.inAppAudioFx]. */
+    fun setInAppAudioFx(enabled: Boolean)
 
     /** Sets [PlaybackConfig.audioOnly]. Quality is unchanged and restored when this is false. */
     fun setAudioOnly(audioOnly: Boolean)

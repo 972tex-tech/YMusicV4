@@ -65,6 +65,8 @@ data class PlaybackConfig(
     val virtualizer: Float = 1f,
     /** Level trim into the equalizer, −12..+12 dB, on top of its automatic loudness matching. */
     val preampDb: Float = 0f,
+    /** False bypasses the equalizer/bass/virtualizer/preamp (system audio effects take over); the values are kept. */
+    val inAppAudioFx: Boolean = true,
     val loop: Boolean = false,
     val preferCaptionLanguage: Pair<String, Long> = UNDETERMINED_LANGUAGE to 0L,
     val scaleMode: ScaleMode = ScaleMode.CONTAIN,

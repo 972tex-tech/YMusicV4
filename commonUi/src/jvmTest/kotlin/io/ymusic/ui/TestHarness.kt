@@ -112,6 +112,7 @@ internal class StubPlayer : Player {
     override val captions: StateFlow<CaptionState> = MutableStateFlow(CaptionState.DEFAULT)
     override val captionLines: StateFlow<List<io.ymusic.player.CaptionLine>> = MutableStateFlow(emptyList())
     override val audioTracks: StateFlow<AudioTrackState> = MutableStateFlow(AudioTrackState.DEFAULT)
+    override val audioSessionId: StateFlow<Int> = MutableStateFlow(0)
     override val config: StateFlow<PlaybackConfig> = MutableStateFlow(PlaybackConfig())
     override val sleepTimerMs: StateFlow<Long?> = MutableStateFlow(null)
     override val sleepAfterCurrent: StateFlow<Boolean> = MutableStateFlow(false)
@@ -205,6 +206,7 @@ internal class StubPlayer : Player {
     override fun setVirtualizer(width: Float) {}
 
     override fun setPreamp(db: Float) {}
+    override fun setInAppAudioFx(enabled: Boolean) {}
 
     override fun setAudioOnly(audioOnly: Boolean) {}
 

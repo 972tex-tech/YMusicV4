@@ -52,7 +52,8 @@ import java.io.FileNotFoundException
 internal class AndroidLocalPlayer(
     context: Context,
     private val videoContainer: ViewGroup? = null,
-) : LocalPlayer {
+) : LocalPlayer,
+    AudioSessionSource {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _status = MutableStateFlow(PlaybackStatus(state = PlaybackState.Idle))
@@ -73,6 +74,9 @@ internal class AndroidLocalPlayer(
     private val fxHandle = AudioFxNative.create()
     private val fxProcessor = AudioFxProcessor(fxHandle)
     private var fxTiming: AudioFxTimingSink? = null
+
+    private val _audioSessionId = MutableStateFlow(0)
+    override val audioSessionId: StateFlow<Int> = _audioSessionId.asStateFlow()
 
     private val player = ExoPlayer.Builder(context.applicationContext)
         .setLooper(Looper.getMainLooper())
@@ -109,6 +113,7 @@ internal class AndroidLocalPlayer(
     private val audioGroups = mutableMapOf<String, Pair<Tracks.Group, Int>>()
 
     init {
+        _audioSessionId.value = player.audioSessionId
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) = syncFromPlayer(playbackState)
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -139,6 +144,10 @@ internal class AndroidLocalPlayer(
                     PlayerError("E60010", detail, cause = error)
                 }
                 _status.update { it.copy(state = PlaybackState.Error(playerError)) }
+            }
+
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                _audioSessionId.value = audioSessionId
             }
 
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
@@ -446,6 +455,7 @@ internal class AndroidLocalPlayer(
         rootView?.let { root -> videoContainer?.removeView(root) }
         player.release()
         AudioFxNative.destroy(fxHandle)
+        _audioSessionId.value = 0
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 

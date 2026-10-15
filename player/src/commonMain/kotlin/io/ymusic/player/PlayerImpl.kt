@@ -88,6 +88,9 @@ internal class PlayerImpl(
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
 
+    private val _audioSessionId = MutableStateFlow(0)
+    override val audioSessionId: StateFlow<Int> = _audioSessionId.asStateFlow()
+
     private val _watchNextSeen = MutableSharedFlow<WatchNextSeen>(extraBufferCapacity = 8)
     override val watchNextSeen: SharedFlow<WatchNextSeen> = _watchNextSeen.asSharedFlow()
 
@@ -100,6 +103,16 @@ internal class PlayerImpl(
     private var currentConfig: PlaybackConfig
         get() = _config.value
         set(value) { _config.value = value }
+
+    /** What the engines apply: [currentConfig] with the audio effects flattened while they are off. */
+    private val engineConfig: PlaybackConfig
+        get() = currentConfig.let {
+            if (it.inAppAudioFx) {
+                it
+            } else {
+                it.copy(eqBands = List(10) { 0f }, bassBoostDb = 0f, virtualizer = 1f, preampDb = 0f)
+            }
+        }
 
     /** The engine bound to the current item — internal routing state; not exposed (the UI hands one
      *  video container to the engines and each owns its own surface, so it never needs this). */
@@ -333,6 +346,8 @@ internal class PlayerImpl(
 
     override fun setPreamp(db: Float) = pushConfig(currentConfig.copy(preampDb = db.coerceIn(-12f, 12f)))
 
+    override fun setInAppAudioFx(enabled: Boolean) = pushConfig(currentConfig.copy(inAppAudioFx = enabled))
+
     override fun setAudioOnly(audioOnly: Boolean) {
         pushConfig(currentConfig.copy(audioOnly = audioOnly))
     }
@@ -361,7 +376,7 @@ internal class PlayerImpl(
     private fun pushConfig(next: PlaybackConfig) {
         if (next == currentConfig) return
         currentConfig = next
-        _currentEngine.value?.setConfig(next)
+        _currentEngine.value?.setConfig(engineConfig)
     }
 
     override fun selectAudioTrack(id: String) {
@@ -422,7 +437,7 @@ internal class PlayerImpl(
         val factory = engines.youtube ?: return
         val engine = ytEngine ?: factory().also { ytEngine = it }
         engine.init()
-        engine.setConfig(currentConfig)
+        engine.setConfig(engineConfig)
     }
 
     override fun pcmLevels(out: FloatArray): Int =
@@ -440,6 +455,7 @@ internal class PlayerImpl(
         localEngine = null
         ytEngine = null
         _currentEngine.value = null
+        _audioSessionId.value = 0
     }
 
     private fun publishQueue(refreshNext: Boolean = true) {
@@ -679,9 +695,9 @@ internal class PlayerImpl(
     private fun loadOn(engine: MediaEngine<*>, item: PlayableItem, startPositionMs: Long) {
         when (item) {
             is PlayableItem.LocalMedia ->
-                (engine as LocalPlayer).load(item, startPositionMs, playWhenReadyIntent, currentConfig)
+                (engine as LocalPlayer).load(item, startPositionMs, playWhenReadyIntent, engineConfig)
             is PlayableItem.YtMedia ->
-                (engine as YtEngine).load(item, startPositionMs, playWhenReadyIntent, currentConfig)
+                (engine as YtEngine).load(item, startPositionMs, playWhenReadyIntent, engineConfig)
         }
     }
 
@@ -733,7 +749,10 @@ internal class PlayerImpl(
         holdPrepareTimeout = false
         previous?.stop()
         _currentEngine.value = engine
-        if (engine == null) return
+        if (engine == null) {
+            _audioSessionId.value = 0
+            return
+        }
         engineJobs += scope.launch {
             engine.status.collect { snapshot ->
                 if (holdPrepareTimeout && snapshot.state.notYetLoaded()) {
@@ -755,6 +774,7 @@ internal class PlayerImpl(
         bindCapability(engine as? CaptionSelectable, _captions, CaptionState.DEFAULT) { it.captions }
         bindCapability(engine as? CaptionRenderable, _captionLines, emptyList()) { it.captionLines }
         bindCapability(engine as? AudioTrackSelectable, _audioTracks, AudioTrackState.DEFAULT) { it.audioTracks }
+        bindCapability(engine as? AudioSessionSource, _audioSessionId, 0) { it.audioSessionId }
         (engine as? YtEngine)?.let { yt ->
             engineJobs += scope.launch {
                 yt.watchNextSeen.collect { _watchNextSeen.tryEmit(it) }
