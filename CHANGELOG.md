@@ -1,5 +1,42 @@
 # Changelog
 
+## 4.0.3
+
+### NEW
+- Subscriptions feed ([d17aa149a..21e499d22](https://github.com/ymusic-io/YMusicV4/compare/d22d94948075c2a4ec63197e06d5f66ebe2209e9...21e499d228971b9791b59193a5f33747d8ecd025))
+- MP3 downloads at 320 kbps, with a "Download MP3 at original bitrate" setting ([9031408b3](https://github.com/ymusic-io/YMusicV4/commit/9031408b3609dec19771cdca628223050a28a1cc))
+- Android: swipe from the screen edge opens the menu on Home ([cdf71f64f](https://github.com/ymusic-io/YMusicV4/commit/cdf71f64f1737539dadd21ca8bf1a4b750e61f6b))
+- Audio-only choice is remembered across restarts ([e129bb1d3..420a63495](https://github.com/ymusic-io/YMusicV4/compare/b854830cbe919c7e79bfcf98c5dc23847bd4e86f...420a6349543c562f4ac817fe2b93b77ec6cfb6dc))
+- Feedback can be sent with crash reports turned off ([16cce57a0..b0eeafca0](https://github.com/ymusic-io/YMusicV4/compare/7f7e388773c07b43e85b2c4239481ea104086b5c...b0eeafca0e41a18da26d622bec86120564091f1c))
+- macOS 26 app icon ([9936de0c1](https://github.com/ymusic-io/YMusicV4/commit/9936de0c17a4548827bd4558c2599944b3fc56a9))
+
+### IMPROVED
+- WebM is offered only when the video has a WebM stream ([91bac9839..81986c682](https://github.com/ymusic-io/YMusicV4/compare/9031408b3609dec19771cdca628223050a28a1cc...81986c682989ced1ee830fc884f19deffe8bbd98))
+- Download notification shows the same error as the Downloads screen ([b854830cb](https://github.com/ymusic-io/YMusicV4/commit/b854830cbe919c7e79bfcf98c5dc23847bd4e86f))
+- Screen reader support in Settings and Now Playing ([02d5d8153..d2081a2a0](https://github.com/ymusic-io/YMusicV4/compare/a9908e2810b9d86e2713fc14143d7df0b47c6175...d2081a2a03d76a2dac6ac306107397806fd7ca46))
+- A local file deleted from storage shows "File missing"; YouTube's "An error occurred" can be retried ([55533bf82..392af1a18](https://github.com/ymusic-io/YMusicV4/compare/420a6349543c562f4ac817fe2b93b77ec6cfb6dc...392af1a188b5fcbc419b4dbb6b5e4d2536fac914))
+
+### FIXED
+- Crash on Android 7 ([45630246c](https://github.com/ymusic-io/YMusicV4/commit/45630246c75a2b8d622e4177ab177d3701a64bef))
+- ANR while Now Playing shows the FPS badge ([5d2d4b08e](https://github.com/ymusic-io/YMusicV4/commit/5d2d4b08e19a78c089353b669ddda5d4e3ff4b6b))
+- Android: video stalls then jumps on low-end devices ([d8e4e46ae](https://github.com/ymusic-io/YMusicV4/commit/d8e4e46aeb223d862d33f9e73b018a1eec1e1a01))
+- Trending charts failing to load ([2b2691963..7f7e38877](https://github.com/ymusic-io/YMusicV4/compare/55a865f719eae55318ba5d3c2024a378f244cdae...7f7e388773c07b43e85b2c4239481ea104086b5c))
+- Changing the language reset the region ([43d297fff..55a865f71](https://github.com/ymusic-io/YMusicV4/compare/21e499d228971b9791b59193a5f33747d8ecd025...55a865f719eae55318ba5d3c2024a378f244cdae))
+- Downloads marked failed after the file was saved ([8828e282d](https://github.com/ymusic-io/YMusicV4/commit/8828e282db0ddd9403cf9aae5367e133832ec18a))
+- Downloads to a read-only folder ([90fc54ffe..5c6db8e4b](https://github.com/ymusic-io/YMusicV4/compare/8828e282db0ddd9403cf9aae5367e133832ec18a...5c6db8e4bca35d56111df7ad6edef5357785271d))
+- App update: withdrawn or replaced releases kept showing, double install on desktop ([3fd27c8e4..8f156551e](https://github.com/ymusic-io/YMusicV4/compare/d2081a2a03d76a2dac6ac306107397806fd7ca46...8f156551ef64691a1c58bd9008883035ff000489))
+- Desktop: QR code crash in the release build ([b1addabe5](https://github.com/ymusic-io/YMusicV4/commit/b1addabe52744e874f7dcc8779bd4f46f265c07e))
+- iOS: app bar too low on search, playlist and channel pages ([6d5738bfb](https://github.com/ymusic-io/YMusicV4/commit/6d5738bfb4492f091fa0675eb123c2cd080e134f))
+- iOS: large responses stopping mid-download ([c5de91f95](https://github.com/ymusic-io/YMusicV4/commit/c5de91f952532ed7484b3c909f1baab5b30c516e))
+- Mini-player missing the artist name ([4d0a08b3e](https://github.com/ymusic-io/YMusicV4/commit/4d0a08b3eada2fc5c8d6543b7863bc2e0f558fdb))
+- Shuffle enabled on an empty playlist ([b6a734851](https://github.com/ymusic-io/YMusicV4/commit/b6a734851ee055c51145fe0483c1d01a3537b55e))
+- Captcha Verify losing its retry ([a9908e281](https://github.com/ymusic-io/YMusicV4/commit/a9908e2810b9d86e2713fc14143d7df0b47c6175))
+
+### INTERNAL
+- Telemetry: one issue per feedback subject; network failures no longer open issues; certificate errors are not "Network error"; JS bundle versions reported at launch ([5534a0f72](https://github.com/ymusic-io/YMusicV4/commit/5534a0f7228d44bd6579f19778f1258e141fcf37), [d17b9c916](https://github.com/ymusic-io/YMusicV4/commit/d17b9c916a1fcf536e427ea55c8c269b6606b8c7), [64cee5f29](https://github.com/ymusic-io/YMusicV4/commit/64cee5f293bdbc2d1af437c728e0a2ca990add56), [4e5796cf0](https://github.com/ymusic-io/YMusicV4/commit/4e5796cf001b17ffe6a4f9f3cea48a674435b967))
+- BotGuard dump records more host inputs ([8a5400ca5..e1b06647f](https://github.com/ymusic-io/YMusicV4/compare/8f156551ef64691a1c58bd9008883035ff000489...e1b06647fa241090e7915b7eaf5a2b17bb2327e8))
+- Android: native debug symbols uploaded to Sentry ([d8593b2b8..3e8142e47](https://github.com/ymusic-io/YMusicV4/compare/45630246c75a2b8d622e4177ab177d3701a64bef...3e8142e47fee0414df5c3a5d1beb042a179498b7))
+
 ## 4.0.2
 
 ### Updates
