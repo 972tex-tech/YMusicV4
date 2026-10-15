@@ -94,15 +94,15 @@ class MainActivity : FragmentActivity() {
     private val openFolder =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
             if (treeUri != null) {
-                // Any picked folder can become the download location; a read-only persisted grant fails
-                // only at publish, once the process holding the picker's transient write grant is gone.
+                // Any picked folder can become the download location, so persist write too: the picker's
+                // transient write grant dies with this process.
                 try {
                     contentResolver.takePersistableUriPermission(
                         treeUri,
                         Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                     )
                 } catch (e: SecurityException) {
-                    // A provider that grants read-only: the folder still scans; a download there fails at publish.
+                    // A provider that grants read-only: the folder still scans; the download-location pick refuses it.
                     (application as YMusicApplication).rootLogger.fork("folder-pick")
                         .log(kmpcommon.log.Logger.Level.WARN, "folder $treeUri has no write grant; persisting read-only", e)
                     contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)

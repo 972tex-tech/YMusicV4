@@ -123,7 +123,7 @@ internal fun QuickDownloadHost(graph: AppGraph, pending: YtFeedItem?, format: Do
     }
     LaunchedEffect(video) {
         val gated = graph.mediaStore != null && graph.libraryFolderPicker != null
-        if (!gated || hasUsableDownloadLocation(graph) || pickDownloadFolder(graph)) {
+        if (!gated || hasUsableDownloadLocation(graph) || pickDownloadFolder(graph, snackbar)) {
             downloads.enqueue(preset.request(video, graph.mp3SourceBitrate()))
             snackbar(added)
         }

@@ -69,7 +69,7 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
         when (usable) {
             null -> return // validating — render nothing yet
             false -> {
-                LaunchedEffect(video) { if (!pickDownloadFolder(graph)) onDismiss() }
+                LaunchedEffect(video) { if (!pickDownloadFolder(graph, snackbar)) onDismiss() }
                 return
             }
             true -> Unit // fall through to the format dialog
@@ -101,7 +101,7 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
     val alreadyDownloaded = video.id in LocalAvailableOffline.current
     var confirming by remember(video.id) { mutableStateOf(false) }
     val onDownload = { if (alreadyDownloaded) confirming = true else start() }
-    val onPickLocation: () -> Unit = { scope.launch { pickDownloadFolder(graph) } }
+    val onPickLocation: () -> Unit = { scope.launch { pickDownloadFolder(graph, snackbar) } }
     val onRetry: () -> Unit = { scope.launch { state.load(log) } }
     // Signed out: sign in, then reopen these options for a fresh probe under the account.
     val signIn = LocalSignInResolver.current?.takeIf { !it.signedIn }

@@ -488,6 +488,7 @@
     <string name="download_captions_off">Off</string>
     <string name="download_save_to">Save to</string>
     <string name="download_location_not_set">Not set</string>
+    <string name="download_location_read_only">This folder is read-only. Choose another folder for downloads</string>
     <string name="download_action">Download</string>
     <string name="download_action_detail">Download %1$s · %2$s</string>
     <string name="download_rename">Rename file</string>

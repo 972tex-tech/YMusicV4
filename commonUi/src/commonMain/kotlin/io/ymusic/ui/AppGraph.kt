@@ -96,6 +96,9 @@ class AppGraph(
      * Null on shells without a folder picker.
      */
     val libraryFolderPicker: (suspend () -> String?)? = null,
+    /** Whether the app can write into a folder [libraryFolderPicker] returned; Android checks the SAF grant,
+     *  which some providers refuse (read-only). */
+    val canWriteFolder: (String) -> Boolean = { true },
     /**
      * Re-scans already-added folders in place (no folder pick). [folderUri] null means every library
      * root; otherwise only that folder and its children. Null when the shell can't scan.

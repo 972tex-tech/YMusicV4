@@ -152,6 +152,7 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val store = graph.mediaStore
     val scope = rememberCoroutineScope()
     val signIn = LocalSignInResolver.current
+    val snackbar = LocalSnackbar.current
     var retryBlock by remember { mutableStateOf<RetryBlock?>(null) }
     retryBlock?.let { block ->
         val dismiss = { retryBlock = null }
@@ -201,7 +202,7 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                         when {
                             // The folder lost its write grant: only a fresh pick restores it, so Retry re-picks first.
                             task.errorCode == DownloadFolderAccessException.CODE && graph.libraryFolderPicker != null ->
-                                scope.launch { if (pickDownloadFolder(graph)) service.retry(task.id) }
+                                scope.launch { if (pickDownloadFolder(graph, snackbar)) service.retry(task.id) }
                             // Signed out only: once signed in, the stored verdict may predate the sign-in, so it re-runs.
                             playability == Playability.SignInRequired && signIn != null && !signIn.signedIn ->
                                 retryBlock = RetryBlock(task.id, playability)

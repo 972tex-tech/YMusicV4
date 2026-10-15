@@ -5,6 +5,7 @@ import android.app.Application
 import android.app.UiModeManager
 import android.content.ComponentCallbacks2
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
 import android.os.Build
 import android.view.Surface
@@ -612,6 +613,10 @@ class YMusicApplication : Application() {
             sponsorBlockStore = SqliteSponsorBlockStore(sponsorBlockAndroidDriver(this)),
             scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
             libraryFolderPicker = { pickAndRegisterFolder(shared.mediaStore) },
+            canWriteFolder = { uri ->
+                checkCallingOrSelfUriPermission(android.net.Uri.parse(uri), Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
+                    PackageManager.PERMISSION_GRANTED
+            },
             rescanLibrary = { folderUri, onProgress -> rescanKnownRoots(shared.mediaStore, folderUri, onProgress) },
             deleteFromDisk = { item ->
                 withContext(Dispatchers.IO) {

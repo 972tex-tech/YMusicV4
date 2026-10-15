@@ -125,7 +125,7 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
         val preset = session.preset
         scope.launch {
             val gated = graph.mediaStore != null && graph.libraryFolderPicker != null
-            if (gated && !hasUsableDownloadLocation(graph) && !pickDownloadFolder(graph)) return@launch
+            if (gated && !hasUsableDownloadLocation(graph) && !pickDownloadFolder(graph, snackbar)) return@launch
             val mp3SourceBitrate = graph.mp3SourceBitrate()
             picked.forEach { downloads.enqueue(preset.request(it, mp3SourceBitrate)) }
             val target = session.targetPlaylist
@@ -154,7 +154,7 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
                     languages,
                     ffmpegAvailable = downloads.ffmpegAvailable,
                     locationName = locationName,
-                    onPickLocation = { scope.launch { pickDownloadFolder(graph) } },
+                    onPickLocation = { scope.launch { pickDownloadFolder(graph, snackbar) } },
                     libraryStore = graph.mediaStore,
                 )
             }

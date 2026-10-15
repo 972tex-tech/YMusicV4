@@ -465,6 +465,7 @@
     <string name="download_captions_off">Tắt</string>
     <string name="download_save_to">Lưu vào</string>
     <string name="download_location_not_set">Chưa chọn</string>
+    <string name="download_location_read_only">Thư mục này chỉ cho phép đọc. Hãy chọn thư mục khác để tải xuống</string>
     <string name="download_action">Tải xuống</string>
     <string name="download_action_detail">Tải %1$s · %2$s</string>
     <string name="download_rename">Đổi tên tệp</string>

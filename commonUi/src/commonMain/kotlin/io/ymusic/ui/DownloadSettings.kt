@@ -29,11 +29,13 @@ import io.ymusic.ui.resources.download_location_not_set
 import io.ymusic.ui.resources.download_location_prompt_message
 import io.ymusic.ui.resources.download_location_prompt_not_now
 import io.ymusic.ui.resources.download_location_prompt_set_default
+import io.ymusic.ui.resources.download_location_read_only
 import io.ymusic.ui.resources.menu_download_location
 import io.ymusic.ui.resources.settings_mp3_source_bitrate
 import io.ymusic.ui.resources.settings_mp3_source_bitrate_hint
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -58,6 +60,7 @@ internal fun AppGraph.mp3SourceBitrate(): Boolean = settings.flow(AppSettings.do
 private fun DownloadLocationRow(graph: AppGraph) {
     if (graph.mediaStore == null) return
     val scope = rememberCoroutineScope()
+    val snackbar = LocalSnackbar.current
     val name = rememberDownloadLocationName(graph)
 
     // No dialog: tapping goes straight to the OS folder picker (adds the folder to the Library and
@@ -66,7 +69,7 @@ private fun DownloadLocationRow(graph: AppGraph) {
         title = stringResource(Res.string.menu_download_location),
         value = name ?: stringResource(Res.string.download_location_not_set),
     ) {
-        scope.launch { pickDownloadFolder(graph) }
+        scope.launch { pickDownloadFolder(graph, snackbar) }
     }
 }
 
@@ -91,13 +94,18 @@ internal fun rememberDownloadLocationName(graph: AppGraph): String? {
 
 /**
  * Open the folder picker, register the chosen folder in the Library, and set it as
- * [AppSettings.downloadLocation]. Returns true iff a folder was chosen (false = no picker, or canceled).
+ * [AppSettings.downloadLocation]. Returns true iff a folder was chosen (false = no picker, canceled, or a
+ * read-only folder, which [snackbar] explains).
  * The picker hands back the folder's uri, so this works whether the folder is new, already present,
  * empty, or nested — no guessing which bucket appeared.
  */
-internal suspend fun pickDownloadFolder(graph: AppGraph): Boolean {
+internal suspend fun pickDownloadFolder(graph: AppGraph, snackbar: (String) -> Unit): Boolean {
     val pick = graph.libraryFolderPicker ?: return false
     val uri = pick() ?: return false // canceled
+    if (!graph.canWriteFolder(uri)) {
+        snackbar(getString(Res.string.download_location_read_only))
+        return false
+    }
     graph.settings.put(AppSettings.downloadLocation, uri)
     return true
 }
