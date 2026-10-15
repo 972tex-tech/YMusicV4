@@ -2,20 +2,22 @@ package io.ymusic.telemetry
 
 import io.sentry.kotlin.multiplatform.Attachment
 import io.sentry.kotlin.multiplatform.Sentry
-import io.sentry.kotlin.multiplatform.SentryLevel
 import io.sentry.kotlin.multiplatform.log.SentryLogLevel
 import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 import kmpcommon.log.Crumb
 import kmpcommon.log.CrumbLogger
 import kmpcommon.log.Logger
+import kotlinx.coroutines.CancellationException
+import projectcommon.error.CodedError
+import projectcommon.error.NETWORK_CODE
 import projectcommon.error.codedError
 import projectcommon.log.FileAttachment
 import projectcommon.log.trailMark
 
 /**
  * The app's root [Logger] over Sentry: an INFO+ [log] is a Sentry Log (attributes = the crumb-tag
- * path + the trail's merged props), every [captureError] a Sentry event (the "network" and
- * "captcha" categories excepted: a WARN log + breadcrumb) whose grouping comes from the coded error — else exception
+ * path + the trail's merged props), every [captureError] a Sentry event (the ignored categories
+ * excepted: an INFO log) whose grouping comes from the coded error — else exception
  * type + tag path — applied by [applyYMusicTelemetry]'s `beforeSend` off the tags set here
  * (`Scope` exposes no fingerprint).
  */
@@ -27,15 +29,21 @@ class SentryLogger private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs
 
     /** The trail's props flattened root→leaf (leaf wins) — every log line carries them as
      *  attributes, which is how one job's lines stay filterable next to a concurrent twin's. */
-    private val props: Map<String, Any> by lazy(LazyThreadSafetyMode.NONE) {
-        val merged = mutableMapOf<String, Any>()
-        for (c in crumbs) c.prop?.let(merged::putAll)
-        merged
-    }
+    private val props: Map<String, Any> by lazy(LazyThreadSafetyMode.NONE) { mergedProps(crumbs) }
 
     override fun log(level: Logger.Level, message: String, error: Throwable?) {
         // DEBUG stays in the local log file, which ships only with a user's feedback report.
         if (level == Logger.Level.DEBUG) return
+        sendLog(level, message, error, path, props)
+    }
+
+    private fun sendLog(
+        level: Logger.Level,
+        message: String,
+        error: Throwable?,
+        trailPath: String,
+        props: Map<String, Any>,
+    ) {
         val body = buildString {
             append(message)
             if (error != null) {
@@ -48,7 +56,7 @@ class SentryLogger private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs
         Sentry.logger.log(level.toSentryLogLevel()) {
             message(body)
             attributes {
-                set(TRAIL_TAG, path)
+                set(TRAIL_TAG, trailPath)
                 for ((k, v) in props) {
                     when (v) {
                         is String -> set(k, v)
@@ -69,18 +77,9 @@ class SentryLogger private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs
         val trail = error.trailMark() ?: crumbs
         val trailPath = trail.joinToString("/") { it.tag }
         val coded = error.codedError()
-        // The user's connectivity or YouTube's bot challenge, not a defect: the UI already shows the
-        // localized category, so it must not count against crash-free rate — a WARN log + breadcrumb only.
-        val userCategory = coded?.code?.takeIf { it in USER_CATEGORIES }
-        if (userCategory != null) {
-            SentryLogger(trail).log(Logger.Level.WARN, message ?: error.message ?: error.toString(), error)
-            Sentry.addBreadcrumb(
-                Breadcrumb(
-                    level = SentryLevel.WARNING,
-                    category = userCategory,
-                    message = "$trailPath: ${error.message}",
-                ),
-            )
+        if (isIgnored(error, coded)) {
+            val text = message ?: error.message ?: error.toString()
+            sendLog(Logger.Level.INFO, text, error, trailPath, mergedProps(trail))
             return
         }
         Sentry.captureException(error) { scope ->
@@ -110,7 +109,28 @@ class SentryLogger private constructor(crumbs: List<Crumb>) : CrumbLogger(crumbs
     internal companion object {
         internal const val TRAIL_TAG = "trail"
         internal const val CODE_TAG = "error.code"
-        private val USER_CATEGORIES = setOf("network", "captcha")
+
+        /** Failures that are never defects — the user's connectivity, a cancelled job: the UI already
+         *  shows the localized category, so they are INFO logs, never Sentry events. */
+        private val IGNORED_CATEGORIES = setOf(NETWORK_CODE)
+
+        private fun mergedProps(crumbs: List<Crumb>): Map<String, Any> {
+            val merged = mutableMapOf<String, Any>()
+            for (c in crumbs) c.prop?.let(merged::putAll)
+            return merged
+        }
+
+        private fun isIgnored(error: Throwable, coded: CodedError?): Boolean {
+            if (coded?.code in IGNORED_CATEGORIES) return true
+            var cause: Throwable? = error
+            var depth = 0 // cause chains can be cyclic on some platforms
+            while (cause != null && depth++ < 100) {
+                if (cause is CancellationException) return true
+                cause = cause.cause
+            }
+            return false
+        }
+
         private const val STACK_CAP = 2000
     }
 }
