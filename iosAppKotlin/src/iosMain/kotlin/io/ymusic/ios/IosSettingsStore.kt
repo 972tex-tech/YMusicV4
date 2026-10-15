@@ -1,6 +1,7 @@
 package io.ymusic.ios
 
 import io.ymusic.settings.StringBackedSettingsStore
+import io.ymusic.ui.PlaybackAudioOnlyKey
 import io.ymusic.ui.PlaybackEqKey
 import io.ymusic.ui.PlaybackPitchKey
 import io.ymusic.ui.PlaybackQualitySettingKey
@@ -36,6 +37,7 @@ internal class IosSettingsStore(
             "telemetry.lastLoadedEngineJsVer",
             "telemetry.lastLoadedPlayerJsVer",
             PlaybackQualitySettingKey,
+            PlaybackAudioOnlyKey,
             PlaybackVolumeKey,
             PlaybackSpeedKey,
             PlaybackPitchKey,
