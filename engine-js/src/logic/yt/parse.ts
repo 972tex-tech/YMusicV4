@@ -16,6 +16,7 @@ import type {
   WireSectionHeader,
 } from "./wire";
 import { asString, get, isObj, textOf, thumbVariants, thumbsOf, walk } from "./scan";
+import { hostVersionCode } from "../../protocol/host";
 
 // The engine owns text placement (see wire.ts): each builder maps the semantic pieces a renderer
 // yields onto the item's two generic subtitle lines. Assign the first two present strings, so a
@@ -920,7 +921,9 @@ function deeplinkFor(browseId: string | undefined, params: string | undefined): 
   // The library shelves' own-account feeds (yt/channel serves these app links back as browses).
   if (browseId === "FEhistory") return "/feed/history";
   if (browseId === "FEplaylist_aggregation") return "/feed/playlists";
-  if (browseId === "FEsubscriptions") return "/feed/subscriptions";
+  // Older hosts render the subscriptions page's channel row and its single "Latest" run wrongly.
+  if (browseId === "FEsubscriptions")
+    return hostVersionCode() >= 3 ? "/feed/subscriptions" : undefined;
   return undefined;
 }
 

@@ -75,7 +75,8 @@ declare var console: {
 
 /** Installed frozen from C before this bundle runs. The whole host (transport, protocols, app)
  *  ships as one app build, so the app version identifies its full surface: branch on it
- *  (`versions.app >= 123` / `typeof __x === "function"`) to adapt to the installed host. */
+ *  (`hostVersionCode() >= 123` / `typeof __x === "function"`) to adapt to the installed host — never
+ *  `versions.app` directly, see protocol/host.ts. */
 declare var versions: {
   readonly app: number;
 };
@@ -83,7 +84,7 @@ declare var versions: {
 // ---- compile-time define, inlined by esbuild --define (value in build.gradle.kts) ----
 
 /** The bundle's own revision — bumped manually on every remote push (build.gradle.kts).
- *  (The host app's version needs no twin: read the `versions.app` global.) */
+ *  (The host app's version needs no twin: read `hostVersionCode()`.) */
 declare const BACKEND_VERSION: number;
 
 /** Which bundle this is — "engine" (scrape, also the test bundle) or "player" (MSE player). */
