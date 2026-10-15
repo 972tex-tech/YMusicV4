@@ -352,8 +352,8 @@ private sealed interface AppLayer {
     class Login(val state: LoginWebViewState, val switchAccount: Boolean = false) : AppLayer
 
     /** The in-app browser on YouTube where the user clears a "captcha" bot challenge. No cookie gate:
-     *  closing it is completion — popLayer refreshes the session, then runs [onResolved]. */
-    class Verify(val state: LoginWebViewState, val onResolved: () -> Unit) : AppLayer
+     *  closing it is completion — popLayer refreshes the session, then runs every caller's [retries]. */
+    class Verify(val state: LoginWebViewState, val retries: MutableList<() -> Unit>) : AppLayer
 }
 
 /** The layer's scope logger, the parent for anything opened on top of it (null = the root). */
@@ -627,7 +627,10 @@ private fun AppRoot(
             // Closing the account-switcher browser IS its completion (no cookie gate flips while
             // switching): refresh session + account + feeds under whatever identity was picked.
             if (top is AppLayer.Login && top.switchAccount) accountController.onLoginComplete()
-            if (top is AppLayer.Verify) accountController.onCaptchaVerified(top.onResolved)
+            if (top is AppLayer.Verify) {
+                val retries = top.retries.toList()
+                accountController.onCaptchaVerified { retries.forEach { it() } }
+            }
         }
         // The YouTube sign-in browser — single-instance like search: reopening (from the Account tab
         // preface or a future gated action like Subscribe) raises the existing layer.
@@ -662,9 +665,11 @@ private fun AppRoot(
                 nowPlayingPeeking = false
                 val existing = layers.indexOfFirst { it is AppLayer.Verify }
                 when {
-                    existing >= 0 && existing == layers.lastIndex -> Unit
-                    existing >= 0 -> layers.add(layers.removeAt(existing))
-                    else -> layers.add(AppLayer.Verify(LoginWebViewState(), retry))
+                    existing >= 0 -> {
+                        (layers[existing] as AppLayer.Verify).retries += retry
+                        if (existing != layers.lastIndex) layers.add(layers.removeAt(existing))
+                    }
+                    else -> layers.add(AppLayer.Verify(LoginWebViewState(), mutableListOf(retry)))
                 }
             }
         } else {
