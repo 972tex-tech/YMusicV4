@@ -172,6 +172,16 @@
             </intent-filter>
         </service>
 
+        <!-- media3 registers this as the session's media-button receiver (API 31+ routes headset
+             keys through it); it forwards to PlaybackService, starting it when needed. -->
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <!-- Foreground standing while the download queue runs; exits when the queue drains. -->
         <service
             android:name=".DownloadForegroundService"
