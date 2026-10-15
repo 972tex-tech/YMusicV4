@@ -31,4 +31,6 @@ actual class MseVideoSurface(val surface: Surface? = null) {
 
     actual fun pcmLevels(out: FloatArray): Int =
         if (host == 0L || out.isEmpty()) 0 else MseHostNative.pcmLevels(host, out)
+
+    actual fun audioSessionId(): Int = if (host == 0L) 0 else MseHostNative.audioSessionId(host)
 }

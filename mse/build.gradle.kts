@@ -157,6 +157,9 @@ kotlin {
             }
         }
 
+        androidMain.dependencies {
+            implementation(Libs.Media3.exoplayer)
+        }
         jvmMain.dependencies {
             implementation(Libs.Kotlinx.coroutinesSwing)
             api(Libs.AndroidX.annotation)

@@ -56,6 +56,8 @@ actual class MseVideoSurface {
     actual fun pcmLevels(out: FloatArray): Int =
         if (host == 0L || out.isEmpty()) 0 else MseHostNative.pcmLevels(host, out)
 
+    actual fun audioSessionId(): Int = 0
+
     /** DAC / pull-audio sample frames (`mse_host_samples_played`). */
     fun samplesPlayed(): Long = if (host == 0L) 0L else MseHostNative.samplesPlayed(host)
 
