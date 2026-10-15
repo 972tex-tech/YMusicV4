@@ -61,13 +61,12 @@ class DesktopAppUpdates(
 
     override suspend fun checkNow(): UpdateCheck {
         if (!refreshConfig()) return UpdateCheck.Failed
-        service.offer(latestUpdate())
-        _status.value = statusOf(service.state.value)
-        return if (_status.value is AppUpdateStatus.None) UpdateCheck.UpToDate else UpdateCheck.Found
+        service.accept(latestUpdate())
+        return if (service.hasOffer) UpdateCheck.Found else UpdateCheck.UpToDate
     }
 
     override fun download() {
-        scope.launch { service.download() }
+        service.download()
     }
 
     override fun installAndRestart() {

@@ -174,7 +174,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -217,9 +219,6 @@ private val logWorker = LoggingWorker(File(ymusicDataDir(), "logs").absolutePath
 private val rootLogger: Logger =
     TeeLogger(FileLogger(logWorker), TeeLogger(SentryLogger(), StdoutLogger()))
         .also { it.bindMseNativeLogs() }
-
-/** Mirrors AppSettings.autoDownloadUpdates for the updater's synchronous read. */
-@Volatile private var autoDownloadUpdates: Boolean = AppSettings.autoDownloadUpdates.default
 
 /** Ticks when the OS hands over a link, so a window hidden to the tray comes back for it. */
 private val linkArrivals = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -832,21 +831,15 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         platform = desktopPlatformKey(desktopOsKey()),
         downloadDir = File(dataDir, "update"),
         installer = installerFor(desktopOsKey()),
+        scope = updateScope,
+        configUpdates = remoteConfig?.config?.map { it.appUpdate } ?: emptyFlow(),
         logger = rootLogger,
-        autoDownload = { autoDownloadUpdates },
+        autoDownload = { settings.flow(AppSettings.autoDownloadUpdates).value },
         autoDownloadFailed = { settings.flow(AppSettings.updateAutoDownloadFailed).value },
         rememberAutoDownloadFailed = { settings.put(AppSettings.updateAutoDownloadFailed, it) },
     )
-    // Mirrored into a field: the service asks synchronously, mid-offer, and a suspending read
-    // there would either block the offer or race it.
-    updateScope.launch {
-        settings.flow(AppSettings.autoDownloadUpdates).collect { autoDownloadUpdates = it }
-    }
     val desktopUpdates = if (updateService.isEnabled) {
         updateService.pruneDownloads()
-        updateScope.launch {
-            remoteConfig?.config?.collect { updateService.offer(it.appUpdate) }
-        }
         DesktopAppUpdates(
             updateService,
             updateScope,
