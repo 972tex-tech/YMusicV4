@@ -129,9 +129,9 @@ declare function atob(data: string): string;
 declare function btoa(data: string): string;
 
 /** Install C Date.now / Math.random wrappers (rec off). BotGuard must bind these.
- * Overlay returns `{replayChallenge, …}`; product returns undefined. */
+ * Returns `{platform, arch}` (undefined on older hosts); the overlay adds `{replayChallenge, …}`. */
 declare function __bgEntropyStart(): unknown;
-/** Record d/p/r plus t/N/S JSON (toString, Error.name, Error.stack). */
+/** Record d/p/r (w = new Date() on newer hosts) plus t/N/S JSON (toString, Error.name, Error.stack). */
 declare function __bgEntropyBegin(): void;
 declare function __bgEntropyEnd(): void;
 declare function __bgEntropyStop(): void;

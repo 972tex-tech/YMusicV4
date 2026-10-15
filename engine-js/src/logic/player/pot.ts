@@ -6,6 +6,8 @@ import { executeWithCookies } from "../yt/cookies";
 import { DESKTOP_UA } from "../yt/session";
 import { HttpRequest } from "../../protocol/http";
 import { freezeYtAccessCounts, installYtcfg, ytEventIdGets, ytWindowGets } from "./env";
+import { isAudioOnly, ymQuality } from "./audio_only";
+import { viewportHeight, viewportWidth } from "./viewport";
 import {
   finishBotguardDump,
   recordBotguardEntropy,
@@ -82,6 +84,27 @@ function overlayReplay(cfg: Record<string, unknown>, extras: Record<string, unkn
   cfg["ytcfg"] = ytcfgData;
 }
 
+/** Host inputs the mill can see outside the entropy tape. Read before __bgEntropyBegin. */
+function hostInfo(extras: Record<string, unknown> | null): Record<string, unknown> {
+  const h: Record<string, unknown> = {
+    "app": versions.app,
+    "bundle": BUNDLE_NAME,
+    "bundleVersion": BACKEND_VERSION,
+    "production": PRODUCTION,
+    "tzOffset": new Date().getTimezoneOffset(),
+    "viewport": [viewportWidth(), viewportHeight()],
+    "audioOnly": isAudioOnly(),
+    "quality": ymQuality(),
+  };
+  if (typeof __timeZone === "function") h["tz"] = __timeZone();
+  if (extras && typeof extras["platform"] === "string") h["platform"] = extras["platform"];
+  if (extras && typeof extras["arch"] === "string") h["arch"] = extras["arch"];
+  if (typeof __mseAvcMaxLevel === "function") h["avcMaxLevel"] = __mseAvcMaxLevel();
+  if (typeof __mseAv1Ok === "function") h["av1Ok"] = __mseAv1Ok();
+  if (typeof __mseVp9Ok === "function") h["vp9Ok"] = __mseVp9Ok();
+  return h;
+}
+
 async function waaJson(url: string, body: string): Promise<{ status: number; json: unknown[] }> {
   const r = await HttpRequest.post(url)
     .headers(waaHeaders())
@@ -118,6 +141,7 @@ async function buildMinter(
   out: Record<string, unknown>,
 ): Promise<(id: Uint8Array) => unknown> {
   const extras = asRec(__bgEntropyStart());
+  const host = hostInfo(extras);
   overlayReplay(cfg, extras);
   const ytcfgData = asRec(cfg["ytcfg"]) || {};
   const eventId = typeof cfg["eventId"] === "string" ? (cfg["eventId"] as string) : "";
@@ -186,6 +210,7 @@ async function buildMinter(
     "clientVersion": out["clientVersion"],
     "globalName": globalName,
     "program": program,
+    "host": host,
   };
   if (interpJs) initRec["interpJs"] = interpJs;
   recordBotguardInit(initRec);
