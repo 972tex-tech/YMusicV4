@@ -165,7 +165,7 @@ internal fun DownloadSheet(
                             DropdownOptionRow(
                                 Icons.Outlined.InsertDriveFile,
                                 stringResource(Res.string.download_container),
-                                state.container.displayName(),
+                                state.format.displayName(),
                                 containerChoices(state),
                             )
                         }
@@ -323,7 +323,7 @@ private fun QualityGrid(state: DownloadOptionsState) {
         val tiles: List<@Composable (Modifier) -> Unit> = buildList {
             shown.forEach { option ->
                 add { modifier ->
-                    Tile(option.label(), formatDownloadSize(if (state.container == DownloadFormat.VIDEO_WEBM) option.webmBytes else option.mp4Bytes), option.height == state.height, modifier) {
+                    Tile(option.label(), formatDownloadSize(if (state.format == DownloadFormat.VIDEO_WEBM) option.webmBytes ?: 0 else option.mp4Bytes), option.height == state.height, modifier) {
                         state.height = option.height
                     }
                 }
@@ -497,8 +497,8 @@ internal fun audioTrackChoices(state: DownloadOptionsState): List<Choice> {
 }
 
 internal fun containerChoices(state: DownloadOptionsState): List<Choice> =
-    listOf(DownloadFormat.VIDEO_MP4, DownloadFormat.VIDEO_WEBM).map { container ->
-        Choice(container.displayName(), state.container == container) { state.container = container }
+    state.containers.map { container ->
+        Choice(container.displayName(), state.format == container) { state.container = container }
     }
 
 @Composable

@@ -24,8 +24,9 @@ class LiveVideoException(videoId: String?) : Exception("live video ${videoId.orE
     }
 }
 
-/** One downloadable video height; sizes are estimates for each container (video + its audio track). */
-class VideoOption(val height: Int, val fps: Int, val mp4Bytes: Long, val webmBytes: Long)
+/** One downloadable video height; sizes are estimates for each container (video + its audio track).
+ *  [webmBytes] is null when the video has no VP9/AV1 stream, so WebM can't be downloaded. */
+class VideoOption(val height: Int, val fps: Int, val mp4Bytes: Long, val webmBytes: Long?)
 
 /** One audio-only output and its estimated size; [kbps] is the encode bitrate of a transcoded [format] (MP3). */
 class AudioOption(val format: DownloadFormat, val bytes: Long, val kbps: Int? = null)
@@ -102,7 +103,7 @@ class DownloadOptions(
                     height = height,
                     fps = atHeight.maxOfOrNull { fpsByItag[it.itag] ?: 0 } ?: 0,
                     mp4Bytes = (mp4Video?.clen ?: 0) + bytesAt(AAC_TRANSCODE_BPS, durationMs),
-                    webmBytes = (webmVideo?.clen ?: 0) + webmAudioBytes,
+                    webmBytes = webmVideo?.let { it.clen + webmAudioBytes },
                 )
             }
         }

@@ -66,7 +66,20 @@ internal class DownloadOptionsState(
 
     val hasVideo: Boolean get() = options?.video?.isNotEmpty() == true
 
-    val format: DownloadFormat get() = if (audioOnly || !hasVideo) audioFormat else container
+    /** The video containers this video can be downloaded in. */
+    val containers: List<DownloadFormat>
+        get() = if (options?.video?.any { it.webmBytes != null } == true) {
+            listOf(DownloadFormat.VIDEO_MP4, DownloadFormat.VIDEO_WEBM)
+        } else {
+            listOf(DownloadFormat.VIDEO_MP4)
+        }
+
+    val format: DownloadFormat
+        get() = when {
+            audioOnly || !hasVideo -> audioFormat
+            container in containers -> container
+            else -> DownloadFormat.VIDEO_MP4
+        }
 
     val extension: String get() = "." + format.fileExtension
 

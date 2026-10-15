@@ -227,7 +227,7 @@ private fun TrackRows(state: DownloadOptionsState) {
         TrackRow(Icons.Outlined.ViewAgenda, stringResource(Res.string.download_container)) {
             Column(verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space4)) {
                 ContainerToggle(state)
-                if (state.container == DownloadFormat.VIDEO_MP4) {
+                if (state.format == DownloadFormat.VIDEO_MP4) {
                     Text(stringResource(Res.string.download_mp4_note), style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary))
                 }
             }
@@ -268,7 +268,7 @@ private fun FormatDropdown(state: DownloadOptionsState) {
         if (options.video.isNotEmpty()) {
             MenuGroupLabel(stringResource(Res.string.download_video))
             options.video.forEach { video ->
-                val bytes = if (state.container == DownloadFormat.VIDEO_WEBM) video.webmBytes else video.mp4Bytes
+                val bytes = if (state.format == DownloadFormat.VIDEO_WEBM) video.webmBytes ?: 0 else video.mp4Bytes
                 DropdownMenuItem(text = { Text("${video.label()} — ${formatDownloadSize(bytes)}") }, onClick = {
                     state.audioOnly = false
                     state.height = video.height
@@ -328,8 +328,8 @@ private fun ContainerToggle(state: DownloadOptionsState) {
         Modifier.clip(RoundedCornerShape(9.dp)).background(DesignColors.SurfaceDim).padding(DesignSpacing.Space2),
         horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space2),
     ) {
-        listOf(DownloadFormat.VIDEO_MP4, DownloadFormat.VIDEO_WEBM).forEach { container ->
-            val selected = state.container == container
+        state.containers.forEach { container ->
+            val selected = state.format == container
             Box(
                 Modifier
                     .width(96.dp)
