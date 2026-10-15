@@ -110,6 +110,8 @@ class DiskMediaBlobCache(
             }
             plan
         } ?: return null
+        // Every span opens up front, deliberately: a missing file becomes a cache miss here rather than a failure
+        // mid-stream, and an open handle keeps the bytes readable even if the file is deleted under us.
         val handles = ArrayList<FileHandle>(chunks.size)
         for (chunk in chunks) {
             try {
