@@ -81,6 +81,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -844,7 +845,9 @@ private fun AppRoot(
                 // (4× GPU overdraw). Draw them again as soon as the sheet peeks so dismiss reveals.
                 val drawShell = !nowPlayingOpen || nowPlayingPeeking
                 Box(
-                    Modifier.fillMaxSize().drawWithContent { if (drawShell) drawContent() },
+                    Modifier.fillMaxSize()
+                        .drawWithContent { if (drawShell) drawContent() }
+                        .then(if (nowPlayingOpen) Modifier.clearAndSetSemantics {} else Modifier),
                 ) {
                     if (!holeOpen) ModalNavigationDrawer(
                         drawerState = drawer,
