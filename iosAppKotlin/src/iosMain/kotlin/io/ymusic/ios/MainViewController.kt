@@ -160,9 +160,10 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         playerFloor = maxOf(EMBEDDED_PLAYER_JS_VERSION.toInt(), settings.flow(AppSettings.lastLoadedPlayerJsVer).value),
     )
     val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val appVersionCode = (NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleVersion") as? String)?.toIntOrNull() ?: -1
     val engines = DynamicEngineManager(
         http.engine,
-        appVersion = 5000,
+        appVersion = appVersionCode,
         jsSource = embeddedEngineJsSource(),
         logger = rootLogger,
         cookieJar = cookies,
@@ -189,7 +190,6 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     // The one client of the YMusic service; null when this build has no service url. Versions come
     // from Info.plist, the same values the App Store sees.
     val now = { (NSDate().timeIntervalSince1970 * 1000).toLong() }
-    val appVersionCode = (NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleVersion") as? String)?.toIntOrNull() ?: -1
     val appVersionName = NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: ""
     val api = REMOTE_CONFIG_URL.takeIf { it.isNotBlank() }?.let { baseUrl ->
         HttpApiService(
@@ -261,7 +261,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     val mseSurface = MseVideoSurface().apply { layer = mseHole.layerPtr() }
     val msePlayer = MsePlayer.create(
         client = http.engine,
-        appVersion = 5000,
+        appVersion = appVersionCode,
         logger = rootLogger,
         cacheStore = cacheStore,
         cookieJar = cookies,

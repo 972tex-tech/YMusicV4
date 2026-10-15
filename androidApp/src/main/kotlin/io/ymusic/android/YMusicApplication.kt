@@ -319,7 +319,7 @@ class YMusicApplication : Application() {
         val cacheStore = androidEngineCacheStore(this, logger = rootLogger)
         val engines = DynamicEngineManager(
             http.engine,
-            appVersion = 1,
+            appVersion = BuildConfig.VERSION_CODE,
             logger = rootLogger,
             cacheStore = cacheStore,
             cookieJar = cookies,
@@ -514,7 +514,7 @@ class YMusicApplication : Application() {
                 youtube = {
                     MsePlayer.create(
                         client = shared.http.engine,
-                        appVersion = 5000,
+                        appVersion = BuildConfig.VERSION_CODE,
                         logger = rootLogger,
                         cacheStore = shared.cacheStore,
                         cookieJar = shared.cookies,

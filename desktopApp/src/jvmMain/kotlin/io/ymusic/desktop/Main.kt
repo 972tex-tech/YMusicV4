@@ -636,7 +636,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
     val engines = withContext(Dispatchers.IO) {
         DynamicEngineManager(
             http.engine,
-            appVersion = 1,
+            appVersion = APP_VERSION_CODE,
             logger = rootLogger,
             cacheStore = engineCache,
             cookieJar = cookies,
@@ -732,7 +732,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
                 youtube = {
                     io.ymusic.player.mse.MsePlayer.create(
                         client = http.engine,
-                        appVersion = 5000,
+                        appVersion = APP_VERSION_CODE,
                         logger = rootLogger,
                         cacheStore = engineCache,
                         cookieJar = cookies,
