@@ -109,6 +109,7 @@ import io.ymusic.ui.resources.download_save_quick
 import io.ymusic.ui.resources.download_save_to
 import io.ymusic.ui.resources.download_video
 import io.ymusic.ui.resources.download_webm_detail
+import io.ymusic.ui.resources.playback_retry_later
 import io.ymusic.ui.resources.playback_sign_in_required
 import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.retry
@@ -255,6 +256,7 @@ internal fun ProbeFailed(code: String, onRetry: () -> Unit, onSignIn: (() -> Uni
         val message = when (playability) {
             Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
             Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
+            Playability.RetryLater -> stringResource(Res.string.playback_retry_later)
             null -> stringResource(Res.string.download_failed, code)
         }
         Text(message, style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary))

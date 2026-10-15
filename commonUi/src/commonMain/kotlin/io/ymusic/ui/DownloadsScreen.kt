@@ -89,6 +89,7 @@ import io.ymusic.ui.resources.downloads_unavailable
 import io.ymusic.ui.resources.menu_play
 import io.ymusic.ui.resources.menu_remove
 import io.ymusic.ui.resources.month_abbr
+import io.ymusic.ui.resources.playback_retry_later
 import io.ymusic.ui.resources.playback_sign_in_required
 import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.retry
@@ -162,6 +163,7 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 onDismiss = dismiss,
             )
             Playability.Unavailable -> DownloadUnavailableDialog(onRemove = { service.remove(block.taskId) }, onDismiss = dismiss)
+            Playability.RetryLater -> Unit
         }
     }
 
@@ -370,6 +372,7 @@ private fun downloadErrorUiText(task: DownloadTask): UiText {
         code == DownloadFolderAccessException.CODE -> UiText.Resource(Res.string.downloads_error_folder_access)
         playabilityOf(code) == Playability.SignInRequired -> UiText.Resource(Res.string.playback_sign_in_required)
         playabilityOf(code) == Playability.Unavailable -> UiText.Resource(Res.string.playback_unavailable)
+        playabilityOf(code) == Playability.RetryLater -> UiText.Resource(Res.string.playback_retry_later)
         task.errorMessage != null -> UiText.Plain("${task.errorMessage} ($code)")
         else -> errorText(code)
     }

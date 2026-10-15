@@ -151,6 +151,7 @@ import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.menu_reload_player
 import io.ymusic.ui.resources.playback_failed
 import io.ymusic.ui.resources.playback_file_missing
+import io.ymusic.ui.resources.playback_retry_later
 import io.ymusic.ui.resources.playback_sign_in_required
 import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.queue_end
@@ -909,6 +910,7 @@ private fun PlaybackErrorRow(player: io.ymusic.player.Player, error: io.ymusic.p
                 else -> when (error.playability()) {
                     Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
                     Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
+                    Playability.RetryLater -> stringResource(Res.string.playback_retry_later)
                     null -> stringResource(Res.string.playback_failed, error.code)
                 }
             },
