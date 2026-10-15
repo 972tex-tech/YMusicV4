@@ -16,7 +16,8 @@ fun SentryOptions.applyYMusicTelemetry() {
     // A feedback report is its own consent (the Feedback screen turns reports on as it sends), so it
     // passes even before the gate's collector has seen that flip.
     beforeSend = { event ->
-        if (crashReportingAllowed || event.getTag(FEEDBACK_TAG) == "true") fingerprintPolicy(event) else null
+        val feedback = event.getTag(REPORT_TYPE_TAG) == REPORT_TYPE_FEEDBACK
+        if (crashReportingAllowed || feedback) fingerprintPolicy(event) else null
     }
     // Sentry Logs are OFF by default — without this every Sentry.logger call is dropped. A log is
     // NOT an event: it has its own pipeline and its own beforeSend, so the consent lock repeats.
@@ -34,9 +35,15 @@ fun SentryOptions.applyYMusicTelemetry() {
  * meaningless here): a site code (`E#####`) groups alone — one code, one throw site, one issue;
  * a category code ("parse", "oom"; "network" and "captcha" are never captured) and a non-coded exception
  * group per trail, so the same failure shape in two subsystems stays two issues. Events with no
- * trail tag (uncaught crashes the SDK captured itself) keep Sentry's default grouping.
+ * trail tag (uncaught crashes the SDK captured itself) keep Sentry's default grouping. Feedback
+ * groups per subject; everything else is tagged [REPORT_TYPE_ERROR] so the two filter apart.
  */
 internal fun fingerprintPolicy(event: SentryEvent): SentryEvent {
+    if (event.getTag(REPORT_TYPE_TAG) == REPORT_TYPE_FEEDBACK) {
+        event.fingerprint = mutableListOf(REPORT_TYPE_FEEDBACK, event.message?.message.orEmpty())
+        return event
+    }
+    event.setTag(REPORT_TYPE_TAG, REPORT_TYPE_ERROR)
     // TrailMark rides throws as a SUPPRESSED marker, but sentry-java serializes suppressed
     // exceptions into the visible chain (exception groups) — it is transport, never a report.
     if (event.exceptions.any { it.type == "TrailMark" }) {
