@@ -42,7 +42,7 @@ class AudioFocusCoordinator(
     private var focusRequest: AudioFocusRequest? = null
     private var hasFocus = false
     private var resumeOnGain = false
-    private var duckedFromVolume: Float? = null
+    private var ducked = false
     private var noisyRegistered = false
     private var resumeAfterCall = false
 
@@ -196,15 +196,15 @@ class AudioFocusCoordinator(
     }
 
     private fun duck() {
-        if (duckedFromVolume != null) return
-        val volume = player.config.value.volume
-        duckedFromVolume = volume
-        player.volume = (volume * DUCK_FACTOR).coerceIn(0f, 1f)
+        if (ducked) return
+        ducked = true
+        player.setDucked(true)
     }
 
     private fun restoreDuck() {
-        duckedFromVolume?.let { player.volume = it }
-        duckedFromVolume = null
+        if (!ducked) return
+        ducked = false
+        player.setDucked(false)
     }
 
     private fun registerNoisy() {
@@ -222,9 +222,5 @@ class AudioFocusCoordinator(
         if (!noisyRegistered) return
         context.unregisterReceiver(noisyReceiver)
         noisyRegistered = false
-    }
-
-    private companion object {
-        const val DUCK_FACTOR = 0.3f
     }
 }

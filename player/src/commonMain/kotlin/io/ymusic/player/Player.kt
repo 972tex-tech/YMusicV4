@@ -128,6 +128,9 @@ interface Player {
     /** Last applied volume. Write pushes [PlaybackConfig]; not a flow. */
     var volume: Float
 
+    /** Audio-focus ducking: lowers what the engine plays without touching [volume] or [config]. */
+    fun setDucked(ducked: Boolean)
+
     /** Last applied playback speed. Write pushes [PlaybackConfig]; not a flow. */
     var speed: Float
 

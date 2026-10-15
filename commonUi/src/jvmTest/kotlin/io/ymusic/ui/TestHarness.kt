@@ -195,6 +195,8 @@ internal class StubPlayer : Player {
 
     override var volume: Float = 1f
 
+    override fun setDucked(ducked: Boolean) = Unit
+
     override var speed: Float = 1f
 
     override fun setPitch(pitch: Float) {}
