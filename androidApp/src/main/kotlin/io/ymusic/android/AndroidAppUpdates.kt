@@ -20,11 +20,18 @@ import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.HashingSink
@@ -41,6 +48,10 @@ import java.io.File
  * entry's size and sha256, hand it to [PackageInstaller]. The entry needs no signature of ours —
  * the session is pinned to our package, and Android installs an update only when it is signed with
  * the installed app's certificate and has a higher versionCode.
+ *
+ * [configUpdates] is the one source of truth: [status] is derived from the release it offers now,
+ * and every download belongs to one release (versionCode + sha256) — a config that moves on cancels
+ * it, and nothing it writes afterwards reaches the dialog.
  *
  * A download or install the user asks for first needs the OS's install permission ("Install unknown
  * apps"); without it the user either grants it ([allowInstall], continued in [onResume]) or takes
@@ -63,23 +74,40 @@ class AndroidAppUpdates(
     private val latestUpdate: suspend () -> AppUpdate?,
     /** The config's official download site, if it names one. */
     private val downloadSite: () -> String?,
+    /** The config's update entry, every time the config changes. */
+    configUpdates: Flow<AppUpdate?>,
 ) : AppUpdates {
 
-    private val _status = MutableStateFlow<AppUpdateStatus>(AppUpdateStatus.None)
-    override val status: StateFlow<AppUpdateStatus> = _status
+    /** The newer release the config offers now; null when there is none. */
+    private val offer = MutableStateFlow<AppUpdate?>(null)
+
+    private class Tracked(val release: String, val download: UpdateDownload)
+
+    /** One release's download; shown only while that release is still [offer]ed. */
+    private val tracked = MutableStateFlow<Tracked?>(null)
+    private val lock = Any()
+
+    private class Following(val release: String, val scope: CoroutineScope)
+
+    /** The offered release's scope: downloads run in it and die with it when the config moves on. */
+    @Volatile private var following: Following? = null
+
+    override val status: StateFlow<AppUpdateStatus> = combine(offer, tracked) { update, tracked ->
+        if (update == null) {
+            AppUpdateStatus.None
+        } else {
+            offered(update, tracked?.takeIf { it.release == update.release }?.download ?: UpdateDownload.Idle)
+        }
+    }.stateIn(scope, SharingStarted.Eagerly, AppUpdateStatus.None)
+
     override val blockedReason: StringResource? = null
 
-    private val mutex = Mutex()
     private val downloadDir = File(context.cacheDir, "update")
-
-    @Volatile private var pending: AppUpdate? = null
 
     /** What the user asked for before being sent to grant the install permission: install, or download. */
     @Volatile private var installAfterPermission = false
 
     private val log get() = logger?.fork("update")
-
-    private val currentDownload get() = (_status.value as? AppUpdateStatus.Offered)?.download
 
     private fun offered(update: AppUpdate, download: UpdateDownload) = AppUpdateStatus.Offered(
         versionCode = update.versionCode,
@@ -91,28 +119,44 @@ class AndroidAppUpdates(
         download = download,
     )
 
-    /** Take the config's latest answer. */
-    suspend fun offer(update: AppUpdate?) {
-        mutex.withLock {
-            if (update == null || update.versionCode <= currentVersionCode) {
-                pending = null
-                if (currentDownload.let { it is UpdateDownload.Idle || it is UpdateDownload.Failed || it is UpdateDownload.NeedsInstallPermission }) {
-                    _status.value = AppUpdateStatus.None
-                }
-                return
+    init {
+        scope.launch { configUpdates.collect(::accept) }
+        scope.launch {
+            offer.map { it?.release }.distinctUntilChanged().collectLatest { release ->
+                if (release != null) follow(release)
             }
-            if (update == pending) return
-            pending = update
-            val apk = apkFile(update)
-            val downloaded = withContext(Dispatchers.IO) { apk.isFile && sha256Of(apk) == update.sha256 }
-            _status.value = offered(update, if (downloaded && update.installInApp) UpdateDownload.Ready else UpdateDownload.Idle)
         }
-        // Automatically: once per release. A release that already failed that way waits for a tap.
-        if (currentDownload is UpdateDownload.Idle && pending?.installInApp == true && autoDownload() &&
-            pending?.sha256 != autoDownloadFailed()
-        ) {
-            start(auto = true)
+    }
+
+    private fun accept(update: AppUpdate?) {
+        offer.value = update?.takeIf { it.versionCode > currentVersionCode }
+    }
+
+    /** While [release] is offered: show whether it is already downloaded, then fetch it automatically
+     *  — once per release; a release whose automatic download failed waits for a tap. */
+    private suspend fun follow(release: String) = coroutineScope {
+        val update = offer.value?.takeIf { it.release == release } ?: return@coroutineScope
+        following = Following(release, this)
+        val apk = apkFile(update)
+        val downloaded = update.installInApp && withContext(Dispatchers.IO) { apk.isFile && sha256Of(apk) == update.sha256 }
+        set(release, if (downloaded) UpdateDownload.Ready else UpdateDownload.Idle)
+        if (!downloaded && update.installInApp && autoDownload() && update.sha256 != autoDownloadFailed()) {
+            start(update, auto = true)
         }
+        awaitCancellation()
+    }
+
+    /** Writes [download] only while [release] is still offered. */
+    private fun set(release: String, download: UpdateDownload) {
+        synchronized(lock) {
+            if (offer.value?.release == release) tracked.value = Tracked(release, download)
+        }
+    }
+
+    /** The offered release and its download state — exactly what [status] shows. */
+    private fun current(): Pair<AppUpdate, UpdateDownload>? {
+        val update = offer.value ?: return null
+        return update to (tracked.value?.takeIf { it.release == update.release }?.download ?: UpdateDownload.Idle)
     }
 
     /** Remove APKs and partial downloads this version has caught up with; a newer release's
@@ -125,27 +169,35 @@ class AndroidAppUpdates(
     }
 
     override fun download() {
-        if (canInstall()) start(auto = false) else needInstallPermission(install = false)
+        val (update, _) = current() ?: return
+        if (canInstall()) start(update, auto = false) else needInstallPermission(update, install = false)
     }
 
     /**
-     * Fetch [pending]. Any failure deletes the partial file: the next attempt starts fresh (only a
-     * process killed mid-download resumes). An automatic download that fails is remembered and the
-     * release offered the normal way — no error for something the user never asked for; one the
-     * user started reports Failed.
+     * Fetch [update]. A failure deletes the partial file: the next attempt starts fresh. A cancelled
+     * one (the config moved on) keeps it, to resume if the release comes back. An automatic download
+     * that fails is remembered and the release offered the normal way — no error for something the
+     * user never asked for; one the user started reports Failed.
      */
-    private fun start(auto: Boolean) {
-        scope.launch {
-            val update = mutex.withLock {
-                val update = pending ?: return@launch
-                if (!update.installInApp) return@launch
-                if (currentDownload is UpdateDownload.Running || currentDownload is UpdateDownload.Ready) return@launch
-                _status.value = offered(update, UpdateDownload.Running(0, update.size))
-                update
+    private fun start(update: AppUpdate, auto: Boolean) {
+        val release = update.release
+        if (!update.installInApp) return
+        val releaseScope = following?.takeIf { it.release == release }?.scope ?: return
+        releaseScope.launch {
+            val claimed = synchronized(lock) {
+                val download = tracked.value?.takeIf { it.release == release }?.download
+                val busy = download is UpdateDownload.Running || download is UpdateDownload.Ready
+                if (offer.value?.release != release || busy) {
+                    false
+                } else {
+                    tracked.value = Tracked(release, UpdateDownload.Running(0, update.size))
+                    true
+                }
             }
+            if (!claimed) return@launch
             try {
                 withContext(Dispatchers.IO) { fetch(update) }
-                _status.value = offered(update, UpdateDownload.Ready)
+                set(release, UpdateDownload.Ready)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Exception) {
@@ -153,13 +205,13 @@ class AndroidAppUpdates(
                 if (auto) {
                     log?.log(Logger.Level.WARN, "automatic download of update ${update.versionCode} failed; offering it instead", error)
                     rememberAutoDownloadFailed(update.sha256)
-                    _status.value = offered(update, UpdateDownload.Idle)
+                    set(release, UpdateDownload.Idle)
                 } else if (error is DownloadMismatchException) {
                     log?.captureError(error, "update ${update.versionCode} failed verification")
-                    _status.value = offered(update, UpdateDownload.Failed("E91011"))
+                    set(release, UpdateDownload.Failed("E91011"))
                 } else {
                     log?.captureError(error, "downloading update ${update.versionCode} failed")
-                    _status.value = offered(update, UpdateDownload.Failed("E91012"))
+                    set(release, UpdateDownload.Failed("E91012"))
                 }
             }
         }
@@ -171,16 +223,16 @@ class AndroidAppUpdates(
         // Another release's leftovers can never be resumed into this one.
         downloadDir.listFiles().orEmpty().filter { it.name.endsWith(".part") && it != part }.forEach { it.delete() }
         downloadResumable(client, update.url, part.toOkioPath(), FileSystem.SYSTEM, update.size, update.sha256) { done ->
-            _status.value = offered(update, UpdateDownload.Running(done, update.size))
+            set(update.release, UpdateDownload.Running(done, update.size))
         }
         check(part.renameTo(apkFile(update))) { "could not move the APK into place" }
     }
 
     /** Opens the system install prompt; Android restarts nothing — the user reopens the app. */
     override fun installAndRestart() {
-        val update = pending ?: return
-        if (currentDownload !is UpdateDownload.Ready) return
-        if (!canInstall()) return needInstallPermission(install = true)
+        val (update, download) = current() ?: return
+        if (download !is UpdateDownload.Ready) return
+        if (!canInstall()) return needInstallPermission(update, install = true)
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { commit(apkFile(update)) }
@@ -188,15 +240,14 @@ class AndroidAppUpdates(
                 throw cancel
             } catch (error: Exception) {
                 log?.captureError(error, "installing update ${update.versionCode} failed")
-                _status.value = offered(update, UpdateDownload.Failed("E91013"))
+                set(update.release, UpdateDownload.Failed("E91013"))
             }
         }
     }
 
-    private fun needInstallPermission(install: Boolean) {
-        val update = pending ?: return
+    private fun needInstallPermission(update: AppUpdate, install: Boolean) {
         installAfterPermission = install
-        _status.value = offered(update, UpdateDownload.NeedsInstallPermission)
+        set(update.release, UpdateDownload.NeedsInstallPermission)
     }
 
     override fun allowInstall() {
@@ -210,14 +261,14 @@ class AndroidAppUpdates(
 
     /** Back in the app: a request held for the install permission continues once it is granted. */
     fun onResume() {
-        val update = pending ?: return
-        if (currentDownload !is UpdateDownload.NeedsInstallPermission || !canInstall()) return
+        val (update, download) = current() ?: return
+        if (download !is UpdateDownload.NeedsInstallPermission || !canInstall()) return
         if (installAfterPermission) {
-            _status.value = offered(update, UpdateDownload.Ready)
+            set(update.release, UpdateDownload.Ready)
             installAndRestart()
         } else {
-            _status.value = offered(update, UpdateDownload.Idle)
-            start(auto = false)
+            set(update.release, UpdateDownload.Idle)
+            start(update, auto = false)
         }
     }
 
@@ -256,8 +307,8 @@ class AndroidAppUpdates(
 
     override suspend fun checkNow(): UpdateCheck {
         if (!refreshConfig()) return UpdateCheck.Failed
-        offer(latestUpdate())
-        return if (_status.value is AppUpdateStatus.None) UpdateCheck.UpToDate else UpdateCheck.Found
+        accept(latestUpdate())
+        return if (offer.value == null) UpdateCheck.UpToDate else UpdateCheck.Found
     }
 
     /** Named after the version AND hash: a re-published release must not continue the old bytes. */
@@ -265,6 +316,9 @@ class AndroidAppUpdates(
 
     private fun apkFile(update: AppUpdate) = File(downloadDir, "YMusic-${update.versionCode}.apk")
 }
+
+/** One published build: a re-published version is a different release. */
+private val AppUpdate.release: String get() = "$versionCode-$sha256"
 
 /** [PackageInstaller]'s answer: shows the system confirmation the session is waiting on. */
 class UpdateInstallReceiver : BroadcastReceiver() {

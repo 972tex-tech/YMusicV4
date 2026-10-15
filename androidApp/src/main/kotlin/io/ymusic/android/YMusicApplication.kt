@@ -109,6 +109,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -383,7 +384,7 @@ class YMusicApplication : Application() {
             logger = rootLogger,
             ioDispatcher = Dispatchers.IO,
         )
-        // In-app updates from the config's appUpdate. The autoDownload read is synchronous, mid-offer.
+        // In-app updates from the config's appUpdate.
         val updates = AndroidAppUpdates(
             context = this,
             client = http.engine,
@@ -396,9 +397,9 @@ class YMusicApplication : Application() {
             refreshConfig = { remoteConfig.refreshNow() },
             latestUpdate = { remoteConfig.getConfig().appUpdate },
             downloadSite = { remoteConfig.config.replayCache.lastOrNull()?.downloadPageUrl },
+            configUpdates = remoteConfig.config.map { it.appUpdate },
         )
         updates.pruneDownloads()
-        scope.launch { remoteConfig.config.collect { updates.offer(it.appUpdate) } }
         return SharedServices(http, cookies, settings, engines, cacheStore, mediaStore, playerJs, imageLoader, stats, updates, api, remoteConfig, runningBundles)
     }
 
