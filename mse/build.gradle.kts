@@ -329,16 +329,6 @@ val stageAndroidJni by tasks.registering {
                     f.copyTo(File(destDir, f.name), overwrite = true)
                 }
             }
-            val hostTag = when {
-                System.getProperty("os.name").lowercase().contains("mac") -> "darwin-x86_64"
-                else -> "linux-x86_64"
-            }
-            val strip = File(ndk, "toolchains/llvm/prebuilt/$hostTag/bin/llvm-strip")
-            if (strip.isFile) {
-                destDir.listFiles()?.filter { it.name.endsWith(".so") }?.forEach { lib ->
-                    sh(strip.absolutePath, "--strip-unneeded", lib.absolutePath)
-                }
-            }
         }
     }
 }
