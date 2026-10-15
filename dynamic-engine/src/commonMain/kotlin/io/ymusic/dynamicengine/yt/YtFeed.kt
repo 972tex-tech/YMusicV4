@@ -221,6 +221,8 @@ data class YtFeedPage(
     val pageTabs: List<YtPageTab> = emptyList(),
     /** Watch-next only: the video autoplay would play next. */
     val autoplayVideoId: String? = null,
+    /** A part of the page failed but the rest is served: the error code to show as a transient message. */
+    val partialErrorCode: String? = null,
 )
 
 /**

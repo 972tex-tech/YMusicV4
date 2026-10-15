@@ -43,6 +43,7 @@ internal suspend fun readFeedPage(r: JsonReader): YtFeedPage {
     var pageHeader: YtPageHeader? = null
     var pageTabs: List<YtPageTab> = emptyList()
     var autoplayVideoId: String? = null
+    var partialErrorCode: String? = null
     r.beginObject()
     while (r.hasNextObjectKey()) {
         when (r.nextKey()) {
@@ -57,13 +58,14 @@ internal suspend fun readFeedPage(r: JsonReader): YtFeedPage {
             "pageHeader" -> pageHeader = readPageHeader(r)
             "pageTabs" -> pageTabs = r.readArrayOf { readPageTab(it) }
             "autoplayVideoId" -> autoplayVideoId = r.stringOrNull()
+            "partialErrorCode" -> partialErrorCode = r.stringOrNull()
             else -> r.skipValue()
         }
     }
     r.endObject()
     return YtFeedPage(
         sections, continuation, chips, sort, chipsWrap, emptyTitle, emptyMessage,
-        filterGroups, pageHeader, pageTabs, autoplayVideoId,
+        filterGroups, pageHeader, pageTabs, autoplayVideoId, partialErrorCode,
     )
 }
 

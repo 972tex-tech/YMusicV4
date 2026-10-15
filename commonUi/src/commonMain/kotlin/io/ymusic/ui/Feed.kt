@@ -140,7 +140,7 @@ class Pager(
     private val _state = MutableStateFlow<State>(State.Loading)
     val state: StateFlow<State> = _state.asStateFlow()
 
-    /** Error codes from a keep-content [reload] (the list stays put) — the UI shows a snackbar. */
+    /** Error codes from a keep-content [reload] (the list stays put) or a page's failed part — the UI shows a snackbar. */
     private val _errors = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 1)
     val errors: kotlinx.coroutines.flow.SharedFlow<String> = _errors.asSharedFlow()
 
@@ -225,6 +225,7 @@ class Pager(
         // return its own row returns fresh tokens (the clicked one matches nothing), with the
         // applied chip server-marked selected instead. So trust a fresh row's own marks; only when
         // the row lacks them (carried-over channel sort chips) re-mark it by the clicked token.
+        page.partialErrorCode?.let { _errors.tryEmit(it) }
         val rawChips = page.chips.ifEmpty { previousChips }
         val chips = when {
             page.chips.any { it.selected } -> page.chips
