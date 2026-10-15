@@ -28,3 +28,6 @@ internal actual fun KeepScreenOn(enabled: Boolean) = Unit
 
 @Composable
 internal actual fun Modifier.keepBelowStatusBar(): Modifier = this
+
+@Composable
+internal actual fun Modifier.drawerEdgeGestureExclusion(enabled: Boolean): Modifier = this

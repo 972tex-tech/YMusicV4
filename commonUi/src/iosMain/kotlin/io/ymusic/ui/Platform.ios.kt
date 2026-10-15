@@ -44,3 +44,6 @@ internal actual fun KeepScreenOn(enabled: Boolean) {
 @Composable
 internal actual fun Modifier.keepBelowStatusBar(): Modifier =
     windowInsetsPadding(WindowInsets.statusBars)
+
+@Composable
+internal actual fun Modifier.drawerEdgeGestureExclusion(enabled: Boolean): Modifier = this

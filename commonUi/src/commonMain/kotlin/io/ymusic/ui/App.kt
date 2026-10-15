@@ -814,7 +814,11 @@ private fun AppRoot(
         val holeOpen = desktopLayoutHole && nowPlayingOpen
         Box(
             Modifier.fillMaxSize()
-                .then(if (desktopLayoutHole) Modifier else Modifier.background(DesignColors.Surface)),
+                .then(if (desktopLayoutHole) Modifier else Modifier.background(DesignColors.Surface))
+                .drawerEdgeGestureExclusion(
+                    !drawer.isOpen && !nowPlayingOpen && layers.isEmpty() &&
+                        section == AppSection.Discover && discoverTab == DiscoverTab.Home,
+                ),
         ) {
             BoxWithConstraints(
                 Modifier.fillMaxSize().safeDrawingPadding(),

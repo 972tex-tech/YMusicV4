@@ -36,3 +36,8 @@ internal expect fun KeepScreenOn(enabled: Boolean)
 /** Status-bar height even while bars are hidden (fullscreen overlay title). No-op on desktop. */
 @Composable
 internal expect fun Modifier.keepBelowStatusBar(): Modifier
+
+/** Android gesture nav: claims a vertically centred slice of the start-edge back-gesture strip (the
+ *  OS-maximum 200dp) so a swipe there opens the nav drawer instead of going back. No-op elsewhere. */
+@Composable
+internal expect fun Modifier.drawerEdgeGestureExclusion(enabled: Boolean): Modifier

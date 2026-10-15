@@ -7,11 +7,18 @@ import android.os.Build
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -93,6 +100,32 @@ internal actual fun KeepScreenOn(enabled: Boolean) {
 @Composable
 internal actual fun Modifier.keepBelowStatusBar(): Modifier =
     windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
+
+// The system honours at most this much exclusion height per edge (config_systemGestureExclusionLimitDp).
+private val SystemGestureExclusionLimit = 200.dp
+
+@Composable
+internal actual fun Modifier.drawerEdgeGestureExclusion(enabled: Boolean): Modifier {
+    if (!enabled) return this
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val gestures = WindowInsets.systemGestures
+    val rtl = layoutDirection == LayoutDirection.Rtl
+    val stripWidth = (if (rtl) gestures.getRight(density, layoutDirection) else gestures.getLeft(density, layoutDirection)).toFloat()
+    if (stripWidth <= 0f) return this
+    val limit = with(density) { SystemGestureExclusionLimit.toPx() }
+    return systemGestureExclusion { coordinates ->
+        val width = coordinates.size.width.toFloat()
+        val height = coordinates.size.height.toFloat()
+        val sliceHeight = minOf(limit, height)
+        val top = (height - sliceHeight) / 2
+        if (rtl) {
+            Rect(width - stripWidth, top, width, top + sliceHeight)
+        } else {
+            Rect(0f, top, stripWidth, top + sliceHeight)
+        }
+    }
+}
 
 private fun android.view.View.activityWindow(): android.view.Window? {
     var context = context
