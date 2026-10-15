@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">Lautstärke, Geschwindigkeit, Equalizer und Virtualizer</string>
     <string name="settings_speed_hint">Wiedergabegeschwindigkeit und Tonhöhe</string>
     <string name="settings_eq_hint">Zehnband-Equalizer, Bassverstärkung, Virtualizer</string>
+    <string name="settings_system_audio_fx">System-Soundeffekte verwenden</string>
+    <string name="settings_system_audio_fx_hint">Equalizer-Apps auf deinem Gerät den Klang formen lassen. Schaltet den App-Equalizer aus.</string>
     <string name="sound_title">Sound</string>
     <string name="sound_playback">Wiedergabe</string>
     <string name="sound_volume">Lautstärke %1$d%%</string>

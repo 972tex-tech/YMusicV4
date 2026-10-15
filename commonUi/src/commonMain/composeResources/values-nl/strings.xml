@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">Volume, snelheid, equalizer en virtualizer</string>
     <string name="settings_speed_hint">Afspeelsnelheid en toonhoogte</string>
     <string name="settings_eq_hint">Tienbandsequalizer, basversterking, virtualizer</string>
+    <string name="settings_system_audio_fx">Systeemgeluidseffecten gebruiken</string>
+    <string name="settings_system_audio_fx_hint">Laat equalizer-apps op je apparaat het geluid vormen. Zet de equalizer in de app uit.</string>
     <string name="sound_title">Geluid</string>
     <string name="sound_playback">Afspelen</string>
     <string name="sound_volume">Volume %1$d%%</string>

@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">व्हॉल्यूम, वेग, इक्वेलायझर आणि व्हर्च्युअलायझर</string>
     <string name="settings_speed_hint">प्लेबॅक वेग आणि पिच</string>
     <string name="settings_eq_hint">दहा-बँड इक्वेलायझर, बास बूस्ट, व्हर्च्युअलायझर</string>
+    <string name="settings_system_audio_fx">सिस्टम साउंड इफेक्ट्स वापरा</string>
+    <string name="settings_system_audio_fx_hint">तुमच्या डिव्हाइसवरील इक्वलायझर ॲप्सना आवाज घडवू द्या. ॲपमधील इक्वलायझर बंद होतो.</string>
     <string name="sound_title">आवाज</string>
     <string name="sound_playback">प्लेबॅक</string>
     <string name="sound_volume">व्हॉल्यूम %1$d%%</string>

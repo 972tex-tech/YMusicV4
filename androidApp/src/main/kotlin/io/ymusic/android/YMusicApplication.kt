@@ -441,6 +441,7 @@ class YMusicApplication : Application() {
                 }
         }
         AudioFocusCoordinator(this, graph.player, appScope).start()
+        SystemAudioEffects(this, graph.player, graph.settings, appScope, rootLogger.fork("system-audio-fx")).start()
         widgets.attach(graph)
         // Same pattern for downloads: any change that (re)starts work also (re)starts the
         // dataSync foreground host; the service winds itself down when the queue drains. Enqueue
@@ -603,6 +604,7 @@ class YMusicApplication : Application() {
             player,
             logger = rootLogger,
             playerCache = playerCache,
+            systemAudioEffects = true,
             stats = shared.stats,
             updates = shared.updates,
             premium = premium,

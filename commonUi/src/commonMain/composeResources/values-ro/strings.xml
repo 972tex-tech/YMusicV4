@@ -367,6 +367,8 @@
     <string name="settings_sound_hint">Volum, viteză, egalizator și virtualizator</string>
     <string name="settings_speed_hint">Viteza de redare și tonalitatea</string>
     <string name="settings_eq_hint">Egalizator cu zece benzi, amplificare bas, virtualizator</string>
+    <string name="settings_system_audio_fx">Folosește efectele sonore ale sistemului</string>
+    <string name="settings_system_audio_fx_hint">Lasă aplicațiile de egalizator de pe dispozitiv să modeleze sunetul. Dezactivează egalizatorul aplicației.</string>
     <string name="sound_title">Sunet</string>
     <string name="sound_playback">Redare</string>
     <string name="sound_volume">Volum %1$d%%</string>

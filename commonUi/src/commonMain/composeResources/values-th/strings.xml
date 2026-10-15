@@ -365,6 +365,8 @@
     <string name="settings_sound_hint">ระดับเสียง ความเร็ว อีควอไลเซอร์ และเวอร์ชวลไลเซอร์</string>
     <string name="settings_speed_hint">ความเร็วในการเล่นและระดับเสียงสูงต่ำ</string>
     <string name="settings_eq_hint">อีควอไลเซอร์ 10 แบนด์ เพิ่มเสียงเบส เวอร์ชวลไลเซอร์</string>
+    <string name="settings_system_audio_fx">ใช้เอฟเฟกต์เสียงของระบบ</string>
+    <string name="settings_system_audio_fx_hint">ให้แอปอีควอไลเซอร์ในอุปกรณ์ปรับแต่งเสียง ปิดอีควอไลเซอร์ในแอป</string>
     <string name="sound_title">เสียง</string>
     <string name="sound_playback">การเล่น</string>
     <string name="sound_volume">ระดับเสียง %1$d%%</string>

@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">वॉल्यूम, स्पीड, इक्वलाइज़र और वर्चुअलाइज़र</string>
     <string name="settings_speed_hint">प्लेबैक स्पीड और पिच</string>
     <string name="settings_eq_hint">दस-बैंड इक्वलाइज़र, बास बूस्ट, वर्चुअलाइज़र</string>
+    <string name="settings_system_audio_fx">सिस्टम साउंड इफ़ेक्ट इस्तेमाल करें</string>
+    <string name="settings_system_audio_fx_hint">अपने डिवाइस के इक्वलाइज़र ऐप्स को आवाज़ बदलने दें। ऐप का इक्वलाइज़र बंद हो जाता है।</string>
     <string name="sound_title">साउंड</string>
     <string name="sound_playback">प्लेबैक</string>
     <string name="sound_volume">वॉल्यूम %1$d%%</string>

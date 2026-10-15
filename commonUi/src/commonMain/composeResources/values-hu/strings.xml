@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">Hangerő, sebesség, hangszínszabályzó és virtualizáló</string>
     <string name="settings_speed_hint">Lejátszási sebesség és hangmagasság</string>
     <string name="settings_eq_hint">Tízsávos hangszínszabályzó, basszuskiemelés, virtualizáló</string>
+    <string name="settings_system_audio_fx">Rendszer hangeffektusainak használata</string>
+    <string name="settings_system_audio_fx_hint">Az eszköz hangszínszabályzó alkalmazásai alakíthatják a hangot. Kikapcsolja az alkalmazás hangszínszabályzóját.</string>
     <string name="sound_title">Hang</string>
     <string name="sound_playback">Lejátszás</string>
     <string name="sound_volume">Hangerő %1$d%%</string>

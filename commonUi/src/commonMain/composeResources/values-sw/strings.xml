@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">Kiwango cha sauti, kasi, kisawazishi na kiigaji sauti</string>
     <string name="settings_speed_hint">Kasi ya kucheza na kiimbo</string>
     <string name="settings_eq_hint">Kisawazishi cha bendi kumi, kiongeza besi, kiigaji sauti</string>
+    <string name="settings_system_audio_fx">Tumia madoido ya sauti ya mfumo</string>
+    <string name="settings_system_audio_fx_hint">Ruhusu programu za kusawazisha sauti kwenye kifaa chako zitengeneze sauti. Huzima kisawazisha cha programu.</string>
     <string name="sound_title">Sauti</string>
     <string name="sound_playback">Uchezaji</string>
     <string name="sound_volume">Kiwango cha sauti %1$d%%</string>

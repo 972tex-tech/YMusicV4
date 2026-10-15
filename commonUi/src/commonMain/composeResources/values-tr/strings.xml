@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">Ses seviyesi, hız, ekolayzer ve sanallaştırıcı</string>
     <string name="settings_speed_hint">Oynatma hızı ve perde</string>
     <string name="settings_eq_hint">On bantlı ekolayzer, bas güçlendirme, sanallaştırıcı</string>
+    <string name="settings_system_audio_fx">Sistem ses efektlerini kullan</string>
+    <string name="settings_system_audio_fx_hint">Cihazınızdaki ekolayzer uygulamalarının sesi şekillendirmesine izin verin. Uygulama içi ekolayzeri kapatır.</string>
     <string name="sound_title">Ses</string>
     <string name="sound_playback">Oynatma</string>
     <string name="sound_volume">Ses seviyesi %1$d%%</string>

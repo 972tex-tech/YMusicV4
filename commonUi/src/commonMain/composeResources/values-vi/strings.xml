@@ -336,6 +336,8 @@
     <string name="settings_sound_hint">Âm lượng, tốc độ, equalizer và virtualizer</string>
     <string name="settings_speed_hint">Tốc độ phát và cao độ</string>
     <string name="settings_eq_hint">Equalizer 10 dải, tăng bass, virtualizer</string>
+    <string name="settings_system_audio_fx">Dùng hiệu ứng âm thanh hệ thống</string>
+    <string name="settings_system_audio_fx_hint">Cho phép ứng dụng equalizer trên thiết bị chỉnh âm thanh. Tắt equalizer trong ứng dụng.</string>
     <string name="signin_preface_title">Đăng nhập bằng YouTube</string>
     <string name="signin_preface_subtitle">và dùng mọi tính năng của YouTube ngay trong YMusic</string>
     <string name="signin_enables">Đăng nhập để có:</string>

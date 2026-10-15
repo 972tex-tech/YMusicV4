@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">Heerka codka, xawaaraha, cod-habeeye iyo virtualizer</string>
     <string name="settings_speed_hint">Xawaaraha daaritaanka iyo teembada</string>
     <string name="settings_eq_hint">Cod-habeeye toban xariiq ah, xoojinta bass, virtualizer</string>
+    <string name="settings_system_audio_fx">Isticmaal saamaynta codka nidaamka</string>
+    <string name="settings_system_audio_fx_hint">U oggolow abka isle'egta ee qalabkaaga inay qaabeeyaan codka. Waxay demisaa isle'egta abka.</string>
     <string name="sound_title">Codka</string>
     <string name="sound_playback">Daarridda</string>
     <string name="sound_volume">Heerka codka %1$d%%</string>

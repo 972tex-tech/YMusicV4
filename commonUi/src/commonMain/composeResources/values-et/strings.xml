@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">Helitugevus, kiirus, ekvalaiser ja virtualiseerija</string>
     <string name="settings_speed_hint">Esituskiirus ja helikõrgus</string>
     <string name="settings_eq_hint">Kümneribaline ekvalaiser, bassivõimendus, virtualiseerija</string>
+    <string name="settings_system_audio_fx">Kasuta süsteemi heliefekte</string>
+    <string name="settings_system_audio_fx_hint">Lase seadme ekvalaiserirakendustel heli kujundada. Lülitab rakenduse ekvalaiseri välja.</string>
     <string name="sound_title">Heli</string>
     <string name="sound_playback">Esitus</string>
     <string name="sound_volume">Helitugevus %1$d%%</string>

@@ -365,6 +365,8 @@
     <string name="settings_sound_hint">Kelantangan, kelajuan, penyama dan pemaya</string>
     <string name="settings_speed_hint">Kelajuan main balik dan pic</string>
     <string name="settings_eq_hint">Penyama sepuluh jalur, penggalak bes, pemaya</string>
+    <string name="settings_system_audio_fx">Gunakan kesan bunyi sistem</string>
+    <string name="settings_system_audio_fx_hint">Biarkan apl penyama pada peranti anda membentuk bunyi. Mematikan penyama dalam apl.</string>
     <string name="sound_title">Bunyi</string>
     <string name="sound_playback">Main balik</string>
     <string name="sound_volume">Kelantangan %1$d%%</string>

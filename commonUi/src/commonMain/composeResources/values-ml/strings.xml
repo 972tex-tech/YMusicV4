@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">വോളിയം, വേഗത, ഇക്വലൈസർ, വെർച്വലൈസർ</string>
     <string name="settings_speed_hint">പ്ലേബാക്ക് വേഗതയും പിച്ചും</string>
     <string name="settings_eq_hint">പത്ത്-ബാൻഡ് ഇക്വലൈസർ, ബാസ് ബൂസ്റ്റ്, വെർച്വലൈസർ</string>
+    <string name="settings_system_audio_fx">സിസ്റ്റം സൗണ്ട് ഇഫക്റ്റുകൾ ഉപയോഗിക്കുക</string>
+    <string name="settings_system_audio_fx_hint">നിങ്ങളുടെ ഉപകരണത്തിലെ ഇക്വലൈസർ ആപ്പുകൾക്ക് ശബ്‌ദം ക്രമീകരിക്കാൻ അനുവദിക്കുക. ആപ്പിലെ ഇക്വലൈസർ ഓഫാകും.</string>
     <string name="sound_title">ശബ്ദം</string>
     <string name="sound_playback">പ്ലേബാക്ക്</string>
     <string name="sound_volume">വോളിയം %1$d%%</string>

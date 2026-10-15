@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">ವಾಲ್ಯೂಮ್, ವೇಗ, ಈಕ್ವಲೈಸರ್ ಮತ್ತು ವರ್ಚುವಲೈಸರ್</string>
     <string name="settings_speed_hint">ಪ್ಲೇಬ್ಯಾಕ್ ವೇಗ ಮತ್ತು ಪಿಚ್</string>
     <string name="settings_eq_hint">ಹತ್ತು-ಬ್ಯಾಂಡ್ ಈಕ್ವಲೈಸರ್, ಬಾಸ್ ಬೂಸ್ಟ್, ವರ್ಚುವಲೈಸರ್</string>
+    <string name="settings_system_audio_fx">ಸಿಸ್ಟಮ್ ಸೌಂಡ್ ಎಫೆಕ್ಟ್‌ಗಳನ್ನು ಬಳಸಿ</string>
+    <string name="settings_system_audio_fx_hint">ನಿಮ್ಮ ಸಾಧನದ ಈಕ್ವಲೈಸರ್ ಆ್ಯಪ್‌ಗಳು ಧ್ವನಿಯನ್ನು ರೂಪಿಸಲು ಬಿಡಿ. ಆ್ಯಪ್‌ನ ಈಕ್ವಲೈಸರ್ ಆಫ್ ಆಗುತ್ತದೆ.</string>
     <string name="sound_title">ಧ್ವನಿ</string>
     <string name="sound_playback">ಪ್ಲೇಬ್ಯಾಕ್</string>
     <string name="sound_volume">ವಾಲ್ಯೂಮ್ %1$d%%</string>

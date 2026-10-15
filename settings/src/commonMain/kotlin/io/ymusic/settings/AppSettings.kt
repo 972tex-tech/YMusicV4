@@ -139,6 +139,12 @@ object AppSettings {
      */
     val enablePip = BoolSetting("playback.enablePip", true)
 
+    /**
+     * Android: publish the audio session to equalizer apps (AudioEffect control-session broadcasts)
+     * and bypass the in-app equalizer. Ignored on shells that don't offer it.
+     */
+    val systemAudioEffects = BoolSetting("playback.systemAudioEffects", true)
+
     /** The sleep-timer dialog's last chosen duration, its starting value next time. */
     val sleepTimerMinutes = IntSetting("playback.sleepTimerMinutes", 30)
 

@@ -368,6 +368,8 @@
     <string name="settings_sound_hint">Głośność, prędkość, korektor dźwięku i wirtualizer</string>
     <string name="settings_speed_hint">Prędkość odtwarzania i wysokość dźwięku</string>
     <string name="settings_eq_hint">Dziesięciopasmowy korektor, wzmocnienie basów, wirtualizer</string>
+    <string name="settings_system_audio_fx">Używaj systemowych efektów dźwiękowych</string>
+    <string name="settings_system_audio_fx_hint">Pozwól aplikacjom korektora na urządzeniu kształtować dźwięk. Wyłącza korektor w aplikacji.</string>
     <string name="sound_title">Dźwięk</string>
     <string name="sound_playback">Odtwarzanie</string>
     <string name="sound_volume">Głośność %1$d%%</string>

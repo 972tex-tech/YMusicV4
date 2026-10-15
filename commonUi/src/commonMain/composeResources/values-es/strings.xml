@@ -367,6 +367,8 @@
     <string name="settings_sound_hint">Volumen, velocidad, ecualizador y virtualizador</string>
     <string name="settings_speed_hint">Velocidad de reproducción y tono</string>
     <string name="settings_eq_hint">Ecualizador de diez bandas, refuerzo de graves, virtualizador</string>
+    <string name="settings_system_audio_fx">Usar efectos de sonido del sistema</string>
+    <string name="settings_system_audio_fx_hint">Deja que las apps de ecualizador del dispositivo moldeen el sonido. Desactiva el ecualizador de la app.</string>
     <string name="sound_title">Sonido</string>
     <string name="sound_playback">Reproducción</string>
     <string name="sound_volume">Volumen %1$d%%</string>

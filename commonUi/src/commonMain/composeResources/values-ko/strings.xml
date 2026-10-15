@@ -365,6 +365,8 @@
     <string name="settings_sound_hint">볼륨, 속도, 이퀄라이저, 버추얼라이저</string>
     <string name="settings_speed_hint">재생 속도 및 음높이</string>
     <string name="settings_eq_hint">10밴드 이퀄라이저, 저음 강화, 버추얼라이저</string>
+    <string name="settings_system_audio_fx">시스템 사운드 효과 사용</string>
+    <string name="settings_system_audio_fx_hint">기기의 이퀄라이저 앱이 사운드를 조정할 수 있도록 합니다. 앱 내 이퀄라이저가 꺼집니다.</string>
     <string name="sound_title">사운드</string>
     <string name="sound_playback">재생</string>
     <string name="sound_volume">볼륨 %1$d%%</string>

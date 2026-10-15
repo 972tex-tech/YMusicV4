@@ -233,7 +233,7 @@ private fun SoundRow(graph: AppGraph, speed: Boolean) {
     }
     if (open) {
         if (speed) PlaybackFxSheet(graph.player, onDismiss = { open = false })
-        else EqualizerFxSheet(graph.player, onDismiss = { open = false })
+        else EqualizerFxSheet(graph, onDismiss = { open = false })
     }
 }
 

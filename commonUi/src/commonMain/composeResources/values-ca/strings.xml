@@ -367,6 +367,8 @@
     <string name="settings_sound_hint">Volum, velocitat, equalitzador i virtualitzador</string>
     <string name="settings_speed_hint">Velocitat de reproducció i to</string>
     <string name="settings_eq_hint">Equalitzador de deu bandes, reforç de greus, virtualitzador</string>
+    <string name="settings_system_audio_fx">Utilitza els efectes de so del sistema</string>
+    <string name="settings_system_audio_fx_hint">Deixa que les aplicacions d'equalitzador del dispositiu modelin el so. Desactiva l'equalitzador de l'aplicació.</string>
     <string name="sound_title">So</string>
     <string name="sound_playback">Reproducció</string>
     <string name="sound_volume">Volum %1$d%%</string>

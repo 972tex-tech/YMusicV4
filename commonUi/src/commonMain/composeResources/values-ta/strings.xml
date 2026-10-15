@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">ஒலியளவு, வேகம், ஈக்வலைசர் மற்றும் விர்ச்சுவலைசர்</string>
     <string name="settings_speed_hint">இயக்க வேகமும் சுருதியும்</string>
     <string name="settings_eq_hint">பத்து-பேண்ட் ஈக்வலைசர், பேஸ் பூஸ்ட், விர்ச்சுவலைசர்</string>
+    <string name="settings_system_audio_fx">சிஸ்டம் ஒலி விளைவுகளைப் பயன்படுத்து</string>
+    <string name="settings_system_audio_fx_hint">உங்கள் சாதனத்தின் ஈக்வலைசர் ஆப்ஸ் ஒலியை வடிவமைக்க அனுமதிக்கும். ஆப்ஸின் ஈக்வலைசர் முடக்கப்படும்.</string>
     <string name="sound_title">ஒலி</string>
     <string name="sound_playback">இயக்கம்</string>
     <string name="sound_volume">ஒலியளவு %1$d%%</string>

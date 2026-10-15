@@ -1203,7 +1203,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
         )
     }
     if (eqOpen) {
-        EqualizerFxSheet(player, onDismiss = { eqOpen = false })
+        EqualizerFxSheet(coordinator.graph, onDismiss = { eqOpen = false })
     }
 }
 

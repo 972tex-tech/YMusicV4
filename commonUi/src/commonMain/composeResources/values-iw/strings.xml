@@ -367,6 +367,8 @@
     <string name="settings_sound_hint">עוצמה, מהירות, אקולייזר ו-Virtualizer</string>
     <string name="settings_speed_hint">מהירות השמעה וגובה צליל</string>
     <string name="settings_eq_hint">אקולייזר עשרה ערוצים, הגברת בס, Virtualizer</string>
+    <string name="settings_system_audio_fx">שימוש באפקטי הצליל של המערכת</string>
+    <string name="settings_system_audio_fx_hint">מאפשר לאפליקציות אקולייזר במכשיר לעצב את הצליל. מכבה את האקולייזר של האפליקציה.</string>
     <string name="sound_title">צליל</string>
     <string name="sound_playback">השמעה</string>
     <string name="sound_volume">עוצמה %1$d%%</string>

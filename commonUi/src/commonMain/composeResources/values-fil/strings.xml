@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">Volume, bilis, equalizer, at virtualizer</string>
     <string name="settings_speed_hint">Bilis ng pag-playback at pitch</string>
     <string name="settings_eq_hint">Sampung-band na equalizer, bass boost, virtualizer</string>
+    <string name="settings_system_audio_fx">Gamitin ang mga sound effect ng system</string>
+    <string name="settings_system_audio_fx_hint">Hayaang hubugin ng mga equalizer app sa iyong device ang tunog. Pinapatay ang equalizer ng app.</string>
     <string name="sound_title">Tunog</string>
     <string name="sound_playback">Playback</string>
     <string name="sound_volume">Volume %1$d%%</string>

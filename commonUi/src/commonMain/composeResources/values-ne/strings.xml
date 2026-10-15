@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">भोल्युम, गति, इक्वालाइजर र भर्चुअलाइजर</string>
     <string name="settings_speed_hint">प्लेब्याक गति र पिच</string>
     <string name="settings_eq_hint">दस-ब्यान्ड इक्वालाइजर, बेस बुस्ट, भर्चुअलाइजर</string>
+    <string name="settings_system_audio_fx">सिस्टम साउन्ड इफेक्टहरू प्रयोग गर्नुहोस्</string>
+    <string name="settings_system_audio_fx_hint">तपाईंको डिभाइसका इक्वलाइजर एपहरूलाई आवाज मिलाउन दिनुहोस्। एपको इक्वलाइजर बन्द हुन्छ।</string>
     <string name="sound_title">ध्वनि</string>
     <string name="sound_playback">प्लेब्याक</string>
     <string name="sound_volume">भोल्युम %1$d%%</string>

@@ -366,6 +366,8 @@
     <string name="settings_sound_hint">بلندی صدا، سرعت، اکولایزر و مجازی‌ساز</string>
     <string name="settings_speed_hint">سرعت پخش و زیر و بمی</string>
     <string name="settings_eq_hint">اکولایزر ده‌باندی، تقویت بیس، مجازی‌ساز</string>
+    <string name="settings_system_audio_fx">استفاده از جلوه‌های صوتی سیستم</string>
+    <string name="settings_system_audio_fx_hint">اجازه دهید برنامه‌های اکولایزر دستگاه صدا را تنظیم کنند. اکولایزر داخلی برنامه خاموش می‌شود.</string>
     <string name="sound_title">صدا</string>
     <string name="sound_playback">پخش</string>
     <string name="sound_volume">بلندی صدا %1$d%%</string>
