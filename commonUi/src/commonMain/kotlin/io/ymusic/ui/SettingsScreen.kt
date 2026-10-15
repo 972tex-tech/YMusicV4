@@ -71,6 +71,7 @@ import io.ymusic.ui.resources.settings_section_playback
 import io.ymusic.ui.resources.settings_section_privacy
 import io.ymusic.ui.resources.settings_show_fps
 import io.ymusic.ui.resources.settings_show_fps_hint
+import io.ymusic.ui.resources.settings_source_code
 import io.ymusic.ui.resources.settings_speed_hint
 import io.ymusic.ui.resources.settings_sponsor_block
 import io.ymusic.ui.resources.settings_sponsor_block_hint
@@ -196,7 +197,8 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
                 ToggleRow(graph, AppSettings.autoDownloadUpdates, Res.string.settings_auto_update, Res.string.settings_auto_update_hint)
             }
             val config by remember(graph) { graph.remoteConfig ?: emptyFlow() }.collectAsState(initial = null)
-            config?.changelogUrl?.let { ChangelogRow(it) }
+            config?.changelogUrl?.let { LinkRow(Res.string.settings_changelog, it) }
+            LinkRow(Res.string.settings_source_code, SourceCodeUrl)
             LicensesRow()
             VersionsRow(graph)
         }
@@ -263,11 +265,13 @@ internal fun ToggleRow(graph: AppGraph, setting: BoolSetting, title: StringResou
     }
 }
 
+private const val SourceCodeUrl = "https://github.com/ymusic-io/YMusicV4"
+
 @Composable
-private fun ChangelogRow(url: String) {
+private fun LinkRow(label: StringResource, url: String) {
     val uriHandler = LocalUriHandler.current
     Text(
-        stringResource(Res.string.settings_changelog),
+        stringResource(label),
         style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
         modifier = Modifier
             .fillMaxWidth()

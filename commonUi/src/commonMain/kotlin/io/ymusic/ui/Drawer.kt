@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,6 +45,8 @@ import org.jetbrains.compose.resources.stringResource
 private val BrandGreenInk: Color @Composable get() = if (DesignColors.isDark) Color(0xFF4ADE80) else Color(0xFF15803D)
 private val BrandGreenBg: Color @Composable get() = if (DesignColors.isDark) Color(0xFF11301C) else Color(0xFFEAFAF0)
 private val BrandGreenBorder: Color @Composable get() = if (DesignColors.isDark) Color(0xFF1D4A2C) else Color(0xFFCDEED9)
+
+private const val WebsiteUrl = "https://ymusic.io"
 
 /** The navigation drawer (design/final/drawer.html): brand header + three nav sections. */
 @Composable
@@ -132,32 +135,36 @@ private fun DrawerHeader(appVersion: String?, premium: Boolean, onCheckUpdate: (
                 }
             }
         }
-        // A text button under the logo, as in YMusicLegacy's drawer header; accent and a trailing dot
-        // while an update is waiting.
-        if (onCheckUpdate != null) {
-            Row(
-                Modifier
-                    .padding(top = DesignSpacing.Space8)
-                    .clip(RoundedCornerShape(DesignSpacing.Space4))
-                    .clickable(onClick = onCheckUpdate)
-                    .padding(vertical = DesignSpacing.Space4, horizontal = DesignSpacing.Space4),
-                horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    stringResource(Res.string.update_check),
-                    style = TextStyle(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (updateWaiting) DesignColors.Accent else DesignColors.InkSecondary,
-                    ),
-                )
-                if (updateWaiting) {
-                    Box(Modifier.size(DesignSpacing.Space8).background(DesignColors.Accent, CircleShape))
+        // Text links under the logo, as in YMusicLegacy's drawer header; accent and a trailing dot while an update is waiting.
+        val uriHandler = LocalUriHandler.current
+        Column(Modifier.padding(top = DesignSpacing.Space8)) {
+            if (onCheckUpdate != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HeaderLink(stringResource(Res.string.update_check), highlighted = updateWaiting, onClick = onCheckUpdate)
+                    if (updateWaiting) {
+                        Box(Modifier.size(DesignSpacing.Space8).background(DesignColors.Accent, CircleShape))
+                    }
                 }
             }
+            HeaderLink("ymusic.io") { uriHandler.openUri(WebsiteUrl) }
         }
     }
+}
+
+@Composable
+private fun HeaderLink(text: String, highlighted: Boolean = false, onClick: () -> Unit) {
+    Text(
+        text,
+        style = TextStyle(
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (highlighted) DesignColors.Accent else DesignColors.InkSecondary,
+        ),
+        modifier = Modifier
+            .clip(RoundedCornerShape(DesignSpacing.Space4))
+            .clickable(onClick = onClick)
+            .padding(DesignSpacing.Space4),
+    )
 }
 
 @Composable
