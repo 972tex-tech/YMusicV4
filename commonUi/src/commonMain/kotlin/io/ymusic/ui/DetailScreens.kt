@@ -214,13 +214,17 @@ fun PlaylistDetailScreen(
                     PlaylistHeader(
                         title = title,
                         meta = ready?.pageHeader?.subtitleLine1 ?: item.subtitleLine1,
-                        onShuffle = {
-                            coordinator.playAll(
-                                videos,
-                                startIndex = videos.indices.random(),
-                                shuffle = true,
-                                source = ready.queueSource(coordinator.graph.engines, s.url, videos, s.log),
-                            )
+                        onShuffle = if (videos.isEmpty()) {
+                            null
+                        } else {
+                            {
+                                coordinator.playAll(
+                                    videos,
+                                    startIndex = videos.indices.random(),
+                                    shuffle = true,
+                                    source = ready.queueSource(coordinator.graph.engines, s.url, videos, s.log),
+                                )
+                            }
                         },
                         onDownload = onDownload?.let { open -> { open(title, s.feed.pager) } },
                         save = ready?.pageHeader?.savePlaylistId?.let { playlistId ->
@@ -242,7 +246,7 @@ fun PlaylistDetailScreen(
 internal fun PlaylistHeader(
     title: String,
     meta: String?,
-    onShuffle: () -> Unit,
+    onShuffle: (() -> Unit)?,
     onDownload: (() -> Unit)? = null,
     save: (@Composable () -> Unit)? = null,
 ) {
@@ -270,7 +274,7 @@ internal fun PlaylistHeader(
             ActionIcon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), enabled = onDownload != null, onClick = { onDownload?.invoke() })
             Box(Modifier.weight(1f))
             Box(
-                Modifier.size(46.dp).clip(CircleShape).background(DesignColors.InkStrong).clickable(role = Role.Button, onClick = onShuffle),
+                Modifier.size(46.dp).clip(CircleShape).background(DesignColors.InkStrong).clickable(enabled = onShuffle != null, role = Role.Button, onClick = { onShuffle?.invoke() }),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Default.Shuffle, stringResource(Res.string.cd_shuffle), Modifier.size(20.dp), tint = DesignColors.OnInk)

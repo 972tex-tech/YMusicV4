@@ -259,13 +259,17 @@ fun MusicDetailScreen(
                     PlaylistHeader(
                         title = title,
                         meta = ready?.pageHeader?.subtitleLine1 ?: session.item.subtitleLine1,
-                        onShuffle = {
-                            coordinator.playAll(
-                                videos,
-                                startIndex = videos.indices.random(),
-                                shuffle = true,
-                                source = ready.queueSource(coordinator.graph.engines, session.url, videos, session.log),
-                            )
+                        onShuffle = if (videos.isEmpty()) {
+                            null
+                        } else {
+                            {
+                                coordinator.playAll(
+                                    videos,
+                                    startIndex = videos.indices.random(),
+                                    shuffle = true,
+                                    source = ready.queueSource(coordinator.graph.engines, session.url, videos, session.log),
+                                )
+                            }
                         },
                         onDownload = onDownload?.let { open -> { open(title, session.feed.pager) } },
                     )
