@@ -9,6 +9,8 @@ extern "C" {
 
 /* WHATWG atob / btoa / TextEncoder / TextDecoder as C functions (V8 native toString). */
 void qjs_register_web(JSContext *ctx);
+/* Frees the BotGuard recording row of ctx; call before JS_FreeContext. */
+void qjs_web_release(JSContext *ctx);
 
 #ifdef __cplusplus
 }

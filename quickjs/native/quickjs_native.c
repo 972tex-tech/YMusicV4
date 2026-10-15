@@ -362,6 +362,7 @@ void qjs_close(QjsEngine *e) {
     e->mse = NULL;
     qjs_rejections_free(e->ctx, &e->rejections);
     qjs_pipe_ctx_release(e->pipe, e->ctx);
+    qjs_web_release(e->ctx);
     JS_FreeContext(e->ctx);
     JS_FreeRuntime(e->rt); /* PipeBuf finalizers return segments to the pool -> free the ctx after */
     qjs_pipe_ctx_free(e->pipe);

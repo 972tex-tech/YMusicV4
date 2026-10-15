@@ -609,6 +609,7 @@ typedef struct {
 } Ent;
 static Ent g_ent[ENT_CTX];
 
+/* Lookup only: the hooks run on every context, only __bgEntropyStart claims a row. */
 static Ent *ent_of(JSContext *ctx)
 {
     int i;
@@ -617,6 +618,15 @@ static Ent *ent_of(JSContext *ctx)
     for (i = 0; i < ENT_CTX; i++)
         if (g_ent[i].ctx == ctx)
             return &g_ent[i];
+    return NULL;
+}
+
+static Ent *ent_claim(JSContext *ctx)
+{
+    int i;
+    Ent *e = ent_of(ctx);
+    if (e || !ctx)
+        return e;
     for (i = 0; i < ENT_CTX; i++) {
         if (!g_ent[i].ctx) {
             g_ent[i].ctx = ctx;
@@ -917,7 +927,7 @@ static void ent_clear(Ent *e)
  * Returns {platform, arch} for the remill dump. */
 static JSValue js_bg_entropy_start(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    Ent *e = ent_of(ctx);
+    Ent *e = ent_claim(ctx);
     JSValue g, date, math;
     (void)this_val;
     (void)argc;
@@ -1097,6 +1107,21 @@ static JSValue js_bg_entropy_dump(JSContext *ctx, JSValueConst this_val, int arg
     u8 = JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_UINT8);
     JS_FreeValue(ctx, ab);
     return u8;
+}
+
+void qjs_web_release(JSContext *ctx)
+{
+    Ent *e = ent_of(ctx);
+    int k;
+    if (!e)
+        return;
+    JS_FreeValue(ctx, e->date_orig);
+    JS_FreeValue(ctx, e->rand_orig);
+    JS_FreeValue(ctx, e->tostr_orig);
+    for (k = 0; k < ERR_CTORS; k++)
+        JS_FreeValue(ctx, e->error_orig[k]);
+    ent_clear(e);
+    memset(e, 0, sizeof(*e));
 }
 
 static void install_performance(JSContext *ctx, JSValueConst global)

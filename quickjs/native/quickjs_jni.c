@@ -689,6 +689,7 @@ Java_io_ymusic_quickjs_QuickJsNative_close(JNIEnv *env, jobject thiz, jlong hand
     qjs_rejections_free(e->ctx, &e->rejections);
     (*env)->DeleteGlobalRef(env, e->bridgeClass);
     qjs_pipe_ctx_release(e->pipe, e->ctx);
+    qjs_web_release(e->ctx);
     JS_FreeContext(e->ctx);
     JS_FreeRuntime(e->rt); /* PipeBuf finalizers return segments to the pool -> free the ctx after */
     qjs_pipe_ctx_free(e->pipe);
