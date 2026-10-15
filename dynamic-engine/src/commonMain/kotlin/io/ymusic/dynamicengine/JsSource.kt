@@ -65,6 +65,10 @@ fun embeddedEngineJsSource(): JsSourceProvider =
 fun embeddedPlayerJsSource(): JsSourceProvider =
     StaticJsSource(io.ymusic.dynamicengine.internal.PLAYER_JS, io.ymusic.dynamicengine.internal.PLAYER_JS_VERSION)
 
+/** The embedded bundles' revisions — what a device runs until a remote copy is loaded. */
+const val EMBEDDED_ENGINE_JS_VERSION: Long = io.ymusic.dynamicengine.internal.ENGINE_JS_VERSION
+const val EMBEDDED_PLAYER_JS_VERSION: Long = io.ymusic.dynamicengine.internal.PLAYER_JS_VERSION
+
 /** The updatable MSE player bundle: the compiled-in `player.js` under a signed remote copy. */
 fun playerJsSource(
     client: KmpHttpClient,

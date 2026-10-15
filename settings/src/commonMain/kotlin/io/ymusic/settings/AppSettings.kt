@@ -108,6 +108,10 @@ object AppSettings {
      *  never derived from hardware identity. Empty = unseeded. */
     val deviceId = StringSetting("telemetry.deviceId", "")
 
+    /** The engine.js / player.js revision last loaded on this device (0 = never): reported before the bundle boots. */
+    val lastLoadedEngineJsVer = IntSetting("telemetry.lastLoadedEngineJsVer", 0)
+    val lastLoadedPlayerJsVer = IntSetting("telemetry.lastLoadedPlayerJsVer", 0)
+
     /**
      * Theme: "light" | "dark", or empty to follow the system appearance.
      *

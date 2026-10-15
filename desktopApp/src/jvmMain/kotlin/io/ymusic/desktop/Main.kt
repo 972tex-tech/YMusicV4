@@ -77,6 +77,7 @@ import io.ymusic.desktop.update.desktopPlatformKey
 import io.ymusic.desktop.update.installerFor
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.EMBEDDED_PLAYER_JS_VERSION
 import io.ymusic.dynamicengine.ENGINE_BUNDLE
 import io.ymusic.dynamicengine.SignedBundleRef
 import io.ymusic.dynamicengine.desktopEngineCacheStore
@@ -570,7 +571,11 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
     val deviceId = settings.anonymousDeviceId()
 
     // The one client of the YMusic service; null when this build has no service url.
-    val runningBundles = RunningBundles()
+    val runningBundles = RunningBundles(
+        engineFloor = maxOf(ENGINE_JS_VERSION.toInt(), settings.flow(AppSettings.lastLoadedEngineJsVer).value),
+        playerFloor = maxOf(EMBEDDED_PLAYER_JS_VERSION.toInt(), settings.flow(AppSettings.lastLoadedPlayerJsVer).value),
+    )
+    val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val api = REMOTE_CONFIG_URL.takeIf { it.isNotBlank() }?.let { baseUrl ->
         HttpApiService(
             client = http.engine.newBuilder().apply {
@@ -594,7 +599,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         api = api,
         cacheFile = File(dataDir, "remote-config.json").absolutePath.toPath(),
         fileSystem = FileSystem.SYSTEM,
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        scope = backgroundScope,
         now = { System.currentTimeMillis() },
         log = rootLogger.fork("remote-config"),
     ).also { it.checkUpdate() } // app open is itself a hotpoint
@@ -606,7 +611,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         enabled = { settings.flow(AppSettings.stats).value },
         queueFile = File(dataDir, "stat-queue.json").absolutePath.toPath(),
         fileSystem = FileSystem.SYSTEM,
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        scope = backgroundScope,
         now = { System.currentTimeMillis() },
         log = rootLogger.fork("stats"),
     ).also { it.onAppStart() }
@@ -641,6 +646,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
             onBackendVersion = { version ->
                 installSentryEngineVersion(version)
                 runningBundles.engine = version
+                backgroundScope.launch { settings.put(AppSettings.lastLoadedEngineJsVer, version) }
             },
             jsSource = engineSource,
         )
@@ -747,6 +753,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
                         onPlayerJsVersion = { version ->
                             installSentryPlayerVersion(version)
                             runningBundles.player = version
+                            backgroundScope.launch { settings.put(AppSettings.lastLoadedPlayerJsVer, version) }
                         },
                     ).also { ytEngine = it }
                 },

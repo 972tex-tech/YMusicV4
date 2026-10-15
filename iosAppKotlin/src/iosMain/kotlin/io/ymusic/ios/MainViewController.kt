@@ -15,6 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.ComposeUIViewController
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.EMBEDDED_ENGINE_JS_VERSION
+import io.ymusic.dynamicengine.EMBEDDED_PLAYER_JS_VERSION
 import io.ymusic.dynamicengine.appleEngineCacheStore
 import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.player.bindMseNativeLogs
@@ -35,6 +37,7 @@ import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.anonymousDeviceId
 import io.ymusic.settings.flow
+import io.ymusic.settings.put
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
@@ -61,6 +64,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import platform.Foundation.NSApplicationSupportDirectory
@@ -151,7 +155,11 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
     ensureAppLanguage(settings)
     val cacheStore = appleEngineCacheStore(logger = rootLogger)
     // The running engine.js / player.js revisions the service calls report.
-    val runningBundles = RunningBundles()
+    val runningBundles = RunningBundles(
+        engineFloor = maxOf(EMBEDDED_ENGINE_JS_VERSION.toInt(), settings.flow(AppSettings.lastLoadedEngineJsVer).value),
+        playerFloor = maxOf(EMBEDDED_PLAYER_JS_VERSION.toInt(), settings.flow(AppSettings.lastLoadedPlayerJsVer).value),
+    )
+    val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val engines = DynamicEngineManager(
         http.engine,
         appVersion = 5000,
@@ -160,7 +168,10 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         cookieJar = cookies,
         settings = settings,
         cacheStore = cacheStore,
-        onBackendVersion = { version -> runningBundles.engine = version },
+        onBackendVersion = { version ->
+            runningBundles.engine = version
+            backgroundScope.launch { settings.put(AppSettings.lastLoadedEngineJsVer, version) }
+        },
     )
     engines.start()
 
@@ -204,7 +215,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         api = api,
         cacheFile = dataDir.resolve("remote-config.json"),
         fileSystem = FileSystem.SYSTEM,
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        scope = backgroundScope,
         now = now,
         log = rootLogger.fork("remote-config"),
     ).also { it.checkUpdate() }
@@ -214,7 +225,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         enabled = { settings.flow(AppSettings.stats).value },
         queueFile = dataDir.resolve("stat-queue.json"),
         fileSystem = FileSystem.SYSTEM,
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        scope = backgroundScope,
         now = now,
         log = rootLogger.fork("stats"),
     ).also { it.onAppStart() }
@@ -258,7 +269,10 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         videoSurface = mseSurface,
         main = engines,
         mediaProxy = mediaProxy,
-        onPlayerJsVersion = { version -> runningBundles.player = version },
+        onPlayerJsVersion = { version ->
+            runningBundles.player = version
+            backgroundScope.launch { settings.put(AppSettings.lastLoadedPlayerJsVer, version) }
+        },
     )
     val player = createPlayer(
         PlayerEngines(

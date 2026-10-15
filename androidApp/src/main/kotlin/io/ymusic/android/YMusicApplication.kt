@@ -23,6 +23,7 @@ import io.ymusic.download.DownloadChange
 import io.ymusic.dynamicengine.CacheStore
 import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
+import io.ymusic.dynamicengine.EMBEDDED_PLAYER_JS_VERSION
 import io.ymusic.dynamicengine.ENGINE_BUNDLE
 import io.ymusic.dynamicengine.JsSourceProvider
 import io.ymusic.dynamicengine.SignedBundleRef
@@ -252,7 +253,10 @@ class YMusicApplication : Application() {
         // The one client of the YMusic service; null when this build has no service url. Its own
         // client instance carries the API cookie jar (the activity watermark survives restarts) —
         // the engine client stays jar-less on purpose, the engine JS owns YouTube cookies.
-        val runningBundles = RunningBundles()
+        val runningBundles = RunningBundles(
+            engineFloor = maxOf(BuildConfig.ENGINE_JS_VERSION.toInt(), settings.flow(AppSettings.lastLoadedEngineJsVer).value),
+            playerFloor = maxOf(EMBEDDED_PLAYER_JS_VERSION.toInt(), settings.flow(AppSettings.lastLoadedPlayerJsVer).value),
+        )
         val api = BuildConfig.REMOTE_CONFIG_URL.takeIf { it.isNotBlank() }?.let { baseUrl ->
             HttpApiService(
                 client = http.engine.newBuilder().apply {
@@ -326,6 +330,7 @@ class YMusicApplication : Application() {
             onBackendVersion = { version ->
                 installSentryEngineVersion(version)
                 runningBundles.engine = version
+                scope.launch { settings.put(AppSettings.lastLoadedEngineJsVer, version) }
             },
             jsSource = engineSource,
         )
@@ -521,6 +526,7 @@ class YMusicApplication : Application() {
                         onPlayerJsVersion = { version ->
                             installSentryPlayerVersion(version)
                             shared.runningBundles.player = version
+                            scope.launch { shared.settings.put(AppSettings.lastLoadedPlayerJsVer, version) }
                         },
                     ).also {
                         ytEngine = it

@@ -46,7 +46,7 @@ class HttpApiService(
     private val apiKey: String? = null,
     /** Which build this device needs: the CPU (x64, arm64) on desktop, the primary ABI on Android. */
     private val arch: String? = null,
-    /** The JS bundle revisions running now; each header is omitted until its bundle has run. */
+    /** The JS bundle revisions to report; a header is omitted while its revision is unknown. */
     private val bundles: RunningBundles? = null,
 ) : ApiService {
 
@@ -140,8 +140,8 @@ class HttpApiService(
             .header(HEADER_DEVICE_ID, deviceId)
         arch?.let { request.header(HEADER_ARCH, it) }
         apiKey?.let { request.header(HEADER_API_KEY, it) }
-        bundles?.engine?.let { request.header(HEADER_ENGINE_JS_VER, it.toString()) }
-        bundles?.player?.let { request.header(HEADER_PLAYER_JS_VER, it.toString()) }
+        bundles?.reportedEngine?.let { request.header(HEADER_ENGINE_JS_VER, it.toString()) }
+        bundles?.reportedPlayer?.let { request.header(HEADER_PLAYER_JS_VER, it.toString()) }
         return request
     }
 

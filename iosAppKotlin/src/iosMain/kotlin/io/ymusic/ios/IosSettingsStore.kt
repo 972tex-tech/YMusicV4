@@ -33,6 +33,8 @@ internal class IosSettingsStore(
             "download.location",
             "download.quickPreset",
             "playerCache.maxMb",
+            "telemetry.lastLoadedEngineJsVer",
+            "telemetry.lastLoadedPlayerJsVer",
             PlaybackQualitySettingKey,
             PlaybackVolumeKey,
             PlaybackSpeedKey,
