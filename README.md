@@ -1,6 +1,12 @@
 # YMusic
 
-A Kotlin Multiplatform music player for Android, desktop (JVM), and iOS.
+A Kotlin Multiplatform music player for Android, desktop (MacOs, Windows, Linux), and iOS/iPad.
+
+> [!CAUTION]
+> **Only install YMusic from trusted sources:** [ymusic.io](https://ymusic.io) or [GitHub Releases](https://github.com/ymusic-io/YMusicV4/releases). Anyone can build a modified copy — bad actors can ship a fake app that steals your Google account credentials when you sign in.
+>
+> **Misuse Disclaimer:**
+> The authors are not responsible for any misuse of the application.
 
 ## Running
 
