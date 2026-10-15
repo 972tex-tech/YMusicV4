@@ -292,7 +292,7 @@ class DownloadService(
                         val state = target ?: DownloadState.PAUSED
                         if (state == DownloadState.CANCELED) cleanupTemp(task.id)
                         setState(task.id, state)
-                    } else if (failure != null) {
+                    } else if (failure != null && !completed) {
                         setState(task.id, DownloadState.FAILED, error = failure)
                     }
                     active.remove(task.id)
@@ -308,8 +308,8 @@ class DownloadService(
         // landed (or been dropped, on cancel) before the run's final state is written.
         val updates = Channel<suspend () -> Unit>(Channel.UNLIMITED)
         val writer = launch { for (update in updates) update() }
-        try {
-            val result = pipeline.run(
+        val result = try {
+            pipeline.run(
                 task,
                 destinationFolder = downloadFolder(),
                 onPreparing = { updates.trySend { setState(task.id, DownloadState.PREPARING) } },
@@ -323,15 +323,6 @@ class DownloadService(
                     }
                 },
             )
-            // The file is published: record it even if a pause/cancel lands now.
-            withContext(NonCancellable) {
-                updates.close()
-                writer.join()
-                store.updateCompleted(task.id, result.uri, result.bytes, now())
-                _changes.emit(DownloadChange.Completed(task.id, result.uri, result.bytes))
-                store.get(task.id)?.let { onCompleted?.invoke(it, result) }
-            }
-            null
         } catch (c: CancellationException) {
             throw c
         } catch (e: Throwable) {
@@ -346,8 +337,26 @@ class DownloadService(
                 code == DownloadFolderAccessException.CODE -> taskLog?.log(Logger.Level.WARN, "download folder not writable", e)
                 else -> taskLog?.captureError(e, "download failed")
             }
-            downloadError(e)
+            return@coroutineScope downloadError(e)
         }
+        // The file is published: the task has succeeded, even if a pause/cancel lands now. A failure past
+        // this point must not fail it — a retry would publish a second copy.
+        withContext(NonCancellable) {
+            updates.close()
+            writer.join()
+            store.updateCompleted(task.id, result.uri, result.bytes, now())
+            _changes.emit(DownloadChange.Completed(task.id, result.uri, result.bytes))
+            try {
+                store.get(task.id)?.let { onCompleted?.invoke(it, result) }
+            } catch (c: CancellationException) {
+                throw c
+            } catch (e: Throwable) {
+                // The file stays downloaded; the Library picks it up on its next scan.
+                log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))
+                    ?.captureError(e, "registering a finished download in the library failed")
+            }
+        }
+        null
     }
 
     // --- writes (DB + change event) ------------------------------------------------------------------
