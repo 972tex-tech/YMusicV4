@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">Deel anonieme gebruiksgegevens om de app te helpen verbeteren.</string>
     <string name="settings_enable_pip">Scherm-in-scherm</string>
     <string name="settings_enable_pip_hint">Als je een video bekijkt in Speelt nu of op volledig scherm, ga je verder in een klein venster wanneer je de app verlaat. Anders schakelt de video naar alleen audio tot je terugkomt.</string>
+    <string name="settings_audio_focus">Audiofocus</string>
+    <string name="settings_audio_focus_calls">Alleen pauzeren bij telefoongesprekken</string>
+    <string name="settings_audio_focus_apps">Pauzeren wanneer andere apps geluid afspelen</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Gesponsorde segmenten in YouTube-video's automatisch overslaan. Zet het per video uit vanuit Speelt nu.</string>
     <string name="sponsor_block_included">SponsorBlock ingeschakeld voor deze video</string>

@@ -359,6 +359,9 @@
     <string name="settings_stats_hint">Comparteix dades d'ús anònimes per ajudar a millorar l'aplicació.</string>
     <string name="settings_enable_pip">Pantalla en pantalla</string>
     <string name="settings_enable_pip_hint">Quan miris un vídeo a Ara sona o a pantalla completa, continua en una finestra petita si surts de l'aplicació. Si no, el vídeo passa a només àudio fins que tornis.</string>
+    <string name="settings_audio_focus">Focus d’àudio</string>
+    <string name="settings_audio_focus_calls">Posa en pausa només per a trucades</string>
+    <string name="settings_audio_focus_apps">Posa en pausa quan altres apps reprodueixin so</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Omet automàticament els segments patrocinats dels vídeos de YouTube. Desactiva-ho per a un vídeo des d'Ara sona.</string>
     <string name="sponsor_block_included">SponsorBlock activat per a aquest vídeo</string>

@@ -359,6 +359,9 @@
     <string name="settings_stats_hint">Dijelite anonimne podatke o korištenju kako biste pomogli poboljšati aplikaciju.</string>
     <string name="settings_enable_pip">Slika u slici</string>
     <string name="settings_enable_pip_hint">Kad gledate videozapis na zaslonu Sada svira ili preko cijelog zaslona, nastavite u malom prozoru ako napustite aplikaciju. U suprotnom videozapis prelazi na samo zvuk dok se ne vratite.</string>
+    <string name="settings_audio_focus">Audio fokus</string>
+    <string name="settings_audio_focus_calls">Pauziraj samo za telefonske pozive</string>
+    <string name="settings_audio_focus_apps">Pauziraj kada druge aplikacije reproduciraju zvuk</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Automatski preskače sponzorirane dijelove u YouTube videozapisima. Za pojedini videozapis isključite na zaslonu Sada svira.</string>
     <string name="sponsor_block_included">SponsorBlock uključen za ovaj videozapis</string>

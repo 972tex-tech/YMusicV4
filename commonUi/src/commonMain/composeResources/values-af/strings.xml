@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">Deel anonieme gebruiksdata om die app te help verbeter.</string>
     <string name="settings_enable_pip">Prent-in-prent</string>
     <string name="settings_enable_pip_hint">Wanneer jy video in Speel nou of volskerm kyk, gaan dit in 'n klein venster voort as jy die app verlaat. Andersins skakel video na net oudio oor totdat jy terugkeer.</string>
+    <string name="settings_audio_focus">Oudiofokus</string>
+    <string name="settings_audio_focus_calls">Onderbreek net vir oproepe</string>
+    <string name="settings_audio_focus_apps">Onderbreek wanneer ander programme klank speel</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Slaan geborgde gedeeltes in YouTube-video's outomaties oor. Skakel dit vir 'n video af vanuit Speel nou.</string>
     <string name="sponsor_block_included">SponsorBlock geaktiveer vir hierdie video</string>

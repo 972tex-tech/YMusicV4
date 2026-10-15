@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">ಆ್ಯಪ್ ಸುಧಾರಿಸಲು ಸಹಾಯ ಮಾಡಲು ಅನಾಮಧೇಯ ಬಳಕೆಯ ಮಾಹಿತಿ ಹಂಚಿಕೊಳ್ಳಿ.</string>
     <string name="settings_enable_pip">ಪಿಕ್ಚರ್-ಇನ್-ಪಿಕ್ಚರ್</string>
     <string name="settings_enable_pip_hint">Now Playing ಅಥವಾ ಪೂರ್ಣ ಪರದೆಯಲ್ಲಿ ವೀಡಿಯೊ ನೋಡುವಾಗ ಆ್ಯಪ್‌ನಿಂದ ಹೊರಹೋದರೆ ಸಣ್ಣ ವಿಂಡೋದಲ್ಲಿ ಮುಂದುವರಿಸಿ. ಇಲ್ಲದಿದ್ದರೆ ನೀವು ಹಿಂತಿರುಗುವವರೆಗೆ ವೀಡಿಯೊ ಆಡಿಯೊ ಮಾತ್ರಕ್ಕೆ ಬದಲಾಗುತ್ತದೆ.</string>
+    <string name="settings_audio_focus">ಆಡಿಯೋ ಫೋಕಸ್</string>
+    <string name="settings_audio_focus_calls">ಫೋನ್ ಕರೆಗಳಿಗೆ ಮಾತ್ರ ವಿರಾಮ</string>
+    <string name="settings_audio_focus_apps">ಇತರ ಆ್ಯಪ್‌ಗಳು ಧ್ವನಿ ಪ್ಲೇ ಮಾಡಿದಾಗ ವಿರಾಮ</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube ವೀಡಿಯೊಗಳಲ್ಲಿನ ಪ್ರಾಯೋಜಿತ ಭಾಗಗಳನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಸ್ಕಿಪ್ ಮಾಡಿ. Now Playing ನಿಂದ ಒಂದು ವೀಡಿಯೊಗೆ ಆಫ್ ಮಾಡಿ.</string>
     <string name="sponsor_block_included">ಈ ವೀಡಿಯೊಗೆ SponsorBlock ಸಕ್ರಿಯವಾಗಿದೆ</string>

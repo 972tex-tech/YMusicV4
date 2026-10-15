@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">Споделяйте анонимни данни за използването, за да помогнете за подобряване на приложението.</string>
     <string name="settings_enable_pip">Картина в картината</string>
     <string name="settings_enable_pip_hint">Когато гледате видео в „Сега се изпълнява“ или на цял екран, продължава в малък прозорец, ако напуснете приложението. Иначе видеото минава в режим само аудио, докато се върнете.</string>
+    <string name="settings_audio_focus">Аудио фокус</string>
+    <string name="settings_audio_focus_calls">Пауза само при телефонни обаждания</string>
+    <string name="settings_audio_focus_apps">Пауза, когато други приложения възпроизвеждат звук</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Автоматично пропуска спонсорираните сегменти във видеоклиповете в YouTube. Изключете за отделно видео от „Сега се изпълнява“.</string>
     <string name="sponsor_block_included">SponsorBlock е включен за това видео</string>

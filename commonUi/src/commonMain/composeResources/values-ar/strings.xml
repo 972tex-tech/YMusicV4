@@ -333,6 +333,9 @@
     <string name="settings_stats_hint">شارك إشارات استخدام مجهولة الهوية للمساعدة في تحسين التطبيق.</string>
     <string name="settings_enable_pip">صورة داخل صورة</string>
     <string name="settings_enable_pip_hint">عند مشاهدة فيديو في التشغيل الآن أو بملء الشاشة، تابع المشاهدة في نافذة صغيرة إذا غادرت التطبيق. وإلا يتحوّل الفيديو إلى الصوت فقط حتى تعود.</string>
+    <string name="settings_audio_focus">تركيز الصوت</string>
+    <string name="settings_audio_focus_calls">الإيقاف المؤقت للمكالمات الهاتفية فقط</string>
+    <string name="settings_audio_focus_apps">الإيقاف المؤقت عند تشغيل تطبيقات أخرى للصوت</string>
     <string name="settings_sponsor_block">مانع الإعلانات</string>
     <string name="settings_sponsor_block_hint">تخطي مقاطع الرعاية في فيديوهات يوتيوب تلقائيًا. يمكن إيقافه لفيديو من قيد التشغيل.</string>
     <string name="sponsor_block_included">حجب الإعلانات المموَّلة لهذا الفيديو</string>

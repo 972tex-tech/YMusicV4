@@ -357,6 +357,9 @@
     <string name="settings_stats_hint">แชร์ข้อมูลการใช้งานแบบไม่ระบุตัวตนเพื่อช่วยปรับปรุงแอป</string>
     <string name="settings_enable_pip">การแสดงภาพซ้อนภาพ</string>
     <string name="settings_enable_pip_hint">เมื่อดูวิดีโอในหน้ากำลังเล่นหรือเต็มหน้าจอ จะเล่นต่อในหน้าต่างขนาดเล็กหากคุณออกจากแอป หากปิดไว้ วิดีโอจะเปลี่ยนเป็นเสียงเท่านั้นจนกว่าคุณจะกลับมา</string>
+    <string name="settings_audio_focus">โฟกัสเสียง</string>
+    <string name="settings_audio_focus_calls">หยุดชั่วคราวเฉพาะเมื่อมีสายโทรเข้า</string>
+    <string name="settings_audio_focus_apps">หยุดชั่วคราวเมื่อแอปอื่นเล่นเสียง</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">ข้ามช่วงผู้สนับสนุนในวิดีโอ YouTube โดยอัตโนมัติ ปิดสำหรับวิดีโอใดก็ได้จากหน้ากำลังเล่น</string>
     <string name="sponsor_block_included">เปิด SponsorBlock สำหรับวิดีโอนี้แล้ว</string>

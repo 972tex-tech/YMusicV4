@@ -360,6 +360,9 @@
     <string name="settings_stats_hint">Ділитися анонімними даними про використання, щоб покращити застосунок.</string>
     <string name="settings_enable_pip">Картинка в картинці</string>
     <string name="settings_enable_pip_hint">Під час перегляду відео на екрані відтворення чи в повноекранному режимі продовжувати в маленькому вікні, якщо ви виходите із застосунку. Інакше відео перемкнеться на аудіо, доки ви не повернетеся.</string>
+    <string name="settings_audio_focus">Аудіофокус</string>
+    <string name="settings_audio_focus_calls">Пауза лише під час дзвінків</string>
+    <string name="settings_audio_focus_apps">Пауза, коли інші застосунки відтворюють звук</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Автоматично пропускати спонсорські вставки у відео YouTube. Для окремого відео можна вимкнути на екрані відтворення.</string>
     <string name="sponsor_block_included">SponsorBlock увімкнено для цього відео</string>

@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">Partekatu erabilera-datu anonimoak aplikazioa hobetzen laguntzeko.</string>
     <string name="settings_enable_pip">Pantaila txikia</string>
     <string name="settings_enable_pip_hint">Bideoa Orain erreproduzitzen pantailan edo pantaila osoan ikustean, jarraitu leiho txiki batean aplikaziotik irtetean. Bestela, bideoa audio soilera aldatuko da itzuli arte.</string>
+    <string name="settings_audio_focus">Audio-fokua</string>
+    <string name="settings_audio_focus_calls">Pausatu deietan soilik</string>
+    <string name="settings_audio_focus_apps">Pausatu beste aplikazio batzuek soinua erreproduzitzen dutenean</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Saltatu automatikoki YouTube bideoetako babesleen zatiak. Desaktibatu bideo jakin baterako Orain erreproduzitzen pantailatik.</string>
     <string name="sponsor_block_included">SponsorBlock gaituta bideo honetarako</string>

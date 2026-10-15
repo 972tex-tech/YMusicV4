@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">Jaga anonüümseid kasutusandmeid, et aidata rakendust paremaks teha.</string>
     <string name="settings_enable_pip">Pilt pildis</string>
     <string name="settings_enable_pip_hint">Kui vaatad videot vaates Praegu mängib või täisekraanil, jätkub see rakendusest lahkudes väikeses aknas. Muidu lülitub video kuni naasmiseni ainult helile.</string>
+    <string name="settings_audio_focus">Helifookus</string>
+    <string name="settings_audio_focus_calls">Peata ainult telefonikõnede ajal</string>
+    <string name="settings_audio_focus_apps">Peata, kui teised rakendused heli esitavad</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Jäta YouTube'i videotes sponsitud lõigud automaatselt vahele. Üksiku video jaoks lülita välja vaates Praegu mängib.</string>
     <string name="sponsor_block_included">SponsorBlock on selle video jaoks sees</string>

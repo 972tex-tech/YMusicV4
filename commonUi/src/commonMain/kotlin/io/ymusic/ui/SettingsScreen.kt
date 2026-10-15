@@ -48,6 +48,9 @@ import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.dialog_cancel
+import io.ymusic.ui.resources.settings_audio_focus
+import io.ymusic.ui.resources.settings_audio_focus_apps
+import io.ymusic.ui.resources.settings_audio_focus_calls
 import io.ymusic.ui.resources.settings_auto_update
 import io.ymusic.ui.resources.settings_auto_update_hint
 import io.ymusic.ui.resources.settings_changelog
@@ -167,6 +170,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             SoundRow(graph, speed = true)
             SoundRow(graph, speed = false)
             ToggleRow(graph, AppSettings.enablePip, Res.string.settings_enable_pip, Res.string.settings_enable_pip_hint)
+            if (graph.audioFocusSetting) AudioFocusRow(graph)
             ToggleRow(
                 graph,
                 AppSettings.sponsorBlockEnabled,
@@ -262,6 +266,47 @@ internal fun ToggleRow(graph: AppGraph, setting: BoolSetting, title: StringResou
             )
         }
         CompactSwitch(enabled)
+    }
+}
+
+private val AudioFocusOptions: List<Pair<String, StringResource>> = listOf(
+    AppSettings.AUDIO_FOCUS_APPS to Res.string.settings_audio_focus_apps,
+    AppSettings.AUDIO_FOCUS_CALLS to Res.string.settings_audio_focus_calls,
+)
+
+@Composable
+private fun AudioFocusRow(graph: AppGraph) {
+    val scope = rememberCoroutineScope()
+    val current by remember(graph) { graph.settings.flow(AppSettings.audioFocus) }.collectAsState()
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clickable { open = true }
+                .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
+        ) {
+            Text(
+                stringResource(Res.string.settings_audio_focus),
+                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            )
+            Text(
+                stringResource((AudioFocusOptions.firstOrNull { it.first == current } ?: AudioFocusOptions.first()).second),
+                style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+                modifier = Modifier.padding(top = DesignSpacing.Space2),
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            AudioFocusOptions.forEach { (value, label) ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(label)) },
+                    onClick = {
+                        open = false
+                        scope.launch { graph.settings.put(AppSettings.audioFocus, value) }
+                    },
+                )
+            }
+        }
     }
 }
 

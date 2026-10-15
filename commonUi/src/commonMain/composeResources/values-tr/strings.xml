@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">Uygulamanın gelişmesine yardımcı olmak için anonim kullanım verileri paylaşın.</string>
     <string name="settings_enable_pip">Pencere içinde pencere</string>
     <string name="settings_enable_pip_hint">Şimdi Çalıyor'da veya tam ekranda video izlerken uygulamadan çıkarsanız küçük bir pencerede devam eder. Aksi halde video, siz dönene kadar yalnızca sese geçer.</string>
+    <string name="settings_audio_focus">Ses odağı</string>
+    <string name="settings_audio_focus_calls">Yalnızca telefon görüşmelerinde duraklat</string>
+    <string name="settings_audio_focus_apps">Diğer uygulamalar ses çaldığında duraklat</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube videolarındaki sponsorlu bölümleri otomatik atlar. Bir video için Şimdi Çalıyor'dan kapatabilirsiniz.</string>
     <string name="sponsor_block_included">Bu video için SponsorBlock etkin</string>

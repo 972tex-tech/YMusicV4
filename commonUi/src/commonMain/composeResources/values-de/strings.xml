@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">Anonyme Nutzungsdaten teilen, um die App zu verbessern.</string>
     <string name="settings_enable_pip">Bild-im-Bild</string>
     <string name="settings_enable_pip_hint">Wenn du ein Video in „Aktuelle Wiedergabe“ oder im Vollbild ansiehst, läuft es beim Verlassen der App in einem kleinen Fenster weiter. Andernfalls wechselt es zu Nur Audio, bis du zurückkehrst.</string>
+    <string name="settings_audio_focus">Audiofokus</string>
+    <string name="settings_audio_focus_calls">Nur bei Anrufen pausieren</string>
+    <string name="settings_audio_focus_apps">Pausieren, wenn andere Apps Ton abspielen</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Gesponserte Abschnitte in YouTube-Videos automatisch überspringen. In „Aktuelle Wiedergabe“ für einzelne Videos abschaltbar.</string>
     <string name="sponsor_block_included">SponsorBlock für dieses Video aktiviert</string>

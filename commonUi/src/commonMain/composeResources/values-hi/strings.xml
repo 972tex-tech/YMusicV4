@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">ऐप को बेहतर बनाने के लिए गुमनाम उपयोग संकेत शेयर करें।</string>
     <string name="settings_enable_pip">पिक्चर-इन-पिक्चर</string>
     <string name="settings_enable_pip_hint">प्लेयर स्क्रीन या फ़ुल स्क्रीन में वीडियो देखते समय ऐप छोड़ने पर वह एक छोटी विंडो में चलता रहेगा। वरना आपके लौटने तक वीडियो सिर्फ़ ऑडियो में बदल जाएगा।</string>
+    <string name="settings_audio_focus">ऑडियो फ़ोकस</string>
+    <string name="settings_audio_focus_calls">सिर्फ़ फ़ोन कॉल के लिए रोकें</string>
+    <string name="settings_audio_focus_apps">दूसरे ऐप आवाज़ चलाएं तो रोकें</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube वीडियो में स्पॉन्सर वाले हिस्से अपने-आप छोड़ें। किसी वीडियो के लिए प्लेयर स्क्रीन से बंद करें।</string>
     <string name="sponsor_block_included">इस वीडियो के लिए SponsorBlock चालू है</string>

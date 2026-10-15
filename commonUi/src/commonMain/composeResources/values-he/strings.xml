@@ -359,6 +359,9 @@
     <string name="settings_stats_hint">שתף נתוני שימוש אנונימיים כדי לעזור לשפר את האפליקציה.</string>
     <string name="settings_enable_pip">תמונה בתוך תמונה</string>
     <string name="settings_enable_pip_hint">כשצופים בסרטון במסך המתנגן כעת או במסך מלא, הצפייה תמשיך בחלון קטן אם יוצאים מהאפליקציה. אחרת הסרטון עובר לאודיו בלבד עד שתחזור.</string>
+    <string name="settings_audio_focus">מיקוד שמע</string>
+    <string name="settings_audio_focus_calls">השהיה רק בשיחות טלפון</string>
+    <string name="settings_audio_focus_apps">השהיה כשאפליקציות אחרות משמיעות צליל</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">דילוג אוטומטי על קטעי חסות בסרטוני YouTube. ניתן לכבות לסרטון מסוים מהמסך המתנגן כעת.</string>
     <string name="sponsor_block_included">SponsorBlock הופעל לסרטון הזה</string>

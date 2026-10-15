@@ -360,6 +360,9 @@
     <string name="settings_stats_hint">Udostępniaj anonimowe dane o użytkowaniu, aby pomóc ulepszać aplikację.</string>
     <string name="settings_enable_pip">Obraz w obrazie</string>
     <string name="settings_enable_pip_hint">Podczas oglądania filmu w Teraz odtwarzane lub na pełnym ekranie kontynuuj w małym oknie po wyjściu z aplikacji. W przeciwnym razie film przełączy się na tylko dźwięk do czasu powrotu.</string>
+    <string name="settings_audio_focus">Fokus audio</string>
+    <string name="settings_audio_focus_calls">Wstrzymuj tylko podczas połączeń</string>
+    <string name="settings_audio_focus_apps">Wstrzymuj, gdy inne aplikacje odtwarzają dźwięk</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Automatycznie pomijaj sponsorowane fragmenty w filmach YouTube. Możesz to wyłączyć dla filmu w Teraz odtwarzane.</string>
     <string name="sponsor_block_included">SponsorBlock włączony dla tego filmu</string>

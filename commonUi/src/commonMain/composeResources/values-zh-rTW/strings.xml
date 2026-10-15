@@ -357,6 +357,9 @@
     <string name="settings_stats_hint">分享匿名使用資料，協助改善應用程式。</string>
     <string name="settings_enable_pip">子母畫面</string>
     <string name="settings_enable_pip_hint">在「現正播放」或全螢幕觀看影片時，離開應用程式後會在小視窗中繼續播放。若關閉，影片會切換為僅音訊，直到你返回。</string>
+    <string name="settings_audio_focus">音訊焦點</string>
+    <string name="settings_audio_focus_calls">僅在通話時暫停</string>
+    <string name="settings_audio_focus_apps">其他應用程式播放聲音時暫停</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">自動略過 YouTube 影片中的贊助片段。可在「現正播放」中針對單一影片關閉。</string>
     <string name="sponsor_block_included">已為這部影片啟用 SponsorBlock</string>

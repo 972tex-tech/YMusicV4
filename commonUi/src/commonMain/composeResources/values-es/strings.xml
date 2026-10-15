@@ -359,6 +359,9 @@
     <string name="settings_stats_hint">Comparte datos de uso anónimos para ayudar a mejorar la app.</string>
     <string name="settings_enable_pip">Imagen en imagen</string>
     <string name="settings_enable_pip_hint">Al ver un vídeo en reproducción o en pantalla completa, continúa en una ventana pequeña si sales de la app. Si no, el vídeo pasa a solo audio hasta que vuelvas.</string>
+    <string name="settings_audio_focus">Enfoque de audio</string>
+    <string name="settings_audio_focus_calls">Pausar solo en llamadas</string>
+    <string name="settings_audio_focus_apps">Pausar cuando otras apps reproduzcan sonido</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Omite automáticamente los segmentos patrocinados en los vídeos de YouTube. Puedes desactivarlo para un vídeo desde la pantalla de reproducción.</string>
     <string name="sponsor_block_included">SponsorBlock activado para este vídeo</string>

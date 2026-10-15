@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">অ্যাপ উন্নত করতে বেনামী ব্যবহারের তথ্য শেয়ার করুন।</string>
     <string name="settings_enable_pip">পিকচার-ইন-পিকচার</string>
     <string name="settings_enable_pip_hint">Now Playing বা পূর্ণ স্ক্রিনে ভিডিও দেখার সময় অ্যাপ ছেড়ে গেলে ছোট উইন্ডোতে চলতে থাকবে। নইলে ফিরে না আসা পর্যন্ত ভিডিও শুধু অডিওতে বদলে যাবে।</string>
+    <string name="settings_audio_focus">অডিও ফোকাস</string>
+    <string name="settings_audio_focus_calls">শুধু ফোন কলের সময় থামান</string>
+    <string name="settings_audio_focus_apps">অন্য অ্যাপ শব্দ চালালে থামান</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube ভিডিওর স্পনসর অংশ স্বয়ংক্রিয়ভাবে বাদ দিন। Now Playing থেকে কোনো ভিডিওর জন্য বন্ধ করুন।</string>
     <string name="sponsor_block_included">এই ভিডিওর জন্য SponsorBlock চালু</string>

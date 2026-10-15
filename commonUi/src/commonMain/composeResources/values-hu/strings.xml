@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">Névtelen használati adatok megosztása az alkalmazás fejlesztéséhez.</string>
     <string name="settings_enable_pip">Kép a képben</string>
     <string name="settings_enable_pip_hint">Ha a Most szól képernyőn vagy teljes képernyőn nézel videót, kis ablakban folytatódik, amikor elhagyod az alkalmazást. Ellenkező esetben a videó csak hangra vált, amíg vissza nem térsz.</string>
+    <string name="settings_audio_focus">Hangfókusz</string>
+    <string name="settings_audio_focus_calls">Szüneteltetés csak telefonhívásnál</string>
+    <string name="settings_audio_focus_apps">Szüneteltetés, ha más alkalmazás hangot játszik le</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">A szponzorált részek automatikus átugrása a YouTube-videókban. Egy adott videónál a Most szól képernyőn kapcsolható ki.</string>
     <string name="sponsor_block_included">SponsorBlock bekapcsolva ehhez a videóhoz</string>

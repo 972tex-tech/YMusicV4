@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">ആപ്പ് മെച്ചപ്പെടുത്താൻ അജ്ഞാത ഉപയോഗ വിവരങ്ങൾ പങ്കിടുക.</string>
     <string name="settings_enable_pip">പിക്ചർ-ഇൻ-പിക്ചർ</string>
     <string name="settings_enable_pip_hint">Now Playing-ലോ പൂർണ്ണ സ്ക്രീനിലോ വീഡിയോ കാണുമ്പോൾ ആപ്പ് വിട്ടാൽ ഒരു ചെറിയ വിൻഡോയിൽ തുടരുക. അല്ലെങ്കിൽ നിങ്ങൾ തിരികെ വരുന്നതുവരെ വീഡിയോ ഓഡിയോ മാത്രമായി മാറും.</string>
+    <string name="settings_audio_focus">ഓഡിയോ ഫോക്കസ്</string>
+    <string name="settings_audio_focus_calls">ഫോൺ കോളുകൾക്ക് മാത്രം താൽക്കാലികമായി നിർത്തുക</string>
+    <string name="settings_audio_focus_apps">മറ്റ് ആപ്പുകൾ ശബ്ദം പ്ലേ ചെയ്യുമ്പോൾ നിർത്തുക</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube വീഡിയോകളിലെ സ്പോൺസർ ചെയ്ത ഭാഗങ്ങൾ സ്വയമേവ ഒഴിവാക്കുക. Now Playing-ൽ നിന്ന് ഒരു വീഡിയോയ്ക്ക് ഓഫ് ചെയ്യാം.</string>
     <string name="sponsor_block_included">ഈ വീഡിയോയ്ക്ക് SponsorBlock ഓണാണ്</string>

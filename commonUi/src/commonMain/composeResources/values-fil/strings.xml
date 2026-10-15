@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">Magbahagi ng mga anonymous na signal ng paggamit para matulungang mapahusay ang app.</string>
     <string name="settings_enable_pip">Picture in picture</string>
     <string name="settings_enable_pip_hint">Kapag nanonood ng video sa Now Playing o full screen, magpatuloy sa maliit na window kung aalis ka sa app. Kung hindi, magiging audio lang ang video hanggang sa bumalik ka.</string>
+    <string name="settings_audio_focus">Audio focus</string>
+    <string name="settings_audio_focus_calls">I-pause lang kapag may tawag</string>
+    <string name="settings_audio_focus_apps">I-pause kapag may tunog mula sa ibang app</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Awtomatikong laktawan ang mga sponsored na bahagi sa mga YouTube video. I-off para sa isang video mula sa Now Playing.</string>
     <string name="sponsor_block_included">Naka-enable ang SponsorBlock para sa video na ito</string>

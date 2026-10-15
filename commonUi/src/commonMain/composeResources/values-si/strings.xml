@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">යෙදුම වැඩිදියුණු කිරීමට උදවු වන ලෙස නිර්නාමික භාවිත දත්ත බෙදා ගන්න.</string>
     <string name="settings_enable_pip">පින්තූරය තුළ පින්තූරය</string>
     <string name="settings_enable_pip_hint">දැන් වාදනය වන තිරයේ හෝ සම්පූර්ණ තිරයේ වීඩියෝ නරඹන විට, ඔබ යෙදුමෙන් ඉවත් වුවහොත් කුඩා කවුළුවක දිගටම වාදනය වේ. නැතහොත් ඔබ ආපසු එන තෙක් වීඩියෝව ශ්‍රව්‍ය පමණක් බවට මාරු වේ.</string>
+    <string name="settings_audio_focus">ශ්‍රව්‍ය නාභිගත කිරීම</string>
+    <string name="settings_audio_focus_calls">දුරකථන ඇමතුම් සඳහා පමණක් විරාම කරන්න</string>
+    <string name="settings_audio_focus_apps">වෙනත් යෙදුම් ශබ්ද වාදනය කරන විට විරාම කරන්න</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube වීඩියෝවල අනුග්‍රාහක කොටස් ස්වයංක්‍රීයව මඟ හරින්න. දැන් වාදනය වන තිරයෙන් වීඩියෝවකට අක්‍රිය කරන්න.</string>
     <string name="sponsor_block_included">මෙම වීඩියෝව සඳහා SponsorBlock සක්‍රියයි</string>

@@ -440,7 +440,7 @@ class YMusicApplication : Application() {
                     }
                 }
         }
-        AudioFocusCoordinator(this, graph.player, appScope).start()
+        AudioFocusCoordinator(this, graph.player, graph.settings, appScope).start()
         SystemAudioEffects(this, graph.player, graph.settings, appScope, rootLogger.fork("system-audio-fx")).start()
         widgets.attach(graph)
         // Same pattern for downloads: any change that (re)starts work also (re)starts the
@@ -605,6 +605,7 @@ class YMusicApplication : Application() {
             logger = rootLogger,
             playerCache = playerCache,
             systemAudioEffects = true,
+            audioFocusSetting = true,
             stats = shared.stats,
             updates = shared.updates,
             premium = premium,

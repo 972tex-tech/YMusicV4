@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">Tətbiqi təkmilləşdirməyə kömək etmək üçün anonim istifadə məlumatlarını paylaşın.</string>
     <string name="settings_enable_pip">Şəkil içində şəkil</string>
     <string name="settings_enable_pip_hint">İndi oxudulur və ya tam ekranda video izləyərkən tətbiqdən çıxsanız, kiçik pəncərədə davam edir. Əks halda siz qayıdana qədər video yalnız audioya keçir.</string>
+    <string name="settings_audio_focus">Audio fokus</string>
+    <string name="settings_audio_focus_calls">Yalnız telefon zəngləri üçün dayandır</string>
+    <string name="settings_audio_focus_apps">Digər tətbiqlər səs çalanda dayandır</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube videolarında sponsorlu hissələri avtomatik keçir. Bir video üçün İndi oxudulur ekranından söndürün.</string>
     <string name="sponsor_block_included">SponsorBlock bu video üçün aktivdir</string>

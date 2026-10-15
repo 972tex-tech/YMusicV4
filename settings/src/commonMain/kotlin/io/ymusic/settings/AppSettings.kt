@@ -145,6 +145,14 @@ object AppSettings {
      */
     val systemAudioEffects = BoolSetting("playback.systemAudioEffects", true)
 
+    /**
+     * Android: when other audio pauses playback — [AUDIO_FOCUS_APPS] (default) follows audio focus
+     * and pauses whenever another app plays, [AUDIO_FOCUS_CALLS] pauses only for phone calls.
+     */
+    val audioFocus = StringSetting("playback.audioFocus", AUDIO_FOCUS_APPS)
+    const val AUDIO_FOCUS_CALLS = "calls"
+    const val AUDIO_FOCUS_APPS = "apps"
+
     /** The sleep-timer dialog's last chosen duration, its starting value next time. */
     val sleepTimerMinutes = IntSetting("playback.sleepTimerMinutes", 30)
 

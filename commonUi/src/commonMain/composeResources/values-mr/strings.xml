@@ -358,6 +358,9 @@
     <string name="settings_stats_hint">ॲप सुधारण्यास मदत करण्यासाठी निनावी वापर संकेत शेअर करा.</string>
     <string name="settings_enable_pip">पिक्चर-इन-पिक्चर</string>
     <string name="settings_enable_pip_hint">प्लेअर स्क्रीन किंवा पूर्ण स्क्रीनमध्ये व्हिडिओ पाहताना ॲप सोडल्यास तो लहान विंडोमध्ये सुरू राहील. अन्यथा तुम्ही परत येईपर्यंत व्हिडिओ फक्त ऑडिओवर जाईल.</string>
+    <string name="settings_audio_focus">ऑडिओ फोकस</string>
+    <string name="settings_audio_focus_calls">फक्त फोन कॉलसाठी थांबवा</string>
+    <string name="settings_audio_focus_apps">इतर अ‍ॅप्स आवाज वाजवतात तेव्हा थांबवा</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube व्हिडिओमधील प्रायोजित भाग आपोआप वगळा. एखाद्या व्हिडिओसाठी प्लेअर स्क्रीनवरून बंद करा.</string>
     <string name="sponsor_block_included">या व्हिडिओसाठी SponsorBlock सुरू केले</string>

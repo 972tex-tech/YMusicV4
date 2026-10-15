@@ -357,6 +357,9 @@
     <string name="settings_stats_hint">Kongsi isyarat penggunaan tanpa nama untuk membantu menambah baik apl.</string>
     <string name="settings_enable_pip">Gambar dalam gambar</string>
     <string name="settings_enable_pip_hint">Apabila menonton video dalam Sedang Dimainkan atau skrin penuh, teruskan dalam tetingkap kecil jika anda meninggalkan apl. Jika tidak, video bertukar kepada audio sahaja sehingga anda kembali.</string>
+    <string name="settings_audio_focus">Fokus audio</string>
+    <string name="settings_audio_focus_calls">Jeda hanya untuk panggilan telefon</string>
+    <string name="settings_audio_focus_apps">Jeda apabila apl lain memainkan bunyi</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Langkau segmen tajaan dalam video YouTube secara automatik. Matikan untuk sesuatu video daripada Sedang Dimainkan.</string>
     <string name="sponsor_block_included">SponsorBlock didayakan untuk video ini</string>

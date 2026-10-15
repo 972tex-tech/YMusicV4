@@ -360,6 +360,9 @@
     <string name="settings_stats_hint">Sdílet anonymní údaje o používání a pomoci tak zlepšit aplikaci.</string>
     <string name="settings_enable_pip">Obraz v obraze</string>
     <string name="settings_enable_pip_hint">Při sledování videa v Právě hraje nebo na celé obrazovce pokračovat v malém okně, když aplikaci opustíte. Jinak se video do vašeho návratu přepne jen na zvuk.</string>
+    <string name="settings_audio_focus">Zvukový fokus</string>
+    <string name="settings_audio_focus_calls">Pozastavit jen při telefonních hovorech</string>
+    <string name="settings_audio_focus_apps">Pozastavit, když jiné aplikace přehrávají zvuk</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Automaticky přeskakovat sponzorované úseky ve videích YouTube. Pro konkrétní video to lze vypnout v Právě hraje.</string>
     <string name="sponsor_block_included">SponsorBlock je pro toto video zapnutý</string>

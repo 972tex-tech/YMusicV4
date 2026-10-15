@@ -328,6 +328,9 @@
     <string name="settings_stats_hint">Chia sẻ dữ liệu sử dụng ẩn danh để giúp cải thiện ứng dụng.</string>
     <string name="settings_enable_pip">Hình trong hình</string>
     <string name="settings_enable_pip_hint">Khi xem video ở Đang phát hoặc toàn màn hình, tiếp tục phát trong cửa sổ nhỏ nếu bạn rời ứng dụng. Nếu không, video sẽ chuyển sang chỉ phát âm thanh cho đến khi bạn quay lại.</string>
+    <string name="settings_audio_focus">Tiêu điểm âm thanh</string>
+    <string name="settings_audio_focus_calls">Chỉ tạm dừng khi có cuộc gọi</string>
+    <string name="settings_audio_focus_apps">Tạm dừng khi ứng dụng khác phát âm thanh</string>
     <string name="settings_sponsor_block">Chặn quảng cáo trong video</string>
     <string name="settings_sponsor_block_hint">Tự động bỏ qua các đoạn được tài trợ trong video YouTube. Tắt cho một video từ Đang phát.</string>
     <string name="sponsor_block_included">Chặn quảng cáo trong video này</string>
