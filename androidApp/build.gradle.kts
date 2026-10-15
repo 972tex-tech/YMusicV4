@@ -108,6 +108,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     packaging {
@@ -146,6 +147,7 @@ tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders"
 /** The Android product shell over :commonUi (see MainActivity). Plain Android app module —
  *  AGP 9's built-in Kotlin (com.android.application cannot combine with the KMP plugin). */
 dependencies {
+    coreLibraryDesugaring(Libs.desugarJdkLibs)
     implementation(project(":commonUi"))
     implementation(project(":media-scanner")) // pulls :media-store + :kmpFfmpeg (api) for the local Library
     implementation(Libs.AndroidX.coreKtx)

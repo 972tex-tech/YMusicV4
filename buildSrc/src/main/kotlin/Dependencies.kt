@@ -155,4 +155,7 @@ object Libs {
     object Zxing {
         const val core = "com.google.zxing:core:3.5.3"
     }
+
+    // java.time on API < 26, which kotlinx-datetime's TimeZone needs.
+    const val desugarJdkLibs = "com.android.tools:desugar_jdk_libs:2.1.5"
 }
