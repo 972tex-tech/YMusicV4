@@ -55562,6 +55562,15 @@ static int64_t date_now(void) {
     return (int64_t)tv.tv_sec * 1000 + (tv.tv_usec / 1000);
 }
 
+/* BEGIN patch: new Date() wall-clock hook (the BotGuard dump records every read). */
+static JSDateCtorHook *js_date_ctor_hook;
+
+void JS_SetDateCtorHook(JSDateCtorHook *hook)
+{
+    js_date_ctor_hook = hook;
+}
+/* END patch */
+
 static JSValue js_date_constructor(JSContext *ctx, JSValueConst new_target,
                                    int argc, JSValueConst *argv)
 {
@@ -55577,6 +55586,10 @@ static JSValue js_date_constructor(JSContext *ctx, JSValueConst new_target,
     n = argc;
     if (n == 0) {
         val = date_now();
+        /* BEGIN patch: new Date() wall-clock hook */
+        if (js_date_ctor_hook)
+            js_date_ctor_hook(ctx, val);
+        /* END patch */
     } else if (n == 1) {
         JSValue v, dv;
         if (JS_VALUE_GET_TAG(argv[0]) == JS_TAG_OBJECT) {

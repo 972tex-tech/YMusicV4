@@ -12,6 +12,9 @@
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 
 /* Flat-string access (BEGIN/END patch at the end of vendored quickjs.c). */
 JSValue JS_ToFlatString(JSContext *ctx, JSValueConst v);
@@ -832,6 +835,53 @@ static JSValue js_date_now_rec(JSContext *ctx, JSValueConst this_val, int argc, 
     return JS_NewInt64(ctx, ms);
 }
 
+static void ent_date_ctor(JSContext *ctx, double ms)
+{
+    Ent *e = ent_of(ctx);
+    if (e && e->rec)
+        ent_line(e, 'w', "%c %.0f", ms);
+}
+
+static const char *host_platform(void)
+{
+#if defined(__ANDROID__)
+    return "android";
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
+    return "ios";
+#elif defined(__APPLE__)
+    return "macos";
+#elif defined(__linux__)
+    return "linux";
+#elif defined(_WIN32)
+    return "windows";
+#else
+    return "unknown";
+#endif
+}
+
+static const char *host_arch(void)
+{
+#if defined(__aarch64__)
+    return "arm64";
+#elif defined(__x86_64__)
+    return "x86_64";
+#elif defined(__arm__)
+    return "arm";
+#elif defined(__i386__)
+    return "x86";
+#else
+    return "unknown";
+#endif
+}
+
+static JSValue bg_host_info(JSContext *ctx)
+{
+    JSValue o = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, o, "platform", JS_NewString(ctx, host_platform()));
+    JS_SetPropertyStr(ctx, o, "arch", JS_NewString(ctx, host_arch()));
+    return o;
+}
+
 static JSValue js_math_random_rec(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     Ent *e = ent_of(ctx);
@@ -863,7 +913,8 @@ static void ent_clear(Ent *e)
 }
 
 /* Install C Date.now / Math.random so BotGuard binds these, not later wrappers.
- * rec stays 0 until begin. Do not restore: snapshot may close over the wrappers. */
+ * rec stays 0 until begin. Do not restore: snapshot may close over the wrappers.
+ * Returns {platform, arch} for the remill dump. */
 static JSValue js_bg_entropy_start(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     Ent *e = ent_of(ctx);
@@ -915,10 +966,11 @@ static JSValue js_bg_entropy_start(JSContext *ctx, JSValueConst this_val, int ar
             JS_SetPropertyStr(ctx, g, k_err_ctors[k], wrap);
         }
     }
+    JS_SetDateCtorHook(ent_date_ctor);
     JS_FreeValue(ctx, date);
     JS_FreeValue(ctx, math);
     JS_FreeValue(ctx, g);
-    return JS_UNDEFINED;
+    return bg_host_info(ctx);
 }
 
 static JSValue js_bg_entropy_begin(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
