@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <time.h>
+#include <pthread.h>
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif
@@ -608,6 +609,9 @@ typedef struct {
     int cap;
 } Ent;
 static Ent g_ent[ENT_CTX];
+/* Runtimes on different threads claim and release rows concurrently (a player tearing down while the
+ * next one starts); a row's fields are touched only by its own context's thread. */
+static pthread_mutex_t g_ent_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* Lookup only: the hooks run on every context, only __bgEntropyStart claims a row. */
 static Ent *ent_of(JSContext *ctx)
@@ -627,21 +631,24 @@ static Ent *ent_claim(JSContext *ctx)
     Ent *e = ent_of(ctx);
     if (e || !ctx)
         return e;
+    pthread_mutex_lock(&g_ent_lock);
     for (i = 0; i < ENT_CTX; i++) {
         if (!g_ent[i].ctx) {
-            g_ent[i].ctx = ctx;
-            g_ent[i].date_orig = JS_UNDEFINED;
-            g_ent[i].rand_orig = JS_UNDEFINED;
-            g_ent[i].tostr_orig = JS_UNDEFINED;
-            {
-                int k;
-                for (k = 0; k < ERR_CTORS; k++)
-                    g_ent[i].error_orig[k] = JS_UNDEFINED;
-            }
-            return &g_ent[i];
+            e = &g_ent[i];
+            e->ctx = ctx;
+            break;
         }
     }
-    return NULL;
+    pthread_mutex_unlock(&g_ent_lock);
+    if (e) {
+        int k;
+        e->date_orig = JS_UNDEFINED;
+        e->rand_orig = JS_UNDEFINED;
+        e->tostr_orig = JS_UNDEFINED;
+        for (k = 0; k < ERR_CTORS; k++)
+            e->error_orig[k] = JS_UNDEFINED;
+    }
+    return e;
 }
 
 static void ent_line(Ent *e, char tag, const char *fmt, double v)
@@ -1121,7 +1128,9 @@ void qjs_web_release(JSContext *ctx)
     for (k = 0; k < ERR_CTORS; k++)
         JS_FreeValue(ctx, e->error_orig[k]);
     ent_clear(e);
+    pthread_mutex_lock(&g_ent_lock);
     memset(e, 0, sizeof(*e));
+    pthread_mutex_unlock(&g_ent_lock);
 }
 
 static void install_performance(JSContext *ctx, JSValueConst global)
