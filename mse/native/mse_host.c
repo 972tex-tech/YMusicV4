@@ -4,6 +4,7 @@
 
 #include <limits.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -71,7 +72,8 @@ struct MseHost {
     /* JVM hole. Survives mse_host_reset (new MseAv). 0×0 = decode size. */
     int blit_w;
     int blit_h;
-    int frames;
+    /* Atomic, not under mu: the UI thread polls it and must never wait on the decode lock. */
+    atomic_int frames;
     uint8_t *last_bgra; /* borrowed from MseAv ping-pong; do not free */
     int last_w;
     int last_h;
@@ -849,8 +851,8 @@ static void *vid_loop(void *arg)
             h->vw = w;
             h->vh = ht;
             h->vpts = pts;
-            h->frames++;
             pthread_mutex_unlock(&h->mu);
+            atomic_fetch_add_explicit(&h->frames, 1, memory_order_relaxed);
         }
 
         if (show && h->on_frame)
@@ -1672,13 +1674,9 @@ int mse_host_copy_frame(MseHost *h, uint8_t *dst, int cap, int *w, int *ht, int 
 
 int mse_host_frames(MseHost *h)
 {
-    int n;
     if (!h)
         return 0;
-    pthread_mutex_lock(&h->mu);
-    n = h->frames;
-    pthread_mutex_unlock(&h->mu);
-    return n;
+    return atomic_load_explicit(&h->frames, memory_order_relaxed);
 }
 
 int64_t mse_host_samples_played(MseHost *h)
