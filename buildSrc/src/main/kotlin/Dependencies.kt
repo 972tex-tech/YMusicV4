@@ -9,11 +9,11 @@ object Versions {
     /** The scrape bundle's (engine.js) self-declared revision — BUMP MANUALLY on every remote push of
      *  it. Feeds its inlined BACKEND_VERSION, its embedded-const version and each shell's
      *  ENGINE_JS_VERSION. A remote engine.js applies only above the embedded revision. */
-    const val engineJsVersion = 68L
+    const val engineJsVersion = 69L
 
     /** The MSE player bundle's (player.js) revision — independent of [engineJsVersion]; BUMP
      *  MANUALLY on every remote push of it. Feeds its inlined BACKEND_VERSION and PLAYER_JS_VERSION. */
-    const val playerJsVersion = 68L
+    const val playerJsVersion = 69L
     const val targetSdk = 35
 
     // KMP
