@@ -27,8 +27,8 @@ class LiveVideoException(videoId: String?) : Exception("live video ${videoId.orE
 /** One downloadable video height; sizes are estimates for each container (video + its audio track). */
 class VideoOption(val height: Int, val fps: Int, val mp4Bytes: Long, val webmBytes: Long)
 
-/** One audio-only output and its estimated size. */
-class AudioOption(val format: DownloadFormat, val bytes: Long)
+/** One audio-only output and its estimated size; [kbps] is the encode bitrate of a transcoded [format] (MP3). */
+class AudioOption(val format: DownloadFormat, val bytes: Long, val kbps: Int? = null)
 
 /** One audio language of a video that has dubs. */
 class AudioTrackOption(val id: String, val name: String, val isDefault: Boolean)
@@ -66,9 +66,8 @@ class DownloadOptions(
 
         private const val AAC_TRANSCODE_BPS = 192_000L
         private const val OPUS_TRANSCODE_BPS = 160_000L
-        private const val MP3_VBR_BPS = 190_000L
 
-        fun parse(playerResponseJson: String, ffmpegAvailable: Boolean): DownloadOptions {
+        fun parse(playerResponseJson: String, ffmpegAvailable: Boolean, mp3SourceBitrate: Boolean = false): DownloadOptions {
             val data = json.parseToJsonElement(playerResponseJson).jsonObject
             val details = data.objectOrNull("videoDetails")
             if (details?.boolOrNull("isLive") == true) throw LiveVideoException(details.stringOrNull("videoId"))
@@ -84,7 +83,7 @@ class DownloadOptions(
             return DownloadOptions(
                 durationMs = durationMs,
                 video = if (ffmpegAvailable) videoOptions(formats, raw, durationMs) else emptyList(),
-                audio = audioOptions(formats, durationMs, ffmpegAvailable),
+                audio = audioOptions(formats, durationMs, ffmpegAvailable, mp3SourceBitrate),
                 audioTracks = audioTracks(raw),
                 captions = captionEntries(data).map { CaptionOption(it.languageCode, it.name, it.isAsr, it.isDefault, it.isTranslated) },
             )
@@ -108,7 +107,12 @@ class DownloadOptions(
             }
         }
 
-        private fun audioOptions(formats: List<AdaptiveFormat>, durationMs: Long, ffmpegAvailable: Boolean): List<AudioOption> {
+        private fun audioOptions(
+            formats: List<AdaptiveFormat>,
+            durationMs: Long,
+            ffmpegAvailable: Boolean,
+            mp3SourceBitrate: Boolean,
+        ): List<AudioOption> {
             val aac = FormatSelection.bestAudio(formats, preferAac = true)
             val opus = FormatSelection.bestAudio(formats, preferAac = false)
             val m4a = AudioOption(
@@ -122,7 +126,7 @@ class DownloadOptions(
                     if (opus?.mimeType?.contains("webm") == true) opus.clen else bytesAt(OPUS_TRANSCODE_BPS, durationMs),
                 ),
                 m4a,
-                AudioOption(DownloadFormat.MP3, bytesAt(MP3_VBR_BPS, durationMs)),
+                Mp3Encoding.of(mp3SourceBitrate).kbps.let { kbps -> AudioOption(DownloadFormat.MP3, bytesAt(kbps * 1000L, durationMs), kbps) },
             )
         }
 

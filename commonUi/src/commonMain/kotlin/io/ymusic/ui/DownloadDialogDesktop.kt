@@ -279,7 +279,7 @@ private fun FormatDropdown(state: DownloadOptionsState) {
         MenuGroupLabel(stringResource(Res.string.download_audio_only))
         options.audio.forEach { audio ->
             DropdownMenuItem(
-                text = { Text("${audio.format.displayName()} · ${audio.format.detail()} — ${formatDownloadSize(audio.bytes)}") },
+                text = { Text("${audio.format.displayName()} · ${audio.detail()} — ${formatDownloadSize(audio.bytes)}") },
                 onClick = {
                     state.audioOnly = true
                     state.audioFormat = audio.format

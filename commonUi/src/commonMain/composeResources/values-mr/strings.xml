@@ -399,7 +399,9 @@
     <string name="download_less">कमी</string>
     <string name="download_webm_detail">WebM · मूळ स्ट्रीम</string>
     <string name="download_m4a_detail">AAC · मूळ स्ट्रीम</string>
-    <string name="download_mp3_detail">रूपांतरित · सगळीकडे प्ले होते</string>
+    <string name="download_mp3_detail">%1$d kbps · सगळीकडे प्ले होते</string>
+    <string name="settings_mp3_source_bitrate">मूळ बिटरेटवर MP3 डाउनलोड करा</string>
+    <string name="settings_mp3_source_bitrate_hint">320 kbps ऐवजी सुमारे 256 kbps (बदलता बिटरेट) वर MP3 एन्कोड करा. लहान फाइल्स, तीच गुणवत्ता.</string>
     <string name="download_audio_track">ऑडिओ ट्रॅक</string>
     <string name="download_captions">कॅप्शन</string>
     <string name="download_captions_off">बंद</string>

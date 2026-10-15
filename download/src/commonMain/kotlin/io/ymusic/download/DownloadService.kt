@@ -121,10 +121,10 @@ class DownloadService(
     }
 
     /** What [videoId] can be downloaded as — the options dialog's input. */
-    suspend fun probe(videoId: String): DownloadOptions {
+    suspend fun probe(videoId: String, mp3SourceBitrate: Boolean = false): DownloadOptions {
         val fetch = playerResponse ?: throw TechnicalException("E70040", "download options: no player-response source")
         val json = playerGate.run { fetch(videoId) }
-        return withContext(Dispatchers.Default) { DownloadOptions.parse(json, ffmpegAvailable) }
+        return withContext(Dispatchers.Default) { DownloadOptions.parse(json, ffmpegAvailable, mp3SourceBitrate) }
     }
 
     fun enqueue(request: DownloadRequest): String {
@@ -142,6 +142,7 @@ class DownloadService(
             captions = request.captions,
             audioLanguage = request.audioLanguage,
             captionLanguage = request.captionLanguage,
+            mp3SourceBitrate = request.mp3SourceBitrate,
             state = DownloadState.QUEUED,
             downloadedBytes = 0,
             totalBytes = 0,

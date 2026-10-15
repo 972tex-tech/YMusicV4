@@ -399,7 +399,9 @@
     <string name="download_less">Chache</string>
     <string name="download_webm_detail">WebM · mtiririko asili</string>
     <string name="download_m4a_detail">AAC · mtiririko asili</string>
-    <string name="download_mp3_detail">Imegeuzwa · inacheza popote</string>
+    <string name="download_mp3_detail">%1$d kbps · inacheza popote</string>
+    <string name="settings_mp3_source_bitrate">Pakua MP3 kwa kasi biti asili</string>
+    <string name="settings_mp3_source_bitrate_hint">Simba MP3 kwa takriban 256 kbps (kasi biti inayobadilika) badala ya 320 kbps. Faili ndogo, ubora uleule.</string>
     <string name="download_audio_track">Wimbo wa sauti</string>
     <string name="download_captions">Manukuu</string>
     <string name="download_captions_off">Yamezimwa</string>

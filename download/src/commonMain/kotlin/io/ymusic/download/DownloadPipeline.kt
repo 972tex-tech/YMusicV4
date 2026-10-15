@@ -107,7 +107,8 @@ class DownloadPipeline(
         val subs = streams.captions.map { SubtitleInput(it.scratch.path, it.languageCode, it.name) }
         when (task.format) {
             DownloadFormat.MP3 -> {
-                withCover(task) { cover -> ff.toMp3(audio.path, out.path, cover, meta, onFfProgress) }
+                val encoding = Mp3Encoding.of(task.mp3SourceBitrate)
+                withCover(task) { cover -> ff.toMp3(audio.path, out.path, encoding, cover, meta, onFfProgress) }
                 if (streams.captions.isNotEmpty()) outName = withLyrics(task.id, out, streams.captions)
             }
             DownloadFormat.M4A -> withCover(task) { cover ->

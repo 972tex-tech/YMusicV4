@@ -22,7 +22,9 @@ CREATE TABLE downloadTask (
     audio_language    TEXT,
     caption_language  TEXT,
     -- The failure's CodedError code (category or E#####); error_message holds only a server-minted userMessage.
-    error_code        TEXT
+    error_code        TEXT,
+    -- 1 = MP3 encoded LAME VBR V0, 0 = ABR 320 kbps.
+    mp3_source_bitrate INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX downloadTask_created ON downloadTask(created_at);
@@ -31,8 +33,8 @@ upsert:
 INSERT OR REPLACE INTO downloadTask(
     id, video_id, title, artist, thumbnail_url, format, requested_height,
     state, downloaded_bytes, total_bytes, file_path, error_message, created_at, updated_at,
-    file_name, audio_track_id, caption_langs, audio_language, caption_language, error_code
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    file_name, audio_track_id, caption_langs, audio_language, caption_language, error_code, mp3_source_bitrate
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateState:
 UPDATE downloadTask SET state = ?, error_message = ?, error_code = ?, updated_at = ? WHERE id = ?;

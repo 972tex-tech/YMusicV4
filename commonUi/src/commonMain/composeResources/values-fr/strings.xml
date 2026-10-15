@@ -400,7 +400,9 @@
     <string name="download_less">Moins</string>
     <string name="download_webm_detail">WebM · flux d'origine</string>
     <string name="download_m4a_detail">AAC · flux d'origine</string>
-    <string name="download_mp3_detail">Converti · lisible partout</string>
+    <string name="download_mp3_detail">%1$d kbps · lisible partout</string>
+    <string name="settings_mp3_source_bitrate">Télécharger les MP3 au débit d'origine</string>
+    <string name="settings_mp3_source_bitrate_hint">Encoder les MP3 à environ 256 kbps (débit variable) au lieu de 320 kbps. Fichiers plus légers, même qualité.</string>
     <string name="download_audio_track">Piste audio</string>
     <string name="download_captions">Sous-titres</string>
     <string name="download_captions_off">Désactivés</string>

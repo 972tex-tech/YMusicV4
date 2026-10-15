@@ -398,7 +398,9 @@
     <string name="download_less">收起</string>
     <string name="download_webm_detail">WebM · 原始流</string>
     <string name="download_m4a_detail">AAC · 原始流</string>
-    <string name="download_mp3_detail">已转换 · 到处都能播放</string>
+    <string name="download_mp3_detail">%1$d kbps · 到处都能播放</string>
+    <string name="settings_mp3_source_bitrate">以原始码率下载 MP3</string>
+    <string name="settings_mp3_source_bitrate_hint">以约 256 kbps（可变码率）而非 320 kbps 编码 MP3。文件更小，音质相同。</string>
     <string name="download_audio_track">音轨</string>
     <string name="download_captions">字幕</string>
     <string name="download_captions_off">关闭</string>

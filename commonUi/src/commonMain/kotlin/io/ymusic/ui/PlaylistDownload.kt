@@ -126,7 +126,8 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
         scope.launch {
             val gated = graph.mediaStore != null && graph.libraryFolderPicker != null
             if (gated && !hasUsableDownloadLocation(graph) && !pickDownloadFolder(graph)) return@launch
-            picked.forEach { downloads.enqueue(preset.request(it)) }
+            val mp3SourceBitrate = graph.mp3SourceBitrate()
+            picked.forEach { downloads.enqueue(preset.request(it, mp3SourceBitrate)) }
             val target = session.targetPlaylist
             val store = graph.mediaStore
             if (target != null && store != null) store.addCodesToPlaylist(target.id, picked.map { it.id })

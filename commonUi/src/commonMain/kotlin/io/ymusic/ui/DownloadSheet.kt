@@ -75,6 +75,7 @@ import io.ymusic.download.CaptionOption
 import io.ymusic.download.DownloadFileNames
 import io.ymusic.download.DownloadFormat
 import io.ymusic.download.DownloadKind
+import io.ymusic.download.Mp3Encoding
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.download_action
@@ -409,7 +410,7 @@ private fun AudioFormats(state: DownloadOptionsState, audio: List<AudioOption>) 
                 RadioButton(selected = selected, onClick = null, colors = RadioButtonDefaults.colors(selectedColor = DesignColors.Accent))
                 Column(Modifier.weight(1f)) {
                     Text(option.format.displayName(), style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink))
-                    Text(option.format.detail(), style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary))
+                    Text(option.detail(), style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary))
                 }
                 Text(formatDownloadSize(option.bytes), style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary))
             }
@@ -426,10 +427,10 @@ internal fun DownloadFormat.displayName(): String = when (this) {
 }
 
 @Composable
-internal fun DownloadFormat.detail(): String = when (this) {
+internal fun AudioOption.detail(): String = when (format) {
     DownloadFormat.AUDIO_WEBM -> stringResource(Res.string.download_webm_detail)
     DownloadFormat.M4A -> stringResource(Res.string.download_m4a_detail)
-    DownloadFormat.MP3 -> stringResource(Res.string.download_mp3_detail)
+    DownloadFormat.MP3 -> stringResource(Res.string.download_mp3_detail, kbps ?: Mp3Encoding.ABR_320.kbps)
     DownloadFormat.VIDEO_WEBM, DownloadFormat.VIDEO_MP4 -> ""
 }
 

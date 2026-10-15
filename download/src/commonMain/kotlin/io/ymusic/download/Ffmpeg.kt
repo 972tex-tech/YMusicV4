@@ -41,15 +41,16 @@ class Ffmpeg(
     // The output container is named explicitly with `-f` so it doesn't depend on the output filename's
     // extension — scratch/publish names (and content:// targets) may have none.
 
-    /** opus/webm/m4a → mp3 via libmp3lame (VBR ~q2), tagged ID3v2.3 — the version [Id3Lyrics] extends
-     *  and the one most players read. A JPEG [cover] becomes the APIC picture. */
+    /** opus/webm/m4a → mp3 via libmp3lame with [encoding], tagged ID3v2.3 — the version
+     *  [Id3Lyrics] extends and the one most players read. A JPEG [cover] becomes the APIC picture. */
     suspend fun toMp3(
         input: String,
         output: String,
+        encoding: Mp3Encoding,
         cover: String? = null,
         metadata: List<Pair<String, String>> = emptyList(),
         onProgressUs: ((Long) -> Unit)? = null,
-    ) = run(mp3Args(input, output, cover, metadata), onProgressUs)
+    ) = run(mp3Args(input, output, encoding, cover, metadata), onProgressUs)
 
     /** best audio → m4a (+ any [captions], as mov_text): stream-copy when already AAC ([copy]=true),
      *  else transcode to AAC. M4A is an ISO-BMFF container, so it carries subtitle tracks like MP4. A JPEG
@@ -144,10 +145,11 @@ class Ffmpeg(
 
 // --- pure argv builders (unit-tested; ffmpeg not invoked) ------------------------------------------
 
-/** best audio → mp3 (libmp3lame VBR ~q2, ID3v2.3), with an optional JPEG [cover] as the APIC picture. */
+/** best audio → mp3 (libmp3lame with [encoding], ID3v2.3), with an optional JPEG [cover] as the APIC picture. */
 internal fun mp3Args(
     audio: String,
     output: String,
+    encoding: Mp3Encoding,
     cover: String?,
     metadata: List<Pair<String, String>>,
 ): List<String> = buildList {
@@ -155,7 +157,11 @@ internal fun mp3Args(
     if (cover != null) addAll(coverInputArgs(cover))
     add("-map"); add("0:a:0")
     if (cover != null) addAll(coverOutputArgs(inputIndex = 1))
-    add("-c:a"); add("libmp3lame"); add("-q:a"); add("2")
+    add("-c:a"); add("libmp3lame")
+    when (encoding) {
+        Mp3Encoding.ABR_320 -> { add("-abr"); add("1"); add("-b:a"); add("320k") }
+        Mp3Encoding.VBR_V0 -> { add("-q:a"); add("0") }
+    }
     addAll(metaArgs(metadata))
     add("-id3v2_version"); add("3")
     add("-f"); add("mp3"); add(output.ffSpec())

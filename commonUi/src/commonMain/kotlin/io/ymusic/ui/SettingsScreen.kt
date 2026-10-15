@@ -235,7 +235,7 @@ private fun SoundRow(graph: AppGraph, speed: Boolean) {
 
 /** A boolean setting as a switch row: tap anywhere to flip, persisted immediately. */
 @Composable
-private fun ToggleRow(graph: AppGraph, setting: BoolSetting, title: StringResource, hint: StringResource) {
+internal fun ToggleRow(graph: AppGraph, setting: BoolSetting, title: StringResource, hint: StringResource) {
     val scope = rememberCoroutineScope()
     val enabled by remember(graph, setting) { graph.settings.flow(setting) }.collectAsState()
     Row(

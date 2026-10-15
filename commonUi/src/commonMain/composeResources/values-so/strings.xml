@@ -399,7 +399,9 @@
     <string name="download_less">Wax yar</string>
     <string name="download_webm_detail">WebM · durdurkii asalka ahaa</string>
     <string name="download_m4a_detail">AAC · durdurkii asalka ahaa</string>
-    <string name="download_mp3_detail">La beddelay · meel walba ka shaqeeya</string>
+    <string name="download_mp3_detail">%1$d kbps · meel walba ka shaqeeya</string>
+    <string name="settings_mp3_source_bitrate">Soo deji MP3 heerka bit-ka asalka ah</string>
+    <string name="settings_mp3_source_bitrate_hint">MP3 ku codee qiyaastii 256 kbps (heer bit isbeddela) halkii 320 kbps. Faylal yar, tayo isku mid ah.</string>
     <string name="download_audio_track">Raadka codka</string>
     <string name="download_captions">Qoraal-hooseed</string>
     <string name="download_captions_off">Xidhan</string>

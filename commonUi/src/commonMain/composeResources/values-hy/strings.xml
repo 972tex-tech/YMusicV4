@@ -399,7 +399,9 @@
     <string name="download_less">Ավելի քիչ</string>
     <string name="download_webm_detail">WebM · բնօրինակ հոսք</string>
     <string name="download_m4a_detail">AAC · բնօրինակ հոսք</string>
-    <string name="download_mp3_detail">Փոխարկված · նվագարկվում է ամենուր</string>
+    <string name="download_mp3_detail">%1$d kbps · նվագարկվում է ամենուր</string>
+    <string name="settings_mp3_source_bitrate">Ներբեռնել MP3-ը սկզբնական բիթրեյթով</string>
+    <string name="settings_mp3_source_bitrate_hint">Կոդավորել MP3-ը մոտ 256 kbps-ով (փոփոխական բիթրեյթ)՝ 320 kbps-ի փոխարեն։ Ավելի փոքր ֆայլեր, նույն որակը։</string>
     <string name="download_audio_track">Աուդիո ուղի</string>
     <string name="download_captions">Ենթագրեր</string>
     <string name="download_captions_off">Անջատված</string>

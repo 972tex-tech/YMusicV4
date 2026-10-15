@@ -401,7 +401,9 @@
     <string name="download_less">Méně</string>
     <string name="download_webm_detail">WebM · původní stream</string>
     <string name="download_m4a_detail">AAC · původní stream</string>
-    <string name="download_mp3_detail">Převedeno · přehraje se všude</string>
+    <string name="download_mp3_detail">%1$d kbps · přehraje se všude</string>
+    <string name="settings_mp3_source_bitrate">Stahovat MP3 v původním datovém toku</string>
+    <string name="settings_mp3_source_bitrate_hint">Kódovat MP3 přibližně v 256 kbps (proměnný datový tok) místo 320 kbps. Menší soubory, stejná kvalita.</string>
     <string name="download_audio_track">Zvuková stopa</string>
     <string name="download_captions">Titulky</string>
     <string name="download_captions_off">Vyp.</string>

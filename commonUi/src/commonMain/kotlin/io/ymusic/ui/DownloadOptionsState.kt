@@ -41,6 +41,7 @@ internal class DownloadOptionsState(
     private val downloads: DownloadService,
     /** The Quick download caption language the dialog starts from; null starts with captions Off. */
     private val preferredCaptionLanguage: String?,
+    private val mp3SourceBitrate: Boolean,
 ) {
     /** Also keep these picks as the Quick download preset. */
     var saveAsQuick by mutableStateOf(false)
@@ -88,7 +89,7 @@ internal class DownloadOptionsState(
         errorCode = null
         if (isLive) return
         try {
-            val probed = downloads.probe(video.id)
+            val probed = downloads.probe(video.id, mp3SourceBitrate)
             if (probed.audio.none { it.format == audioFormat }) audioFormat = probed.audio.first().format
             height = pickHeight(probed.video, LastDownloadChoice.height)
             audioTrackId = probed.audioTracks.firstOrNull { it.isDefault }?.id ?: probed.audioTracks.firstOrNull()?.id
@@ -133,6 +134,7 @@ internal class DownloadOptionsState(
             captions = CaptionChoice(
                 listOfNotNull(caption?.takeIf { key -> captionsSupported && opts?.captions?.any { it.key == key } == true }),
             ),
+            mp3SourceBitrate = mp3SourceBitrate,
         )
     }
 

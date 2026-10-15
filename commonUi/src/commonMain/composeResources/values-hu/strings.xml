@@ -399,7 +399,9 @@
     <string name="download_less">Kevesebb</string>
     <string name="download_webm_detail">WebM · eredeti stream</string>
     <string name="download_m4a_detail">AAC · eredeti stream</string>
-    <string name="download_mp3_detail">Konvertált · mindenhol lejátszható</string>
+    <string name="download_mp3_detail">%1$d kbps · mindenhol lejátszható</string>
+    <string name="settings_mp3_source_bitrate">MP3 letöltése eredeti bitrátával</string>
+    <string name="settings_mp3_source_bitrate_hint">Az MP3 kódolása körülbelül 256 kbps-sel (változó bitráta) 320 kbps helyett. Kisebb fájlok, azonos minőség.</string>
     <string name="download_audio_track">Hangsáv</string>
     <string name="download_captions">Feliratok</string>
     <string name="download_captions_off">Ki</string>

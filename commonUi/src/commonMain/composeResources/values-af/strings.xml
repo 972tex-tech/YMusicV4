@@ -399,7 +399,9 @@
     <string name="download_less">Minder</string>
     <string name="download_webm_detail">WebM · oorspronklike stroom</string>
     <string name="download_m4a_detail">AAC · oorspronklike stroom</string>
-    <string name="download_mp3_detail">Omgeskakel · speel oral</string>
+    <string name="download_mp3_detail">%1$d kbps · speel oral</string>
+    <string name="settings_mp3_source_bitrate">Laai MP3 af teen oorspronklike bistempo</string>
+    <string name="settings_mp3_source_bitrate_hint">Enkodeer MP3 teen ongeveer 256 kbps (veranderlike bistempo) in plaas van 320 kbps. Kleiner lêers, dieselfde kwaliteit.</string>
     <string name="download_audio_track">Oudiosnit</string>
     <string name="download_captions">Onderskrifte</string>
     <string name="download_captions_off">Af</string>

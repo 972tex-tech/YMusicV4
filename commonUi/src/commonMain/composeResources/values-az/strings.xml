@@ -399,7 +399,9 @@
     <string name="download_less">Daha az</string>
     <string name="download_webm_detail">WebM · orijinal axın</string>
     <string name="download_m4a_detail">AAC · orijinal axın</string>
-    <string name="download_mp3_detail">Çevrilmiş · hər yerdə oxunur</string>
+    <string name="download_mp3_detail">%1$d kbps · hər yerdə oxunur</string>
+    <string name="settings_mp3_source_bitrate">MP3-ü orijinal bitreytlə endir</string>
+    <string name="settings_mp3_source_bitrate_hint">MP3-ü 320 kbps əvəzinə təxminən 256 kbps (dəyişən bitreyt) ilə kodla. Daha kiçik fayllar, eyni keyfiyyət.</string>
     <string name="download_audio_track">Audio trek</string>
     <string name="download_captions">Subtitrlər</string>
     <string name="download_captions_off">Bağlı</string>

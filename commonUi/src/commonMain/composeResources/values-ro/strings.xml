@@ -400,7 +400,9 @@
     <string name="download_less">Mai puțin</string>
     <string name="download_webm_detail">WebM · flux original</string>
     <string name="download_m4a_detail">AAC · flux original</string>
-    <string name="download_mp3_detail">Convertit · merge oriunde</string>
+    <string name="download_mp3_detail">%1$d kbps · merge oriunde</string>
+    <string name="settings_mp3_source_bitrate">Descarcă MP3 la rata de biți originală</string>
+    <string name="settings_mp3_source_bitrate_hint">Codifică MP3 la aproximativ 256 kbps (rată de biți variabilă) în loc de 320 kbps. Fișiere mai mici, aceeași calitate.</string>
     <string name="download_audio_track">Pistă audio</string>
     <string name="download_captions">Subtitrări</string>
     <string name="download_captions_off">Dezactivate</string>

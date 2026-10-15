@@ -399,7 +399,9 @@
     <string name="download_less">Daha az</string>
     <string name="download_webm_detail">WebM · orijinal akış</string>
     <string name="download_m4a_detail">AAC · orijinal akış</string>
-    <string name="download_mp3_detail">Dönüştürülmüş · her yerde çalar</string>
+    <string name="download_mp3_detail">%1$d kbps · her yerde çalar</string>
+    <string name="settings_mp3_source_bitrate">MP3'ü orijinal bit hızında indir</string>
+    <string name="settings_mp3_source_bitrate_hint">MP3'ü 320 kbps yerine yaklaşık 256 kbps (değişken bit hızı) ile kodla. Daha küçük dosyalar, aynı kalite.</string>
     <string name="download_audio_track">Ses parçası</string>
     <string name="download_captions">Altyazılar</string>
     <string name="download_captions_off">Kapalı</string>

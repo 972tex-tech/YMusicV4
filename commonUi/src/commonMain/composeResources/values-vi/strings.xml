@@ -457,7 +457,9 @@
     <string name="download_less">Thu gọn</string>
     <string name="download_webm_detail">WebM · luồng gốc</string>
     <string name="download_m4a_detail">AAC · luồng gốc</string>
-    <string name="download_mp3_detail">Đã chuyển đổi · phát ở mọi nơi</string>
+    <string name="download_mp3_detail">%1$d kbps · phát ở mọi nơi</string>
+    <string name="settings_mp3_source_bitrate">Tải MP3 với bitrate gốc</string>
+    <string name="settings_mp3_source_bitrate_hint">Mã hóa MP3 ở khoảng 256 kbps (bitrate thay đổi) thay vì 320 kbps. Tệp nhỏ hơn, chất lượng như nhau.</string>
     <string name="download_audio_track">Bản âm thanh</string>
     <string name="download_captions">Phụ đề</string>
     <string name="download_captions_off">Tắt</string>

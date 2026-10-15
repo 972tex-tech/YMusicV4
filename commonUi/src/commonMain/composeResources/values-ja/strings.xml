@@ -398,7 +398,9 @@
     <string name="download_less">閉じる</string>
     <string name="download_webm_detail">WebM · オリジナルストリーム</string>
     <string name="download_m4a_detail">AAC · オリジナルストリーム</string>
-    <string name="download_mp3_detail">変換 · どこでも再生可能</string>
+    <string name="download_mp3_detail">%1$d kbps · どこでも再生可能</string>
+    <string name="settings_mp3_source_bitrate">MP3 を元のビットレートでダウンロード</string>
+    <string name="settings_mp3_source_bitrate_hint">MP3 を 320 kbps ではなく約 256 kbps（可変ビットレート）でエンコードします。ファイルが小さく、音質は同じです。</string>
     <string name="download_audio_track">音声トラック</string>
     <string name="download_captions">字幕</string>
     <string name="download_captions_off">オフ</string>

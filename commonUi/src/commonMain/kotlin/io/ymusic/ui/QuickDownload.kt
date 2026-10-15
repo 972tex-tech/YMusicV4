@@ -37,7 +37,7 @@ data class QuickDownloadPreset(
     val audioLanguage: String?,
     val captionLanguage: String?,
 ) {
-    fun request(video: YtFeedItem): DownloadRequest = DownloadRequest(
+    fun request(video: YtFeedItem, mp3SourceBitrate: Boolean): DownloadRequest = DownloadRequest(
         videoId = video.id,
         title = video.title,
         artist = null,
@@ -48,6 +48,7 @@ data class QuickDownloadPreset(
         captions = if (captionLanguage == null) CaptionChoice(emptyList()) else null,
         audioLanguage = audioLanguage,
         captionLanguage = captionLanguage,
+        mp3SourceBitrate = mp3SourceBitrate,
     )
 
     fun encode(): String = buildJsonObject {
@@ -123,7 +124,7 @@ internal fun QuickDownloadHost(graph: AppGraph, pending: YtFeedItem?, format: Do
     LaunchedEffect(video) {
         val gated = graph.mediaStore != null && graph.libraryFolderPicker != null
         if (!gated || hasUsableDownloadLocation(graph) || pickDownloadFolder(graph)) {
-            downloads.enqueue(preset.request(video))
+            downloads.enqueue(preset.request(video, graph.mp3SourceBitrate()))
             snackbar(added)
         }
         onDone()
