@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Ordem: decrescente</string>
     <string name="library_unavailable">Nenhuma biblioteca local configurada nesta plataforma</string>
     <string name="library_empty">Sua biblioteca está vazia</string>
+    <string name="library_no_songs">Nenhuma música</string>
+    <string name="library_no_artists">Nenhum artista</string>
+    <string name="library_no_albums">Nenhum álbum</string>
+    <string name="library_no_genres">Nenhum gênero</string>
     <string name="library_scan_folder">+  Verificar pasta</string>
     <string name="library_add_folder">+  Adicionar pasta</string>
     <string name="library_rescan">Verificar pastas novamente</string>

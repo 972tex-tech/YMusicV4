@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Ordine de sortare: descrescătoare</string>
     <string name="library_unavailable">Nicio bibliotecă locală configurată pe această platformă</string>
     <string name="library_empty">Biblioteca ta este goală</string>
+    <string name="library_no_songs">Nicio melodie</string>
+    <string name="library_no_artists">Niciun artist</string>
+    <string name="library_no_albums">Niciun album</string>
+    <string name="library_no_genres">Niciun gen</string>
     <string name="library_scan_folder">+  Scanează un dosar</string>
     <string name="library_add_folder">+  Adaugă un dosar</string>
     <string name="library_rescan">Rescanează dosarele</string>

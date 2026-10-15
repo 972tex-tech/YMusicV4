@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">අනුපිළිවෙළ: අවරෝහණ</string>
     <string name="library_unavailable">මෙම වේදිකාවේ දේශීය පුස්තකාලයක් සකසා නැත</string>
     <string name="library_empty">ඔබගේ පුස්තකාලය හිස්ය</string>
+    <string name="library_no_songs">ගීත නැත</string>
+    <string name="library_no_artists">කලාකරුවන් නැත</string>
+    <string name="library_no_albums">ඇල්බම නැත</string>
+    <string name="library_no_genres">ප්‍රභේද නැත</string>
     <string name="library_scan_folder">+  ෆෝල්ඩරය ස්කෑන් කරන්න</string>
     <string name="library_add_folder">+  ෆෝල්ඩරයක් එක් කරන්න</string>
     <string name="library_rescan">ෆෝල්ඩර නැවත ස්කෑන් කරන්න</string>

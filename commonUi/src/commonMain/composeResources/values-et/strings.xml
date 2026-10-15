@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Sortimisjärjekord: kahanev</string>
     <string name="library_unavailable">Sellel platvormil pole kohalikku kogu seadistatud</string>
     <string name="library_empty">Sinu kogu on tühi</string>
+    <string name="library_no_songs">Lugusid pole</string>
+    <string name="library_no_artists">Esitajaid pole</string>
+    <string name="library_no_albums">Albumeid pole</string>
+    <string name="library_no_genres">Žanre pole</string>
     <string name="library_scan_folder">+  Skanni kaust</string>
     <string name="library_add_folder">+  Lisa kaust</string>
     <string name="library_rescan">Skanni kaustad uuesti</string>

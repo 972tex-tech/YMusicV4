@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">ลำดับการจัดเรียง: มากไปน้อย</string>
     <string name="library_unavailable">ยังไม่ได้ตั้งค่าคลังเพลงในเครื่องบนแพลตฟอร์มนี้</string>
     <string name="library_empty">คลังเพลงของคุณว่างเปล่า</string>
+    <string name="library_no_songs">ไม่มีเพลง</string>
+    <string name="library_no_artists">ไม่มีศิลปิน</string>
+    <string name="library_no_albums">ไม่มีอัลบั้ม</string>
+    <string name="library_no_genres">ไม่มีแนวเพลง</string>
     <string name="library_scan_folder">+  สแกนโฟลเดอร์</string>
     <string name="library_add_folder">+  เพิ่มโฟลเดอร์</string>
     <string name="library_rescan">สแกนโฟลเดอร์อีกครั้ง</string>

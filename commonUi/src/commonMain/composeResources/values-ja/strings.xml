@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">並び順：降順</string>
     <string name="library_unavailable">このプラットフォームではローカルライブラリが設定されていません</string>
     <string name="library_empty">ライブラリは空です</string>
+    <string name="library_no_songs">曲がありません</string>
+    <string name="library_no_artists">アーティストがいません</string>
+    <string name="library_no_albums">アルバムがありません</string>
+    <string name="library_no_genres">ジャンルがありません</string>
     <string name="library_scan_folder">+  フォルダをスキャン</string>
     <string name="library_add_folder">+  フォルダを追加</string>
     <string name="library_rescan">フォルダを再スキャン</string>

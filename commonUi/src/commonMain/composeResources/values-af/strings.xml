@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Sorteervolgorde: dalend</string>
     <string name="library_unavailable">Geen plaaslike biblioteek op hierdie platform opgestel nie</string>
     <string name="library_empty">Jou biblioteek is leeg</string>
+    <string name="library_no_songs">Geen liedjies nie</string>
+    <string name="library_no_artists">Geen kunstenaars nie</string>
+    <string name="library_no_albums">Geen albums nie</string>
+    <string name="library_no_genres">Geen genres nie</string>
     <string name="library_scan_folder">+  Skandeer vouer</string>
     <string name="library_add_folder">+  Voeg vouer by</string>
     <string name="library_rescan">Skandeer vouers weer</string>

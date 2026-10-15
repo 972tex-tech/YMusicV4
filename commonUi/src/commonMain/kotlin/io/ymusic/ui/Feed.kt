@@ -425,8 +425,9 @@ private fun PullToRefreshFeed(refreshing: Boolean, onRefresh: () -> Unit, conten
     }
 }
 
-/** Full-surface empty page: picture + message + an emphasized action (reload by default). [title], when
- *  the source supplies its own explainer (anonymous Home's nudge), leads in emphasis over the message. */
+/** Full-surface empty page: picture + message + an emphasized action (reload by default; none when
+ *  [onReload] is null). [title], when the source supplies its own explainer (anonymous Home's nudge),
+ *  leads in emphasis over the message. */
 @Composable
 internal fun EmptyState(
     message: String,
@@ -434,7 +435,7 @@ internal fun EmptyState(
     title: String? = null,
     actionLabel: String = stringResource(Res.string.reload),
     onSecondaryReload: (() -> Unit)? = null,
-    onReload: () -> Unit,
+    onReload: (() -> Unit)?,
 ) {
     CenteredBox(modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -457,6 +458,7 @@ internal fun EmptyState(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
+            if (onReload == null) return@Column
             Row(
                 Modifier.padding(top = DesignSpacing.Space8),
                 horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),

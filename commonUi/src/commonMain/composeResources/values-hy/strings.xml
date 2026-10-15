@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Դասավորման կարգ: նվազման</string>
     <string name="library_unavailable">Այս հարթակում տեղային գրադարան կարգավորված չէ</string>
     <string name="library_empty">Ձեր գրադարանը դատարկ է</string>
+    <string name="library_no_songs">Երգեր չկան</string>
+    <string name="library_no_artists">Կատարողներ չկան</string>
+    <string name="library_no_albums">Ալբոմներ չկան</string>
+    <string name="library_no_genres">Ժանրեր չկան</string>
     <string name="library_scan_folder">+  Սկանավորել թղթապանակը</string>
     <string name="library_add_folder">+  Ավելացնել թղթապանակ</string>
     <string name="library_rescan">Կրկին սկանավորել թղթապանակները</string>

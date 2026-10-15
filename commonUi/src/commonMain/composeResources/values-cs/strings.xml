@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Pořadí řazení: sestupně</string>
     <string name="library_unavailable">Na této platformě není nastavena žádná místní knihovna</string>
     <string name="library_empty">Vaše knihovna je prázdná</string>
+    <string name="library_no_songs">Žádné skladby</string>
+    <string name="library_no_artists">Žádní interpreti</string>
+    <string name="library_no_albums">Žádná alba</string>
+    <string name="library_no_genres">Žádné žánry</string>
     <string name="library_scan_folder">+  Prohledat složku</string>
     <string name="library_add_folder">+  Přidat složku</string>
     <string name="library_rescan">Znovu prohledat složky</string>

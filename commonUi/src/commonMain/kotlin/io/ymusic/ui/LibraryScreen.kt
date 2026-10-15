@@ -102,6 +102,10 @@ import io.ymusic.ui.resources.library_crumb_root
 import io.ymusic.ui.resources.library_empty
 import io.ymusic.ui.resources.library_empty_folder
 import io.ymusic.ui.resources.library_folder
+import io.ymusic.ui.resources.library_no_albums
+import io.ymusic.ui.resources.library_no_artists
+import io.ymusic.ui.resources.library_no_genres
+import io.ymusic.ui.resources.library_no_songs
 import io.ymusic.ui.resources.library_rescan
 import io.ymusic.ui.resources.library_scan_folder
 import io.ymusic.ui.resources.library_scanning
@@ -328,7 +332,9 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                     onToggleDownloadLocation = onToggleDownloadLocation,
                                 )
                                 LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator, graph.playHistory)
-                                LibraryTab.Songs -> {
+                                LibraryTab.Songs -> if (loaded.songs.isEmpty()) {
+                                    EmptyState(stringResource(Res.string.library_no_songs), onReload = null)
+                                } else {
                                     val sort = rememberSortState("sort.songs")
                                     SongList(
                                         sort.sort(loaded.songs, songSortOptions),
@@ -336,27 +342,36 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                         header = { SortBar(songSortOptions.map { it.label }, sort) },
                                     )
                                 }
-                                LibraryTab.Artists ->
+                                LibraryTab.Artists -> if (loaded.songs.isEmpty()) {
+                                    EmptyState(stringResource(Res.string.library_no_artists), onReload = null)
+                                } else {
                                     GroupedList(
                                         loaded.songs,
                                         Icons.Default.Person,
                                         stringResource(Res.string.unknown_artist),
                                         coordinator,
                                     ) { it.artist }
-                                LibraryTab.Albums ->
+                                }
+                                LibraryTab.Albums -> if (loaded.songs.isEmpty()) {
+                                    EmptyState(stringResource(Res.string.library_no_albums), onReload = null)
+                                } else {
                                     GroupedList(
                                         loaded.songs,
                                         Icons.Default.Album,
                                         stringResource(Res.string.unknown_album),
                                         coordinator,
                                     ) { it.album }
-                                LibraryTab.Genres ->
+                                }
+                                LibraryTab.Genres -> if (loaded.songs.isEmpty()) {
+                                    EmptyState(stringResource(Res.string.library_no_genres), onReload = null)
+                                } else {
                                     GroupedList(
                                         loaded.songs,
                                         Icons.Default.Category,
                                         stringResource(Res.string.unknown_genre),
                                         coordinator,
                                     ) { it.genre }
+                                }
                             }
                         }
                     }

@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Sıralama qaydası: azalan</string>
     <string name="library_unavailable">Bu platformada lokal kitabxana qurulmayıb</string>
     <string name="library_empty">Kitabxananız boşdur</string>
+    <string name="library_no_songs">Mahnı yoxdur</string>
+    <string name="library_no_artists">İfaçı yoxdur</string>
+    <string name="library_no_albums">Albom yoxdur</string>
+    <string name="library_no_genres">Janr yoxdur</string>
     <string name="library_scan_folder">+  Qovluğu skan et</string>
     <string name="library_add_folder">+  Qovluq əlavə et</string>
     <string name="library_rescan">Qovluqları yenidən skan et</string>

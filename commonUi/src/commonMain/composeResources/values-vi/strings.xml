@@ -172,6 +172,10 @@
     <string name="cd_sort_descending">Thứ tự sắp xếp: giảm dần</string>
     <string name="library_unavailable">Nền tảng này chưa hỗ trợ thư viện cục bộ</string>
     <string name="library_empty">Thư viện của bạn đang trống</string>
+    <string name="library_no_songs">Không có bài hát</string>
+    <string name="library_no_artists">Không có nghệ sĩ</string>
+    <string name="library_no_albums">Không có album</string>
+    <string name="library_no_genres">Không có thể loại</string>
     <string name="library_scan_folder">+  Quét thư mục</string>
     <string name="library_add_folder">+  Thêm thư mục</string>
     <string name="library_rescan">Quét lại thư mục</string>

@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Порядок сортування: за спаданням</string>
     <string name="library_unavailable">На цій платформі локальну бібліотеку не налаштовано</string>
     <string name="library_empty">Ваша бібліотека порожня</string>
+    <string name="library_no_songs">Немає треків</string>
+    <string name="library_no_artists">Немає виконавців</string>
+    <string name="library_no_albums">Немає альбомів</string>
+    <string name="library_no_genres">Немає жанрів</string>
     <string name="library_scan_folder">+  Сканувати папку</string>
     <string name="library_add_folder">+  Додати папку</string>
     <string name="library_rescan">Повторно сканувати папки</string>

@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Σειρά ταξινόμησης: φθίνουσα</string>
     <string name="library_unavailable">Δεν υπάρχει τοπική βιβλιοθήκη σε αυτήν την πλατφόρμα</string>
     <string name="library_empty">Η βιβλιοθήκη σας είναι κενή</string>
+    <string name="library_no_songs">Δεν υπάρχουν τραγούδια</string>
+    <string name="library_no_artists">Δεν υπάρχουν καλλιτέχνες</string>
+    <string name="library_no_albums">Δεν υπάρχουν άλμπουμ</string>
+    <string name="library_no_genres">Δεν υπάρχουν είδη</string>
     <string name="library_scan_folder">+  Σάρωση φακέλου</string>
     <string name="library_add_folder">+  Προσθήκη φακέλου</string>
     <string name="library_rescan">Νέα σάρωση φακέλων</string>

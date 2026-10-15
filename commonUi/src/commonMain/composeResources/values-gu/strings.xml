@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">સૉર્ટ ક્રમ: ઊતરતો</string>
     <string name="library_unavailable">આ પ્લેટફોર્મ પર કોઈ લોકલ લાઇબ્રેરી ગોઠવેલી નથી</string>
     <string name="library_empty">તમારી લાઇબ્રેરી ખાલી છે</string>
+    <string name="library_no_songs">કોઈ ગીતો નથી</string>
+    <string name="library_no_artists">કોઈ કલાકારો નથી</string>
+    <string name="library_no_albums">કોઈ આલ્બમ નથી</string>
+    <string name="library_no_genres">કોઈ શૈલીઓ નથી</string>
     <string name="library_scan_folder">+  ફોલ્ડર સ્કૅન કરો</string>
     <string name="library_add_folder">+  ફોલ્ડર ઉમેરો</string>
     <string name="library_rescan">ફોલ્ડર ફરી સ્કૅન કરો</string>

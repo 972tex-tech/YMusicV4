@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">排序方式：降序</string>
     <string name="library_unavailable">此平台未配置本地音乐库</string>
     <string name="library_empty">你的音乐库是空的</string>
+    <string name="library_no_songs">没有歌曲</string>
+    <string name="library_no_artists">没有艺人</string>
+    <string name="library_no_albums">没有专辑</string>
+    <string name="library_no_genres">没有流派</string>
     <string name="library_scan_folder">+  扫描文件夹</string>
     <string name="library_add_folder">+  添加文件夹</string>
     <string name="library_rescan">重新扫描文件夹</string>

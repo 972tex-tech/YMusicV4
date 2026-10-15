@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Habka kala horraynta: hoos u dhac</string>
     <string name="library_unavailable">Nidaamkan laguma habayn Gudaha maxalli ah</string>
     <string name="library_empty">Gudahaagu waa madhan yahay</string>
+    <string name="library_no_songs">Hees ma jiro</string>
+    <string name="library_no_artists">Fanaaniin ma jiraan</string>
+    <string name="library_no_albums">Albumyo ma jiraan</string>
+    <string name="library_no_genres">Noocyo ma jiraan</string>
     <string name="library_scan_folder">+  Baadh khaanad</string>
     <string name="library_add_folder">+  Ku dar khaanad</string>
     <string name="library_rescan">Dib u baadh khaanadaha</string>

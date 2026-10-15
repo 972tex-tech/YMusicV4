@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Редослед на подредување: опаѓачки</string>
     <string name="library_unavailable">На оваа платформа нема поставено локална библиотека</string>
     <string name="library_empty">Вашата библиотека е празна</string>
+    <string name="library_no_songs">Нема песни</string>
+    <string name="library_no_artists">Нема изведувачи</string>
+    <string name="library_no_albums">Нема албуми</string>
+    <string name="library_no_genres">Нема жанрови</string>
     <string name="library_scan_folder">+  Скенирај папка</string>
     <string name="library_add_folder">+  Додај папка</string>
     <string name="library_rescan">Повторно скенирај ги папките</string>

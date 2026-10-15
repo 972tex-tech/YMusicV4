@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">क्रम: अवरोही</string>
     <string name="library_unavailable">इस प्लेटफ़ॉर्म पर कोई लोकल लाइब्रेरी सेट नहीं है</string>
     <string name="library_empty">आपकी लाइब्रेरी खाली है</string>
+    <string name="library_no_songs">कोई गाना नहीं</string>
+    <string name="library_no_artists">कोई कलाकार नहीं</string>
+    <string name="library_no_albums">कोई एल्बम नहीं</string>
+    <string name="library_no_genres">कोई शैली नहीं</string>
     <string name="library_scan_folder">+  फ़ोल्डर स्कैन करें</string>
     <string name="library_add_folder">+  फ़ोल्डर जोड़ें</string>
     <string name="library_rescan">फ़ोल्डर फिर से स्कैन करें</string>

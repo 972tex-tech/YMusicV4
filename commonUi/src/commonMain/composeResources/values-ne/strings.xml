@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">क्रम: घट्दो</string>
     <string name="library_unavailable">यो प्लेटफर्ममा कुनै स्थानीय लाइब्रेरी सेट गरिएको छैन</string>
     <string name="library_empty">तपाईंको लाइब्रेरी खाली छ</string>
+    <string name="library_no_songs">कुनै गीत छैन</string>
+    <string name="library_no_artists">कुनै कलाकार छैन</string>
+    <string name="library_no_albums">कुनै एल्बम छैन</string>
+    <string name="library_no_genres">कुनै विधा छैन</string>
     <string name="library_scan_folder">+  फोल्डर स्क्यान गर्नुहोस्</string>
     <string name="library_add_folder">+  फोल्डर थप्नुहोस्</string>
     <string name="library_rescan">फोल्डरहरू फेरि स्क्यान गर्नुहोस्</string>

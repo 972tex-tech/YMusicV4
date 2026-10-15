@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Ordre: descendent</string>
     <string name="library_unavailable">No hi ha cap biblioteca local configurada en aquesta plataforma</string>
     <string name="library_empty">La teva biblioteca és buida</string>
+    <string name="library_no_songs">No hi ha cançons</string>
+    <string name="library_no_artists">No hi ha artistes</string>
+    <string name="library_no_albums">No hi ha àlbums</string>
+    <string name="library_no_genres">No hi ha gèneres</string>
     <string name="library_scan_folder">+  Escaneja una carpeta</string>
     <string name="library_add_folder">+  Afegeix una carpeta</string>
     <string name="library_rescan">Torna a escanejar les carpetes</string>

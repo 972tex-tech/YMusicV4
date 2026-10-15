@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Ред на сортиране: низходящ</string>
     <string name="library_unavailable">На тази платформа няма настроена локална библиотека</string>
     <string name="library_empty">Библиотеката ви е празна</string>
+    <string name="library_no_songs">Няма песни</string>
+    <string name="library_no_artists">Няма изпълнители</string>
+    <string name="library_no_albums">Няма албуми</string>
+    <string name="library_no_genres">Няма жанрове</string>
     <string name="library_scan_folder">+  Сканирай папка</string>
     <string name="library_add_folder">+  Добави папка</string>
     <string name="library_rescan">Сканирай папките отново</string>

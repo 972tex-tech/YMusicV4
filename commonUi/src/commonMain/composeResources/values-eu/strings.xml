@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Ordenatzeko modua: beherantz</string>
     <string name="library_unavailable">Ez dago liburutegi lokalik konfiguratuta plataforma honetan</string>
     <string name="library_empty">Zure liburutegia hutsik dago</string>
+    <string name="library_no_songs">Ez dago abestirik</string>
+    <string name="library_no_artists">Ez dago artistarik</string>
+    <string name="library_no_albums">Ez dago albumik</string>
+    <string name="library_no_genres">Ez dago generorik</string>
     <string name="library_scan_folder">+  Eskaneatu karpeta</string>
     <string name="library_add_folder">+  Gehitu karpeta</string>
     <string name="library_rescan">Eskaneatu berriro karpetak</string>

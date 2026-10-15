@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">정렬 순서: 내림차순</string>
     <string name="library_unavailable">이 플랫폼에는 로컬 보관함이 설정되어 있지 않습니다</string>
     <string name="library_empty">보관함이 비어 있습니다</string>
+    <string name="library_no_songs">노래 없음</string>
+    <string name="library_no_artists">아티스트 없음</string>
+    <string name="library_no_albums">앨범 없음</string>
+    <string name="library_no_genres">장르 없음</string>
     <string name="library_scan_folder">+  폴더 스캔</string>
     <string name="library_add_folder">+  폴더 추가</string>
     <string name="library_rescan">폴더 다시 스캔</string>

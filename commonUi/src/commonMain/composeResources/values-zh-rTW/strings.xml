@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">排序方式：遞減</string>
     <string name="library_unavailable">這個平台未設定本機音樂庫</string>
     <string name="library_empty">你的音樂庫是空的</string>
+    <string name="library_no_songs">沒有歌曲</string>
+    <string name="library_no_artists">沒有藝人</string>
+    <string name="library_no_albums">沒有專輯</string>
+    <string name="library_no_genres">沒有類型</string>
     <string name="library_scan_folder">+  掃描資料夾</string>
     <string name="library_add_folder">+  新增資料夾</string>
     <string name="library_rescan">重新掃描資料夾</string>

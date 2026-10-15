@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Ordinamento: decrescente</string>
     <string name="library_unavailable">Nessuna libreria locale configurata su questa piattaforma</string>
     <string name="library_empty">La tua libreria è vuota</string>
+    <string name="library_no_songs">Nessun brano</string>
+    <string name="library_no_artists">Nessun artista</string>
+    <string name="library_no_albums">Nessun album</string>
+    <string name="library_no_genres">Nessun genere</string>
     <string name="library_scan_folder">+  Scansiona cartella</string>
     <string name="library_add_folder">+  Aggiungi cartella</string>
     <string name="library_rescan">Ripeti scansione cartelle</string>

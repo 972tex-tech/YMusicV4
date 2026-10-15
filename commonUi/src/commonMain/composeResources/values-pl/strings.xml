@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Kolejność sortowania: malejąco</string>
     <string name="library_unavailable">Lokalna biblioteka nie jest dostępna na tej platformie</string>
     <string name="library_empty">Twoja biblioteka jest pusta</string>
+    <string name="library_no_songs">Brak utworów</string>
+    <string name="library_no_artists">Brak wykonawców</string>
+    <string name="library_no_albums">Brak albumów</string>
+    <string name="library_no_genres">Brak gatunków</string>
     <string name="library_scan_folder">+  Skanuj folder</string>
     <string name="library_add_folder">+  Dodaj folder</string>
     <string name="library_rescan">Skanuj foldery ponownie</string>

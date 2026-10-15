@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">সাজানোর ক্রম: অধঃক্রম</string>
     <string name="library_unavailable">এই প্ল্যাটফর্মে কোনো লোকাল লাইব্রেরি কনফিগার করা নেই</string>
     <string name="library_empty">আপনার লাইব্রেরি খালি</string>
+    <string name="library_no_songs">কোনো গান নেই</string>
+    <string name="library_no_artists">কোনো শিল্পী নেই</string>
+    <string name="library_no_albums">কোনো অ্যালবাম নেই</string>
+    <string name="library_no_genres">কোনো ঘরানা নেই</string>
     <string name="library_scan_folder">+  ফোল্ডার স্ক্যান করুন</string>
     <string name="library_add_folder">+  ফোল্ডার যোগ করুন</string>
     <string name="library_rescan">ফোল্ডার আবার স্ক্যান করুন</string>

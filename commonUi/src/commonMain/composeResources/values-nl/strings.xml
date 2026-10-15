@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Sorteervolgorde: aflopend</string>
     <string name="library_unavailable">Geen lokale bibliotheek ingesteld op dit platform</string>
     <string name="library_empty">Je bibliotheek is leeg</string>
+    <string name="library_no_songs">Geen nummers</string>
+    <string name="library_no_artists">Geen artiesten</string>
+    <string name="library_no_albums">Geen albums</string>
+    <string name="library_no_genres">Geen genres</string>
     <string name="library_scan_folder">+  Map scannen</string>
     <string name="library_add_folder">+  Map toevoegen</string>
     <string name="library_rescan">Mappen opnieuw scannen</string>

@@ -143,6 +143,10 @@
     <string name="cd_sort_descending">Tertib isihan: menurun</string>
     <string name="library_unavailable">Tiada pustaka setempat dikonfigurasikan pada platform ini</string>
     <string name="library_empty">Pustaka anda kosong</string>
+    <string name="library_no_songs">Tiada lagu</string>
+    <string name="library_no_artists">Tiada artis</string>
+    <string name="library_no_albums">Tiada album</string>
+    <string name="library_no_genres">Tiada genre</string>
     <string name="library_scan_folder">+  Imbas folder</string>
     <string name="library_add_folder">+  Tambah folder</string>
     <string name="library_rescan">Imbas semula folder</string>
