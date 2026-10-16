@@ -48,12 +48,15 @@ import io.ymusic.mediastore.mediaStoreAndroidDriver
 import io.ymusic.mediastore.model.BucketDraft
 import io.ymusic.mse.MseVideoSurface
 import io.ymusic.player.LocalPlayerContext
+import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackState
+import io.ymusic.player.Player
 import io.ymusic.player.PlayerEngines
 import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.isPlaying
 import io.ymusic.player.mse.MsePlayer
+import io.ymusic.player.showsVideo
 import io.ymusic.remoteconfig.ApiService
 import io.ymusic.remoteconfig.HttpApiService
 import io.ymusic.remoteconfig.RemoteConfig
@@ -541,6 +544,7 @@ class YMusicApplication : Application() {
                 },
             ),
         )
+        mseBridge.videoShown = { showsYoutubeVideo(player) }
 
         // Offline downloads: SABR stack + on-device ffmpeg. Spec from MSE /player + decoded SABR URL.
         val downloadService = run {
@@ -665,7 +669,10 @@ class YMusicApplication : Application() {
             // (unlike Swing/UIKit), so adding the container directly throws "child already has a
             // parent". So each AndroidView gets its own empty host and re-parents the shared container
             // into whichever is active, detaching from the previous parent first.
-            val status by player.status.collectAsState()
+            val queue by player.queue.collectAsState()
+            val config by player.config.collectAsState()
+            val quality by player.videoQuality.collectAsState()
+            val showMse = queue.currentItem is PlayableItem.YtMedia && showsVideo(config, quality)
             AndroidView(
                 factory = { context -> FrameLayout(context) },
                 modifier = modifier.fillMaxSize(),
@@ -675,7 +682,6 @@ class YMusicApplication : Application() {
                         host.addView(videoContainer)
                         mseBridge.reattach(mseTexture)
                     }
-                    val showMse = status.videoSize != null
                     mseTexture.visibility = if (showMse) View.VISIBLE else View.GONE
                     if (showMse) mseTexture.bringToFront()
                 },
@@ -792,8 +798,12 @@ class YMusicApplication : Application() {
  * TextureView; releasing the SurfaceTexture there tears MediaCodec and glitches audio. Keep the
  * producer and restore it after re-attach (`setSurfaceTexture`); only bind MediaCodec once.
  */
+private fun showsYoutubeVideo(player: Player): Boolean =
+    player.queue.value.currentItem is PlayableItem.YtMedia && showsVideo(player.config.value, player.videoQuality.value)
+
 private class MseSurfaceBridge(private val textureView: TextureView, private val log: Logger) {
     private var player: MsePlayer? = null
+    var videoShown: () -> Boolean = { false }
     private var pending: Surface? = null
     private var texture: SurfaceTexture? = null
     private var frames = 0L
@@ -826,7 +836,7 @@ private class MseSurfaceBridge(private val textureView: TextureView, private val
     private fun checkFrames() {
         val status = player?.status?.value ?: return
         val prepared = status.state as? PlaybackState.Prepared
-        val expectFrames = status.videoSize != null && prepared != null &&
+        val expectFrames = videoShown() && prepared != null &&
             prepared.playWhenReady && !prepared.buffering && !prepared.ended &&
             textureView.isShown && textureView.windowVisibility == View.VISIBLE
         val delta = frames - watchedFrames

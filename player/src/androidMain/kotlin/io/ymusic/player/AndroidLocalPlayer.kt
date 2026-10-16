@@ -316,7 +316,7 @@ internal class AndroidLocalPlayer(
         player.stop()
         player.clearMediaItems()
         _progress.value = Progress()
-        _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
+        _status.update { it.copy(state = PlaybackState.Idle) }
         showSurface(false)
     }
 

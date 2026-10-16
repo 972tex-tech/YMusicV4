@@ -101,6 +101,7 @@ import io.ymusic.dynamicengine.yt.handleWebViewPlayNext
 import io.ymusic.dynamicengine.yt.resolveLink
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.VideoQualityState
+import io.ymusic.player.showsVideo
 import io.ymusic.remoteconfig.RemoteConfigData
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
@@ -824,8 +825,10 @@ private fun AppRoot(
         // current. Now Playing hosts it while open; otherwise the mini player's art tile does, so
         // playback keeps going (the same single container re-parents, which the engines tolerate).
         val queue by graph.player.queue.collectAsState()
-        val status by graph.player.status.collectAsState()
-        val needsSurface = queue.currentItem is PlayableItem.YtMedia || status.videoSize != null
+        val playbackConfig by graph.player.config.collectAsState()
+        val quality by graph.player.videoQuality.collectAsState()
+        val needsSurface = queue.currentItem is PlayableItem.YtMedia ||
+            (queue.currentItem != null && showsVideo(playbackConfig, quality))
 
         val holeOpen = desktopLayoutHole && nowPlayingOpen
         Box(

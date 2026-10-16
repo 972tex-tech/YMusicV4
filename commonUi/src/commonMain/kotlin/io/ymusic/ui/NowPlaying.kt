@@ -344,7 +344,7 @@ fun NowPlayingScreen(
     val status by coordinator.player.status.collectAsState()
     val playWhenReady = status.playWhenReady
     val audioOnly = showsAudioOnly(coordinator.player)
-    KeepScreenOn(status.state.isPlaying() && !status.state.isEnded() && !audioOnly && status.videoSize != null)
+    KeepScreenOn(status.state.isPlaying() && !status.state.isEnded() && !audioOnly)
     val armed = VideoOverlayNative.armed
     val overlayVisible = VideoOverlayNative.visible
     val showGen = VideoOverlayNative.showGen

@@ -301,7 +301,7 @@ class MsePlayer internal constructor(
         loadTimeoutJob?.cancel()
         loadTimeoutJob = null
         send { it.stop(log) }
-        _status.update { it.copy(state = PlaybackState.Idle, videoSize = null, details = null) }
+        _status.update { it.copy(state = PlaybackState.Idle, details = null) }
         _progress.value = Progress()
     }
 
@@ -406,7 +406,7 @@ class MsePlayer internal constructor(
     private fun startSession(reason: String) {
         check(session == null) { "mse session already running" }
         log?.log(Logger.Level.INFO, "mse session start ($reason) freshConfig=$freshConfigNext")
-        _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true), videoSize = null) }
+        _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true)) }
         val newSession = Session(SupervisorJob(mainScope.coroutineContext[Job]))
         session = newSession
         val previousClose = closing
