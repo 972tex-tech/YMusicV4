@@ -274,14 +274,33 @@ jobs:
 
       # Signed with the imported identity; notarized + stapled with the mac.notarization.* account
       # from secrets.enc when both are present. Otherwise an unsigned DMG.
+      # Right after notarytool accepts, stapler can fail to fetch the fresh ticket (exit 68): retry the
+      # staple alone. It only succeeds when Apple holds a ticket for this exact DMG, so a rejected or
+      # never-submitted DMG still fails the job.
       - name: Package DMG
         working-directory: YMusicV4
         run: |
-          if [ -n "$YMUSIC_MAC_IDENTITY" ] && grep -q '^mac.notarization.appleId=.' secrets.properties 2>/dev/null; then
-            ./gradlew -Pproduction=true :desktopApp:packageReleaseDmg :desktopApp:notarizeReleaseDmg
-          else
+          if [ -z "$YMUSIC_MAC_IDENTITY" ] || ! grep -q '^mac.notarization.appleId=.' secrets.properties 2>/dev/null; then
             ./gradlew -Pproduction=true :desktopApp:packageReleaseDmg
+            exit 0
           fi
+          ./gradlew -Pproduction=true :desktopApp:packageReleaseDmg :desktopApp:notarizeReleaseDmg && exit 0
+          dmg="$(ls desktopApp/build/compose/binaries/main-release/dmg/*.dmg 2>/dev/null | head -n 1)"
+          [ -n "$dmg" ] || { echo "no DMG to staple" >&2; exit 1; }
+          for attempt in 1 2 3 4 5; do
+            echo "::warning::notarize/staple failed; staple retry $attempt in 30 s"
+            sleep 30
+            xcrun stapler staple "$dmg" && xcrun stapler validate "$dmg" && exit 0
+          done
+          exit 1
+
+      - name: Upload notarization logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.slug }}-compose-logs
+          path: YMusicV4/desktopApp/build/compose/logs/
+          if-no-files-found: ignore
 
       - name: Discard secrets
         if: always()
