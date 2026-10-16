@@ -32,6 +32,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - { slug: android-armeabi-v7a, runner: ubuntu-24.04 }
           - { slug: android-arm64-v8a, runner: ubuntu-24.04 }
           - { slug: android-x86, runner: ubuntu-24.04 }
           - { slug: android-x86_64, runner: ubuntu-24.04 }
@@ -90,6 +91,12 @@ jobs:
         with:
           path: YMusicV4
 
+      - name: Restore ffmpeg android-armeabi-v7a
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ffmpeg-build/out/android-armeabi-v7a
+          key: ffmpeg-android-armeabi-v7a-${{ env.FFMPEG_BUILD_REF }}-ndk${{ env.NDK_VERSION }}
+          fail-on-cache-miss: true
       - name: Restore ffmpeg android-arm64-v8a
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -313,7 +320,9 @@ jobs:
           mkdir -p release
           # Fixed, version-free asset names. Each glob must match exactly one build output.
           one() { set -- $1; [ $# -eq 1 ] && [ -f "$1" ] || { echo "expected one file for: $*" >&2; exit 1; }; echo "$1"; }
+          cp "$(one 'artifacts/android-apks/*-armeabi-v7a-release.apk')" release/android-armv7.apk
           cp "$(one 'artifacts/android-apks/*-arm64-v8a-release.apk')" release/android-arm64.apk
+          cp "$(one 'artifacts/android-apks/*-x86-release.apk')" release/android-x86.apk
           cp "$(one 'artifacts/android-apks/*-x86_64-release.apk')" release/android-x86_64.apk
           cp "$(one 'artifacts/android-apks/*-universal-release.apk')" release/android-universal.apk
           cp "$(one 'artifacts/macos-arm64-dmg/*.dmg')" release/macos-arm64.dmg

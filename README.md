@@ -16,7 +16,7 @@ Prerequisites: **JDK 17+**, **Node.js**, **CMake + a C toolchain** (QuickJS nati
 FFmpeg comes from [ffmpeg-build](https://github.com/ymusic-io/ffmpeg-build), checked out next to
 this repository (`../ffmpeg-build`) and built locally — nothing is downloaded. Build the targets
 you need there first (see its README): `scripts/build-desktop.sh` for the desktop app,
-`scripts/build-android.sh <abi>` for `arm64-v8a`, `x86` and `x86_64` for Android,
+`scripts/build-android.sh <abi>` for `armeabi-v7a`, `arm64-v8a`, `x86` and `x86_64` for Android,
 `scripts/build-ios.sh` for iOS. A missing build fails with the command that produces it.
 
 ```sh
