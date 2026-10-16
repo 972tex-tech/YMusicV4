@@ -974,6 +974,7 @@ static void *dec_loop(void *arg)
             unsigned gen;
             double lead = 0.35;
             double until;
+            double from = clock;
             pthread_mutex_lock(&h->mu);
             want = ring_ms(h) < 400;
             gen = h->ring_gen;
@@ -993,12 +994,17 @@ static void *dec_loop(void *arg)
                once full: decode as far as ring + sink take (Media3 feeds until handleBuffer refuses). */
             if (!h->dac_live)
                 until = clock + 3600.0;
+            /* A track that has not reported yet may still be opening (a hung audioserver takes
+               seconds) while the clock runs on wall time: the audio behind that clock is what the
+               track plays first, and the clock steps back to it once the sink reports. */
+            if (h->aq_started && !h->dac_live && from > h->seek_base)
+                from = h->seek_base;
 #endif
             pthread_mutex_unlock(&h->mu);
             if (!want)
                 break;
             pcm = NULL;
-            if (mse_av_pull_audio(h->av, clock, until, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
+            if (mse_av_pull_audio(h->av, from, until, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
                 break;
             host_stretch(h, &pcm, &frames, ch, rate);
             if (frames <= 0) {
