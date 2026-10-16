@@ -33,6 +33,9 @@ static void blit_window(ANativeWindow *win, int w, int h, const uint8_t *bgra);
 #if defined(MSE_AQ) || defined(__ANDROID__)
 #define MSE_DAC 1
 #define DAC_CHECKPOINTS 8
+/* Handover holds cover queue latency, not a wall clock that ran away while audio was missing. */
+#define DAC_HANDOVER_MAX_S 0.5
+#define DAC_START_WAIT_NS 2e9
 #endif
 #ifdef __ANDROID__
 #define DAC_FIRST_REPORT_NS 1e9
@@ -106,6 +109,7 @@ struct MseHost {
     /* Last clock handed out, and whether it came from the audio device (see dac_handover). */
     double clk_last;
     int clk_dac;
+    double flush_ns;
     /* Device frames since the last ring flush: dac_pos audible (Android: the sink's report;
        AudioQueue: handed to the queue), dac_polled read out of the ring. samples_played is
        dac_pos - dac_base. */
@@ -284,7 +288,7 @@ static int64_t aq_latency_frames(MseHost *h)
 static double dac_handover(MseHost *h, double dac)
 {
     if (!h->clk_dac) {
-        if (h->playing && dac < h->clk_last)
+        if (h->playing && dac < h->clk_last && dac > h->clk_last - DAC_HANDOVER_MAX_S)
             return h->clk_last;
         h->clk_dac = 1;
     }
@@ -318,7 +322,17 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
         h->clk_dac = 0;
 #endif
     } else {
-        if (h->playing && h->origin_ns > 0)
+        int wait_audio = 0;
+#ifdef MSE_DAC
+        /* After a flush, a stream with audio holds the clock until the device starts (Chrome keeps
+           currentTime until audio covers it) rather than running ahead on wall time: the audio
+           would start behind it. A device that never starts falls back to wall time. */
+        wait_audio = h->rate > 0 && !h->aq_started && !h->audio_out &&
+                     now_ns() - h->flush_ns < DAC_START_WAIT_NS;
+#endif
+        if (wait_audio && h->playing)
+            h->origin_ns = now_ns();
+        else if (h->playing && h->origin_ns > 0)
             t += (now_ns() - h->origin_ns) / 1e9 * play_speed(h);
 #ifdef MSE_DAC
         /* Audio is the master clock while the DAC is running (Chrome
@@ -491,6 +505,7 @@ static void ring_flush(MseHost *h)
 {
     h->ring_r = h->ring_w = h->ring_n = 0;
     h->ring_gen++;
+    h->flush_ns = now_ns();
     h->dac_pos = h->dac_base = h->dac_polled = 0;
     h->dac_cp_n = 0;
     h->pcm_anchor = 1;
