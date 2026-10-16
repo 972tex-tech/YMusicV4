@@ -371,9 +371,9 @@ class PlaybackService : MediaLibraryService() {
         // super routes MEDIA_BUTTON intents (our notification actions) onto the session.
         val result = super.onStartCommand(intent, flags, startId)
         // The startForegroundService contract: enter foreground now; the collector demotes on pause.
-        startForeground(NOTIFICATION_ID, buildNotification())
-        foreground = true
-        foregroundRefused = false
+        // A plain start from the background (the system restarting the sticky service after the
+        // process died) is refused promotion and stays a background service.
+        foreground = promote(buildNotification())
         return result
     }
 
