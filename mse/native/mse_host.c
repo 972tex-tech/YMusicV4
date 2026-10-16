@@ -1381,6 +1381,10 @@ void mse_host_play(MseHost *h)
 #ifdef __ANDROID__
         /* No extrapolation from a report taken while paused: the track restarts from that position. */
         h->dac_tick_ns = 0;
+#elif defined(MSE_AQ)
+        /* The stall watchdog times from the resume, not from the last callback before the pause. */
+        if (h->dac_tick_ns > 0)
+            h->dac_tick_ns = now_ns();
 #endif
     }
     ensure_thread(h);
