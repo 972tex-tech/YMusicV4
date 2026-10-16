@@ -1746,7 +1746,7 @@ int mse_host_dac_poll(MseHost *h, uint8_t *dst, int cap, int wait_ms, int state[
         return -1;
     pthread_mutex_lock(&h->mu);
     /* Only paused waits here: while playing, the decode loop signals cv every few ms. */
-    if (wait_ms > 0 && !h->released && !h->playing) {
+    if (wait_ms > 0 && !h->released && !h->playing && h->dac_attached) {
         struct timespec until;
         clock_gettime(CLOCK_REALTIME, &until);
         until.tv_nsec += (long)wait_ms * 1000000L;
