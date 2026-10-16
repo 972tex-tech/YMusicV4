@@ -298,6 +298,18 @@ static double dac_handover(MseHost *h, double dac)
 
 /* h->mu held. Do not take MseAv locks: the DAC callback/poll needs h->mu, and
    MediaCodec configure holds a->mu for tens of ms (audio-only → Auto). */
+/* Caller holds mu. */
+static void rebase_hold(MseHost *h, double t)
+{
+    h->hold = t;
+    h->origin_ns = now_ns();
+#ifdef MSE_DAC
+    h->seek_base = t;
+    dac_rebase(h);
+    h->dac_tick_ns = 0;
+#endif
+}
+
 static double clock_with_span(MseHost *h, int have, double first, double last, int has_video)
 {
     double t, hold;
@@ -409,13 +421,7 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
                 t = first;
             else if (t > cap) {
                 t = cap;
-                h->hold = cap;
-                h->origin_ns = now_ns();
-#ifdef MSE_DAC
-                h->seek_base = cap;
-                dac_rebase(h);
-                h->dac_tick_ns = 0;
-#endif
+                rebase_hold(h, cap);
             }
         }
     }
@@ -441,6 +447,17 @@ static double host_clock(MseHost *h)
     t = clock_with_span(h, have, first, last, has_v);
     pthread_mutex_unlock(&h->mu);
     return t;
+}
+
+/* The clock holds at `hold` once leftover no longer covers it, so dropping the head of leftover
+   while playing must first move `hold` to the playhead or currentTime snaps back to it. */
+static void hold_at_playhead(MseHost *h)
+{
+    double t = host_clock(h);
+    pthread_mutex_lock(&h->mu);
+    if (h->playing && h->hold < t)
+        rebase_hold(h, t);
+    pthread_mutex_unlock(&h->mu);
 }
 
 #ifdef MSE_DAC
@@ -1885,8 +1902,10 @@ int mse_host_prepare_append(MseHost *h, int audio, int n)
     if (have + (size_t)n <= cap)
         return 1;
     t = mse_host_current_time(h);
-    if (t > 1.0)
+    if (t > 1.0) {
+        hold_at_playhead(h);
         mse_av_evict_before(h->av, audio, t - 1.0, have + (size_t)n - cap);
+    }
     have = mse_av_leftover_bytes(h->av, audio);
     if (have + (size_t)n <= cap)
         return 1;
@@ -1915,6 +1934,7 @@ void mse_host_remove(MseHost *h, int audio, double start, double end)
     double pairs[2];
     if (!h)
         return;
+    hold_at_playhead(h);
     mse_av_remove(h->av, audio, start, end);
     /* Audio-only (or a full video wipe) — stop showing the last decoded frame. */
     if (!audio && mse_av_buffered(h->av, 0, pairs, 1) <= 0) {
