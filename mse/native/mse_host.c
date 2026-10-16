@@ -549,6 +549,7 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
  */
 #define AQ_FADE_S 0.015
 #define AQ_FADE_PAUSE_NS (25 * 1000 * 1000)
+#define AQ_STALL_NS 1e9
 
 typedef struct AqFadeJob {
     pthread_mutex_t mu;
@@ -839,6 +840,35 @@ static void *vid_loop(void *arg)
 
 static int audio_done(MseHost *h);
 
+#ifdef MSE_AQ
+static void aq_kill(MseHost *h);
+
+/* A queue that stops calling back (route change, audio server restart, a vendor bug) freezes the
+   clock with audio waiting in the ring. Media3 resets an output stuck this way after 200 ms; the
+   queue's own callback cadence is coarser, so wait 1 s, then reopen it from where playback is. */
+static void aq_watchdog(MseHost *h)
+{
+    double t;
+    pthread_mutex_lock(&h->mu);
+    if (!h->playing || !h->aq || !h->aq_started || h->flushing || h->aq_fade || h->ring_n <= 0 ||
+        h->dac_tick_ns <= 0 || now_ns() - h->dac_tick_ns < AQ_STALL_NS) {
+        pthread_mutex_unlock(&h->mu);
+        return;
+    }
+    h->dac_tick_ns = now_ns();
+    pthread_mutex_unlock(&h->mu);
+    t = host_clock(h);
+    mse_critf(MSE_LOG_WARN, "mse audio queue stalled with audio queued, reopening at %.3f", t);
+    aq_kill(h);
+    pthread_mutex_lock(&h->mu);
+    h->hold = t;
+    h->seek_base = t;
+    h->origin_ns = now_ns();
+    ring_flush(h);
+    pthread_mutex_unlock(&h->mu);
+}
+#endif
+
 static void *dec_loop(void *arg)
 {
     MseHost *h = (MseHost *)arg;
@@ -986,6 +1016,9 @@ static void *dec_loop(void *arg)
         }
 #endif
 
+#ifdef MSE_AQ
+        aq_watchdog(h);
+#endif
 #ifdef __ANDROID__
         {
             int done = audio_done(h);
