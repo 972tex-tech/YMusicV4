@@ -163,6 +163,9 @@ struct MseAv {
     int mc_pts0_set;
     int mc_eos;
     double mc_in_pts;
+    int mc_n_shown;
+    int mc_n_dropped;
+    int64_t mc_stats_t0;
 #endif
 };
 
@@ -1254,6 +1257,8 @@ static int mc_open(MseAv *a)
                 av_bsf_free(&a->vbsf);
         }
     }
+    mse_critf(MSE_LOG_INFO, "mse-v mediacodec open %s %dx%d win=%p", mime, w, h,
+              (void *)a->mc_win);
     vlog("open mediacodec %s %dx%d", mime, w, h);
     return 0;
 }
@@ -1535,6 +1540,23 @@ static int mc_feed(MseAv *a, double clock)
     return sent;
 }
 
+/* A frozen picture with these counts still rising means the window's consumer stopped. */
+static void mc_stats(MseAv *a, double clock)
+{
+    int64_t now = mc_now_us();
+    if (!a->mc_stats_t0) {
+        a->mc_stats_t0 = now;
+        return;
+    }
+    if (now - a->mc_stats_t0 < 5000000)
+        return;
+    mse_critf(MSE_LOG_INFO, "mse-v stats 5s shown=%d dropped=%d clock=%.3f v_sent=%.3f win=%p",
+              a->mc_n_shown, a->mc_n_dropped, clock, a->v_sent, (void *)a->mc_win);
+    a->mc_n_shown = 0;
+    a->mc_n_dropped = 0;
+    a->mc_stats_t0 = now;
+}
+
 static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
 {
     const double early = 0.04;
@@ -1542,6 +1564,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
     mc_feed(a, clock);
     if (!a->mc)
         return 0;
+    mc_stats(a, clock);
     if (a->mc_hold) {
         double p = (a->mc_hold_pts_us + a->mc_pts0) / 1e6;
         double d = p - clock;
@@ -1556,8 +1579,10 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
             vlog_state(a, clock, "hold-late", d);
             mc_cost_note_out(a, p);
             mc_hold_drop(a, 0);
+            a->mc_n_dropped++;
         } else {
             mc_hold_drop(a, 1);
+            a->mc_n_shown++;
             *pts = p;
             a->v_sent = p;
             a->v_pictured = 1;
@@ -1602,9 +1627,11 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                     vlog_state(a, clock, "recv-late", d);
                 mc_cost_note_out(a, p);
                 AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 0);
+                a->mc_n_dropped++;
                 continue;
             }
             AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 1);
+            a->mc_n_shown++;
             *pts = p;
             a->v_sent = p;
             a->v_pictured = 1;
