@@ -71,6 +71,10 @@ let inMemoryPlayer: Record<string, unknown> | undefined;
 // heavy enough that a burst of concurrent scrapes reads as bot traffic (BotGuard/captcha bait):
 // concurrent callers JOIN the in-flight scrape instead of starting their own.
 let inFlight: Promise<YtSession> | undefined;
+// When the last scrape failed: callers holding a stale session reuse it until SCRAPE_RETRY_MS has
+// passed instead of each paying a fresh scrape's timeout.
+let failedAt = 0;
+const SCRAPE_RETRY_MS = 5_000;
 
 /**
  * The current session. Re-scrapes only when there is no held record or `now - fetchedAt` exceeds
@@ -86,6 +90,7 @@ export async function getSession(maxAge: number): Promise<YtSession> {
   }
   const held = inMemory;
   if (held != null && maxAge > 0 && Date.now() - held.fetchedAt <= maxAge) return held;
+  if (held != null && maxAge > 0 && Date.now() - failedAt < SCRAPE_RETRY_MS) return held;
 
   try {
     return await scrapeInFlight();
@@ -108,7 +113,14 @@ function scrapeInFlight(): Promise<YtSession> {
   if (inFlight == null) {
     inFlight = (async () => {
       try {
-        const scraped = await scrapeSession();
+        let scraped: YtSession;
+        try {
+          scraped = await scrapeSession();
+        } catch (e) {
+          failedAt = Date.now();
+          throw e;
+        }
+        failedAt = 0;
         inMemory = scraped;
         await writeCache(scraped);
         return scraped;
