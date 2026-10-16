@@ -13,7 +13,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
 /**
  * Per-module `internal const val DEBUG_BUILD`, baked from `-Pymusic.debugLogs` (default true);
- * `-Pproduction=true` forces it false — a production build never reports as a debug one.
+ * a production build ([isProductionBuild]) forces it false — it never reports as a debug one.
  * Emitted into that module's own root package (longest common prefix of its source packages).
  * Android app modules keep `BuildConfig.DEBUG` — this is not generated there.
  */
@@ -62,7 +62,7 @@ private fun Project.debugBuildFlagTask(packageName: String): TaskProvider<Genera
     val existing = tasks.findByName("generateDebugBuildFlag")
     if (existing != null) return tasks.named("generateDebugBuildFlag", GenerateDebugBuildFlag::class.java)
 
-    val production = providers.gradleProperty("production").map(String::toBoolean).getOrElse(false)
+    val production = isProductionBuild()
     val debugBuild = providers.gradleProperty("ymusic.debugLogs").map(String::toBoolean).orElse(true)
         .map { it && !production }
     return tasks.register<GenerateDebugBuildFlag>("generateDebugBuildFlag") {

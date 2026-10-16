@@ -5,7 +5,7 @@ plugins {
 }
 
 // Public so the inline [Logger.debug] can see it: `-Pproduction` compiles DEBUG lines out.
-val production = providers.gradleProperty("production").map(String::toBoolean).getOrElse(false)
+val production = isProductionBuild()
 val buildFlagsDir = layout.buildDirectory.dir("generated/buildFlags")
 val generateBuildFlags by tasks.registering {
     inputs.property("production", production)
@@ -16,7 +16,7 @@ val generateBuildFlags by tasks.registering {
             |package kmpcommon.log
             |
             |object BuildFlags {
-            |    /** Baked at build time from -Pproduction (default false). */
+            |    /** Baked at build time: true for release builds (see isProductionBuild). */
             |    const val PRODUCTION: Boolean = $production
             |}
             |""".trimMargin(),

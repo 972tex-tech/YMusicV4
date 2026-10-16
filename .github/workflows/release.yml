@@ -134,7 +134,7 @@ jobs:
       # source context for this build, so crashes from the shipped APKs symbolicate.
       - name: Assemble release APKs
         working-directory: YMusicV4
-        run: ./gradlew :androidApp:assembleRelease :engine-js:closureJs :engine-js:closurePlayerJs
+        run: ./gradlew -Pproduction=true :androidApp:assembleRelease :engine-js:closureJs :engine-js:closurePlayerJs
 
       - name: Discard secrets
         if: always()
@@ -271,9 +271,9 @@ jobs:
         working-directory: YMusicV4
         run: |
           if [ -n "$YMUSIC_MAC_IDENTITY" ] && grep -q '^mac.notarization.appleId=.' secrets.properties 2>/dev/null; then
-            ./gradlew :desktopApp:packageReleaseDmg :desktopApp:notarizeReleaseDmg
+            ./gradlew -Pproduction=true :desktopApp:packageReleaseDmg :desktopApp:notarizeReleaseDmg
           else
-            ./gradlew :desktopApp:packageReleaseDmg
+            ./gradlew -Pproduction=true :desktopApp:packageReleaseDmg
           fi
 
       - name: Discard secrets

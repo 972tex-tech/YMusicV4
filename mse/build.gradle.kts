@@ -10,7 +10,7 @@ plugins {
 }
 
 val mseNativeSrc = projectDir.resolve("native")
-val production = providers.gradleProperty("production").map(String::toBoolean).getOrElse(false)
+val production = isProductionBuild()
 val productionC = if (production) "1" else "0"
 
 fun mseSdkPath(sdk: String): String =
