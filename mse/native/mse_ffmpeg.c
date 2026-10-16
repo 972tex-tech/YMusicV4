@@ -29,6 +29,7 @@
 #include "mse_hwdev.h"
 #endif
 
+#include <math.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -151,6 +152,8 @@ struct MseAv {
     int mc_hold;
     int mc_hold_ix;
     int64_t mc_hold_pts_us;
+    /* vbsf output MediaCodec had no input slot for; queued before anything else. */
+    AVPacket *mc_bsf_out;
     int mc_w;
     int mc_h;
     int mc_cfg_w;
@@ -220,6 +223,10 @@ static void mc_flush(MseAv *a)
     if (!a->mc)
         return;
     mc_hold_drop(a, 0);
+    if (a->mc_bsf_out)
+        av_packet_unref(a->mc_bsf_out);
+    if (a->vbsf)
+        av_bsf_flush(a->vbsf);
     if (!a->mc_pts0_set)
         return;
     AMediaCodec_flush(a->mc);
@@ -1109,6 +1116,8 @@ static void mc_close(MseAv *a)
     if (!a->mc)
         return;
     mc_hold_drop(a, 0);
+    if (a->mc_bsf_out)
+        av_packet_unref(a->mc_bsf_out);
     AMediaCodec_stop(a->mc);
     AMediaCodec_delete(a->mc);
     a->mc = NULL;
@@ -1374,6 +1383,29 @@ static int mc_queue(MseAv *a, const uint8_t *data, int n, int64_t pts_us, int ke
     return 0;
 }
 
+static int mc_drain_bsf(MseAv *a)
+{
+    int r;
+    if (!a->mc_bsf_out && !(a->mc_bsf_out = av_packet_alloc()))
+        return -1;
+    for (;;) {
+        if (a->mc_bsf_out->size <= 0) {
+            r = av_bsf_receive_packet(a->vbsf, a->mc_bsf_out);
+            if (r == AVERROR(EAGAIN) || r == AVERROR_EOF)
+                return 0;
+            if (r < 0)
+                return r;
+        }
+        r = mc_queue(a, a->mc_bsf_out->data, a->mc_bsf_out->size, a->mc_bsf_out->pts * 1000,
+                     !!(a->mc_bsf_out->flags & AV_PKT_FLAG_KEY));
+        if (r == AVERROR(EAGAIN))
+            return r;
+        av_packet_unref(a->mc_bsf_out);
+        if (r < 0)
+            return r;
+    }
+}
+
 static int mc_send_one(MseAv *a)
 {
     Cf *cf;
@@ -1382,7 +1414,13 @@ static int mc_send_one(MseAv *a)
         return 0;
     cf = &a->vf.f[a->vf.rd];
     if (a->vbsf) {
-        AVPacket *pkt = av_packet_alloc();
+        AVPacket *pkt;
+        r = mc_drain_bsf(a);
+        if (r == AVERROR(EAGAIN))
+            return 0;
+        if (r < 0)
+            return r;
+        pkt = av_packet_alloc();
         if (!pkt)
             return -1;
         if (av_new_packet(pkt, (int)cf->n) < 0) {
@@ -1390,8 +1428,8 @@ static int mc_send_one(MseAv *a)
             return -1;
         }
         memcpy(pkt->data, cf->data, cf->n);
-        pkt->pts = (int64_t)(cf->pts * 1000.0);
-        pkt->dts = (int64_t)(cf->dts * 1000.0);
+        pkt->pts = llround(cf->pts * 1000.0);
+        pkt->dts = llround(cf->dts * 1000.0);
         pkt->time_base = (AVRational){ 1, 1000 };
         if (cf->key)
             pkt->flags |= AV_PKT_FLAG_KEY;
@@ -1403,26 +1441,8 @@ static int mc_send_one(MseAv *a)
             return r;
         cf->sent = 1;
         a->vf.rd++;
-        pkt = av_packet_alloc();
-        if (!pkt)
-            return -1;
-        for (;;) {
-            r = av_bsf_receive_packet(a->vbsf, pkt);
-            if (r == AVERROR(EAGAIN) || r == AVERROR_EOF)
-                break;
-            if (r < 0) {
-                av_packet_free(&pkt);
-                return r;
-            }
-            r = mc_queue(a, pkt->data, pkt->size, (int64_t)(cf->pts * 1e6), cf->key);
-            av_packet_unref(pkt);
-            if (r < 0 && r != AVERROR(EAGAIN)) {
-                av_packet_free(&pkt);
-                return r;
-            }
-        }
-        av_packet_free(&pkt);
-        return 0;
+        r = mc_drain_bsf(a);
+        return r == AVERROR(EAGAIN) ? 0 : r;
     }
     r = mc_queue(a, cf->data, (int)cf->n, (int64_t)(cf->pts * 1e6), cf->key);
     if (r == AVERROR(EAGAIN))
@@ -1885,6 +1905,10 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         avcodec_free_context(ctxp);
         if (video) {
             av_bsf_free(&a->vbsf);
+#ifdef __ANDROID__
+            if (a->mc_bsf_out)
+                av_packet_unref(a->mc_bsf_out);
+#endif
             if (a->sws) {
                 sws_freeContext(a->sws);
                 a->sws = NULL;
@@ -2240,6 +2264,7 @@ void mse_av_destroy(MseAv *a)
     avcodec_parameters_free(&a->vpar_next);
 #ifdef __ANDROID__
     mc_close(a);
+    av_packet_free(&a->mc_bsf_out);
 #endif
     if (a->swr)
         swr_free(&a->swr);
@@ -2880,6 +2905,10 @@ static void close_video_decoder(MseAv *a)
     av_frame_free(&a->vhold);
     avcodec_free_context(&a->vdec);
     av_bsf_free(&a->vbsf);
+#ifdef __ANDROID__
+    if (a->mc_bsf_out)
+        av_packet_unref(a->mc_bsf_out);
+#endif
     if (a->sws) {
         sws_freeContext(a->sws);
         a->sws = NULL;
