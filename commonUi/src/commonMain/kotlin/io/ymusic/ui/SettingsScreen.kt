@@ -196,6 +196,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             ToggleRow(graph, AppSettings.stats, Res.string.settings_stats, Res.string.settings_stats_hint)
         }
         SettingsSection(Res.string.settings_section_about) {
+            VersionsRow(graph)
             // Download updates in the background (on by default); installing still waits for a tap.
             if (graph.updates != null) {
                 ToggleRow(graph, AppSettings.autoDownloadUpdates, Res.string.settings_auto_update, Res.string.settings_auto_update_hint)
@@ -204,7 +205,6 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             config?.changelogUrl?.let { LinkRow(Res.string.settings_changelog, it) }
             LinkRow(Res.string.settings_source_code, SourceCodeUrl)
             LicensesRow()
-            VersionsRow(graph)
         }
         SettingsSection(Res.string.settings_debug) {
             ToggleRow(graph, AppSettings.showFps, Res.string.settings_show_fps, Res.string.settings_show_fps_hint)
