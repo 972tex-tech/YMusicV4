@@ -61,6 +61,7 @@ When the user asks **why** / **what** / **how** / **wtf is** (explain a path, a 
 `engine.js` / `player.js` are replaced remotely and run on **every shipped host** — an old app can't be fixed, only the bundle can. Any edit to `engine-js/`, a QuickJS/`:mse` native, a host protocol (http/cookie/cache/settings), or a Kotlin command/decoder in `:dynamic-engine` must keep the newest bundle working on every supported app version.
 - Before finishing such an edit, walk the checklist in [`engine-js/README.md`](engine-js/README.md) § "Backward compatibility checklist" and state the compat verdict in the commit message (`compat: additive` / `compat: guarded by versions.app >= N` / `compat: BREAKING — <why it's acceptable>`).
 - Never rename or remove a wire field, command, or native in one step; add the new one and keep the old one until every app version using it is below the support floor.
+- **Bump the bundle revision with every fix or feature in it**, in the same commit, without being asked: `Versions.engineJsVersion` for engine.js, `Versions.playerJsVersion` for player.js (`buildSrc/.../Dependencies.kt`); shared code (`transport.ts`, `protocol/`) bumps both.
 
 ### Coroutines
 - **Suspend functions must be safe to call from the main thread.** Use `withContext(Dispatchers.IO)` for I/O or `withContext(Dispatchers.Default)` for CPU-bound work.
