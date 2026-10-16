@@ -1111,6 +1111,10 @@ class Player {
     if (!player) throw new JsEngineErrorImpl("player not created", "E20084");
     player["stopVideo"]();
     bindHtmlMediaEvents();
+    // The host drops its video size on stop; a next video of the same size must report it again.
+    pictureW = 0;
+    pictureH = 0;
+    notifyListen("picture");
   }
 
   /** Clock group: position, buffer, duration, seek window. Same payload as webview `_progress`. */
