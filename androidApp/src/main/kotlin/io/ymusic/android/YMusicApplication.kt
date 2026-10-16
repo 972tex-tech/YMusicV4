@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
 import android.os.Build
+import android.os.SystemClock
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
@@ -47,6 +48,7 @@ import io.ymusic.mediastore.mediaStoreAndroidDriver
 import io.ymusic.mediastore.model.BucketDraft
 import io.ymusic.mse.MseVideoSurface
 import io.ymusic.player.LocalPlayerContext
+import io.ymusic.player.PlaybackState
 import io.ymusic.player.PlayerEngines
 import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
@@ -416,7 +418,7 @@ class YMusicApplication : Application() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
         mseTexture.visibility = View.GONE
-        val mseBridge = MseSurfaceBridge(mseTexture)
+        val mseBridge = MseSurfaceBridge(mseTexture, rootLogger.fork("mse-surface"))
         mseTexture.surfaceTextureListener = mseBridge.listener
         val graph = withContext(Dispatchers.Default) {
             buildGraphOffMain(videoContainer, downloadContainer, mseTexture, mseBridge)
@@ -790,20 +792,61 @@ class YMusicApplication : Application() {
  * TextureView; releasing the SurfaceTexture there tears MediaCodec and glitches audio. Keep the
  * producer and restore it after re-attach (`setSurfaceTexture`); only bind MediaCodec once.
  */
-private class MseSurfaceBridge(private val textureView: TextureView) {
+private class MseSurfaceBridge(private val textureView: TextureView, private val log: Logger) {
     private var player: MsePlayer? = null
     private var pending: Surface? = null
     private var texture: SurfaceTexture? = null
+    private var frames = 0L
+    private var watchedFrames = 0L
+    private var stalledSinceMs = 0L
+
+    /* Pairs with native "mse-v stats": decoder frames rising while this sees none = a stale consumer. */
+    private val watchdog = object : Runnable {
+        override fun run() {
+            checkFrames()
+            textureView.postDelayed(this, WATCH_MS)
+        }
+    }
 
     fun attach(p: MsePlayer) {
         player = p
         pending?.let { p.setVideoSurface(MseVideoSurface(it)) }
+        textureView.post {
+            textureView.removeCallbacks(watchdog)
+            textureView.postDelayed(watchdog, WATCH_MS)
+        }
     }
 
     fun reattach(tv: TextureView) {
         val st = texture ?: return
         if (tv.surfaceTexture === st) return
         runCatching { tv.setSurfaceTexture(st) }
+    }
+
+    private fun checkFrames() {
+        val status = player?.status?.value ?: return
+        val prepared = status.state as? PlaybackState.Prepared
+        val expectFrames = status.videoSize != null && prepared != null &&
+            prepared.playWhenReady && !prepared.buffering && !prepared.ended &&
+            textureView.isShown && textureView.windowVisibility == View.VISIBLE
+        val delta = frames - watchedFrames
+        watchedFrames = frames
+        val now = SystemClock.uptimeMillis()
+        if (expectFrames && delta == 0L) {
+            if (stalledSinceMs != 0L) return
+            stalledSinceMs = now - WATCH_MS
+            log.log(
+                Logger.Level.INFO,
+                "no frames for ${WATCH_MS}ms while playing: attached=${textureView.isAttachedToWindow} " +
+                    "available=${textureView.isAvailable} ownTexture=${textureView.surfaceTexture === texture} " +
+                    "view=${textureView.width}x${textureView.height} video=${status.videoSize}",
+            )
+        } else if (delta > 0L && stalledSinceMs != 0L) {
+            log.log(Logger.Level.INFO, "frames resumed after ${now - stalledSinceMs}ms")
+            stalledSinceMs = 0L
+        } else if (!expectFrames) {
+            stalledSinceMs = 0L
+        }
     }
 
     val listener = object : TextureView.SurfaceTextureListener {
@@ -815,6 +858,7 @@ private class MseSurfaceBridge(private val textureView: TextureView) {
                 return
             }
             if (st !== texture) {
+                log.log(Logger.Level.INFO, "new SurfaceTexture on reattach; restoring the bound one")
                 texture?.let { kept -> runCatching { textureView.setSurfaceTexture(kept) } }
             }
         }
@@ -826,6 +870,12 @@ private class MseSurfaceBridge(private val textureView: TextureView) {
             return false
         }
 
-        override fun onSurfaceTextureUpdated(st: SurfaceTexture) = Unit
+        override fun onSurfaceTextureUpdated(st: SurfaceTexture) {
+            frames++
+        }
+    }
+
+    private companion object {
+        const val WATCH_MS = 2000L
     }
 }
