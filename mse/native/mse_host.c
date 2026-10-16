@@ -345,6 +345,10 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
             (h->dac_live || now_ns() - h->dac_start_ns < DAC_FIRST_REPORT_NS)) {
             double sp = play_speed(h);
             double dac = h->seek_base + dac_media_s(h, (double)h->samples_played, sp);
+            /* Wall time stands still while the clock holds, so a sink that never reports falls back
+               from the held position instead of a second ahead of it. */
+            if (!h->dac_live && h->playing)
+                h->origin_ns = now_ns();
             if (h->playing && h->dac_tick_ns > 0) {
                 double extra = (now_ns() - h->dac_tick_ns) / 1e9;
                 if (extra > DAC_EXTRAPOLATE_S)
