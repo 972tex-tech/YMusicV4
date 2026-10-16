@@ -871,6 +871,7 @@ static void *dec_loop(void *arg)
             int dac = 0;
             unsigned gen;
             double lead = 0.35;
+            double until;
             pthread_mutex_lock(&h->mu);
             want = ring_ms(h) < 400;
             gen = h->ring_gen;
@@ -884,11 +885,18 @@ static void *dec_loop(void *arg)
                 lead += (double)aq_latency_frames(h) / (double)h->rate;
 #endif
             lead *= play_speed(h);
+            until = clock + lead;
+#ifdef __ANDROID__
+            /* Until the sink reports playout the clock holds, and a streaming AudioTrack starts only
+               once full: decode as far as ring + sink take (Media3 feeds until handleBuffer refuses). */
+            if (!h->dac_live)
+                until = clock + 3600.0;
+#endif
             pthread_mutex_unlock(&h->mu);
             if (!want)
                 break;
             pcm = NULL;
-            if (mse_av_pull_audio(h->av, clock, clock + lead, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
+            if (mse_av_pull_audio(h->av, clock, until, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
                 break;
             host_stretch(h, &pcm, &frames, ch, rate);
             if (frames <= 0) {
