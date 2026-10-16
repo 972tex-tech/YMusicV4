@@ -779,19 +779,22 @@ class QuickJsRuntime private constructor(
          *  in the queue for [slowWaitMs]+ before running, which also catches cumulative congestion
          *  no single stint shows. Both callbacks run on the engine thread itself: keep them cheap.
          *  [onSlowStint] receives the stint length and a live engine-thread stack dump (JVM/Android)
-         *  captured at the budget, while the task is still running. A throwing callback propagates
+         *  captured at the budget, while the task is still running, and how much of the stint the
+         *  whole process was frozen; [liveStacks] = false drops both for two clock reads per task
+         *  (see [slowStintDispatcher]). A throwing callback propagates
          *  out of the task. Nothing armed = the raw dispatcher, zero overhead. */
         fun newDispatcher(
             slowStintMs: Long = 0L,
-            onSlowStint: ((millis: Long, detail: String) -> Unit)? = null,
+            onSlowStint: ((millis: Long, pausedMillis: Long, detail: String) -> Unit)? = null,
             slowWaitMs: Long = 0L,
             onSlowWait: ((millis: Long) -> Unit)? = null,
+            liveStacks: Boolean = true,
         ): CloseableCoroutineDispatcher {
             val raw = newEngineDispatcher()
             val stint = onSlowStint.takeIf { slowStintMs > 0L }
             val wait = onSlowWait.takeIf { slowWaitMs > 0L }
             if (stint == null && wait == null) return raw
-            return slowStintDispatcher(raw, slowStintMs, stint, slowWaitMs, wait)
+            return slowStintDispatcher(raw, slowStintMs, stint, slowWaitMs, wait, liveStacks)
         }
 
         /** Compile [script] to QuickJS bytecode for [create]. Per-function source text is stripped
