@@ -117,6 +117,8 @@ struct MseHost {
     int64_t dac_cp_edge[DAC_CHECKPOINTS];
     double dac_cp_speed[DAC_CHECKPOINTS];
     int dac_cp_n;
+    /* Set by every ring flush: the first PCM written after it puts seek_base at its own pts. */
+    int pcm_anchor;
 #endif
 #ifdef MSE_AQ
     AudioQueueRef aq;
@@ -488,6 +490,7 @@ static void ring_flush(MseHost *h)
     h->ring_gen++;
     h->dac_pos = h->dac_base = h->dac_polled = 0;
     h->dac_cp_n = 0;
+    h->pcm_anchor = 1;
 #ifdef __ANDROID__
     h->dac_live = 0;
     h->dac_drain = 0;
@@ -936,8 +939,16 @@ static void *dec_loop(void *arg)
                 dac = h->dac_attached && h->ring != NULL;
 #endif
                 h->samples_pulled += frames;
-                if (dac && !h->flushing && gen == h->ring_gen)
+                if (dac && !h->flushing && gen == h->ring_gen) {
+                    /* The audio clock starts at the first sample's own time, not the seek target
+                       (Media3 takes startMediaTimeUs from the first buffer): a seek lands up to a
+                       frame early, and a reopened queue resumes past the audio its ring lost. */
+                    if (h->pcm_anchor && h->dac_polled == 0) {
+                        h->seek_base = pts;
+                        h->pcm_anchor = 0;
+                    }
                     ring_write(h, (const uint8_t *)pcm, nbytes);
+                }
                 if (dac && !h->aq_started && ring_ms(h) >= 160) {
                     h->aq_started = 1;
                     dac_rebase(h);
