@@ -354,7 +354,7 @@ static void ring_write(MseHost *h, const uint8_t *p, int n)
     }
 }
 
-static int ring_read(MseHost *h, uint8_t *p, int n)
+static int ring_read(MseHost *h, uint8_t *p, int n, int color)
 {
     int got = 0;
     int fb = frame_bytes(h);
@@ -376,7 +376,7 @@ static int ring_read(MseHost *h, uint8_t *p, int n)
         h->ring_n -= chunk;
         got += chunk;
     }
-    if (got > 0 && h->fx && h->ch > 0) {
+    if (color && got > 0 && h->fx && h->ch > 0) {
         int fb = frame_bytes(h);
         if (fb > 0)
             audio_fx_color(h->fx, (int16_t *)p, got / fb, h->ch);
@@ -422,7 +422,7 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
      * ~100 ms into every resume; the ring's next audio is what belongs in it. */
     live = h->ring != NULL;
     if (live)
-        n = ring_read(h, (uint8_t *)buf->mAudioData, cap);
+        n = ring_read(h, (uint8_t *)buf->mAudioData, cap, 1);
     if (n > 0 && h->rate > 0 && h->ch > 0) {
         h->samples_played += n / frame_bytes(h);
         h->dac_tick_ns = now_ns();
@@ -1519,7 +1519,7 @@ void mse_host_dac_attach(MseHost *h, int attached)
 
 int mse_host_dac_poll(MseHost *h, uint8_t *dst, int cap, int wait_ms, int state[MSE_DAC_STATE_N])
 {
-    int n = 0, run;
+    int n = 0, run, ch;
     if (!h)
         return -1;
     pthread_mutex_lock(&h->mu);
@@ -1538,13 +1538,20 @@ int mse_host_dac_poll(MseHost *h, uint8_t *dst, int cap, int wait_ms, int state[
     }
     run = h->playing && h->aq_started && h->ring && !h->flushing;
     if (run && dst && cap > 0)
-        n = ring_read(h, dst, cap);
+        n = ring_read(h, dst, cap, 0);
+    if (n > 0) {
+        /* Until the sink's next report: the chunk is out of the ring but not in the track yet. */
+        h->dac_pending = 1;
+    }
+    ch = h->ch;
     state[MSE_DAC_GEN] = (int)h->ring_gen;
     state[MSE_DAC_RATE] = h->rate;
     state[MSE_DAC_CH] = h->ch;
     state[MSE_DAC_RUN] = run;
     state[MSE_DAC_DRAIN] = h->dac_drain && h->ring_n <= 0;
     pthread_mutex_unlock(&h->mu);
+    if (n > 0 && h->fx && ch > 0)
+        audio_fx_color(h->fx, (int16_t *)dst, n / (ch * 2), ch);
     return n;
 }
 
@@ -1564,7 +1571,8 @@ void mse_host_dac_report(MseHost *h, int gen, int64_t position, int64_t written,
         if (h->aq_started) {
             h->samples_played = position > h->dac_base ? position - h->dac_base : 0;
             h->dac_tick_ns = now_ns();
-            h->dac_live = 1;
+            if (position > 0)
+                h->dac_live = 1;
         }
     }
     pthread_mutex_unlock(&h->mu);

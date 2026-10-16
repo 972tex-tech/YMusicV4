@@ -3,6 +3,7 @@ package io.ymusic.mse
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Process
+import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -36,13 +37,23 @@ internal class MseAudioOutput(private val host: Long) {
     private var rate = 0
     private var channels = 0
     private var configured = false
+    private var configuredAtMs = 0L
+    private var configureWarned = ""
     private var running = false
     private var draining = false
     private var failing = false
 
     /** Frames in [buffer] the sink has not taken yet; 0 = [buffer] is free. */
     private var heldFrames = 0
-    private var writtenFrames = 0L
+    private var heldSilence = false
+
+    /** Frames handed to the sink this generation, silence included: the timestamp base. */
+    private var sinkFrames = 0L
+
+    /** Start padding (see [padToStart]): [padFrames] of silence written after sink frame [padAt]. */
+    private var padAt = 0L
+    private var padFrames = 0L
+    private var starvedSinceMs = 0L
 
     /** Highest position reported in this generation: AudioTrack timestamps can step backwards. */
     private var reportedFrames = -1L
@@ -73,10 +84,11 @@ internal class MseAudioOutput(private val host: Long) {
     /** Blocks until the sink is gone and the host no longer feeds it; call before destroying the host. */
     fun release() {
         released = true
+        // Wakes a paused dacPoll wait now instead of after PAUSED_WAIT_MS.
+        MseHostNative.dacAttach(host, false)
         val done = CountDownLatch(1)
         handler.post {
             handler.removeCallbacks(step)
-            MseHostNative.dacAttach(host, false)
             sink.reset()
             sink.release()
             done.countDown()
@@ -89,15 +101,28 @@ internal class MseAudioOutput(private val host: Long) {
         if (released) return
         val free = heldFrames == 0
         val n = MseHostNative.dacPoll(host, buffer, if (free) buffer.capacity() else 0, PAUSED_WAIT_MS, state)
-        if (n < 0) return
+        if (n == POLL_RELEASED) return
+        if (n < 0) {
+            if (!failing) MseLogBridge.fire(LOG_WARN, "mse audio sink: poll failed ($n), retrying")
+            failing = true
+            handler.postDelayed(step, RETRY_MS)
+            return
+        }
+        if (!configured && rate > 0 && SystemClock.uptimeMillis() - configuredAtMs >= CONFIGURE_RETRY_MS) {
+            configured = configure()
+        }
         if (state[GEN] != gen || state[RATE] != rate || state[CHANNELS] != channels) {
             sink.flush()
             gen = state[GEN]
             heldFrames = 0
-            writtenFrames = 0
+            heldSilence = false
+            sinkFrames = 0
+            padAt = 0
+            padFrames = 0
+            starvedSinceMs = 0
             reportedFrames = -1
             draining = false
-            if (state[RATE] != rate || state[CHANNELS] != channels) {
+            if (state[RATE] != rate || state[CHANNELS] != channels || !configured) {
                 rate = state[RATE]
                 channels = state[CHANNELS]
                 configured = configure()
@@ -112,23 +137,29 @@ internal class MseAudioOutput(private val host: Long) {
             buffer.clear()
             buffer.limit(n)
             heldFrames = n / (channels * BYTES_PER_SAMPLE)
+            starvedSinceMs = 0
         }
         val run = state[RUN] != 0
         if (run != running) {
             running = run
             if (run) sink.play() else sink.pause()
         }
+        if (n == 0 && heldFrames == 0 && running && padFrames == 0L && reportedFrames <= 0 && sinkFrames > 0) {
+            val now = SystemClock.uptimeMillis()
+            if (starvedSinceMs == 0L) starvedSinceMs = now else if (now - starvedSinceMs >= START_STARVED_MS) padToStart()
+        }
         var full = false
         try {
             if (heldFrames > 0) {
-                if (sink.handleBuffer(buffer, writtenFrames * MICROS_PER_SECOND / rate, 1)) {
-                    writtenFrames += heldFrames
+                if (sink.handleBuffer(buffer, sinkFrames * MICROS_PER_SECOND / rate, 1)) {
+                    sinkFrames += heldFrames
+                    heldSilence = false
                     heldFrames = 0
                 } else {
                     full = true
                 }
             }
-            if (state[DRAIN] != 0 && heldFrames == 0 && writtenFrames > 0) {
+            if (state[DRAIN] != 0 && heldFrames == 0 && sinkFrames > 0) {
                 sink.playToEndOfStream()
                 draining = true
             }
@@ -147,13 +178,43 @@ internal class MseAudioOutput(private val host: Long) {
     private fun report() {
         val positionUs = sink.getCurrentPositionUs(false)
         if (positionUs != AudioSink.CURRENT_POSITION_NOT_SET && rate > 0) {
-            reportedFrames = maxOf(reportedFrames, positionUs * rate / MICROS_PER_SECOND)
+            val played = positionUs * rate / MICROS_PER_SECOND
+            val media = if (played <= padAt || padFrames == 0L) played else maxOf(padAt, played - padFrames)
+            reportedFrames = maxOf(reportedFrames, media)
         }
         val bufferUs = sink.audioTrackBufferSizeUs.takeIf { it != C.TIME_UNSET } ?: 0L
-        MseHostNative.dacReport(host, gen, reportedFrames, writtenFrames, sink.hasPendingData(), bufferUs)
+        // A silence pad still held is counted in padFrames but not yet in sinkFrames.
+        val written = sinkFrames - if (heldSilence) 0L else padFrames
+        val pending = sink.hasPendingData() || heldFrames > 0
+        MseHostNative.dacReport(host, gen, reportedFrames, written, pending, bufferUs)
+    }
+
+    /**
+     * A streaming AudioTrack starts only once its buffer is full, and outputs may enlarge the buffer
+     * past what we ask for (500 ms on a Galaxy S24). Right after a seek the stream can hold less than
+     * that while the host's clock waits for the track, so neither moves: top the track up with
+     * silence once. [report] takes the silence back out of the position.
+     */
+    private fun padToStart() {
+        val bufferUs = sink.audioTrackBufferSizeUs
+        if (bufferUs == C.TIME_UNSET) return
+        val frameBytes = channels * BYTES_PER_SAMPLE
+        val missing = bufferUs * rate / MICROS_PER_SECOND - sinkFrames
+        val frames = (missing.coerceAtLeast(0) + rate / START_PAD_MARGIN_DIVISOR)
+            .coerceAtMost((buffer.capacity() / frameBytes).toLong()).toInt()
+        buffer.clear()
+        buffer.put(SILENCE, 0, frames * frameBytes)
+        buffer.flip()
+        heldFrames = frames
+        heldSilence = true
+        padAt = sinkFrames
+        // Counted now: the sink may take the pad in pieces, and report() runs between them.
+        padFrames = frames.toLong()
+        MseLogBridge.fire(LOG_INFO, "mse audio sink: track not started, padded ${frames * 1000L / rate}ms of silence")
     }
 
     private fun configure(): Boolean {
+        configuredAtMs = SystemClock.uptimeMillis()
         if (rate <= 0 || channels <= 0) return false
         val format = Format.Builder()
             .setSampleMimeType(MimeTypes.AUDIO_RAW)
@@ -165,7 +226,9 @@ internal class MseAudioOutput(private val host: Long) {
             sink.configure(AudioSink.AudioSinkConfig.Builder(format).build())
             true
         } catch (error: AudioSink.ConfigurationException) {
-            MseLogBridge.fire(LOG_WARN, "mse audio sink: cannot play ${rate}Hz/${channels}ch: $error")
+            val what = "${rate}Hz/${channels}ch"
+            if (configureWarned != what) MseLogBridge.fire(LOG_WARN, "mse audio sink: cannot play $what, retrying: $error")
+            configureWarned = what
             false
         }
     }
@@ -202,17 +265,23 @@ internal class MseAudioOutput(private val host: Long) {
         const val DRAIN = 4
         const val STATE_SIZE = 5
 
+        /** dacPoll: the host is released; anything else negative is a JNI buffer error. */
+        const val POLL_RELEASED = -1
+
         const val BYTES_PER_SAMPLE = 2
         const val CHUNK_BYTES = 4096 * 2 * BYTES_PER_SAMPLE
+        val SILENCE = ByteArray(CHUNK_BYTES)
         const val MICROS_PER_SECOND = 1_000_000L
         const val IDLE_MS = 10L
         const val RETRY_MS = 100L
         const val PAUSED_WAIT_MS = 200
+        const val START_STARVED_MS = 100L
+        const val CONFIGURE_RETRY_MS = 1000L
 
-        /**
-         * A streaming AudioTrack starts once its buffer is full, and the host decodes only a little
-         * past its clock, so the track buffer stays small (the host's ring is the real buffer).
-         */
+        /** Pad margin: 1/50 s. */
+        const val START_PAD_MARGIN_DIVISOR = 50
+
+        /** The host's ring is the real buffer; outputs may still enlarge the track (see [padToStart]). */
         const val MIN_TRACK_BUFFER_US = 100_000
         const val MAX_TRACK_BUFFER_US = 200_000
 

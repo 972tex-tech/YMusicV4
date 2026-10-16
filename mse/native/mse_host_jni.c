@@ -265,8 +265,9 @@ Java_io_ymusic_mse_MseHostNative_dacPoll(JNIEnv *env, jclass cls, jlong handle, 
     memset(st, 0, sizeof(st));
     if (dst && cap > 0) {
         p = (uint8_t *)(*env)->GetDirectBufferAddress(env, dst);
+        /* -1 is "host released": the sink thread stops for good on it. */
         if (!p || (*env)->GetDirectBufferCapacity(env, dst) < cap)
-            return -1;
+            return -2;
     }
     n = mse_host_dac_poll((MseHost *)(intptr_t)handle, p, p ? cap : 0, waitMs, st);
     if (state && (*env)->GetArrayLength(env, state) >= MSE_DAC_STATE_N)
