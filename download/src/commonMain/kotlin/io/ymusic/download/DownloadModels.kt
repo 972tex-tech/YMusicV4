@@ -6,10 +6,12 @@ import projectcommon.error.CodedError
  * The container/codec a download is delivered as. The pipeline that produces each is in
  * [DownloadPipeline]; which are available depends on the platform (ffmpeg presence):
  *
- * - [MP3] / [M4A] / [AUDIO_WEBM] — audio only. MP3 always transcodes (libmp3lame); M4A is copied as-is
- *   when the best audio is already AAC, otherwise transcoded; AUDIO_WEBM copies the Opus stream.
- * - [VIDEO_WEBM] — VP9 video + Opus audio, stream-copied into one WebM (cheap, no re-encode).
- * - [VIDEO_MP4] — video stream-copied + audio transcoded to AAC into one MP4 (broad device support).
+ * - [MP3] / [M4A] / [AUDIO_WEBM] — audio only. MP3 decodes the highest-bitrate audio of any codec and
+ *   encodes it with libmp3lame; M4A stream-copies the AAC track, AUDIO_WEBM the Opus track.
+ * - [VIDEO_WEBM] — VP9/AV1 video + Opus audio, stream-copied into one WebM.
+ * - [VIDEO_MP4] — video + AAC audio, stream-copied into one MP4.
+ *
+ * Only MP3 re-encodes: every source is lossy, so any other output just muxes the original streams.
  *
  * Every output goes through ffmpeg where it exists — not just to transcode/mux, but to embed the
  * metadata tags (title / artist / composer=videoId) into the container. iOS has no ffmpeg: there M4A

@@ -5,31 +5,29 @@ import io.ymusic.ytmedia.sabr.AdaptiveFormat
 /**
  * Chooses the concrete [AdaptiveFormat]s to download for a [DownloadFormat] from a video's
  * `adaptiveFormats`. Audio and video are separate elementary streams (SABR delivers each unmuxed); the
- * pipeline muxes/transcodes afterward. `contentLength` (`clen`) stands in for bitrate — there is no
- * explicit bitrate field — so "best" means largest `clen` within the preferred codec family.
+ * pipeline muxes them afterward. `contentLength` (`clen`) stands in for bitrate — there is no explicit
+ * bitrate field — so "best" means largest `clen`.
  */
 internal object FormatSelection {
 
     /**
-     * Best audio track. [preferAac] biases toward mp4/AAC (so an M4A/MP4 target can stream-copy or make
-     * a compatible AAC track); otherwise WebM/Opus is preferred (higher quality per byte for MP3/WebM).
-     * The requested [audioTrackId] (a dubbed language) wins when the video has it, then a track in
-     * [audioLanguage]; otherwise default (non-dubbed) tracks win over alternates so we don't grab a
-     * foreign-language dub.
+     * Best audio track whose codec [codec] accepts — the source is lossy, so a non-MP3 output only ever
+     * stream-copies and must take a codec its container holds. The requested [audioTrackId] (a dubbed
+     * language) wins when the video has it, then a track in [audioLanguage]; otherwise default
+     * (non-dubbed) tracks win over alternates so we don't grab a foreign-language dub.
      */
     fun bestAudio(
         formats: List<AdaptiveFormat>,
-        preferAac: Boolean,
+        codec: AudioCodec,
         audioTrackId: String? = null,
         audioLanguage: String? = null,
     ): AdaptiveFormat? {
-        val audio = formats.filter { it.mimeType.startsWith("audio") && it.clen > 0 && !it.isDrc }
+        val audio = formats.filter { it.mimeType.startsWith("audio") && it.clen > 0 && !it.isDrc && codec.accepts(it.mimeType) }
         if (audio.isEmpty()) return null
         return audio.sortedWith(
             compareByDescending<AdaptiveFormat> { audioTrackId != null && it.audioTrackId == audioTrackId }
                 .thenByDescending { audioLanguage != null && it.audioTrackId?.let(::audioTrackLanguage)?.let { lang -> sameLanguage(lang, audioLanguage) } == true }
                 .thenByDescending { it.audioTrackIsDefault != false }
-                .thenByDescending { if (preferAac) it.mimeType.contains("mp4") else it.mimeType.contains("webm") }
                 .thenByDescending { it.clen },
         ).first()
     }
@@ -58,6 +56,31 @@ internal object FormatSelection {
                 .thenByDescending { it.height ?: 0 }
                 .thenByDescending { it.clen },
         ).first()
+    }
+}
+
+/** The audio codecs an output can take: [AAC] for M4A/MP4, [OPUS] for WebM, [ANY] for MP3 (decoded). */
+internal enum class AudioCodec {
+    AAC,
+    OPUS,
+    ANY,
+    ;
+
+    fun accepts(mimeType: String): Boolean {
+        val codecs = mimeType.substringAfter("codecs=", "").trim('"', ' ')
+        return when (this) {
+            AAC -> codecs.startsWith("mp4a")
+            OPUS -> codecs.startsWith("opus")
+            ANY -> true
+        }
+    }
+
+    companion object {
+        fun of(format: DownloadFormat): AudioCodec = when (format) {
+            DownloadFormat.MP3 -> ANY
+            DownloadFormat.M4A, DownloadFormat.VIDEO_MP4 -> AAC
+            DownloadFormat.AUDIO_WEBM, DownloadFormat.VIDEO_WEBM -> OPUS
+        }
     }
 }
 
