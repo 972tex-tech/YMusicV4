@@ -20,6 +20,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,6 +75,7 @@ internal fun PlaybackFxSheet(player: Player, onDismiss: () -> Unit) {
             FxBar(
                 fraction = config.volume,
                 onChange = { player.volume = it },
+                onScrub = { f -> if (f != null) player.volume = f },
             )
             Spacer(Modifier.height(16.dp))
             RateBlock(
@@ -100,7 +103,9 @@ private fun RateBlock(
     range: ClosedFloatingPointRange<Float>,
     onChange: (Float) -> Unit,
 ) {
-    LabelValue("$title ×${trimFloat(value)}", "")
+    var scrubbing by remember { mutableStateOf<Float?>(null) }
+    fun snapped(f: Float) = snap05(range.start + f * (range.endInclusive - range.start))
+    LabelValue("$title ×${trimFloat(scrubbing ?: value)}", "")
     FlowRow(
         DialogPad.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -121,9 +126,8 @@ private fun RateBlock(
         Stepper("−") { onChange(snap05((value - 0.05f).coerceIn(range.start, range.endInclusive))) }
         FxBar(
             fraction = (value - range.start) / (range.endInclusive - range.start),
-            onChange = { f ->
-                onChange(snap05(range.start + f * (range.endInclusive - range.start)))
-            },
+            onChange = { f -> onChange(snapped(f)) },
+            onScrub = { f -> scrubbing = f?.let(::snapped) },
             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
         )
         Stepper("+") { onChange(snap05((value + 0.05f).coerceIn(range.start, range.endInclusive))) }
@@ -131,12 +135,17 @@ private fun RateBlock(
 }
 
 @Composable
-private fun FxBar(fraction: Float, onChange: (Float) -> Unit, modifier: Modifier = DialogPad.fillMaxWidth()) {
+private fun FxBar(
+    fraction: Float,
+    onChange: (Float) -> Unit,
+    modifier: Modifier = DialogPad.fillMaxWidth(),
+    onScrub: ((Float?) -> Unit)? = null,
+) {
     SlimSeekBar(
         fraction = fraction.coerceIn(0f, 1f),
         enabled = true,
         onSeek = onChange,
-        onScrub = { f -> if (f != null) onChange(f) },
+        onScrub = onScrub,
         trackColor = DesignColors.OutlineSoft,
         modifier = modifier,
     )
