@@ -373,7 +373,7 @@
     <string name="settings_system_audio_fx_hint">Cihazınızdakı ekvalayzer tətbiqləri səsi formalaşdırsın. Tətbiqdaxili ekvalayzeri söndürür.</string>
     <string name="sound_title">Səs</string>
     <string name="sound_playback">Oxutma</string>
-    <string name="sound_volume">Səs səviyyəsi %1$d%%</string>
+    <string name="sound_volume">Səs səviyyəsi %1$d%</string>
     <string name="sound_speed">Sürət</string>
     <string name="sound_pitch">Ton %1$s</string>
     <string name="sound_eq">Ekvalayzer</string>

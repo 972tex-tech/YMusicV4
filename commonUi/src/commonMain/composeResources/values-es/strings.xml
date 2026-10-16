@@ -374,7 +374,7 @@
     <string name="settings_system_audio_fx_hint">Deja que las apps de ecualizador del dispositivo moldeen el sonido. Desactiva el ecualizador de la app.</string>
     <string name="sound_title">Sonido</string>
     <string name="sound_playback">Reproducción</string>
-    <string name="sound_volume">Volumen %1$d%%</string>
+    <string name="sound_volume">Volumen %1$d%</string>
     <string name="sound_speed">Velocidad</string>
     <string name="sound_pitch">Tono %1$s</string>
     <string name="sound_eq">Ecualizador</string>

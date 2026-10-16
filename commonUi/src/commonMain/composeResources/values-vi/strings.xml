@@ -417,7 +417,7 @@
     <string name="account_library_empty">Thư viện của bạn đang trống</string>
     <string name="sound_title">Âm thanh</string>
     <string name="sound_playback">Phát</string>
-    <string name="sound_volume">Âm lượng %1$d%%</string>
+    <string name="sound_volume">Âm lượng %1$d%</string>
     <string name="sound_speed">Tốc độ</string>
     <string name="sound_pitch">Cao độ %1$s</string>
     <string name="sound_eq">Equalizer</string>

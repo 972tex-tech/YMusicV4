@@ -373,7 +373,7 @@
     <string name="settings_system_audio_fx_hint">Laat gelykmaker-toepassings op jou toestel die klank vorm. Skakel die ingeboude gelykmaker af.</string>
     <string name="sound_title">Klank</string>
     <string name="sound_playback">Terugspeel</string>
-    <string name="sound_volume">Volume %1$d%%</string>
+    <string name="sound_volume">Volume %1$d%</string>
     <string name="sound_speed">Spoed</string>
     <string name="sound_pitch">Toonhoogte %1$s</string>
     <string name="sound_eq">Gelykmaker</string>

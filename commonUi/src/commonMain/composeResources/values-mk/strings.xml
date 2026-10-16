@@ -373,7 +373,7 @@
     <string name="settings_system_audio_fx_hint">Дозволете апликациите за еквилајзер на уредот да го обликуваат звукот. Го исклучува еквилајзерот во апликацијата.</string>
     <string name="sound_title">Звук</string>
     <string name="sound_playback">Репродукција</string>
-    <string name="sound_volume">Јачина %1$d%%</string>
+    <string name="sound_volume">Јачина %1$d%</string>
     <string name="sound_speed">Брзина</string>
     <string name="sound_pitch">Висина %1$s</string>
     <string name="sound_eq">Еквилајзер</string>

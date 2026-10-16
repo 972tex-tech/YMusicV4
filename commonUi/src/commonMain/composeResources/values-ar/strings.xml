@@ -422,7 +422,7 @@
     <string name="account_library_empty">مكتبتك فارغة</string>
     <string name="sound_title">الصوت</string>
     <string name="sound_playback">التشغيل</string>
-    <string name="sound_volume">مستوى الصوت %1$d%%</string>
+    <string name="sound_volume">مستوى الصوت %1$d%</string>
     <string name="sound_speed">السرعة</string>
     <string name="sound_pitch">طبقة الصوت %1$s</string>
     <string name="sound_eq">المعادل</string>

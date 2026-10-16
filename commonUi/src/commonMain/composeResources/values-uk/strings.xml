@@ -375,7 +375,7 @@
     <string name="settings_system_audio_fx_hint">Дозволити програмам-еквалайзерам на пристрої обробляти звук. Вбудований еквалайзер вимикається.</string>
     <string name="sound_title">Звук</string>
     <string name="sound_playback">Відтворення</string>
-    <string name="sound_volume">Гучність %1$d%%</string>
+    <string name="sound_volume">Гучність %1$d%</string>
     <string name="sound_speed">Швидкість</string>
     <string name="sound_pitch">Тон %1$s</string>
     <string name="sound_eq">Еквалайзер</string>

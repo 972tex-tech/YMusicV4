@@ -373,7 +373,7 @@
     <string name="settings_system_audio_fx_hint">ನಿಮ್ಮ ಸಾಧನದ ಈಕ್ವಲೈಸರ್ ಆ್ಯಪ್‌ಗಳು ಧ್ವನಿಯನ್ನು ರೂಪಿಸಲು ಬಿಡಿ. ಆ್ಯಪ್‌ನ ಈಕ್ವಲೈಸರ್ ಆಫ್ ಆಗುತ್ತದೆ.</string>
     <string name="sound_title">ಧ್ವನಿ</string>
     <string name="sound_playback">ಪ್ಲೇಬ್ಯಾಕ್</string>
-    <string name="sound_volume">ವಾಲ್ಯೂಮ್ %1$d%%</string>
+    <string name="sound_volume">ವಾಲ್ಯೂಮ್ %1$d%</string>
     <string name="sound_speed">ವೇಗ</string>
     <string name="sound_pitch">ಪಿಚ್ %1$s</string>
     <string name="sound_eq">ಈಕ್ವಲೈಸರ್</string>

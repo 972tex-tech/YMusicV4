@@ -374,7 +374,7 @@
     <string name="settings_system_audio_fx_hint">Neka aplikacije ekvilizatora na uređaju oblikuju zvuk. Isključuje ekvilizator aplikacije.</string>
     <string name="sound_title">Zvuk</string>
     <string name="sound_playback">Reprodukcija</string>
-    <string name="sound_volume">Glasnoća %1$d%%</string>
+    <string name="sound_volume">Glasnoća %1$d%</string>
     <string name="sound_speed">Brzina</string>
     <string name="sound_pitch">Visina tona %1$s</string>
     <string name="sound_eq">Ekvilizator</string>

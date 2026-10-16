@@ -373,7 +373,7 @@
     <string name="settings_system_audio_fx_hint">உங்கள் சாதனத்தின் ஈக்வலைசர் ஆப்ஸ் ஒலியை வடிவமைக்க அனுமதிக்கும். ஆப்ஸின் ஈக்வலைசர் முடக்கப்படும்.</string>
     <string name="sound_title">ஒலி</string>
     <string name="sound_playback">இயக்கம்</string>
-    <string name="sound_volume">ஒலியளவு %1$d%%</string>
+    <string name="sound_volume">ஒலியளவு %1$d%</string>
     <string name="sound_speed">வேகம்</string>
     <string name="sound_pitch">சுருதி %1$s</string>
     <string name="sound_eq">ஈக்வலைசர்</string>

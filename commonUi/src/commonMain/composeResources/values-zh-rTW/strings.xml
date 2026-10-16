@@ -372,7 +372,7 @@
     <string name="settings_system_audio_fx_hint">讓裝置上的等化器應用程式調整聲音。將關閉應用程式內的等化器。</string>
     <string name="sound_title">音效</string>
     <string name="sound_playback">播放</string>
-    <string name="sound_volume">音量 %1$d%%</string>
+    <string name="sound_volume">音量 %1$d%</string>
     <string name="sound_speed">速度</string>
     <string name="sound_pitch">音高 %1$s</string>
     <string name="sound_eq">等化器</string>

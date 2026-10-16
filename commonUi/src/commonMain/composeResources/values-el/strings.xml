@@ -373,7 +373,7 @@
     <string name="settings_system_audio_fx_hint">Αφήστε τις εφαρμογές ισοσταθμιστή της συσκευής να διαμορφώνουν τον ήχο. Απενεργοποιεί τον ισοσταθμιστή της εφαρμογής.</string>
     <string name="sound_title">Ήχος</string>
     <string name="sound_playback">Αναπαραγωγή</string>
-    <string name="sound_volume">Ένταση %1$d%%</string>
+    <string name="sound_volume">Ένταση %1$d%</string>
     <string name="sound_speed">Ταχύτητα</string>
     <string name="sound_pitch">Τονικότητα %1$s</string>
     <string name="sound_eq">Ισοσταθμιστής</string>

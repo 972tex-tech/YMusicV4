@@ -373,7 +373,7 @@
     <string name="settings_system_audio_fx_hint">अपने डिवाइस के इक्वलाइज़र ऐप्स को आवाज़ बदलने दें। ऐप का इक्वलाइज़र बंद हो जाता है।</string>
     <string name="sound_title">साउंड</string>
     <string name="sound_playback">प्लेबैक</string>
-    <string name="sound_volume">वॉल्यूम %1$d%%</string>
+    <string name="sound_volume">वॉल्यूम %1$d%</string>
     <string name="sound_speed">स्पीड</string>
     <string name="sound_pitch">पिच %1$s</string>
     <string name="sound_eq">इक्वलाइज़र</string>
