@@ -2492,6 +2492,7 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
         double *sp = NULL;
         int nsp = 0, j;
         size_t rd0 = dst->rd;
+        double rd_pts = rd0 < dst->n ? dst->f[rd0].pts : -1;
         if (r->n == 0)
             r->first = first;
         r->last = last;
@@ -2543,7 +2544,12 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
            (Auto at 5.3s + 10–14s segment jumped rd to 23s → starve-ahead).
            v_sent/a_sent < 0 means nothing shown yet (audio-only → video):
            keep sequential rd or leftover starts ahead of the clock forever. */
-        {
+        /* A later segment leaves the read position alone: v_sent can sit ahead of the decoder
+           (a seek sets it to the target while the clock holds behind the buffered end), and a
+           recompute from it skipped unsent references, then rewound onto frames already fed. */
+        if (nsp == 0 && rd_pts >= 0 && first >= rd_pts) {
+            dst->rd = rd0;
+        } else {
             double want = idx ? a->a_sent : a->v_sent;
             double floor_pts = first;
             if (want < 0)
