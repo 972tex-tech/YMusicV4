@@ -149,6 +149,11 @@ struct MseAv {
     ANativeWindow *mc_win;
     enum AVCodecID mc_codec_id;
     int mc_fail;
+    /* Failed opens in a row; the next try waits until mc_retry_us. */
+    int mc_open_tries;
+    int64_t mc_retry_us;
+    /* Set once MediaCodec gave up on this stream; the player fails playback on it. */
+    char mc_failure[128];
     int mc_hold;
     int mc_hold_ix;
     int64_t mc_hold_pts_us;
@@ -188,6 +193,9 @@ static void maybe_apply_video_rep(MseAv *a);
 
 #ifdef __ANDROID__
 #define MSE_SEND_AHEAD 0.25
+#define MC_OPEN_WAIT 1
+#define MC_OPEN_TRIES 3
+#define MC_OPEN_RETRY_US 300000
 #else
 #define MSE_SEND_AHEAD 0.08
 #endif
@@ -1714,17 +1722,30 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
     return 0;
 }
 
+/* A configure can fail while the window is still connected to the codec just closed (Codec2
+   disconnects asynchronously): retry before giving up on the stream. */
 static int mc_try_open(MseAv *a)
 {
     if (a->v_rest || !a->mc_win || !a->vpar || a->mc_fail)
         return -1;
     if (a->mc)
         return 0;
+    if (a->mc_open_tries > 0 && mc_now_us() < a->mc_retry_us)
+        return MC_OPEN_WAIT;
     if (mc_open(a) < 0) {
+        if (++a->mc_open_tries < MC_OPEN_TRIES) {
+            a->mc_retry_us = mc_now_us() + MC_OPEN_RETRY_US;
+            return MC_OPEN_WAIT;
+        }
         a->mc_fail = 1;
-        mse_critf(MSE_LOG_WARN, "mse-v mediacodec unavailable, software blit");
+        if (!a->mc_failure[0])
+            snprintf(a->mc_failure, sizeof(a->mc_failure), "%s %dx%d: no MediaCodec after %d tries",
+                     avcodec_get_name(a->vpar->codec_id), a->vpar->width, a->vpar->height,
+                     a->mc_open_tries);
+        mse_critf(MSE_LOG_ERROR, "mse-v %s", a->mc_failure);
         return -1;
     }
+    a->mc_open_tries = 0;
     if (a->vdec) {
         av_frame_free(&a->vhold);
         avcodec_free_context(&a->vdec);
@@ -1889,6 +1910,11 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
 #endif
     ))
         return 0;
+#ifdef __ANDROID__
+    /* Video decodes in MediaCodec only: a CPU blit would hold the window from it for good. */
+    if (video)
+        return -1;
+#endif
     int vp9 = video && (par->codec_id == AV_CODEC_ID_VP9 || par->codec_id == AV_CODEC_ID_VP8);
     if (*ctxp) {
         int same = (*ctxp)->codec_id == par->codec_id;
@@ -2106,6 +2132,7 @@ static void apply_pending_video_rep(MseAv *a)
     a->v_switch_pts = -1;
 #ifdef __ANDROID__
     a->mc_fail = 0;
+    a->mc_open_tries = 0;
     if (mc_try_open(a) == 0) {
         /* mc_open resyncs to the key before v_sent: an old-rep GOP. */
         if (sw >= 0) {
@@ -2830,6 +2857,7 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                          (par->height > 0 && a->mc_cfg_h > 0 && par->height != a->mc_cfg_h))) {
                         mc_close(a);
                         a->mc_fail = 0;
+                        a->mc_open_tries = 0;
                     }
                     if (mc_try_open(a) == 0) {
                         avcodec_parameters_free(&par);
@@ -3016,6 +3044,7 @@ void mse_av_rest_video(MseAv *a, int on, double clock)
 #ifdef __ANDROID__
         mc_close(a);
         a->mc_fail = 0;
+        a->mc_open_tries = 0;
 #endif
         if (a->vf.rd < a->vf.n)
             a->v_sent = a->vf.f[a->vf.rd].pts;
@@ -3256,6 +3285,22 @@ int mse_av_has_video(MseAv *a)
     n = !a->v_rest && a->vf.n > 0;
     pthread_mutex_unlock(&a->mu);
     return n;
+}
+
+int mse_av_video_failure(MseAv *a, char *out, int cap)
+{
+    int failed = 0;
+    if (!a || !out || cap <= 0)
+        return 0;
+    out[0] = 0;
+#ifdef __ANDROID__
+    pthread_mutex_lock(&a->mu);
+    failed = a->mc_failure[0] != 0;
+    if (failed)
+        snprintf(out, (size_t)cap, "%s", a->mc_failure);
+    pthread_mutex_unlock(&a->mu);
+#endif
+    return failed;
 }
 
 int mse_av_video_rested(MseAv *a)
@@ -3776,6 +3821,7 @@ void mse_av_set_window(MseAv *a, void *window)
         mc_close(a);
         a->mc_win = win;
         a->mc_fail = 0;
+        a->mc_open_tries = 0;
         vlog("window %p vpar=%d %dx%d", (void *)win, a->vpar ? 1 : 0,
              a->vpar ? a->vpar->width : 0, a->vpar ? a->vpar->height : 0);
         if (win)
@@ -4127,7 +4173,10 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
-    mc_try_open(a);
+    if (mc_try_open(a) == MC_OPEN_WAIT) {
+        pthread_mutex_unlock(&a->mu);
+        return 0;
+    }
     if (a->mc) {
         int r = pull_mc(a, clock, w, h, pts);
         pthread_mutex_unlock(&a->mu);

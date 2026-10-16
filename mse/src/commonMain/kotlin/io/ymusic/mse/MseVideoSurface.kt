@@ -21,4 +21,7 @@ expect class MseVideoSurface {
 
     /** Android: the audio output's session id, for system audio effects. 0 = none (or not Android). */
     fun audioSessionId(): Int
+
+    /** Android: why MediaCodec gave up on the video stream; null while video decodes (or not Android). */
+    fun videoFailure(): String?
 }

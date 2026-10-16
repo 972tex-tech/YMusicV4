@@ -58,6 +58,8 @@ actual class MseVideoSurface {
 
     actual fun audioSessionId(): Int = 0
 
+    actual fun videoFailure(): String? = null
+
     /** DAC / pull-audio sample frames (`mse_host_samples_played`). */
     fun samplesPlayed(): Long = if (host == 0L) 0L else MseHostNative.samplesPlayed(host)
 

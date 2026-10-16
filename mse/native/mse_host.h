@@ -41,6 +41,8 @@ int mse_host_ended(MseHost *h);
 void mse_host_end_of_stream(MseHost *h);
 int mse_host_video_size(MseHost *h, int *w, int *ht);
 int mse_host_frames(MseHost *h);
+/* 1 and the reason in out when video cannot be decoded; the player fails playback. */
+int mse_host_video_failure(MseHost *h, char *out, int cap);
 int64_t mse_host_samples_played(MseHost *h);
 #ifdef __ANDROID__
 /* Android plays the PCM ring through a Kotlin AudioSink thread (MseAudioOutput) driving these. */
