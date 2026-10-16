@@ -266,7 +266,7 @@ fun FeedListItem(
             Text(
                 item.title,
                 style = ListTitleStyle,
-                maxLines = 2,
+                maxLines = if (wide) 3 else 2,
                 overflow = TextOverflow.Ellipsis,
             )
             val sub = listOfNotNull(item.subtitleLine1, item.subtitleLine2).joinToString(" · ")
