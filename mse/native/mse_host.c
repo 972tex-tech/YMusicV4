@@ -2084,7 +2084,17 @@ void mse_host_set_speed(MseHost *h, float speed, float tempo)
                 h->dac_cp_speed[h->dac_cp_n] = (double)old;
                 h->dac_cp_n++;
             } else {
-                h->dac_cp_edge[DAC_CHECKPOINTS - 1] = edge;
+                /* Full: widen the last span to the new edge at its frame-weighted speed, so the
+                   media time across it stays exact. */
+                int last = DAC_CHECKPOINTS - 1;
+                int64_t from = h->dac_cp_edge[last - 1];
+                double kept = (double)(h->dac_cp_edge[last] - from);
+                double added = (double)(edge - h->dac_cp_edge[last]);
+                if (kept < 0)
+                    kept = 0;
+                if (kept + added > 0)
+                    h->dac_cp_speed[last] = (kept * h->dac_cp_speed[last] + added * (double)old) / (kept + added);
+                h->dac_cp_edge[last] = edge;
             }
         }
     }
