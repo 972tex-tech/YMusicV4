@@ -119,6 +119,9 @@ struct MseHost {
     int dac_cp_n;
     /* Set by every ring flush: the first PCM written after it puts seek_base at its own pts. */
     int pcm_anchor;
+    /* The audio stream ended (endOfStream, all of it played) while the media runs on: the clock
+       continues on wall time instead of freezing at the last sample. */
+    int audio_out;
 #endif
 #ifdef MSE_AQ
     AudioQueueRef aq;
@@ -324,7 +327,7 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
 #ifdef __ANDROID__
         /* The sink reports what has left the speaker. Until its first report the clock holds at the
            start (the AudioTrack is still filling); a sink that never reports falls back to wall time. */
-        if (h->aq_started && h->rate > 0 &&
+        if (h->aq_started && h->rate > 0 && !h->audio_out &&
             (h->dac_live || now_ns() - h->dac_start_ns < DAC_FIRST_REPORT_NS)) {
             double sp = play_speed(h);
             double dac = h->seek_base + dac_media_s(h, (double)h->samples_played, sp);
@@ -340,7 +343,7 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
             h->clk_dac = 0;
         }
 #else
-        if (h->aq_started && h->rate > 0 && h->samples_played > 0) {
+        if (h->aq_started && h->rate > 0 && h->samples_played > 0 && !h->audio_out) {
             double sp = play_speed(h);
             double dac = h->seek_base +
                          dac_media_s(h, (double)(h->samples_played - aq_latency_frames(h)), sp);
@@ -491,6 +494,7 @@ static void ring_flush(MseHost *h)
     h->dac_pos = h->dac_base = h->dac_polled = 0;
     h->dac_cp_n = 0;
     h->pcm_anchor = 1;
+    h->audio_out = 0;
 #ifdef __ANDROID__
     h->dac_live = 0;
     h->dac_drain = 0;
@@ -840,6 +844,35 @@ static void *vid_loop(void *arg)
 
 static int audio_done(MseHost *h);
 
+#ifdef MSE_DAC
+/* Media3 hands the clock to wall time when the audio renderer has read its stream to the end but
+   the period runs on (DefaultMediaClock, ExoPlayer #1874): a shorter audio track must not freeze
+   the video at its last sample. Only after endOfStream; a SABR starve stays waiting. */
+static void audio_out_check(MseHost *h)
+{
+    int out;
+    double t;
+    if (mse_av_audio_pending(h->av))
+        return;
+    pthread_mutex_lock(&h->mu);
+    out = h->playing && h->eos && h->aq_started && !h->audio_out && h->ring && h->ring_n <= 0;
+#ifdef __ANDROID__
+    out = out && !h->dac_pending;
+#endif
+    pthread_mutex_unlock(&h->mu);
+    if (!out)
+        return;
+    t = host_clock(h);
+    pthread_mutex_lock(&h->mu);
+    if (h->playing && h->eos && !h->audio_out && h->ring_n <= 0) {
+        h->hold = t;
+        h->origin_ns = now_ns();
+        h->audio_out = 1;
+    }
+    pthread_mutex_unlock(&h->mu);
+}
+#endif
+
 #ifdef MSE_AQ
 static void aq_kill(MseHost *h);
 
@@ -1018,6 +1051,9 @@ static void *dec_loop(void *arg)
 
 #ifdef MSE_AQ
         aq_watchdog(h);
+#endif
+#ifdef MSE_DAC
+        audio_out_check(h);
 #endif
 #ifdef __ANDROID__
         {
@@ -1311,6 +1347,7 @@ void mse_host_play(MseHost *h)
         h->eos = 0;
         h->ended_sent = 0;
 #ifdef MSE_DAC
+        h->audio_out = 0;
         dac_rebase(h);
         h->dac_cp_n = 0;
         h->aq_started = 0;
@@ -1556,7 +1593,7 @@ void mse_host_set_duration(MseHost *h, double seconds)
 /* All audio has been handed to the DAC and the stream is over; what the DAC still holds is not checked. */
 static int audio_done(MseHost *h)
 {
-    int eos, ring_empty, near_dur;
+    int eos, ring_empty, near_dur, out = 0;
     double last, yt_dur;
     if (!h)
         return 0;
@@ -1568,14 +1605,16 @@ static int audio_done(MseHost *h)
     yt_dur = h->yt_dur;
 #ifdef MSE_DAC
     ring_empty = !h->ring || h->ring_n <= 0;
+    out = h->audio_out;
 #else
     ring_empty = 1;
 #endif
     pthread_mutex_unlock(&h->mu);
     if (!ring_empty)
         return 0;
-    /* A seek also empties the ring while the rest of the media is buffered: the playhead must be there. */
-    if (host_clock(h) + 1.0 < last)
+    /* A seek also empties the ring while the rest of the media is buffered: the playhead must be
+       there. Past the end of a shorter audio track the wall clock plays the video out. */
+    if (host_clock(h) + (out ? 0.05 : 1.0) < last)
         return 0;
     /* Same window as clock_with_span near_eos. Miller skips endOfStream on
        VOD audio-only (40=1 + fake 144p); last ≈ duration is Chrome's other
