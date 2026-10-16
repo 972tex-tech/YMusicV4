@@ -763,6 +763,8 @@ internal class PlayerImpl(
             return
         }
         engineJobs += scope.launch {
+            // An engine stays Ended until the next load reaches it; only entering Ended ends a track.
+            var ended = engine.status.value.state.isEnded()
             engine.status.collect { snapshot ->
                 if (holdPrepareTimeout && snapshot.state.notYetLoaded()) {
                     maybePreloadNext()
@@ -770,7 +772,9 @@ internal class PlayerImpl(
                 }
                 holdPrepareTimeout = false
                 publishStatus(snapshot)
-                if (snapshot.state.isEnded()) onTrackEnded() else maybePreloadNext()
+                val wasEnded = ended
+                ended = snapshot.state.isEnded()
+                if (!ended) maybePreloadNext() else if (!wasEnded) onTrackEnded()
             }
         }
         engineJobs += scope.launch {
