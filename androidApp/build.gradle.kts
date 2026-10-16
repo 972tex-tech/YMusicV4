@@ -37,7 +37,7 @@ sentry {
 
 val appVersionName = appVersionName()
 
-// Outputs read YMusic-<versionName>-<abi|universal>-release.apk.
+// Outputs read YMusic-<versionName>-<abi>-release.apk.
 base { archivesName.set("YMusic-$appVersionName") }
 
 // The ABIs every native the app needs — quickjs, mse, ffmpeg — is built for. A device on any other
@@ -77,14 +77,12 @@ android {
         buildConfig = true
     }
 
-    // One APK per ABI plus a universal one carrying them all. All share the versionCode: they are the
-    // same release, and the updater may move a device from the universal APK to its own split.
+    // One APK per ABI, no universal one. All share the versionCode: they are the same release.
     splits {
         abi {
             isEnable = true
             reset()
             include(*appAbis.toTypedArray())
-            isUniversalApk = true
         }
     }
 

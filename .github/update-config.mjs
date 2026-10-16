@@ -83,7 +83,6 @@ const sha256Of = async (path) => {
 }
 
 const INSTALLERS = [
-  { platform: 'android', file: 'android-universal.apk', versionCode: androidVersionCode },
   { platform: 'android-armeabi-v7a', file: 'android-armv7.apk', versionCode: androidVersionCode },
   { platform: 'android-arm64-v8a', file: 'android-arm64.apk', versionCode: androidVersionCode },
   { platform: 'android-x86', file: 'android-x86.apk', versionCode: androidVersionCode },
