@@ -219,6 +219,8 @@
     <string name="settings_theme_system">સિસ્ટમ મુજબ</string>
     <string name="settings_theme_light">લાઇટ</string>
     <string name="settings_theme_dark">ડાર્ક</string>
+    <string name="settings_theme_amoled">કાળો (AMOLED)</string>
+    <string name="settings_accent_color">એક્સેન્ટ રંગ</string>
     <string name="settings_debug">ડીબગ</string>
     <string name="settings_show_fps">FPS બતાવો</string>
     <string name="settings_show_fps_hint">Now Playing વીડિયો પર પ્રતિ સેકન્ડ ફ્રેમ બતાવો. થોભાવો અથવા તે સ્ક્રીન છોડો ત્યારે માપન બંધ થાય છે.</string>

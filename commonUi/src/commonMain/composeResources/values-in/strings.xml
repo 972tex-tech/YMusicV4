@@ -218,6 +218,8 @@
     <string name="settings_theme_system">Ikuti sistem</string>
     <string name="settings_theme_light">Terang</string>
     <string name="settings_theme_dark">Gelap</string>
+    <string name="settings_theme_amoled">Hitam (AMOLED)</string>
+    <string name="settings_accent_color">Warna aksen</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_show_fps">Tampilkan FPS</string>
     <string name="settings_show_fps_hint">Tampilkan jumlah gambar per detik di atas video yang sedang diputar. Pengukuran berhenti saat dijeda atau saat Anda meninggalkan layar tersebut.</string>

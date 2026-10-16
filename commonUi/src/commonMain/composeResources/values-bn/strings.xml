@@ -219,6 +219,8 @@
     <string name="settings_theme_system">সিস্টেম অনুসরণ করুন</string>
     <string name="settings_theme_light">লাইট</string>
     <string name="settings_theme_dark">ডার্ক</string>
+    <string name="settings_theme_amoled">কালো (AMOLED)</string>
+    <string name="settings_accent_color">অ্যাকসেন্ট রং</string>
     <string name="settings_debug">ডিবাগ</string>
     <string name="settings_show_fps">FPS দেখান</string>
     <string name="settings_show_fps_hint">Now Playing ভিডিওর উপর প্রতি সেকেন্ডে ফ্রেম দেখান। বিরতি দিলে বা স্ক্রিন ছেড়ে গেলে মাপা বন্ধ হয়।</string>

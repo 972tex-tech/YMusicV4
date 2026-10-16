@@ -220,6 +220,8 @@
     <string name="settings_theme_system">Prema sustavu</string>
     <string name="settings_theme_light">Svijetla</string>
     <string name="settings_theme_dark">Tamna</string>
+    <string name="settings_theme_amoled">Crna (AMOLED)</string>
+    <string name="settings_accent_color">Boja naglaska</string>
     <string name="settings_debug">Otklanjanje pogrešaka</string>
     <string name="settings_show_fps">Prikaži FPS</string>
     <string name="settings_show_fps_hint">Prikazuje broj sličica u sekundi preko videozapisa na zaslonu Sada svira. Mjerenje se zaustavlja pri pauzi ili kad napustite zaslon.</string>

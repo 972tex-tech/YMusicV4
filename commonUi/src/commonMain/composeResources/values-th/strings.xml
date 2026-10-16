@@ -218,6 +218,8 @@
     <string name="settings_theme_system">ตามระบบ</string>
     <string name="settings_theme_light">สว่าง</string>
     <string name="settings_theme_dark">มืด</string>
+    <string name="settings_theme_amoled">ดำ (AMOLED)</string>
+    <string name="settings_accent_color">สีเน้น</string>
     <string name="settings_debug">ดีบัก</string>
     <string name="settings_show_fps">แสดง FPS</string>
     <string name="settings_show_fps_hint">แสดงจำนวนภาพต่อวินาทีซ้อนบนวิดีโอที่กำลังเล่น การวัดจะหยุดเมื่อหยุดชั่วคราวหรือออกจากหน้าจอนั้น</string>

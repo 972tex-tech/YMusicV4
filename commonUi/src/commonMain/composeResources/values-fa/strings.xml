@@ -219,6 +219,8 @@
     <string name="settings_theme_system">پیروی از سیستم</string>
     <string name="settings_theme_light">روشن</string>
     <string name="settings_theme_dark">تیره</string>
+    <string name="settings_theme_amoled">سیاه (AMOLED)</string>
+    <string name="settings_accent_color">رنگ تأکیدی</string>
     <string name="settings_debug">اشکال‌زدایی</string>
     <string name="settings_show_fps">نمایش FPS</string>
     <string name="settings_show_fps_hint">نمایش تعداد فریم در ثانیه روی ویدیوی در حال پخش. نمونه‌برداری هنگام توقف یا خروج از آن صفحه متوقف می‌شود.</string>

@@ -220,6 +220,8 @@
     <string name="settings_theme_system">Según el sistema</string>
     <string name="settings_theme_light">Claro</string>
     <string name="settings_theme_dark">Oscuro</string>
+    <string name="settings_theme_amoled">Negro (AMOLED)</string>
+    <string name="settings_accent_color">Color de énfasis</string>
     <string name="settings_debug">Depuración</string>
     <string name="settings_show_fps">Mostrar FPS</string>
     <string name="settings_show_fps_hint">Muestra los fotogramas por segundo sobre el vídeo en reproducción. La medición se detiene al pausar o al salir de esa pantalla.</string>

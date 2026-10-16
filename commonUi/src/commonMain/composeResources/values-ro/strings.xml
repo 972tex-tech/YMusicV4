@@ -220,6 +220,8 @@
     <string name="settings_theme_system">Ca sistemul</string>
     <string name="settings_theme_light">Luminoasă</string>
     <string name="settings_theme_dark">Întunecată</string>
+    <string name="settings_theme_amoled">Negru (AMOLED)</string>
+    <string name="settings_accent_color">Culoare de accent</string>
     <string name="settings_debug">Depanare</string>
     <string name="settings_show_fps">Afișează FPS</string>
     <string name="settings_show_fps_hint">Afișează cadrele pe secundă peste videoclipul din Se redă acum. Măsurarea se oprește când pui pauză sau părăsești ecranul.</string>

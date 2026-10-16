@@ -81,6 +81,7 @@ import io.ymusic.ui.resources.settings_sponsor_block_hint
 import io.ymusic.ui.resources.settings_stats
 import io.ymusic.ui.resources.settings_stats_hint
 import io.ymusic.ui.resources.settings_theme
+import io.ymusic.ui.resources.settings_theme_amoled
 import io.ymusic.ui.resources.settings_theme_dark
 import io.ymusic.ui.resources.settings_theme_light
 import io.ymusic.ui.resources.settings_theme_system
@@ -105,6 +106,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
     val scope = rememberCoroutineScope()
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
     val theme by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
+    val accent by remember(graph) { graph.settings.flow(AppSettings.themeAccent) }.collectAsState()
     // The content locale LIVES in the engine; this screen has exactly two jobs: ask the engine for
     // the region menu + the current pick (one call, when the screen opens and again after a pick),
     // and report picks with applyYtLocale. There is ONE language: the app language doubles as the
@@ -140,6 +142,13 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             ThemeRow(
                 current = theme,
                 onSelect = { value -> scope.launch { graph.settings.put(AppSettings.theme, value) } },
+            )
+            AccentRow(
+                current = accentColorOf(accent),
+                onPick = { color ->
+                    val hex = accentHexOf(color).takeIf { it != accentHexOf(DefaultAccent) }.orEmpty()
+                    scope.launch { graph.settings.put(AppSettings.themeAccent, hex) }
+                },
             )
             LanguageRow(
                 current = uiLanguage.ifBlank { defaultUiLanguageTag() },
@@ -546,6 +555,7 @@ private val ThemeOptions: List<Pair<String, StringResource>> = listOf(
     "" to Res.string.settings_theme_system,
     "light" to Res.string.settings_theme_light,
     "dark" to Res.string.settings_theme_dark,
+    "amoled" to Res.string.settings_theme_amoled,
 )
 
 @Composable

@@ -221,6 +221,8 @@
     <string name="settings_theme_system">Как в системе</string>
     <string name="settings_theme_light">Светлая</string>
     <string name="settings_theme_dark">Тёмная</string>
+    <string name="settings_theme_amoled">Чёрная (AMOLED)</string>
+    <string name="settings_accent_color">Цвет акцента</string>
     <string name="settings_debug">Отладка</string>
     <string name="settings_show_fps">Показывать FPS</string>
     <string name="settings_show_fps_hint">Показывать число кадров в секунду поверх видео на экране воспроизведения. Подсчёт останавливается на паузе или при уходе с экрана.</string>

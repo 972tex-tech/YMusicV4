@@ -218,6 +218,8 @@
     <string name="settings_theme_system">跟隨系統</string>
     <string name="settings_theme_light">淺色</string>
     <string name="settings_theme_dark">深色</string>
+    <string name="settings_theme_amoled">純黑（AMOLED）</string>
+    <string name="settings_accent_color">強調色</string>
     <string name="settings_debug">偵錯</string>
     <string name="settings_show_fps">顯示 FPS</string>
     <string name="settings_show_fps_hint">在「現正播放」的影片上疊加顯示每秒影格數。暫停或離開該畫面時會停止取樣。</string>

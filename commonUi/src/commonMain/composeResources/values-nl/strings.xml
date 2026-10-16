@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Systeem volgen</string>
     <string name="settings_theme_light">Licht</string>
     <string name="settings_theme_dark">Donker</string>
+    <string name="settings_theme_amoled">Zwart (AMOLED)</string>
+    <string name="settings_accent_color">Accentkleur</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_show_fps">FPS tonen</string>
     <string name="settings_show_fps_hint">Toon beelden per seconde over de video in Speelt nu. Meten stopt bij pauzeren of als je dat scherm verlaat.</string>

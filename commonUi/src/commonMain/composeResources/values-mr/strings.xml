@@ -219,6 +219,8 @@
     <string name="settings_theme_system">सिस्टमनुसार</string>
     <string name="settings_theme_light">लाइट</string>
     <string name="settings_theme_dark">डार्क</string>
+    <string name="settings_theme_amoled">काळा (AMOLED)</string>
+    <string name="settings_accent_color">अॅक्सेंट रंग</string>
     <string name="settings_debug">डीबग</string>
     <string name="settings_show_fps">FPS दाखवा</string>
     <string name="settings_show_fps_hint">प्ले होत असलेल्या व्हिडिओवर प्रति सेकंद फ्रेम दाखवा. थांबवल्यावर किंवा ती स्क्रीन सोडल्यावर मोजणी थांबते.</string>

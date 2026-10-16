@@ -254,6 +254,8 @@
     <string name="settings_theme_system">Theo hệ thống</string>
     <string name="settings_theme_light">Sáng</string>
     <string name="settings_theme_dark">Tối</string>
+    <string name="settings_theme_amoled">Đen (AMOLED)</string>
+    <string name="settings_accent_color">Màu nhấn</string>
     <string name="settings_debug">Gỡ lỗi</string>
     <string name="settings_show_fps">Hiện FPS</string>
     <string name="settings_show_fps_hint">Hiện số khung hình mỗi giây trên video Đang phát. Ngừng đo khi tạm dừng hoặc khi rời màn hình đó.</string>

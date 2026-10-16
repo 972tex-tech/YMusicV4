@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Sistemaren berdina</string>
     <string name="settings_theme_light">Argia</string>
     <string name="settings_theme_dark">Iluna</string>
+    <string name="settings_theme_amoled">Beltza (AMOLED)</string>
+    <string name="settings_accent_color">Nabarmentze-kolorea</string>
     <string name="settings_debug">Arazketa</string>
     <string name="settings_show_fps">Erakutsi FPSak</string>
     <string name="settings_show_fps_hint">Erakutsi segundoko irudiak Orain erreproduzitzen pantailako bideoaren gainean. Neurketa gelditu egiten da pausatzean edo pantaila hori uztean.</string>

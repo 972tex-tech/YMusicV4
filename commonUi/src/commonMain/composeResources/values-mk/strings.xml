@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Според системот</string>
     <string name="settings_theme_light">Светла</string>
     <string name="settings_theme_dark">Темна</string>
+    <string name="settings_theme_amoled">Црна (AMOLED)</string>
+    <string name="settings_accent_color">Боја на акцент</string>
     <string name="settings_debug">Дебагирање</string>
     <string name="settings_show_fps">Прикажи FPS</string>
     <string name="settings_show_fps_hint">Прикажува слики во секунда врз видеото во „Сега се пушта“. Мерењето запира при пауза или кога ќе го напуштите екранот.</string>

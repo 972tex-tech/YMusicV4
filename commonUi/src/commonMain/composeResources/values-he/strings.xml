@@ -220,6 +220,8 @@
     <string name="settings_theme_system">לפי המערכת</string>
     <string name="settings_theme_light">בהירה</string>
     <string name="settings_theme_dark">כהה</string>
+    <string name="settings_theme_amoled">שחור (AMOLED)</string>
+    <string name="settings_accent_color">צבע הדגשה</string>
     <string name="settings_debug">ניפוי באגים</string>
     <string name="settings_show_fps">הצג FPS</string>
     <string name="settings_show_fps_hint">הצגת מספר התמונות לשנייה מעל הסרטון במסך המתנגן כעת. המדידה נעצרת בהשהיה או כשיוצאים מהמסך.</string>

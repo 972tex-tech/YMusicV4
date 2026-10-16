@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Ինչպես համակարգում</string>
     <string name="settings_theme_light">Բաց</string>
     <string name="settings_theme_dark">Մուգ</string>
+    <string name="settings_theme_amoled">Սև (AMOLED)</string>
+    <string name="settings_accent_color">Շեշտադրման գույն</string>
     <string name="settings_debug">Վրիպազերծում</string>
     <string name="settings_show_fps">Ցույց տալ FPS-ը</string>
     <string name="settings_show_fps_hint">Ցուցադրում է կադրերի քանակը վայրկյանում «Հիմա հնչում է» տեսանյութի վրա։ Չափումը դադարում է դադարի ժամանակ կամ էկրանից դուրս գալիս։</string>

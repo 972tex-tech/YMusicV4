@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Systemstandard</string>
     <string name="settings_theme_light">Hell</string>
     <string name="settings_theme_dark">Dunkel</string>
+    <string name="settings_theme_amoled">Schwarz (AMOLED)</string>
+    <string name="settings_accent_color">Akzentfarbe</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_show_fps">FPS anzeigen</string>
     <string name="settings_show_fps_hint">Bilder pro Sekunde über dem Video in „Aktuelle Wiedergabe“ einblenden. Die Messung stoppt bei Pause oder wenn du den Bildschirm verlässt.</string>

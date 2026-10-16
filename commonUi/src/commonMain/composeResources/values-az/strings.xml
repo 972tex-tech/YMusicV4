@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Sistemə uyğun</string>
     <string name="settings_theme_light">Açıq</string>
     <string name="settings_theme_dark">Tünd</string>
+    <string name="settings_theme_amoled">Qara (AMOLED)</string>
+    <string name="settings_accent_color">Vurğu rəngi</string>
     <string name="settings_debug">Sazlama</string>
     <string name="settings_show_fps">FPS-i göstər</string>
     <string name="settings_show_fps_hint">İndi oxudulur videosunun üzərində saniyədəki kadr sayını göstərir. Fasilədə və ya ekrandan çıxdıqda ölçmə dayanır.</string>

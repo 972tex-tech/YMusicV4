@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Като системата</string>
     <string name="settings_theme_light">Светла</string>
     <string name="settings_theme_dark">Тъмна</string>
+    <string name="settings_theme_amoled">Черна (AMOLED)</string>
+    <string name="settings_accent_color">Акцентен цвят</string>
     <string name="settings_debug">Отстраняване на грешки</string>
     <string name="settings_show_fps">Показвай FPS</string>
     <string name="settings_show_fps_hint">Показва кадрите в секунда върху видеото в „Сега се изпълнява“. Отчитането спира при пауза или когато напуснете екрана.</string>

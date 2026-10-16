@@ -221,6 +221,8 @@
     <string name="settings_theme_system">Systemowy</string>
     <string name="settings_theme_light">Jasny</string>
     <string name="settings_theme_dark">Ciemny</string>
+    <string name="settings_theme_amoled">Czarny (AMOLED)</string>
+    <string name="settings_accent_color">Kolor akcentu</string>
     <string name="settings_debug">Debugowanie</string>
     <string name="settings_show_fps">Pokaż FPS</string>
     <string name="settings_show_fps_hint">Wyświetla liczbę klatek na sekundę na filmie w Teraz odtwarzane. Pomiar zatrzymuje się po pauzie lub opuszczeniu ekranu.</string>

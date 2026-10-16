@@ -220,6 +220,8 @@
     <string name="settings_theme_system">Segueix el sistema</string>
     <string name="settings_theme_light">Clar</string>
     <string name="settings_theme_dark">Fosc</string>
+    <string name="settings_theme_amoled">Negre (AMOLED)</string>
+    <string name="settings_accent_color">Color d'accent</string>
     <string name="settings_debug">Depuració</string>
     <string name="settings_show_fps">Mostra els FPS</string>
     <string name="settings_show_fps_hint">Mostra els fotogrames per segon sobre el vídeo de Ara sona. La mesura s'atura en pausa o quan surts d'aquesta pantalla.</string>

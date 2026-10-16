@@ -228,11 +228,8 @@ fun App(
     val tag = uiLanguage.ifBlank { defaultUiLanguageTag() }
     remember(tag) { applyUiLocale(tag) }
     val themePref by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
-    val dark = when (themePref) {
-        "light" -> false
-        "dark" -> true
-        else -> androidx.compose.foundation.isSystemInDarkTheme()
-    }
+    val accentPref by remember(graph) { graph.settings.flow(AppSettings.themeAccent) }.collectAsState()
+    val palette = designPaletteFor(themePref, androidx.compose.foundation.isSystemInDarkTheme(), accentPref)
     var section by sectionState
     LaunchedEffect(graph.settings) {
         snapshotFlow { sectionState.value }
@@ -288,7 +285,7 @@ fun App(
     key(tag) {
         val direction = if (isRtlLanguage(Locale.current.language)) LayoutDirection.Rtl else LayoutDirection.Ltr
         CompositionLocalProvider(LocalLayoutDirection provides direction) {
-            YMusicTheme(dark = dark) {
+            YMusicTheme(palette) {
                 CompositionLocalProvider(
                     LocalImageLoader provides graph.imageLoader,
                     LocalRefreshRequests provides graph.refreshRequests,

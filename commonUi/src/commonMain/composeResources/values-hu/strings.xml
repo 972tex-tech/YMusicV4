@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Rendszer szerint</string>
     <string name="settings_theme_light">Világos</string>
     <string name="settings_theme_dark">Sötét</string>
+    <string name="settings_theme_amoled">Fekete (AMOLED)</string>
+    <string name="settings_accent_color">Kiemelőszín</string>
     <string name="settings_debug">Hibakeresés</string>
     <string name="settings_show_fps">FPS megjelenítése</string>
     <string name="settings_show_fps_hint">Másodpercenkénti képkockaszám megjelenítése a Most szól videón. A mérés leáll szüneteltetéskor vagy a képernyő elhagyásakor.</string>

@@ -218,6 +218,8 @@
     <string name="settings_theme_system">Ikut sistem</string>
     <string name="settings_theme_light">Cerah</string>
     <string name="settings_theme_dark">Gelap</string>
+    <string name="settings_theme_amoled">Hitam (AMOLED)</string>
+    <string name="settings_accent_color">Warna aksen</string>
     <string name="settings_debug">Nyahpepijat</string>
     <string name="settings_show_fps">Tunjukkan FPS</string>
     <string name="settings_show_fps_hint">Paparkan bingkai sesaat di atas video Sedang Dimainkan. Pensampelan berhenti apabila dijeda atau anda meninggalkan skrin itu.</string>

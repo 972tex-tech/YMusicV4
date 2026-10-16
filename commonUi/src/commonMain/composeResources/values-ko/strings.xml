@@ -218,6 +218,8 @@
     <string name="settings_theme_system">시스템 설정 따르기</string>
     <string name="settings_theme_light">라이트</string>
     <string name="settings_theme_dark">다크</string>
+    <string name="settings_theme_amoled">블랙(AMOLED)</string>
+    <string name="settings_accent_color">강조 색상</string>
     <string name="settings_debug">디버그</string>
     <string name="settings_show_fps">FPS 표시</string>
     <string name="settings_show_fps_hint">재생 중인 동영상 위에 초당 프레임 수를 표시합니다. 일시정지하거나 화면을 벗어나면 측정이 중지됩니다.</string>

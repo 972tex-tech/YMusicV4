@@ -220,6 +220,8 @@
     <string name="settings_theme_system">Прати систем</string>
     <string name="settings_theme_light">Светла</string>
     <string name="settings_theme_dark">Тамна</string>
+    <string name="settings_theme_amoled">Црна (AMOLED)</string>
+    <string name="settings_accent_color">Боја акцента</string>
     <string name="settings_debug">Отклањање грешака</string>
     <string name="settings_show_fps">Прикажи FPS</string>
     <string name="settings_show_fps_hint">Приказује број слика у секунди преко видеа у „Сада се пушта“. Мерење стаје при паузи или када напустите тај екран.</string>

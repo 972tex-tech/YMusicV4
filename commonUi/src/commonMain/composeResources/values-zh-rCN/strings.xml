@@ -218,6 +218,8 @@
     <string name="settings_theme_system">跟随系统</string>
     <string name="settings_theme_light">浅色</string>
     <string name="settings_theme_dark">深色</string>
+    <string name="settings_theme_amoled">纯黑（AMOLED）</string>
+    <string name="settings_accent_color">强调色</string>
     <string name="settings_debug">调试</string>
     <string name="settings_show_fps">显示 FPS</string>
     <string name="settings_show_fps_hint">在“正在播放”的视频上叠加显示每秒帧数。暂停或离开该页面时停止统计。</string>

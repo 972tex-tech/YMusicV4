@@ -219,6 +219,8 @@
     <string name="settings_theme_system">സിസ്റ്റം പിന്തുടരുക</string>
     <string name="settings_theme_light">ലൈറ്റ്</string>
     <string name="settings_theme_dark">ഡാർക്ക്</string>
+    <string name="settings_theme_amoled">കറുപ്പ് (AMOLED)</string>
+    <string name="settings_accent_color">ആക്സന്റ് നിറം</string>
     <string name="settings_debug">ഡീബഗ്</string>
     <string name="settings_show_fps">FPS കാണിക്കുക</string>
     <string name="settings_show_fps_hint">Now Playing വീഡിയോയുടെ മുകളിൽ ഓരോ സെക്കൻഡിലെയും ഫ്രെയിമുകൾ കാണിക്കുക. താൽക്കാലികമായി നിർത്തുമ്പോഴോ ആ സ്ക്രീനിൽ നിന്ന് പുറത്തുപോകുമ്പോഴോ അളക്കൽ നിർത്തും.</string>

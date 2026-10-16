@@ -221,6 +221,8 @@
     <string name="settings_theme_system">Podle systému</string>
     <string name="settings_theme_light">Světlý</string>
     <string name="settings_theme_dark">Tmavý</string>
+    <string name="settings_theme_amoled">Černý (AMOLED)</string>
+    <string name="settings_accent_color">Barva zvýraznění</string>
     <string name="settings_debug">Ladění</string>
     <string name="settings_show_fps">Zobrazit FPS</string>
     <string name="settings_show_fps_hint">Zobrazí počet snímků za sekundu přes video v Právě hraje. Měření se zastaví při pozastavení nebo opuštění obrazovky.</string>

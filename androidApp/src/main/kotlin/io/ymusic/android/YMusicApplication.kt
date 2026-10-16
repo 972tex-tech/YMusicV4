@@ -230,7 +230,7 @@ class YMusicApplication : Application() {
                     uiModes.setApplicationNightMode(
                         when (theme) {
                             "light" -> UiModeManager.MODE_NIGHT_NO
-                            "dark" -> UiModeManager.MODE_NIGHT_YES
+                            "dark", "amoled" -> UiModeManager.MODE_NIGHT_YES
                             else -> UiModeManager.MODE_NIGHT_AUTO
                         },
                     )

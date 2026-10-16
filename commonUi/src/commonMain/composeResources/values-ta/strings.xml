@@ -219,6 +219,8 @@
     <string name="settings_theme_system">சிஸ்டத்தைப் பின்பற்று</string>
     <string name="settings_theme_light">லைட்</string>
     <string name="settings_theme_dark">டார்க்</string>
+    <string name="settings_theme_amoled">கருப்பு (AMOLED)</string>
+    <string name="settings_accent_color">அக்சென்ட் நிறம்</string>
     <string name="settings_debug">பிழைத்திருத்தம்</string>
     <string name="settings_show_fps">FPS காட்டு</string>
     <string name="settings_show_fps_hint">Now Playing வீடியோவின் மேல் ஒரு வினாடிக்கான படங்களைக் காட்டு. இடைநிறுத்தும்போதோ அந்தத் திரையை விட்டு வெளியேறும்போதோ அளவிடல் நிற்கும்.</string>

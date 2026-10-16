@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Süsteemi järgi</string>
     <string name="settings_theme_light">Hele</string>
     <string name="settings_theme_dark">Tume</string>
+    <string name="settings_theme_amoled">Must (AMOLED)</string>
+    <string name="settings_accent_color">Rõhuvärv</string>
     <string name="settings_debug">Silumine</string>
     <string name="settings_show_fps">Näita FPS-i</string>
     <string name="settings_show_fps_hint">Kuva kaadrisagedus vaate Praegu mängib video peal. Mõõtmine peatub pausi ajal või kui sellelt ekraanilt lahkud.</string>
