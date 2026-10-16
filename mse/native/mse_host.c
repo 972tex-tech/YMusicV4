@@ -32,6 +32,7 @@ static void blit_window(ANativeWindow *win, int w, int h, const uint8_t *bgra);
 
 #if defined(MSE_AQ) || defined(__ANDROID__)
 #define MSE_DAC 1
+#define DAC_CHECKPOINTS 8
 #endif
 #ifdef __ANDROID__
 #define DAC_FIRST_REPORT_NS 1e9
@@ -105,6 +106,17 @@ struct MseHost {
     /* Last clock handed out, and whether it came from the audio device (see dac_handover). */
     double clk_last;
     int clk_dac;
+    /* Device frames since the last ring flush: dac_pos audible (Android: the sink's report;
+       AudioQueue: handed to the queue), dac_polled read out of the ring. samples_played is
+       dac_pos - dac_base. */
+    int64_t dac_pos;
+    int64_t dac_base;
+    int64_t dac_polled;
+    /* PCM is stretched before the ring, so a rate change takes effect at the frame where the old
+       rate's audio ends: device frames before dac_cp_edge[i] play at dac_cp_speed[i]. */
+    int64_t dac_cp_edge[DAC_CHECKPOINTS];
+    double dac_cp_speed[DAC_CHECKPOINTS];
+    int dac_cp_n;
 #endif
 #ifdef MSE_AQ
     AudioQueueRef aq;
@@ -122,14 +134,7 @@ struct MseHost {
     /* The track's own buffer: decoding must run that far past the clock or a full-buffer start never comes. */
     double dac_buffer_s;
     double dac_start_ns;
-    int64_t dac_pos;
-    int64_t dac_base;
     int64_t dac_written;
-    /* Frames handed to the sink this generation. */
-    int64_t dac_polled;
-    /* PCM is stretched before the ring: sink frames before dac_sp_edge play at dac_sp_old. */
-    int64_t dac_sp_edge;
-    double dac_sp_old;
     _Atomic int dac_session;
 #endif
 };
@@ -206,21 +211,66 @@ static double play_speed(MseHost *h)
     return (double)s;
 }
 
-#ifdef __ANDROID__
-/* h->mu held. Media seconds of the sink frames played since dac_base. */
-static double dac_played_s(MseHost *h, double sp)
+#ifdef MSE_DAC
+/* h->mu held. Media seconds of `frames` device frames past dac_base. */
+static double dac_media_s(MseHost *h, double frames, double sp)
 {
-    double played = (double)h->samples_played;
+    double t = 0, at = 0;
+    int i;
     if (h->rate <= 0)
         return 0;
-    if (h->dac_sp_edge > h->dac_base) {
-        double old_n = (double)(h->dac_sp_edge - h->dac_base);
-        if (played <= old_n)
-            return played / (double)h->rate * h->dac_sp_old;
-        return (old_n * h->dac_sp_old + (played - old_n) * sp) / (double)h->rate;
+    for (i = 0; i < h->dac_cp_n; i++) {
+        double end = (double)(h->dac_cp_edge[i] - h->dac_base);
+        if (end <= at)
+            continue;
+        if (frames <= end)
+            return t + (frames - at) * h->dac_cp_speed[i] / (double)h->rate;
+        t += (end - at) * h->dac_cp_speed[i] / (double)h->rate;
+        at = end;
     }
-    return played / (double)h->rate * sp;
+    return t + (frames - at) * sp / (double)h->rate;
 }
+
+/* h->mu held. Fold checkpoints the audible position has passed into seek_base. */
+static void dac_cp_fold(MseHost *h, int64_t audible)
+{
+    while (h->dac_cp_n > 0 && audible >= h->dac_cp_edge[0]) {
+        if (h->rate > 0 && h->dac_cp_edge[0] > h->dac_base) {
+            h->seek_base += (double)(h->dac_cp_edge[0] - h->dac_base) / (double)h->rate * h->dac_cp_speed[0];
+            h->dac_base = h->dac_cp_edge[0];
+        }
+        h->dac_cp_n--;
+        memmove(h->dac_cp_edge, h->dac_cp_edge + 1, (size_t)h->dac_cp_n * sizeof(h->dac_cp_edge[0]));
+        memmove(h->dac_cp_speed, h->dac_cp_speed + 1, (size_t)h->dac_cp_n * sizeof(h->dac_cp_speed[0]));
+    }
+    h->samples_played = h->dac_pos > h->dac_base ? h->dac_pos - h->dac_base : 0;
+}
+
+/* h->mu held. The caller moved seek_base to the current media time: count from dac_pos. */
+static void dac_rebase(MseHost *h)
+{
+    int i, w = 0;
+    h->dac_base = h->dac_pos;
+    h->samples_played = 0;
+    for (i = 0; i < h->dac_cp_n; i++) {
+        if (h->dac_cp_edge[i] > h->dac_pos) {
+            h->dac_cp_edge[w] = h->dac_cp_edge[i];
+            h->dac_cp_speed[w] = h->dac_cp_speed[i];
+            w++;
+        }
+    }
+    h->dac_cp_n = w;
+}
+
+#ifdef MSE_AQ
+/* Frames handed to the AudioQueue that have not reached the speaker: ~4 buffers. */
+static int64_t aq_latency_frames(MseHost *h)
+{
+    int fb = h->ch > 0 ? h->ch * 2 : 4;
+    int one = h->aq_buf_bytes > 0 ? h->aq_buf_bytes / fb : (int)(0.02 * h->rate);
+    return (int64_t)one * 4;
+}
+#endif
 #endif
 
 #ifdef MSE_DAC
@@ -275,7 +325,7 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
         if (h->aq_started && h->rate > 0 &&
             (h->dac_live || now_ns() - h->dac_start_ns < DAC_FIRST_REPORT_NS)) {
             double sp = play_speed(h);
-            double dac = h->seek_base + dac_played_s(h, sp);
+            double dac = h->seek_base + dac_media_s(h, (double)h->samples_played, sp);
             if (h->playing && h->dac_tick_ns > 0) {
                 double extra = (now_ns() - h->dac_tick_ns) / 1e9;
                 if (extra > DAC_EXTRAPOLATE_S)
@@ -290,13 +340,12 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
 #else
         if (h->aq_started && h->rate > 0 && h->samples_played > 0) {
             double sp = play_speed(h);
-            double dac = h->seek_base + (double)h->samples_played / (double)h->rate * sp;
+            double dac = h->seek_base +
+                         dac_media_s(h, (double)(h->samples_played - aq_latency_frames(h)), sp);
             double one = 0.02;
-            int nbufs = 4;
             if (h->aq_buf_bytes > 0 && h->ch > 0)
                 one = (double)h->aq_buf_bytes /
                       (double)(h->rate * (h->ch > 0 ? h->ch * 2 : 4));
-            dac -= one * (double)nbufs * sp;
             if (h->dac_tick_ns > 0) {
                 double extra = (now_ns() - h->dac_tick_ns) / 1e9;
                 if (extra > one)
@@ -341,11 +390,8 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
                 h->origin_ns = now_ns();
 #ifdef MSE_DAC
                 h->seek_base = cap;
-                h->samples_played = 0;
+                dac_rebase(h);
                 h->dac_tick_ns = 0;
-#ifdef __ANDROID__
-                h->dac_base = h->dac_pos;
-#endif
 #endif
             }
         }
@@ -440,12 +486,13 @@ static void ring_flush(MseHost *h)
 {
     h->ring_r = h->ring_w = h->ring_n = 0;
     h->ring_gen++;
+    h->dac_pos = h->dac_base = h->dac_polled = 0;
+    h->dac_cp_n = 0;
 #ifdef __ANDROID__
     h->dac_live = 0;
     h->dac_drain = 0;
     h->dac_pending = 0;
-    h->dac_pos = h->dac_base = h->dac_written = 0;
-    h->dac_polled = h->dac_sp_edge = 0;
+    h->dac_written = 0;
 #endif
 }
 
@@ -476,7 +523,9 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
     if (live)
         n = ring_read(h, (uint8_t *)buf->mAudioData, cap, 1);
     if (n > 0 && h->rate > 0 && h->ch > 0) {
-        h->samples_played += n / frame_bytes(h);
+        h->dac_polled += n / frame_bytes(h);
+        h->dac_pos += n / frame_bytes(h);
+        dac_cp_fold(h, h->dac_pos - aq_latency_frames(h));
         h->dac_tick_ns = now_ns();
     }
     pthread_cond_broadcast(&h->cv);
@@ -825,9 +874,16 @@ static void *dec_loop(void *arg)
             pthread_mutex_lock(&h->mu);
             want = ring_ms(h) < 400;
             gen = h->ring_gen;
+            /* The lead is output time: the device queue sits on top of it, and at 2x it covers
+               twice the media. */
 #ifdef __ANDROID__
             lead += h->dac_buffer_s;
 #endif
+#ifdef MSE_AQ
+            if (h->rate > 0)
+                lead += (double)aq_latency_frames(h) / (double)h->rate;
+#endif
+            lead *= play_speed(h);
             pthread_mutex_unlock(&h->mu);
             if (!want)
                 break;
@@ -876,13 +932,12 @@ static void *dec_loop(void *arg)
                     ring_write(h, (const uint8_t *)pcm, nbytes);
                 if (dac && !h->aq_started && ring_ms(h) >= 160) {
                     h->aq_started = 1;
-                    h->samples_played = 0;
+                    dac_rebase(h);
                     h->dac_tick_ns = 0;
 #ifdef MSE_AQ
                     start_q = h->aq;
 #endif
 #ifdef __ANDROID__
-                    h->dac_base = h->dac_pos;
                     h->dac_start_ns = now_ns();
 #endif
                 }
@@ -1204,7 +1259,8 @@ void mse_host_play(MseHost *h)
         h->eos = 0;
         h->ended_sent = 0;
 #ifdef MSE_DAC
-        h->samples_played = 0;
+        dac_rebase(h);
+        h->dac_cp_n = 0;
         h->aq_started = 0;
         h->dac_tick_ns = 0;
 #endif
@@ -1621,15 +1677,8 @@ void mse_host_dac_report(MseHost *h, int gen, int64_t position, int64_t written,
     }
     if ((unsigned)gen == h->ring_gen && position >= 0) {
         h->dac_pos = position;
-        if (h->dac_sp_edge > 0 && position >= h->dac_sp_edge) {
-            if (h->rate > 0 && h->dac_sp_edge > h->dac_base) {
-                h->seek_base += (double)(h->dac_sp_edge - h->dac_base) / (double)h->rate * h->dac_sp_old;
-                h->dac_base = h->dac_sp_edge;
-            }
-            h->dac_sp_edge = 0;
-        }
+        dac_cp_fold(h, position);
         if (h->aq_started) {
-            h->samples_played = position > h->dac_base ? position - h->dac_base : 0;
             h->dac_tick_ns = now_ns();
             if (position > 0)
                 h->dac_live = 1;
@@ -1907,19 +1956,24 @@ void mse_host_set_speed(MseHost *h, float speed, float tempo)
         return;
     }
     h->speed = speed;
-#ifdef __ANDROID__
-    /* Keep currentTime continuous, and count what is still queued (ring + sink) at the old rate. */
-    h->seek_base += dac_played_s(h, (double)old);
-    h->samples_played = 0;
-    h->dac_base = h->dac_pos;
-    h->dac_sp_edge = h->dac_polled + (h->ch > 0 ? h->ring_n / frame_bytes(h) : 0);
-    h->dac_sp_old = (double)old;
-    if (h->dac_sp_edge <= h->dac_pos)
-        h->dac_sp_edge = 0;
-#elif defined(MSE_DAC)
-    /* Keep currentTime continuous: samples * new_rate = samples * old_rate. */
-    if (h->samples_played > 0)
-        h->samples_played = (int64_t)((double)h->samples_played * (double)old / (double)speed);
+#ifdef MSE_DAC
+    /* What is still queued (ring + device) was stretched at the old rate and plays at it. */
+    {
+        int64_t edge = h->dac_polled + (h->ch > 0 ? h->ring_n / frame_bytes(h) : 0);
+        int64_t audible = h->dac_pos;
+#ifdef MSE_AQ
+        audible -= aq_latency_frames(h);
+#endif
+        if (edge > audible && edge > h->dac_base) {
+            if (h->dac_cp_n < DAC_CHECKPOINTS) {
+                h->dac_cp_edge[h->dac_cp_n] = edge;
+                h->dac_cp_speed[h->dac_cp_n] = (double)old;
+                h->dac_cp_n++;
+            } else {
+                h->dac_cp_edge[DAC_CHECKPOINTS - 1] = edge;
+            }
+        }
+    }
 #else
     if (h->origin_ns > 0) {
         double n = now_ns();
