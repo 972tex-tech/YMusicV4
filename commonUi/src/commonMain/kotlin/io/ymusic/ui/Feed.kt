@@ -917,10 +917,10 @@ internal fun rankMusicFirst(items: List<YtFeedItem>): List<YtFeedItem> {
 /** The three feed layout bands a surface width falls into. */
 internal enum class FeedLayout { SquareList, WideList, Grid }
 
-/** The ONE place the feed breakpoints live: square list under 400dp, 16:9 list to 469dp, then the
+/** The ONE place the feed breakpoints live: square list under 380dp, 16:9 list to 469dp, then the
  *  grid ([gridColumnsFor] columns). */
 internal fun feedLayoutFor(width: androidx.compose.ui.unit.Dp): FeedLayout = when {
-    width < 400.dp -> FeedLayout.SquareList
+    width < 380.dp -> FeedLayout.SquareList
     width < 470.dp -> FeedLayout.WideList
     else -> FeedLayout.Grid
 }
