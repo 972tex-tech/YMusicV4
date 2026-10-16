@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -251,7 +252,6 @@ fun FeedListItem(
                 top = DesignSpacing.ListRowVertical,
                 bottom = DesignSpacing.ListRowVertical,
             ),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {
         when {
@@ -259,6 +259,7 @@ fun FeedListItem(
             wide -> RectThumb(item, width = 160.dp, height = 90.dp)
             else -> RectThumb(item, width = 92.dp, height = 92.dp)
         }
+        Spacer(Modifier.width(DesignSpacing.Space16))
         // A row with no trailing control (playlist/channel rows: no ⋮, no pill) has nothing to
         // absorb that inset, so the text restores the full 16dp itself.
         val bare = item.ctaText == null && actions.entries.isEmpty()
@@ -275,8 +276,9 @@ fun FeedListItem(
             }
         }
         when {
-            // A pill has no touch padding to absorb the row's trailing inset, so it carries its own.
-            item.ctaText != null -> CtaPill(item.ctaText!!, modifier = Modifier.padding(end = 12.dp))
+            // A pill has no touch padding to absorb the gap or the row's trailing inset, so it carries both;
+            // the ⋮'s own hit padding is its gap from the title.
+            item.ctaText != null -> CtaPill(item.ctaText!!, modifier = Modifier.padding(start = DesignSpacing.Space16, end = 12.dp))
             actions.entries.isNotEmpty() -> MoreMenu(actions, Modifier.align(Alignment.Top).padding(top = 2.dp))
         }
     }
