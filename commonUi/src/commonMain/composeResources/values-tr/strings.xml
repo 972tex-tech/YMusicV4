@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Sistemi takip et</string>
     <string name="settings_theme_light">Açık</string>
     <string name="settings_theme_dark">Koyu</string>
+    <string name="settings_theme_amoled">Siyah (AMOLED)</string>
+    <string name="settings_accent_color">Vurgu rengi</string>
     <string name="settings_debug">Hata ayıklama</string>
     <string name="settings_show_fps">FPS'yi göster</string>
     <string name="settings_show_fps_hint">Şimdi Çalıyor videosunun üzerinde saniyedeki kare sayısını gösterir. Duraklatıldığında veya ekrandan çıktığınızda ölçüm durur.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">Uygulamanın gelişmesine yardımcı olmak için anonim kullanım verileri paylaşın.</string>
     <string name="settings_enable_pip">Pencere içinde pencere</string>
     <string name="settings_enable_pip_hint">Şimdi Çalıyor'da veya tam ekranda video izlerken uygulamadan çıkarsanız küçük bir pencerede devam eder. Aksi halde video, siz dönene kadar yalnızca sese geçer.</string>
+    <string name="settings_audio_focus">Ses odağı</string>
+    <string name="settings_audio_focus_calls">Yalnızca telefon görüşmelerinde duraklat</string>
+    <string name="settings_audio_focus_apps">Diğer uygulamalar ses çaldığında duraklat</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube videolarındaki sponsorlu bölümleri otomatik atlar. Bir video için Şimdi Çalıyor'dan kapatabilirsiniz.</string>
     <string name="sponsor_block_included">Bu video için SponsorBlock etkin</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">Ses seviyesi, hız, ekolayzer ve sanallaştırıcı</string>
     <string name="settings_speed_hint">Oynatma hızı ve perde</string>
     <string name="settings_eq_hint">On bantlı ekolayzer, bas güçlendirme, sanallaştırıcı</string>
+    <string name="settings_system_audio_fx">Sistem ses efektlerini kullan</string>
+    <string name="settings_system_audio_fx_hint">Cihazınızdaki ekolayzer uygulamalarının sesi şekillendirmesine izin verin. Uygulama içi ekolayzeri kapatır.</string>
     <string name="sound_title">Ses</string>
     <string name="sound_playback">Oynatma</string>
-    <string name="sound_volume">Ses seviyesi %1$d%%</string>
+    <string name="sound_volume">Ses seviyesi %1$d%</string>
     <string name="sound_speed">Hız</string>
     <string name="sound_pitch">Perde %1$s</string>
     <string name="sound_eq">Ekolayzer</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">Yorumu sil</string>
     <string name="video_details_delete_message">Yorumunuz ve tüm yanıtları kalıcı olarak silinsin mi?</string>
     <string name="video_details_deleted">Yorum silindi</string>
+    <string name="menu_details_comments">Ayrıntılar ve yorumlar</string>
+    <string name="menu_speed_pitch">Hız ve perde</string>
 </resources>

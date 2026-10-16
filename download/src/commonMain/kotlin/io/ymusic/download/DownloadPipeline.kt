@@ -126,12 +126,12 @@ class DownloadPipeline(
                 if (streams.captions.isNotEmpty()) outName = withLyrics(task.id, out, streams.captions)
             }
             DownloadFormat.M4A -> withCover(task) { cover ->
-                ff.toM4a(audio.path, out.path, copy = audioFmt.mimeType.contains("mp4"), captions = subs, cover = cover, metadata = meta, onProgressUs = onFfProgress)
+                ff.toM4a(audio.path, out.path, captions = subs, cover = cover, metadata = meta, onProgressUs = onFfProgress)
             }
             DownloadFormat.AUDIO_WEBM -> withCover(task) { cover ->
-                ff.toWebmAudio(audio.path, out.path, copy = audioFmt.mimeType.contains("webm"), captions = subs, cover = cover, metadata = meta, onProgressUs = onFfProgress)
+                ff.toWebmAudio(audio.path, out.path, captions = subs, cover = cover, metadata = meta, onProgressUs = onFfProgress)
             }
-            DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, copyAudio = audioFmt.mimeType.contains("webm"), captions = subs, metadata = meta, onProgressUs = onFfProgress)
+            DownloadFormat.VIDEO_WEBM -> ff.muxWebm(video!!.path, audio.path, out.path, captions = subs, metadata = meta, onProgressUs = onFfProgress)
             DownloadFormat.VIDEO_MP4 -> ff.muxMp4(video!!.path, audio.path, out.path, subs, meta, onFfProgress)
         }
 

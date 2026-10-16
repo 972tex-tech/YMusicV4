@@ -220,6 +220,8 @@
     <string name="settings_theme_system">Suivre le système</string>
     <string name="settings_theme_light">Clair</string>
     <string name="settings_theme_dark">Sombre</string>
+    <string name="settings_theme_amoled">Noir (AMOLED)</string>
+    <string name="settings_accent_color">Couleur d'accentuation</string>
     <string name="settings_debug">Débogage</string>
     <string name="settings_show_fps">Afficher les FPS</string>
     <string name="settings_show_fps_hint">Affiche les images par seconde sur la vidéo en cours de lecture. La mesure s'arrête en pause ou quand vous quittez cet écran.</string>
@@ -359,6 +361,9 @@
     <string name="settings_stats_hint">Partager des données d'utilisation anonymes pour aider à améliorer l'app.</string>
     <string name="settings_enable_pip">Picture-in-picture</string>
     <string name="settings_enable_pip_hint">Quand vous regardez une vidéo en lecture en cours ou en plein écran, elle continue dans une petite fenêtre si vous quittez l'app. Sinon, la vidéo passe en audio uniquement jusqu'à votre retour.</string>
+    <string name="settings_audio_focus">Focus audio</string>
+    <string name="settings_audio_focus_calls">Mettre en pause uniquement pendant les appels</string>
+    <string name="settings_audio_focus_apps">Mettre en pause quand une autre app émet du son</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Passer automatiquement les segments sponsorisés des vidéos YouTube. Désactivable pour une vidéo depuis la lecture en cours.</string>
     <string name="sponsor_block_included">SponsorBlock activé pour cette vidéo</string>
@@ -367,9 +372,11 @@
     <string name="settings_sound_hint">Volume, vitesse, égaliseur et virtualiseur</string>
     <string name="settings_speed_hint">Vitesse de lecture et tonalité</string>
     <string name="settings_eq_hint">Égaliseur dix bandes, amplification des basses, virtualiseur</string>
+    <string name="settings_system_audio_fx">Utiliser les effets sonores du système</string>
+    <string name="settings_system_audio_fx_hint">Laissez les applications d'égaliseur de l'appareil façonner le son. Désactive l'égaliseur de l'application.</string>
     <string name="sound_title">Son</string>
     <string name="sound_playback">Lecture</string>
-    <string name="sound_volume">Volume %1$d%%</string>
+    <string name="sound_volume">Volume %1$d%</string>
     <string name="sound_speed">Vitesse</string>
     <string name="sound_pitch">Tonalité %1$s</string>
     <string name="sound_eq">Égaliseur</string>
@@ -519,4 +526,6 @@
     <string name="video_details_delete_title">Supprimer le commentaire</string>
     <string name="video_details_delete_message">Supprimer définitivement votre commentaire et toutes ses réponses ?</string>
     <string name="video_details_deleted">Commentaire supprimé</string>
+    <string name="menu_details_comments">Détails et commentaires</string>
+    <string name="menu_speed_pitch">Vitesse et tonalité</string>
 </resources>

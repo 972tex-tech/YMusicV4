@@ -9,8 +9,11 @@ import kotlin.time.TimeSource
  *
  *  - **stint** ([onSlowStint]): one dispatched task held the thread for [stintMs]+ in one
  *    continuous stretch — blames the CULPRIT (an unchunked loop, a runaway regex, a blocking call
- *    that skipped its `withContext(IO)` hop). The [String] is a live engine-thread stack dump
- *    captured at the budget (JVM/Android) while the task is still running.
+ *    that skipped its `withContext(IO)` hop). With [liveStacks] (JVM/Android), the [String] is a
+ *    live engine-thread stack dump captured at the budget while the task is still running, and
+ *    `pausedMillis` is how much of the stint the whole process was frozen (an OS freezer such as
+ *    Samsung's Freecess stops every thread while the monotonic clock keeps counting); otherwise
+ *    the detail is just the task name and `pausedMillis` is 0. Costs one scheduled job per task.
  *  - **queue wait** ([onSlowWait]): a task waited [waitMs]+ between dispatch and running — the
  *    VICTIM's view, catching cumulative congestion no single stint shows (ten 20ms stints
  *    back-to-back delay the next task 200ms).
@@ -23,9 +26,10 @@ import kotlin.time.TimeSource
 internal expect fun slowStintDispatcher(
     delegate: CloseableCoroutineDispatcher,
     stintMs: Long,
-    onSlowStint: ((millis: Long, detail: String) -> Unit)?,
+    onSlowStint: ((millis: Long, pausedMillis: Long, detail: String) -> Unit)?,
     waitMs: Long,
     onSlowWait: ((millis: Long) -> Unit)?,
+    liveStacks: Boolean,
 ): CloseableCoroutineDispatcher
 
 /** The shared watchdog clock around one dispatched task: queue wait since [enqueued], then the
@@ -34,22 +38,24 @@ internal expect fun slowStintDispatcher(
 internal inline fun runWatched(
     enqueued: TimeSource.Monotonic.ValueTimeMark,
     stintMs: Long,
-    noinline onSlowStint: ((Long) -> Unit)?,
+    noinline onSlowStint: ((millis: Long, pausedMillis: Long) -> Unit)?,
     waitMs: Long,
-    noinline onSlowWait: ((Long) -> Unit)?,
+    noinline onSlowWait: ((millis: Long) -> Unit)?,
+    paused: () -> Long,
     block: () -> Unit,
 ) {
+    val mark = TimeSource.Monotonic.markNow()
     if (onSlowWait != null) {
-        val waited = enqueued.elapsedNow().inWholeMilliseconds
+        val waited = (mark - enqueued).inWholeMilliseconds
         if (waited >= waitMs) onSlowWait(waited)
     }
-    val mark = TimeSource.Monotonic.markNow()
     try {
         block()
     } finally {
+        val pausedMs = paused()
         if (onSlowStint != null) {
             val ms = mark.elapsedNow().inWholeMilliseconds
-            if (ms >= stintMs) onSlowStint(ms)
+            if (ms >= stintMs) onSlowStint(ms, pausedMs)
         }
     }
 }

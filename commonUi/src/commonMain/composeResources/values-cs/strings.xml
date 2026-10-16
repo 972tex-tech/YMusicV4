@@ -221,6 +221,8 @@
     <string name="settings_theme_system">Podle systému</string>
     <string name="settings_theme_light">Světlý</string>
     <string name="settings_theme_dark">Tmavý</string>
+    <string name="settings_theme_amoled">Černý (AMOLED)</string>
+    <string name="settings_accent_color">Barva zvýraznění</string>
     <string name="settings_debug">Ladění</string>
     <string name="settings_show_fps">Zobrazit FPS</string>
     <string name="settings_show_fps_hint">Zobrazí počet snímků za sekundu přes video v Právě hraje. Měření se zastaví při pozastavení nebo opuštění obrazovky.</string>
@@ -360,6 +362,9 @@
     <string name="settings_stats_hint">Sdílet anonymní údaje o používání a pomoci tak zlepšit aplikaci.</string>
     <string name="settings_enable_pip">Obraz v obraze</string>
     <string name="settings_enable_pip_hint">Při sledování videa v Právě hraje nebo na celé obrazovce pokračovat v malém okně, když aplikaci opustíte. Jinak se video do vašeho návratu přepne jen na zvuk.</string>
+    <string name="settings_audio_focus">Zvukový fokus</string>
+    <string name="settings_audio_focus_calls">Pozastavit jen při telefonních hovorech</string>
+    <string name="settings_audio_focus_apps">Pozastavit, když jiné aplikace přehrávají zvuk</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Automaticky přeskakovat sponzorované úseky ve videích YouTube. Pro konkrétní video to lze vypnout v Právě hraje.</string>
     <string name="sponsor_block_included">SponsorBlock je pro toto video zapnutý</string>
@@ -368,9 +373,11 @@
     <string name="settings_sound_hint">Hlasitost, rychlost, ekvalizér a virtualizér</string>
     <string name="settings_speed_hint">Rychlost přehrávání a výška tónu</string>
     <string name="settings_eq_hint">Desetipásmový ekvalizér, zesílení basů, virtualizér</string>
+    <string name="settings_system_audio_fx">Použít systémové zvukové efekty</string>
+    <string name="settings_system_audio_fx_hint">Nechte aplikace ekvalizéru v zařízení upravovat zvuk. Vypne ekvalizér v aplikaci.</string>
     <string name="sound_title">Zvuk</string>
     <string name="sound_playback">Přehrávání</string>
-    <string name="sound_volume">Hlasitost %1$d%%</string>
+    <string name="sound_volume">Hlasitost %1$d%</string>
     <string name="sound_speed">Rychlost</string>
     <string name="sound_pitch">Výška tónu %1$s</string>
     <string name="sound_eq">Ekvalizér</string>
@@ -524,4 +531,6 @@
     <string name="video_details_delete_title">Smazat komentář</string>
     <string name="video_details_delete_message">Trvale smazat váš komentář a všechny odpovědi na něj?</string>
     <string name="video_details_deleted">Komentář smazán</string>
+    <string name="menu_details_comments">Podrobnosti a komentáře</string>
+    <string name="menu_speed_pitch">Rychlost a výška tónu</string>
 </resources>

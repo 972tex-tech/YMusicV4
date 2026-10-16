@@ -218,6 +218,81 @@ static void on_prog(void *user, double pos, double dur, int w, int h)
     (*env)->CallVoidMethod(env, s->sink, s->onProgress, pos, dur, w, h);
 }
 
+#ifdef __ANDROID__
+/* Android: create/destroy wrap the host with its Kotlin MseAudioOutput, so the raw calls get their own names. */
+JNIEXPORT jlong JNICALL
+Java_io_ymusic_mse_MseHostNative_createHost(JNIEnv *env, jclass cls)
+{
+    (void)cls;
+    (*env)->GetJavaVM(env, &g_jvm);
+    register_js_event(env);
+    register_log(env);
+    return (jlong)(intptr_t)mse_host_create();
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_destroyHost(JNIEnv *env, jclass cls, jlong handle)
+{
+    (void)env;
+    (void)cls;
+    mse_host_destroy((MseHost *)(intptr_t)handle);
+}
+
+JNIEXPORT jint JNICALL
+Java_io_ymusic_mse_MseHostNative_audioSessionId(JNIEnv *env, jclass cls, jlong handle)
+{
+    (void)env;
+    (void)cls;
+    return mse_host_audio_session((MseHost *)(intptr_t)handle);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_dacAttach(JNIEnv *env, jclass cls, jlong handle, jboolean attached)
+{
+    (void)env;
+    (void)cls;
+    mse_host_dac_attach((MseHost *)(intptr_t)handle, attached ? 1 : 0);
+}
+
+JNIEXPORT jint JNICALL
+Java_io_ymusic_mse_MseHostNative_dacPoll(JNIEnv *env, jclass cls, jlong handle, jobject dst, jint cap,
+                                         jint waitMs, jintArray state)
+{
+    int st[MSE_DAC_STATE_N];
+    uint8_t *p = NULL;
+    int n;
+    (void)cls;
+    memset(st, 0, sizeof(st));
+    if (dst && cap > 0) {
+        p = (uint8_t *)(*env)->GetDirectBufferAddress(env, dst);
+        /* -1 is "host released": the sink thread stops for good on it. */
+        if (!p || (*env)->GetDirectBufferCapacity(env, dst) < cap)
+            return -2;
+    }
+    n = mse_host_dac_poll((MseHost *)(intptr_t)handle, p, p ? cap : 0, waitMs, st);
+    if (state && (*env)->GetArrayLength(env, state) >= MSE_DAC_STATE_N)
+        (*env)->SetIntArrayRegion(env, state, 0, MSE_DAC_STATE_N, (const jint *)st);
+    return n;
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_dacReport(JNIEnv *env, jclass cls, jlong handle, jint gen, jlong position,
+                                           jlong written, jboolean pending, jlong bufferUs)
+{
+    (void)env;
+    (void)cls;
+    mse_host_dac_report((MseHost *)(intptr_t)handle, gen, position, written, pending ? 1 : 0, bufferUs);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ymusic_mse_MseHostNative_dacSession(JNIEnv *env, jclass cls, jlong handle, jint session)
+{
+    (void)env;
+    (void)cls;
+    mse_host_dac_session((MseHost *)(intptr_t)handle, session);
+}
+#endif
+
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 {
     JNIEnv *env = NULL;

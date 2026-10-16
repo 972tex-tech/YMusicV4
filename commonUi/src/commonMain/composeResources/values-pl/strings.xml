@@ -221,6 +221,8 @@
     <string name="settings_theme_system">Systemowy</string>
     <string name="settings_theme_light">Jasny</string>
     <string name="settings_theme_dark">Ciemny</string>
+    <string name="settings_theme_amoled">Czarny (AMOLED)</string>
+    <string name="settings_accent_color">Kolor akcentu</string>
     <string name="settings_debug">Debugowanie</string>
     <string name="settings_show_fps">Pokaż FPS</string>
     <string name="settings_show_fps_hint">Wyświetla liczbę klatek na sekundę na filmie w Teraz odtwarzane. Pomiar zatrzymuje się po pauzie lub opuszczeniu ekranu.</string>
@@ -360,6 +362,9 @@
     <string name="settings_stats_hint">Udostępniaj anonimowe dane o użytkowaniu, aby pomóc ulepszać aplikację.</string>
     <string name="settings_enable_pip">Obraz w obrazie</string>
     <string name="settings_enable_pip_hint">Podczas oglądania filmu w Teraz odtwarzane lub na pełnym ekranie kontynuuj w małym oknie po wyjściu z aplikacji. W przeciwnym razie film przełączy się na tylko dźwięk do czasu powrotu.</string>
+    <string name="settings_audio_focus">Fokus audio</string>
+    <string name="settings_audio_focus_calls">Wstrzymuj tylko podczas połączeń</string>
+    <string name="settings_audio_focus_apps">Wstrzymuj, gdy inne aplikacje odtwarzają dźwięk</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Automatycznie pomijaj sponsorowane fragmenty w filmach YouTube. Możesz to wyłączyć dla filmu w Teraz odtwarzane.</string>
     <string name="sponsor_block_included">SponsorBlock włączony dla tego filmu</string>
@@ -368,9 +373,11 @@
     <string name="settings_sound_hint">Głośność, prędkość, korektor dźwięku i wirtualizer</string>
     <string name="settings_speed_hint">Prędkość odtwarzania i wysokość dźwięku</string>
     <string name="settings_eq_hint">Dziesięciopasmowy korektor, wzmocnienie basów, wirtualizer</string>
+    <string name="settings_system_audio_fx">Używaj systemowych efektów dźwiękowych</string>
+    <string name="settings_system_audio_fx_hint">Pozwól aplikacjom korektora na urządzeniu kształtować dźwięk. Wyłącza korektor w aplikacji.</string>
     <string name="sound_title">Dźwięk</string>
     <string name="sound_playback">Odtwarzanie</string>
-    <string name="sound_volume">Głośność %1$d%%</string>
+    <string name="sound_volume">Głośność %1$d%</string>
     <string name="sound_speed">Prędkość</string>
     <string name="sound_pitch">Wysokość %1$s</string>
     <string name="sound_eq">Korektor dźwięku</string>
@@ -524,4 +531,6 @@
     <string name="video_details_delete_title">Usuń komentarz</string>
     <string name="video_details_delete_message">Trwale usunąć komentarz i wszystkie odpowiedzi na niego?</string>
     <string name="video_details_deleted">Usunięto komentarz</string>
+    <string name="menu_details_comments">Szczegóły i komentarze</string>
+    <string name="menu_speed_pitch">Prędkość i wysokość</string>
 </resources>

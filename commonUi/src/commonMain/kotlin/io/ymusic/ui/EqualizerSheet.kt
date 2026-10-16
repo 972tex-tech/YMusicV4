@@ -34,6 +34,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -53,8 +54,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.ymusic.player.Player
+import io.ymusic.settings.AppSettings
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.settings_system_audio_fx
+import io.ymusic.ui.resources.settings_system_audio_fx_hint
 import io.ymusic.ui.resources.sound_bass
 import io.ymusic.ui.resources.sound_db
 import io.ymusic.ui.resources.sound_eq
@@ -102,6 +105,7 @@ private const val KNOB_HUB_FRACTION = 0.15f
 private val KnobStroke = 7.dp
 private val MenuCurveWidth = 26.dp
 private val MenuCurveHeight = 12.dp
+private const val DISABLED_ALPHA = 0.38f
 
 private data class EqPreset(val label: StringResource, val bands: List<Float>)
 
@@ -117,24 +121,37 @@ private val EQ_PRESETS = listOf(
     EqPreset(Res.string.sound_preset_electronic, listOf(4f, 3f, 1f, 0f, -2f, 2f, 1f, 2f, 3f, 4f)),
 )
 
-/** Equalizer: a mixing-desk bank of ten faders, a preset menu in the title bar, and bass / virtualizer knobs. */
+/**
+ * Equalizer: a mixing-desk bank of ten faders, a preset menu in the title bar, and bass / virtualizer knobs.
+ * On shells that support it, a "Use system sound effects" switch heads it; the controls are read-only and dimmed
+ * while [io.ymusic.player.PlaybackConfig.inAppAudioFx] is off.
+ */
 @Composable
-internal fun EqualizerFxSheet(player: Player, onDismiss: () -> Unit) {
+internal fun EqualizerFxSheet(graph: AppGraph, onDismiss: () -> Unit) {
+    val player = graph.player
     val config by player.config.collectAsState()
+    val enabled = config.inAppAudioFx
     val bands = List(EQ_HZ.size) { config.eqBands.getOrElse(it) { 0f } }
     val scroll = rememberScrollState()
+    val controls = if (enabled) Modifier else Modifier.alpha(DISABLED_ALPHA)
     ElevatedBarDialog(
         title = stringResource(Res.string.sound_eq),
         onDismiss = onDismiss,
         canScrollBackward = scroll.canScrollBackward,
         canScrollForward = scroll.canScrollForward,
-        titleAction = { PresetMenu(bands, onSelect = { player.setEqBands(it) }) },
+        titleAction = if (enabled) {
+            { PresetMenu(bands, onSelect = { player.setEqBands(it) }) }
+        } else {
+            null
+        },
         buttons = {
-            DialogSecondaryButton(stringResource(Res.string.sound_reset)) {
-                player.setEqBands(List(EQ_HZ.size) { 0f })
-                player.setBassBoost(0f)
-                player.setVirtualizer(1f)
-                player.setPreamp(0f)
+            if (enabled) {
+                DialogSecondaryButton(stringResource(Res.string.sound_reset)) {
+                    player.setEqBands(List(EQ_HZ.size) { 0f })
+                    player.setBassBoost(0f)
+                    player.setVirtualizer(1f)
+                    player.setPreamp(0f)
+                }
             }
             TextButton(onClick = onDismiss) {
                 Text(stringResource(Res.string.sound_ok), color = DesignColors.Accent)
@@ -145,31 +162,45 @@ internal fun EqualizerFxSheet(player: Player, onDismiss: () -> Unit) {
             Modifier.verticalScroll(scroll).padding(vertical = DesignSpacing.Space16),
             verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
         ) {
+            if (graph.systemAudioEffects) {
+                ToggleRow(
+                    graph,
+                    AppSettings.systemAudioEffects,
+                    Res.string.settings_system_audio_fx,
+                    Res.string.settings_system_audio_fx_hint,
+                )
+            }
             Column(Modifier.padding(horizontal = DesignSpacing.Space16)) {
                 FaderBank(
                     preamp = config.preampDb,
                     bands = bands,
+                    enabled = enabled,
                     onPreampChange = { player.setPreamp(it) },
                     onBandChange = { index, db -> player.setEqBands(bands.toMutableList().also { it[index] = db }) },
+                    modifier = controls,
                 )
-                Text(
-                    stringResource(Res.string.sound_eq_hint),
-                    style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = DesignSpacing.Space8),
-                )
+                if (enabled) {
+                    Text(
+                        stringResource(Res.string.sound_eq_hint),
+                        style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = DesignSpacing.Space8),
+                    )
+                }
             }
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = DesignSpacing.Space24),
+                controls.fillMaxWidth().padding(horizontal = DesignSpacing.Space24),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 RotaryKnob(
+                    enabled = enabled,
                     title = stringResource(Res.string.sound_bass),
                     fraction = (config.bassBoostDb + BASS_MAX_DB) / (2 * BASS_MAX_DB),
                     valueText = stringResource(Res.string.sound_db, dbLabel(config.bassBoostDb)),
                     onChange = { player.setBassBoost((it * 2 * BASS_MAX_DB - BASS_MAX_DB).roundToInt().toFloat()) },
                 )
                 RotaryKnob(
+                    enabled = enabled,
                     title = stringResource(Res.string.sound_virtualizer_title),
                     fraction = config.virtualizer / VIRTUALIZER_MAX,
                     valueText = "${trimFloat(config.virtualizer)}×",
@@ -255,8 +286,10 @@ private fun MiniCurve(bands: List<Float>, color: Color) {
 private fun FaderBank(
     preamp: Float,
     bands: List<Float>,
+    enabled: Boolean,
     onPreampChange: (db: Float) -> Unit,
     onBandChange: (index: Int, db: Float) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val accent = DesignColors.Accent
     val master = DesignColors.Ink
@@ -266,13 +299,14 @@ private fun FaderBank(
     val masterCapBorder = DesignColors.InkFaint
     val changeBand by rememberUpdatedState(onBandChange)
     val changePreamp by rememberUpdatedState(onPreampChange)
+    val isEnabled by rememberUpdatedState(enabled)
     // The held fader: PRE_INDEX for the master, else a band index.
     var active by remember { mutableStateOf<Int?>(null) }
     val density = LocalDensity.current
     val inset = with(density) { MasterCapHeight.toPx() / 2 + 2.dp.toPx() }
     val masterWidth = with(density) { MasterColumnWidth.toPx() }
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(FaderBankCorner))
             .background(Brush.verticalGradient(listOf(DesignColors.SettingsCard, DesignColors.Surface)))
@@ -294,6 +328,7 @@ private fun FaderBank(
                 Modifier.fillMaxSize().pointerInput(bands.size, height) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
+                        if (!isEnabled) return@awaitEachGesture
                         val bandWidth = (size.width - masterWidth) / bands.size
                         val index = if (down.position.x < masterWidth) {
                             PRE_INDEX
@@ -440,19 +475,21 @@ private fun dbLabel(db: Float): String {
  * up/right drag raises instead. The value arc fills from the lower-left stop; the dot points at the value.
  */
 @Composable
-private fun RotaryKnob(title: String, fraction: Float, valueText: String, onChange: (Float) -> Unit) {
+private fun RotaryKnob(enabled: Boolean, title: String, fraction: Float, valueText: String, onChange: (Float) -> Unit) {
     val accent = DesignColors.Accent
     val track = DesignColors.OutlineSoft
     val faceLight = DesignColors.SurfaceElevated
     val faceDark = DesignColors.SettingsCard
     val current by rememberUpdatedState(fraction.coerceIn(0f, 1f))
     val change by rememberUpdatedState(onChange)
+    val isEnabled by rememberUpdatedState(enabled)
     var dragging by remember { mutableStateOf(false) }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier.size(KnobSize).pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
+                    if (!isEnabled) return@awaitEachGesture
                     down.consume()
                     dragging = true
                     var value = current
@@ -530,6 +567,11 @@ private fun smoothPath(points: List<Offset>): Path = Path().apply {
             p2.x, p2.y,
         )
     }
+}
+
+internal fun eqPresetLabel(eqBands: List<Float>): StringResource {
+    val bands = List(EQ_HZ.size) { eqBands.getOrElse(it) { 0f } }
+    return EQ_PRESETS.firstOrNull { bandsMatch(bands, it.bands) }?.label ?: Res.string.sound_preset_custom
 }
 
 private fun bandsMatch(a: List<Float>, b: List<Float>): Boolean =

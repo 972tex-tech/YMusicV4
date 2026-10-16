@@ -41,7 +41,7 @@ class Ffmpeg(
     // The output container is named explicitly with `-f` so it doesn't depend on the output filename's
     // extension — scratch/publish names (and content:// targets) may have none.
 
-    /** opus/webm/m4a → mp3 via libmp3lame with [encoding], tagged ID3v2.3 — the version
+    /** Any audio (opus/aac/ec-3) → mp3 via libmp3lame with [encoding], tagged ID3v2.3 — the version
      *  [Id3Lyrics] extends and the one most players read. A JPEG [cover] becomes the APIC picture. */
     suspend fun toMp3(
         input: String,
@@ -52,44 +52,39 @@ class Ffmpeg(
         onProgressUs: ((Long) -> Unit)? = null,
     ) = run(mp3Args(input, output, encoding, cover, metadata), onProgressUs)
 
-    /** best audio → m4a (+ any [captions], as mov_text): stream-copy when already AAC ([copy]=true),
-     *  else transcode to AAC. M4A is an ISO-BMFF container, so it carries subtitle tracks like MP4. A JPEG
-     *  [cover] becomes the `covr` artwork. */
+    /** AAC audio → m4a, stream-copied (+ any [captions], as mov_text). M4A is an ISO-BMFF container, so it
+     *  carries subtitle tracks like MP4. A JPEG [cover] becomes the `covr` artwork. */
     suspend fun toM4a(
         input: String,
         output: String,
-        copy: Boolean,
         captions: List<SubtitleInput> = emptyList(),
         cover: String? = null,
         metadata: List<Pair<String, String>> = emptyList(),
         onProgressUs: ((Long) -> Unit)? = null,
-    ) = run(m4aArgs(input, output, copy, captions, metadata, cover), onProgressUs)
+    ) = run(m4aArgs(input, output, captions, metadata, cover), onProgressUs)
 
-    /** best audio → audio-only WebM (+ any [captions], as WebVTT): Opus is copied ([copy]=true), anything
-     *  else is transcoded to Opus — WebM can't hold AAC. A JPEG [cover] goes in as a Matroska attachment. */
+    /** Opus audio → audio-only WebM, stream-copied (+ any [captions], as WebVTT). A JPEG [cover] goes in
+     *  as a Matroska attachment. */
     suspend fun toWebmAudio(
         input: String,
         output: String,
-        copy: Boolean,
         captions: List<SubtitleInput> = emptyList(),
         cover: String? = null,
         metadata: List<Pair<String, String>> = emptyList(),
         onProgressUs: ((Long) -> Unit)? = null,
-    ) = run(webmAudioArgs(input, output, copy, captions, metadata, cover), onProgressUs)
+    ) = run(webmAudioArgs(input, output, captions, metadata, cover), onProgressUs)
 
-    /** Mux VP9/AV1 video (copied) + audio (copied when Opus/Vorbis, [copyAudio], else → Opus) (+ any
-     *  [captions], as WebVTT) into one WebM. */
+    /** Mux VP9/AV1 video + Opus audio, both stream-copied (+ any [captions], as WebVTT), into one WebM. */
     suspend fun muxWebm(
         video: String,
         audio: String,
         output: String,
-        copyAudio: Boolean,
         captions: List<SubtitleInput> = emptyList(),
         metadata: List<Pair<String, String>> = emptyList(),
         onProgressUs: ((Long) -> Unit)? = null,
-    ) = run(webmMuxArgs(video, audio, output, copyAudio, captions, metadata), onProgressUs)
+    ) = run(webmMuxArgs(video, audio, output, captions, metadata), onProgressUs)
 
-    /** Mux video (copied) + audio (transcoded to AAC) (+ any [captions], as mov_text) into one MP4. */
+    /** Mux video + AAC audio, both stream-copied (+ any [captions], as mov_text), into one MP4. */
     suspend fun muxMp4(
         video: String,
         audio: String,
@@ -169,11 +164,10 @@ internal fun mp3Args(
     add("-f"); add("mp3"); add(output.ffSpec())
 }
 
-/** best audio (+ subtitles as mov_text) → m4a via the `ipod` muxer. Audio is copied ([copy]) or → AAC. */
+/** AAC audio (+ subtitles as mov_text) → m4a via the `ipod` muxer, audio stream-copied. */
 internal fun m4aArgs(
     audio: String,
     output: String,
-    copy: Boolean,
     captions: List<SubtitleInput>,
     metadata: List<Pair<String, String>>,
     cover: String? = null,
@@ -184,7 +178,7 @@ internal fun m4aArgs(
     add("-map"); add("0:a:0")
     captions.indices.forEach { add("-map"); add("${it + 1}:0") } // subtitle inputs start at index 1
     if (cover != null) addAll(coverOutputArgs(inputIndex = captions.size + 1))
-    if (copy) { add("-c:a"); add("copy") } else { add("-c:a"); add("aac"); add("-b:a"); add("192k") }
+    add("-c:a"); add("copy")
     if (captions.isNotEmpty()) { add("-c:s"); add("mov_text") }
     addAll(subtitleMetaArgs(captions))
     addAll(metaArgs(metadata))
@@ -192,14 +186,13 @@ internal fun m4aArgs(
 }
 
 /**
- * best audio (+ subtitles as WebVTT) → audio-only WebM. Audio is copied ([copy]) or → Opus. With a
+ * Opus audio (+ subtitles as WebVTT) → audio-only WebM, audio stream-copied. With a
  * [cover] it is written by the `matroska` muxer: the `webm` one drops attachments (WebM's spec omits
  * them), and Matroska-reading players take a `cover.jpg` attachment as the artwork.
  */
 internal fun webmAudioArgs(
     audio: String,
     output: String,
-    copy: Boolean,
     captions: List<SubtitleInput>,
     metadata: List<Pair<String, String>>,
     cover: String? = null,
@@ -208,7 +201,7 @@ internal fun webmAudioArgs(
     captions.forEach { add("-i"); add(it.path.ffSpec()) }
     add("-map"); add("0:a:0")
     captions.indices.forEach { add("-map"); add("${it + 1}:0") }
-    addAll(webmAudioCodecArgs(copy))
+    add("-c:a"); add("copy")
     if (captions.isNotEmpty()) { add("-c:s"); add("webvtt") }
     addAll(subtitleMetaArgs(captions))
     if (cover != null) {
@@ -220,7 +213,7 @@ internal fun webmAudioArgs(
     add("-f"); add(if (cover != null) "matroska" else "webm"); add(output.ffSpec())
 }
 
-/** Mux video+audio (+subtitles as mov_text) into an MP4. Video is stream-copied, audio → AAC. */
+/** Mux video + AAC audio (+subtitles as mov_text) into an MP4, both stream-copied. */
 internal fun mp4MuxArgs(
     video: String,
     audio: String,
@@ -235,7 +228,7 @@ internal fun mp4MuxArgs(
     add("-map"); add("1:a:0")
     captions.indices.forEach { add("-map"); add("${it + 2}:0") } // subtitle inputs start at index 2
     add("-c:v"); add("copy")
-    add("-c:a"); add("aac"); add("-b:a"); add("192k")
+    add("-c:a"); add("copy")
     if (captions.isNotEmpty()) { add("-c:s"); add("mov_text") }
     addAll(subtitleMetaArgs(captions))
     add("-movflags"); add("+faststart")
@@ -243,12 +236,11 @@ internal fun mp4MuxArgs(
     add("-f"); add("mp4"); add(output.ffSpec())
 }
 
-/** Mux video+audio (+subtitles as WebVTT) into a WebM: video copied, audio copied or → Opus. */
+/** Mux video + Opus audio (+subtitles as WebVTT) into a WebM, both stream-copied. */
 internal fun webmMuxArgs(
     video: String,
     audio: String,
     output: String,
-    copyAudio: Boolean,
     captions: List<SubtitleInput>,
     metadata: List<Pair<String, String>>,
 ): List<String> = buildList {
@@ -259,20 +251,12 @@ internal fun webmMuxArgs(
     add("-map"); add("1:a:0")
     captions.indices.forEach { add("-map"); add("${it + 2}:0") }
     add("-c:v"); add("copy")
-    addAll(webmAudioCodecArgs(copyAudio))
+    add("-c:a"); add("copy")
     if (captions.isNotEmpty()) { add("-c:s"); add("webvtt") }
     addAll(subtitleMetaArgs(captions))
     addAll(metaArgs(metadata))
     add("-f"); add("webm"); add(output.ffSpec())
 }
-
-private fun webmAudioCodecArgs(copy: Boolean): List<String> =
-    if (copy) {
-        listOf("-c:a", "copy")
-    } else {
-        // The shipped ffmpeg has no libopus; its native encoder is "experimental" and 48 kHz-only.
-        listOf("-c:a", "opus", "-strict", "-2", "-ar", "48000", "-b:a", "160k")
-    }
 
 /** The cover file is an extension-less scratch, so name its demuxer and codec instead of probing. */
 private fun coverInputArgs(cover: String): List<String> =

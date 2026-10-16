@@ -708,15 +708,18 @@ class YtCommandsTest {
     }
 
     @Test
-    fun suggest_parses_the_firefox_array() = runTest {
+    fun suggest_parses_the_web_searchbox_jsonp() = runTest {
         val (m, client) = manager {
-            CannedResponse.ofText("""["son tung",["sơn tùng m-tp","son tung mtp making my way"]]""").build(it)
+            CannedResponse.ofText(
+                """window.google.ac.h(["son tung",[["sơn tùng m-tp",0,[512,433]],""" +
+                    """["son tung mtp making my way",0,[512,433]]],{"k":1,"q":"x"}])""",
+            ).build(it)
         }
         try {
             val suggestions = m.searchSuggestions("son tung")
             assertEquals(listOf("sơn tùng m-tp", "son tung mtp making my way"), suggestions)
             val url = assertNotNull(client.lastRequest).url.toString()
-            assertTrue(url.contains("client=firefox"), url)
+            assertTrue(url.contains("client=youtube&gs_ri=youtube"), url)
             assertTrue(url.contains("q=son%20tung"), url)
         } finally {
             m.close()

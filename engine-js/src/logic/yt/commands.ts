@@ -589,8 +589,9 @@ async function queueWindow(
   return { root, page };
 }
 
-// Search autocomplete — the classic suggest service, not youtubei. client=firefox returns a bare
-// JSON array ["q", [suggestions…]]; a JSONP wrapper (other clients) is stripped defensively.
+// Search autocomplete — the suggest service youtube.com's own search box calls (same host and
+// client params as its kevlar bundle), not youtubei. It answers JSONP: window.google.ac.h(["q",
+// [["suggestion", 0, […], {…}], …], {…}]). client=firefox is rejected with HTTP 400.
 onAccept(
   "yt/suggest",
   commandHandler(async (src, out) => {
@@ -601,20 +602,23 @@ onAccept(
     const hl = locale.hl;
     const gl = locale.gl;
     const url =
-      "https://suggestqueries-clients6.youtube.com/complete/search?client=firefox&ds=yt" +
-      "&q=" +
-      encodeURIComponent(query) +
+      "https://suggestqueries-clients6.youtube.com/complete/search?ds=yt" +
       "&hl=" +
       encodeURIComponent(hl) +
       "&gl=" +
-      encodeURIComponent(gl);
+      encodeURIComponent(gl) +
+      "&client=youtube&gs_ri=youtube" +
+      "&q=" +
+      encodeURIComponent(query) +
+      "&cp=" +
+      query.length;
     const res = await HttpRequest.get(url).logger(hostLogger(args, "yt/suggest")).build().execute();
     if (!res.ok) {
       res.close();
       throw JsEngineErrorImpl.httpStatus("yt suggest", res.status, "E20144");
     }
     const text = await res.text();
-    // JSONP wrapper (non-firefox clients) stripped by slicing, not regex: a "(" before any "["
+    // JSONP wrapper stripped by slicing, not regex: a "(" before any "["
     // means a callback wraps the payload — take first-"(" to last-")" (which must be followed by
     // whitespace only). A bare JSON array passes through untouched.
     let payload = text;

@@ -109,7 +109,7 @@ E60063 D queue page (QueueSource.loadMore) failed with an uncoded error (commonU
 
 E70001 D unclassified download failure (download DownloadService.execute fallback)
 E70010 D no SABR stream; progressive download not yet supported (download YtStreamDownloader)
-E70011 D no audio format in the player response (download YtStreamDownloader.selectFormats)
+E70011 D no audio format the output can take (AAC for M4A/MP4, Opus for WebM) in the player response (download YtStreamDownloader.selectFormats)
 E70012 D no video format in the player response (download YtStreamDownloader.selectFormats)
 E70020 D ffmpeg unavailable for this output on this platform (download DownloadPipeline)
 E70021 D ffmpeg exited non-zero (download Ffmpeg.run)
@@ -118,7 +118,7 @@ E70031 D destination scheme unsupported by this storage (download DefaultDownloa
 E70032 D a storage subclass' publishToUri failed, e.g. Android SAF (download DefaultDownloadStorage.publish)
 E70040 D download options requested but the shell wired no player-response source (download DownloadService.probe)
 E70041 D download options: player response has no streamingData (download DownloadOptions.parse)
-E70042 D download options: player response has no audio format (download DownloadOptions.parse)
+E70042 D download options: no audio format this platform can save (download DownloadOptions.parse)
 E70043 D download options probe failed with an uncoded error (commonUi DownloadOptionsState.load)
 
 E80070 D MSE not available on this platform (mse apple)

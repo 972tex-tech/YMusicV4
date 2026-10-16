@@ -259,6 +259,8 @@
     <string name="settings_theme_system">حسب النظام</string>
     <string name="settings_theme_light">فاتح</string>
     <string name="settings_theme_dark">داكن</string>
+    <string name="settings_theme_amoled">أسود (AMOLED)</string>
+    <string name="settings_accent_color">لون التمييز</string>
     <string name="settings_debug">تصحيح</string>
     <string name="settings_show_fps">إظهار معدل الإطارات</string>
     <string name="settings_show_fps_hint">عرض عدد الإطارات في الثانية على فيديو التشغيل الآن. يتوقف القياس عند الإيقاف المؤقت أو مغادرة تلك الشاشة.</string>
@@ -333,6 +335,9 @@
     <string name="settings_stats_hint">شارك إشارات استخدام مجهولة الهوية للمساعدة في تحسين التطبيق.</string>
     <string name="settings_enable_pip">صورة داخل صورة</string>
     <string name="settings_enable_pip_hint">عند مشاهدة فيديو في التشغيل الآن أو بملء الشاشة، تابع المشاهدة في نافذة صغيرة إذا غادرت التطبيق. وإلا يتحوّل الفيديو إلى الصوت فقط حتى تعود.</string>
+    <string name="settings_audio_focus">تركيز الصوت</string>
+    <string name="settings_audio_focus_calls">الإيقاف المؤقت للمكالمات الهاتفية فقط</string>
+    <string name="settings_audio_focus_apps">الإيقاف المؤقت عند تشغيل تطبيقات أخرى للصوت</string>
     <string name="settings_sponsor_block">مانع الإعلانات</string>
     <string name="settings_sponsor_block_hint">تخطي مقاطع الرعاية في فيديوهات يوتيوب تلقائيًا. يمكن إيقافه لفيديو من قيد التشغيل.</string>
     <string name="sponsor_block_included">حجب الإعلانات المموَّلة لهذا الفيديو</string>
@@ -341,6 +346,8 @@
     <string name="settings_sound_hint">مستوى الصوت والسرعة والمعادل والمحاكي</string>
     <string name="settings_speed_hint">سرعة التشغيل وطبقة الصوت</string>
     <string name="settings_eq_hint">معادل من عشر نطاقات وتعزيز الباس والمحاكي</string>
+    <string name="settings_system_audio_fx">استخدام مؤثرات الصوت في النظام</string>
+    <string name="settings_system_audio_fx_hint">اسمح لتطبيقات المعادل على جهازك بتشكيل الصوت. يوقف المعادل المدمج في التطبيق.</string>
     <string name="signin_preface_title">سجّل الدخول باستخدام YouTube</string>
     <string name="signin_preface_subtitle">واحصل على جميع ميزات YouTube داخل YMusic</string>
     <string name="signin_enables">يتيح لك تسجيل الدخول:</string>
@@ -417,7 +424,7 @@
     <string name="account_library_empty">مكتبتك فارغة</string>
     <string name="sound_title">الصوت</string>
     <string name="sound_playback">التشغيل</string>
-    <string name="sound_volume">مستوى الصوت %1$d%%</string>
+    <string name="sound_volume">مستوى الصوت %1$d%</string>
     <string name="sound_speed">السرعة</string>
     <string name="sound_pitch">طبقة الصوت %1$s</string>
     <string name="sound_eq">المعادل</string>
@@ -587,4 +594,6 @@
     <string name="link_unsupported">لا يمكن لـ YMusic فتح هذا الرابط</string>
     <string name="link_queued_next">سيتم تشغيله تاليًا</string>
     <string name="link_queued_last">تمت الإضافة إلى نهاية قائمة الانتظار</string>
+    <string name="menu_details_comments">التفاصيل والتعليقات</string>
+    <string name="menu_speed_pitch">السرعة وطبقة الصوت</string>
 </resources>

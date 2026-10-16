@@ -101,6 +101,7 @@ import io.ymusic.dynamicengine.yt.handleWebViewPlayNext
 import io.ymusic.dynamicengine.yt.resolveLink
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.VideoQualityState
+import io.ymusic.player.showsVideo
 import io.ymusic.remoteconfig.RemoteConfigData
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
@@ -227,11 +228,8 @@ fun App(
     val tag = uiLanguage.ifBlank { defaultUiLanguageTag() }
     remember(tag) { applyUiLocale(tag) }
     val themePref by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
-    val dark = when (themePref) {
-        "light" -> false
-        "dark" -> true
-        else -> androidx.compose.foundation.isSystemInDarkTheme()
-    }
+    val accentPref by remember(graph) { graph.settings.flow(AppSettings.themeAccent) }.collectAsState()
+    val palette = designPaletteFor(themePref, androidx.compose.foundation.isSystemInDarkTheme(), accentPref)
     var section by sectionState
     LaunchedEffect(graph.settings) {
         snapshotFlow { sectionState.value }
@@ -287,7 +285,7 @@ fun App(
     key(tag) {
         val direction = if (isRtlLanguage(Locale.current.language)) LayoutDirection.Rtl else LayoutDirection.Ltr
         CompositionLocalProvider(LocalLayoutDirection provides direction) {
-            YMusicTheme(dark = dark) {
+            YMusicTheme(palette) {
                 CompositionLocalProvider(
                     LocalImageLoader provides graph.imageLoader,
                     LocalRefreshRequests provides graph.refreshRequests,
@@ -824,8 +822,10 @@ private fun AppRoot(
         // current. Now Playing hosts it while open; otherwise the mini player's art tile does, so
         // playback keeps going (the same single container re-parents, which the engines tolerate).
         val queue by graph.player.queue.collectAsState()
-        val status by graph.player.status.collectAsState()
-        val needsSurface = queue.currentItem is PlayableItem.YtMedia || status.videoSize != null
+        val playbackConfig by graph.player.config.collectAsState()
+        val quality by graph.player.videoQuality.collectAsState()
+        val needsSurface = queue.currentItem is PlayableItem.YtMedia ||
+            (queue.currentItem != null && showsVideo(playbackConfig, quality))
 
         val holeOpen = desktopLayoutHole && nowPlayingOpen
         Box(

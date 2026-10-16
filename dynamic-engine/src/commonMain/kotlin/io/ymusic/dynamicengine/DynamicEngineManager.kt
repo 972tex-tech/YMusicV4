@@ -57,11 +57,10 @@ class DynamicEngineManager(
     /** The app-owned cookie store the cookie protocol serves (see [DynamicEngine.create]). */
     private val cookieJar: CookieJar = client.cookieJar,
     private val settings: SettingsStore? = null,
-    /** Fail-fast on engine-thread stalls (debug builds only): a task that held the thread 50ms+
-     *  in one stretch logs ERROR and THROWS on the engine thread (StrictMode's penaltyDeath — a
-     *  definite bug, unmissable in development); a task that waited 50ms+ for the thread only
-     *  logs WARN (congestion, possibly just load). When false (release), no watchdog is armed at
-     *  all: zero overhead, zero output. */
+    /** Debug builds: a task that held the engine thread past [BOOT_STINT_MS] THROWS on it
+     *  (StrictMode's penaltyDeath — unmissable in development), and slow-stint logs carry a live
+     *  stack, minus any time an OS freezer stopped the whole process. Otherwise the watchdog only
+     *  times tasks and logs to [logger]: two clock reads per task, no stack, frozen time counted. */
     private val strictStints: Boolean = false,
     /** Deadline for booting a REMOTE bundle ([start]'s remoteJs / [swap]) — untrusted code must
      *  not be able to hang the boot path. The baked-in baseline boots without one. */
@@ -110,10 +109,9 @@ class DynamicEngineManager(
     // Shared host state tolerates the brief two-thread overlap: DiskCacheStore serializes on its
     // own Mutex + IO dispatcher, the cookie jar is the platform's thread-safe store, and
     // ParkedLoggers is deliberately unlocked (misses degrade to root).
-    // [strictStints] (debug builds) arms the watchdog on every engine thread: a task that HELD
-    // the thread 50ms+ in one stretch logs ERROR with a live engine-thread stack (the culprit);
-    // past [BOOT_STINT_MS] it also throws. A task that WAITED 50ms+ for the thread (the victim —
-    // cumulative congestion) only logs WARN. Release arms nothing: zero overhead, zero output.
+    // The watchdog on every engine thread: a task that HELD the thread 50ms+ in one stretch logs
+    // (ERROR past [BOOT_STINT_MS], where [strictStints] also throws and adds the culprit's stack).
+    // A task that WAITED 50ms+ for the thread (the victim — cumulative congestion) logs WARN.
     /**
      * An engine's private JS thread. [booting] is THIS thread's stint grace: while the engine on
      * it boots, the watchdog answers to [BOOT_STINT_MS] — the bundle eval + health check is one
@@ -126,36 +124,37 @@ class DynamicEngineManager(
         @kotlin.concurrent.Volatile
         var booting = true
 
+        private val watched = strictStints || stintLog != null
+
         val dispatcher = QuickJsRuntime.newDispatcher(
-            slowStintMs = if (strictStints) SLOW_STINT_MS else 0L,
-            onSlowStint = if (!strictStints) {
-                null
-            } else {
-                { ms, detail ->
-                    if (!booting || ms >= BOOT_STINT_MS) {
+            slowStintMs = if (watched) SLOW_STINT_MS else 0L,
+            onSlowStint = { ms, paused, detail ->
+                val held = ms - paused
+                if (!booting || held >= BOOT_STINT_MS) {
+                    if (held >= SLOW_STINT_MS) {
                         val budget = if (booting) BOOT_STINT_MS else SLOW_STINT_MS
-                        val message = "engine thread held for ${ms}ms by one task (budget ${budget}ms) — " +
-                            "every pipe, timer and command stalls while the thread is held\n$detail"
-                        val level = if (ms >= BOOT_STINT_MS) Logger.Level.ERROR else Logger.Level.WARN
+                        val message = "engine thread held for ${held}ms by one task (budget ${budget}ms) — " +
+                            "every pipe, timer and command stalls while the thread is held" +
+                            pausedNote(paused) + "\n$detail"
+                        val level = if (held >= BOOT_STINT_MS) Logger.Level.ERROR else Logger.Level.WARN
                         stintLog?.log(level, message)
                         /* A 50ms stint is a bug to find, not a reason to kill playback.
                            Throw only past the boot budget — that is a real hang. */
-                        if (ms >= BOOT_STINT_MS) throw IllegalStateException(message)
+                        if (strictStints && held >= BOOT_STINT_MS) throw IllegalStateException(message)
+                    } else if (paused > 0L) {
+                        stintLog?.log(Logger.Level.INFO, "process frozen ${paused}ms during an engine task (OS freezer)")
                     }
                 }
             },
-            slowWaitMs = if (strictStints) SLOW_STINT_MS else 0L,
-            onSlowWait = if (!strictStints) {
-                null
-            } else {
-                { ms ->
-                    stintLog?.log(
-                        Logger.Level.WARN,
-                        "a task waited ${ms}ms for the engine thread (budget ${SLOW_STINT_MS}ms) — " +
-                            "the thread was congested, though no single task held it over budget",
-                    )
-                }
+            slowWaitMs = if (watched) SLOW_STINT_MS else 0L,
+            onSlowWait = { ms ->
+                stintLog?.log(
+                    Logger.Level.WARN,
+                    "a task waited ${ms}ms for the engine thread (budget ${SLOW_STINT_MS}ms) — " +
+                        "the thread was congested, though no single task held it over budget",
+                )
             },
+            liveStacks = strictStints,
         )
     }
 
@@ -366,6 +365,8 @@ class DynamicEngineManager(
     }
 
     private companion object {
+        fun pausedNote(paused: Long) = if (paused > 0L) " (plus ${paused}ms the whole process was frozen)" else ""
+
         /** One stint at/over this holds the engine thread long enough to feel: log it. */
         const val SLOW_STINT_MS = 50L
 

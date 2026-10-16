@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Systeem volgen</string>
     <string name="settings_theme_light">Licht</string>
     <string name="settings_theme_dark">Donker</string>
+    <string name="settings_theme_amoled">Zwart (AMOLED)</string>
+    <string name="settings_accent_color">Accentkleur</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_show_fps">FPS tonen</string>
     <string name="settings_show_fps_hint">Toon beelden per seconde over de video in Speelt nu. Meten stopt bij pauzeren of als je dat scherm verlaat.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">Deel anonieme gebruiksgegevens om de app te helpen verbeteren.</string>
     <string name="settings_enable_pip">Scherm-in-scherm</string>
     <string name="settings_enable_pip_hint">Als je een video bekijkt in Speelt nu of op volledig scherm, ga je verder in een klein venster wanneer je de app verlaat. Anders schakelt de video naar alleen audio tot je terugkomt.</string>
+    <string name="settings_audio_focus">Audiofocus</string>
+    <string name="settings_audio_focus_calls">Alleen pauzeren bij telefoongesprekken</string>
+    <string name="settings_audio_focus_apps">Pauzeren wanneer andere apps geluid afspelen</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Gesponsorde segmenten in YouTube-video's automatisch overslaan. Zet het per video uit vanuit Speelt nu.</string>
     <string name="sponsor_block_included">SponsorBlock ingeschakeld voor deze video</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">Volume, snelheid, equalizer en virtualizer</string>
     <string name="settings_speed_hint">Afspeelsnelheid en toonhoogte</string>
     <string name="settings_eq_hint">Tienbandsequalizer, basversterking, virtualizer</string>
+    <string name="settings_system_audio_fx">Systeemgeluidseffecten gebruiken</string>
+    <string name="settings_system_audio_fx_hint">Laat equalizer-apps op je apparaat het geluid vormen. Zet de equalizer in de app uit.</string>
     <string name="sound_title">Geluid</string>
     <string name="sound_playback">Afspelen</string>
-    <string name="sound_volume">Volume %1$d%%</string>
+    <string name="sound_volume">Volume %1$d%</string>
     <string name="sound_speed">Snelheid</string>
     <string name="sound_pitch">Toonhoogte %1$s</string>
     <string name="sound_eq">Equalizer</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">Reactie verwijderen</string>
     <string name="video_details_delete_message">Je reactie en alle antwoorden erop definitief verwijderen?</string>
     <string name="video_details_deleted">Reactie verwijderd</string>
+    <string name="menu_details_comments">Details en reacties</string>
+    <string name="menu_speed_pitch">Snelheid en toonhoogte</string>
 </resources>

@@ -126,15 +126,15 @@ import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.CatalogueScreen
-import io.ymusic.ui.DarkDesignColors
 import io.ymusic.ui.IncomingLinks
-import io.ymusic.ui.LightDesignColors
 import io.ymusic.ui.ScanResult
 import io.ymusic.ui.VideoOverlayNative
 import io.ymusic.ui.YtEngineSabrSpecResolver
+import io.ymusic.ui.designPaletteFor
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.importSessionCookies
+import io.ymusic.ui.isDarkTheme
 import io.ymusic.ui.loaderYoutubeArt
 import io.ymusic.ui.mediaStoreArtFetcher
 import io.ymusic.ui.playhistory.PlayHistoryStore
@@ -365,12 +365,8 @@ fun main() {
                 if (graph?.player?.queue?.value?.items?.isNotEmpty() == true) windowVisible = false else quit()
             }
             val themePref by settings.flow(AppSettings.theme).collectAsState()
-            val darkBar = when (themePref) {
-                "light" -> false
-                "dark" -> true
-                else -> isSystemInDarkTheme()
-            }
-            val palette = if (darkBar) DarkDesignColors else LightDesignColors
+            val darkBar = isDarkTheme(themePref, isSystemInDarkTheme())
+            val palette = designPaletteFor(themePref, isSystemInDarkTheme())
             val frameBorder =
                 if (darkBar) Color.White.copy(alpha = 0.14f) else palette.OutlineSoft
             CompositionLocalProvider(LocalAppWindow provides window) {

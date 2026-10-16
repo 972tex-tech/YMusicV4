@@ -123,21 +123,53 @@ function sameListen(
 export async function listenPlayerStatus(pipe: Pipe): Promise<void> {
   if (progressPipe) throw new JsEngineErrorImpl("listen/player/status busy", "E20089");
   progressPipe = pipe;
-  const last: Partial<Record<ListenKind, Record<string, unknown>>> = {};
+  let queued: Partial<Record<ListenKind, Record<string, unknown>>> = {};
+  const queue: Record<string, unknown>[] = [];
+  let writing = false;
+
+  // The sink allows one write in flight; a second throws and that record is lost for good.
+  async function drain(): Promise<void> {
+    writing = true;
+    try {
+      while (queue.length) await emit(pipe.sink, queue.shift()!);
+    } catch (e) {
+      queue.length = 0;
+      queued = {};
+      throw e;
+    } finally {
+      writing = false;
+    }
+  }
+
+  // Every state change keeps its own record so the host sees each one (Ended must not be
+  // overtaken by the next load); other groups merge into the waiting record, latest wins.
+  function enqueue(rec: Record<string, unknown>): void {
+    const tail = queue.length ? queue[queue.length - 1]! : null;
+    if (tail && !(rec["state"] !== undefined && tail["state"] !== undefined)) {
+      const keys = Object.keys(rec);
+      for (let i = 0; i < keys.length; i++) tail[keys[i]!] = rec[keys[i]!];
+    } else {
+      queue.push(rec);
+    }
+    if (writing) return;
+    drain().catch(function (e: unknown) {
+      console.warn("player status push failed: " + (e instanceof Error ? e.message : String(e)));
+    });
+  }
 
   function push(kinds: ListenKind[]): void {
     const rec: Record<string, unknown> = {};
+    let changed = false;
     for (let i = 0; i < kinds.length; i++) {
       const kind = kinds[i]!;
       const body = snapshot(kind);
-      const prev = last[kind];
+      const prev = queued[kind];
       if (prev && sameListen(kind, prev, body)) continue;
-      last[kind] = body;
+      queued[kind] = body;
       rec[kind] = body;
+      changed = true;
     }
-    if (!Object.keys(rec).length) return;
-    const sink = pipe.sink;
-    void emit(sink, rec);
+    if (changed) enqueue(rec);
   }
 
   try {
@@ -147,7 +179,7 @@ export async function listenPlayerStatus(pipe: Pipe): Promise<void> {
     });
     push(["state", "progress", "picture", "details"]);
     setWatchNextHook(function (watchNext: Record<string, unknown>) {
-      void emit(pipe.sink, { "watchNext": watchNext });
+      enqueue({ "watchNext": watchNext });
     });
     await waitHostClose(pipe);
   } finally {
@@ -160,13 +192,30 @@ export async function listenPlayerStatus(pipe: Pipe): Promise<void> {
 export async function runCatalogSession(pipe: Pipe): Promise<void> {
   if (catalogPipe) throw new JsEngineErrorImpl("listen/player/catalog busy", "E20090");
   catalogPipe = pipe;
-  let last: Record<string, unknown> | null = null;
+  let sent: Record<string, unknown> | null = null;
+  let dirty = false;
+  let writing = false;
+  async function drain(): Promise<void> {
+    writing = true;
+    try {
+      while (dirty) {
+        dirty = false;
+        if (!catalogReady()) return;
+        const rec = catalogPlayer();
+        if (sent && sameCatalog(sent, rec)) continue;
+        await emit(pipe.sink, rec);
+        sent = rec;
+      }
+    } finally {
+      writing = false;
+    }
+  }
   const push = function (): void {
-    if (!catalogReady()) return;
-    const rec = catalogPlayer();
-    if (last && sameCatalog(last, rec)) return;
-    last = rec;
-    void emit(pipe.sink, rec);
+    dirty = true;
+    if (writing) return;
+    drain().catch(function (e: unknown) {
+      console.warn("player catalog push failed: " + (e instanceof Error ? e.message : String(e)));
+    });
   };
   setCatalogHook(push);
   try {

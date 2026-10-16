@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Fuata mfumo</string>
     <string name="settings_theme_light">Meupe</string>
     <string name="settings_theme_dark">Meusi</string>
+    <string name="settings_theme_amoled">Nyeusi (AMOLED)</string>
+    <string name="settings_accent_color">Rangi ya msisitizo</string>
     <string name="settings_debug">Utatuzi</string>
     <string name="settings_show_fps">Onyesha FPS</string>
     <string name="settings_show_fps_hint">Onyesha fremu kwa sekunde juu ya video ya Inayocheza Sasa. Upimaji hukoma unaposimamisha au ukiondoka kwenye skrini hiyo.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">Shiriki takwimu za matumizi bila kujulikana ili kusaidia kuboresha programu.</string>
     <string name="settings_enable_pip">Picha ndani ya picha</string>
     <string name="settings_enable_pip_hint">Unapotazama video kwenye Inayocheza Sasa au skrini nzima, endelea kwenye dirisha dogo ukiondoka kwenye programu. Vinginevyo video itabadilika kuwa sauti pekee hadi utakaporudi.</string>
+    <string name="settings_audio_focus">Mwelekeo wa sauti</string>
+    <string name="settings_audio_focus_calls">Sitisha kwa simu pekee</string>
+    <string name="settings_audio_focus_apps">Sitisha programu nyingine zinapocheza sauti</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Ruka kiotomatiki sehemu zilizofadhiliwa kwenye video za YouTube. Zima kwa video moja kutoka kwenye Inayocheza Sasa.</string>
     <string name="sponsor_block_included">SponsorBlock imewashwa kwa video hii</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">Kiwango cha sauti, kasi, kisawazishi na kiigaji sauti</string>
     <string name="settings_speed_hint">Kasi ya kucheza na kiimbo</string>
     <string name="settings_eq_hint">Kisawazishi cha bendi kumi, kiongeza besi, kiigaji sauti</string>
+    <string name="settings_system_audio_fx">Tumia madoido ya sauti ya mfumo</string>
+    <string name="settings_system_audio_fx_hint">Ruhusu programu za kusawazisha sauti kwenye kifaa chako zitengeneze sauti. Huzima kisawazisha cha programu.</string>
     <string name="sound_title">Sauti</string>
     <string name="sound_playback">Uchezaji</string>
-    <string name="sound_volume">Kiwango cha sauti %1$d%%</string>
+    <string name="sound_volume">Kiwango cha sauti %1$d%</string>
     <string name="sound_speed">Kasi</string>
     <string name="sound_pitch">Kiimbo %1$s</string>
     <string name="sound_eq">Kisawazishi</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">Futa maoni</string>
     <string name="video_details_delete_message">Ungependa kufuta kabisa maoni yako na majibu yake yote?</string>
     <string name="video_details_deleted">Maoni yamefutwa</string>
+    <string name="menu_details_comments">Maelezo na maoni</string>
+    <string name="menu_speed_pitch">Kasi na kiimbo</string>
 </resources>

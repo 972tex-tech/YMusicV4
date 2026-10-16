@@ -254,6 +254,8 @@
     <string name="settings_theme_system">Theo hệ thống</string>
     <string name="settings_theme_light">Sáng</string>
     <string name="settings_theme_dark">Tối</string>
+    <string name="settings_theme_amoled">Đen (AMOLED)</string>
+    <string name="settings_accent_color">Màu nhấn</string>
     <string name="settings_debug">Gỡ lỗi</string>
     <string name="settings_show_fps">Hiện FPS</string>
     <string name="settings_show_fps_hint">Hiện số khung hình mỗi giây trên video Đang phát. Ngừng đo khi tạm dừng hoặc khi rời màn hình đó.</string>
@@ -328,6 +330,9 @@
     <string name="settings_stats_hint">Chia sẻ dữ liệu sử dụng ẩn danh để giúp cải thiện ứng dụng.</string>
     <string name="settings_enable_pip">Hình trong hình</string>
     <string name="settings_enable_pip_hint">Khi xem video ở Đang phát hoặc toàn màn hình, tiếp tục phát trong cửa sổ nhỏ nếu bạn rời ứng dụng. Nếu không, video sẽ chuyển sang chỉ phát âm thanh cho đến khi bạn quay lại.</string>
+    <string name="settings_audio_focus">Tiêu điểm âm thanh</string>
+    <string name="settings_audio_focus_calls">Chỉ tạm dừng khi có cuộc gọi</string>
+    <string name="settings_audio_focus_apps">Tạm dừng khi ứng dụng khác phát âm thanh</string>
     <string name="settings_sponsor_block">Chặn quảng cáo trong video</string>
     <string name="settings_sponsor_block_hint">Tự động bỏ qua các đoạn được tài trợ trong video YouTube. Tắt cho một video từ Đang phát.</string>
     <string name="sponsor_block_included">Chặn quảng cáo trong video này</string>
@@ -336,6 +341,8 @@
     <string name="settings_sound_hint">Âm lượng, tốc độ, equalizer và virtualizer</string>
     <string name="settings_speed_hint">Tốc độ phát và cao độ</string>
     <string name="settings_eq_hint">Equalizer 10 dải, tăng bass, virtualizer</string>
+    <string name="settings_system_audio_fx">Dùng hiệu ứng âm thanh hệ thống</string>
+    <string name="settings_system_audio_fx_hint">Cho phép ứng dụng equalizer trên thiết bị chỉnh âm thanh. Tắt equalizer trong ứng dụng.</string>
     <string name="signin_preface_title">Đăng nhập bằng YouTube</string>
     <string name="signin_preface_subtitle">và dùng mọi tính năng của YouTube ngay trong YMusic</string>
     <string name="signin_enables">Đăng nhập để có:</string>
@@ -412,7 +419,7 @@
     <string name="account_library_empty">Thư viện của bạn đang trống</string>
     <string name="sound_title">Âm thanh</string>
     <string name="sound_playback">Phát</string>
-    <string name="sound_volume">Âm lượng %1$d%%</string>
+    <string name="sound_volume">Âm lượng %1$d%</string>
     <string name="sound_speed">Tốc độ</string>
     <string name="sound_pitch">Cao độ %1$s</string>
     <string name="sound_eq">Equalizer</string>
@@ -594,4 +601,6 @@
     <string name="link_unsupported">YMusic không mở được liên kết này</string>
     <string name="link_queued_next">Sẽ phát tiếp theo</string>
     <string name="link_queued_last">Đã thêm vào cuối danh sách phát</string>
+    <string name="menu_details_comments">Chi tiết &amp; bình luận</string>
+    <string name="menu_speed_pitch">Tốc độ &amp; cao độ</string>
 </resources>

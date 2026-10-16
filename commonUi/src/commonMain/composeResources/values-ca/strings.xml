@@ -220,6 +220,8 @@
     <string name="settings_theme_system">Segueix el sistema</string>
     <string name="settings_theme_light">Clar</string>
     <string name="settings_theme_dark">Fosc</string>
+    <string name="settings_theme_amoled">Negre (AMOLED)</string>
+    <string name="settings_accent_color">Color d'accent</string>
     <string name="settings_debug">Depuració</string>
     <string name="settings_show_fps">Mostra els FPS</string>
     <string name="settings_show_fps_hint">Mostra els fotogrames per segon sobre el vídeo de Ara sona. La mesura s'atura en pausa o quan surts d'aquesta pantalla.</string>
@@ -359,6 +361,9 @@
     <string name="settings_stats_hint">Comparteix dades d'ús anònimes per ajudar a millorar l'aplicació.</string>
     <string name="settings_enable_pip">Pantalla en pantalla</string>
     <string name="settings_enable_pip_hint">Quan miris un vídeo a Ara sona o a pantalla completa, continua en una finestra petita si surts de l'aplicació. Si no, el vídeo passa a només àudio fins que tornis.</string>
+    <string name="settings_audio_focus">Focus d’àudio</string>
+    <string name="settings_audio_focus_calls">Posa en pausa només per a trucades</string>
+    <string name="settings_audio_focus_apps">Posa en pausa quan altres apps reprodueixin so</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Omet automàticament els segments patrocinats dels vídeos de YouTube. Desactiva-ho per a un vídeo des d'Ara sona.</string>
     <string name="sponsor_block_included">SponsorBlock activat per a aquest vídeo</string>
@@ -367,9 +372,11 @@
     <string name="settings_sound_hint">Volum, velocitat, equalitzador i virtualitzador</string>
     <string name="settings_speed_hint">Velocitat de reproducció i to</string>
     <string name="settings_eq_hint">Equalitzador de deu bandes, reforç de greus, virtualitzador</string>
+    <string name="settings_system_audio_fx">Utilitza els efectes de so del sistema</string>
+    <string name="settings_system_audio_fx_hint">Deixa que les aplicacions d'equalitzador del dispositiu modelin el so. Desactiva l'equalitzador de l'aplicació.</string>
     <string name="sound_title">So</string>
     <string name="sound_playback">Reproducció</string>
-    <string name="sound_volume">Volum %1$d%%</string>
+    <string name="sound_volume">Volum %1$d%</string>
     <string name="sound_speed">Velocitat</string>
     <string name="sound_pitch">To %1$s</string>
     <string name="sound_eq">Equalitzador</string>
@@ -519,4 +526,6 @@
     <string name="video_details_delete_title">Suprimeix el comentari</string>
     <string name="video_details_delete_message">Vols suprimir permanentment el teu comentari i totes les respostes?</string>
     <string name="video_details_deleted">Comentari suprimit</string>
+    <string name="menu_details_comments">Detalls i comentaris</string>
+    <string name="menu_speed_pitch">Velocitat i to</string>
 </resources>

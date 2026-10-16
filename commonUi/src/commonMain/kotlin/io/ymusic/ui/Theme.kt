@@ -9,8 +9,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 
 /**
@@ -24,7 +27,7 @@ import androidx.compose.ui.unit.dp
  * ([BadgeInk], [BadgeScrim], and the raw white/dark literals in the player and badge composables).
  */
 @Immutable
-class DesignPalette(
+data class DesignPalette(
     val isDark: Boolean,
     val Accent: Color,
     /** Strongest text — big titles (mockup #1A–#22 blacks). */
@@ -65,9 +68,12 @@ class DesignPalette(
     val WatchedFill = Color(0xFFFF0000)
 }
 
+/** The accent when the user has not picked one. */
+val DefaultAccent = Color(0xFFE8732A)
+
 val LightDesignColors = DesignPalette(
     isDark = false,
-    Accent = Color(0xFFE8732A),
+    Accent = DefaultAccent,
     InkStrong = Color(0xFF222222),
     Ink = Color(0xFF333333),
     InkMuted = Color(0xFF555555),
@@ -97,7 +103,7 @@ val LightDesignColors = DesignPalette(
 
 val DarkDesignColors = DesignPalette(
     isDark = true,
-    Accent = Color(0xFFE8732A),
+    Accent = DefaultAccent,
     InkStrong = Color(0xFFEDEDED),
     Ink = Color(0xFFE2E2E2),
     InkMuted = Color(0xFFC6C6C6),
@@ -129,6 +135,58 @@ val DarkDesignColors = DesignPalette(
     FieldPill = Color(0xFF3F3F3F),
     BrandGreen = Color(0xFF1DB954),
 )
+
+/** Dark with every ground pure black, for OLED screens. */
+val AmoledDesignColors = DarkDesignColors.copy(
+    Surface = Color.Black,
+    SurfaceDim = Color.Black,
+    SurfaceElevated = Color.Black,
+    SettingsCard = Color.Black,
+)
+
+/** [AppSettings.theme] value → whether the UI is dark; "" follows the system. */
+fun isDarkTheme(theme: String, systemDark: Boolean): Boolean = when (theme) {
+    "light" -> false
+    "dark", "amoled" -> true
+    else -> systemDark
+}
+
+/** [AppSettings.themeAccent] value (`RRGGBB`) → its color; blank or malformed is [DefaultAccent]. */
+fun accentColorOf(hex: String): Color {
+    val rgb = hex.removePrefix("#").takeIf { it.length == 6 }?.toLongOrNull(16) ?: return DefaultAccent
+    return darkenedAccent(Color(0xFF000000 or rgb))
+}
+
+/** The lightest an accent may be: white text on it (Sign in, Send) stays readable. The default sits right at it. */
+const val MaxAccentLuminance = 0.3f
+
+/** [color] darkened (same hue and saturation) until its luminance is at most [MaxAccentLuminance]. */
+fun darkenedAccent(color: Color): Color {
+    if (color.luminance() <= MaxAccentLuminance) return color
+    var low = 0f
+    var high = 1f
+    repeat(16) {
+        val mid = (low + high) / 2f
+        if (Color(color.red * mid, color.green * mid, color.blue * mid).luminance() <= MaxAccentLuminance) low = mid else high = mid
+    }
+    return Color(color.red * low, color.green * low, color.blue * low)
+}
+
+fun accentHexOf(color: Color): String {
+    fun channel(v: Float) = (v * 255f + 0.5f).toInt().coerceIn(0, 255).toString(16).padStart(2, '0')
+    return (channel(color.red) + channel(color.green) + channel(color.blue)).uppercase()
+}
+
+/** The palette for [AppSettings.theme] and [AppSettings.themeAccent]. */
+fun designPaletteFor(theme: String, systemDark: Boolean, accentHex: String = ""): DesignPalette {
+    val base = when {
+        theme == "amoled" -> AmoledDesignColors
+        isDarkTheme(theme, systemDark) -> DarkDesignColors
+        else -> LightDesignColors
+    }
+    val accent = accentColorOf(accentHex)
+    return if (accent == base.Accent) base else base.copy(Accent = accent)
+}
 
 val LocalDesignColors = staticCompositionLocalOf { LightDesignColors }
 
@@ -222,8 +280,8 @@ private fun schemeFor(c: DesignPalette) = with(c) {
         onSurface = Ink,
         surfaceVariant = Placeholder,
         onSurfaceVariant = InkSecondary,
-        primaryContainer = if (isDark) Color(0xFF43220E) else Color(0xFFFBE9DD),
-        onPrimaryContainer = if (isDark) Color(0xFFF0A36B) else Color(0xFF8A3D0F),
+        primaryContainer = lerp(Surface, Accent, if (isDark) 0.3f else 0.15f),
+        onPrimaryContainer = if (isDark) lerp(Accent, Color.White, 0.35f) else lerp(Accent, Color.Black, 0.4f),
         secondaryContainer = if (isDark) Color(0xFF3F3F3F) else Color(0xFFF0F1F0),
         onSecondaryContainer = Ink,
         surfaceContainer = SurfaceDim,
@@ -235,15 +293,16 @@ private fun schemeFor(c: DesignPalette) = with(c) {
     )
 }
 
-private val LightScheme = schemeFor(LightDesignColors)
-private val DarkScheme = schemeFor(DarkDesignColors)
+@Composable
+fun YMusicTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) =
+    YMusicTheme(if (dark) DarkDesignColors else LightDesignColors, content)
 
 @Composable
-fun YMusicTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    val palette = if (dark) DarkDesignColors else LightDesignColors
+fun YMusicTheme(palette: DesignPalette, content: @Composable () -> Unit) {
+    val scheme = remember(palette) { schemeFor(palette) }
     CompositionLocalProvider(LocalDesignColors provides palette) {
-        SyncSystemBars(dark)
-        MaterialTheme(colorScheme = if (dark) DarkScheme else LightScheme) {
+        SyncSystemBars(palette.isDark)
+        MaterialTheme(colorScheme = scheme) {
             // No root Surface sets it, so an uncolored Text would fall back to black in dark theme.
             CompositionLocalProvider(LocalContentColor provides palette.Ink) { AccentRipple(palette.Accent, content) }
         }

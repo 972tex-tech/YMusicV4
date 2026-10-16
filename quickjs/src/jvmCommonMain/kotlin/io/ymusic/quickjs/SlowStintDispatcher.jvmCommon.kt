@@ -6,10 +6,10 @@ import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
 private val stintDumper: ScheduledExecutorService =
@@ -17,12 +17,58 @@ private val stintDumper: ScheduledExecutorService =
         Thread(r, "engine-stint-dump").apply { isDaemon = true }
     }
 
+/**
+ * One task's stint job on [stintDumper]: at the budget it dumps the engine thread's stack, then
+ * re-arms every [HEARTBEAT_MS] while the task runs. A job that runs, or is still pending, [PAUSE_MS]+
+ * past its due time means no thread of the process ran meanwhile: that lateness is a process pause.
+ */
+private class StintWatch(private val task: String, private val engineThread: Thread, stintMs: Long) : Runnable {
+    private var due = TimeSource.Monotonic.markNow() + stintMs.milliseconds
+    private var running = true
+    private var pausedMs = 0L
+    private var job: ScheduledFuture<*>? = null
+
+    var stack: String? = null
+        private set
+
+    fun start(stintMs: Long) = synchronized(this) {
+        job = stintDumper.schedule(this, stintMs, TimeUnit.MILLISECONDS)
+    }
+
+    override fun run() = synchronized(this) {
+        if (!running) return
+        addLateness()
+        if (stack == null) stack = formatEngineStack(task, engineThread)
+        due = TimeSource.Monotonic.markNow() + HEARTBEAT_MS.milliseconds
+        job = stintDumper.schedule(this, HEARTBEAT_MS, TimeUnit.MILLISECONDS)
+    }
+
+    /** Stops the job; returns the milliseconds of the stint the process was paused. */
+    fun finish(): Long = synchronized(this) {
+        running = false
+        job?.cancel(false)
+        addLateness()
+        pausedMs
+    }
+
+    private fun addLateness() {
+        val late = due.elapsedNow().inWholeMilliseconds
+        if (late >= PAUSE_MS) pausedMs += late
+    }
+
+    private companion object {
+        const val HEARTBEAT_MS = 100L
+        const val PAUSE_MS = 250L
+    }
+}
+
 internal actual fun slowStintDispatcher(
     delegate: CloseableCoroutineDispatcher,
     stintMs: Long,
-    onSlowStint: ((millis: Long, detail: String) -> Unit)?,
+    onSlowStint: ((millis: Long, pausedMillis: Long, detail: String) -> Unit)?,
     waitMs: Long,
     onSlowWait: ((millis: Long) -> Unit)?,
+    liveStacks: Boolean,
 ): CloseableCoroutineDispatcher = object : ExecutorCoroutineDispatcher() {
     // newEngineDispatcher() is executor-backed on JVM/Android; expose its executor unchanged.
     override val executor: Executor get() = (delegate as ExecutorCoroutineDispatcher).executor
@@ -31,38 +77,27 @@ internal actual fun slowStintDispatcher(
         val enqueued = TimeSource.Monotonic.markNow()
         val task = context[CoroutineName]?.name ?: "unnamed"
         delegate.dispatch(context) {
-            val engineThread = Thread.currentThread()
-            val liveDump = AtomicReference<String?>(null)
-            val stillRunning = AtomicBoolean(true)
-            val dump = if (onSlowStint != null && stintMs > 0L) {
-                stintDumper.schedule(
-                    {
-                        if (stillRunning.get()) {
-                            liveDump.set(formatEngineStack(task, engineThread))
-                        }
-                    },
-                    stintMs,
-                    TimeUnit.MILLISECONDS,
-                )
+            val watch = if (liveStacks && onSlowStint != null && stintMs > 0L) {
+                StintWatch(task, Thread.currentThread(), stintMs).also { it.start(stintMs) }
             } else {
                 null
             }
-            try {
-                runWatched(
-                    enqueued,
-                    stintMs,
-                    onSlowStint?.let { cb ->
-                        { ms: Long ->
-                            cb(ms, liveDump.get() ?: "task=$task (stint ended before a live dump)")
+            runWatched(
+                enqueued,
+                stintMs,
+                onSlowStint?.let { cb ->
+                    { ms: Long, paused: Long ->
+                        val detail = when {
+                            watch == null -> "task=$task"
+                            else -> watch.stack ?: "task=$task (stint ended before a live dump)"
                         }
-                    },
-                    waitMs,
-                    onSlowWait,
-                ) { block.run() }
-            } finally {
-                stillRunning.set(false)
-                dump?.cancel(false)
-            }
+                        cb(ms, paused, detail)
+                    }
+                },
+                waitMs,
+                onSlowWait,
+                { watch?.finish() ?: 0L },
+            ) { block.run() }
         }
     }
 

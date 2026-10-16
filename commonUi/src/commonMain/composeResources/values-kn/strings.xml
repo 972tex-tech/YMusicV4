@@ -219,6 +219,8 @@
     <string name="settings_theme_system">ಸಿಸ್ಟಮ್ ಅನುಸರಿಸಿ</string>
     <string name="settings_theme_light">ಲೈಟ್</string>
     <string name="settings_theme_dark">ಡಾರ್ಕ್</string>
+    <string name="settings_theme_amoled">ಕಪ್ಪು (AMOLED)</string>
+    <string name="settings_accent_color">ಆಕ್ಸೆಂಟ್ ಬಣ್ಣ</string>
     <string name="settings_debug">ಡೀಬಗ್</string>
     <string name="settings_show_fps">FPS ತೋರಿಸಿ</string>
     <string name="settings_show_fps_hint">Now Playing ವೀಡಿಯೊದ ಮೇಲೆ ಪ್ರತಿ ಸೆಕೆಂಡಿನ ಚಿತ್ರಗಳನ್ನು ತೋರಿಸಿ. ವಿರಾಮಗೊಳಿಸಿದಾಗ ಅಥವಾ ಆ ಪರದೆಯಿಂದ ಹೊರಹೋದಾಗ ಮಾಪನ ನಿಲ್ಲುತ್ತದೆ.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">ಆ್ಯಪ್ ಸುಧಾರಿಸಲು ಸಹಾಯ ಮಾಡಲು ಅನಾಮಧೇಯ ಬಳಕೆಯ ಮಾಹಿತಿ ಹಂಚಿಕೊಳ್ಳಿ.</string>
     <string name="settings_enable_pip">ಪಿಕ್ಚರ್-ಇನ್-ಪಿಕ್ಚರ್</string>
     <string name="settings_enable_pip_hint">Now Playing ಅಥವಾ ಪೂರ್ಣ ಪರದೆಯಲ್ಲಿ ವೀಡಿಯೊ ನೋಡುವಾಗ ಆ್ಯಪ್‌ನಿಂದ ಹೊರಹೋದರೆ ಸಣ್ಣ ವಿಂಡೋದಲ್ಲಿ ಮುಂದುವರಿಸಿ. ಇಲ್ಲದಿದ್ದರೆ ನೀವು ಹಿಂತಿರುಗುವವರೆಗೆ ವೀಡಿಯೊ ಆಡಿಯೊ ಮಾತ್ರಕ್ಕೆ ಬದಲಾಗುತ್ತದೆ.</string>
+    <string name="settings_audio_focus">ಆಡಿಯೋ ಫೋಕಸ್</string>
+    <string name="settings_audio_focus_calls">ಫೋನ್ ಕರೆಗಳಿಗೆ ಮಾತ್ರ ವಿರಾಮ</string>
+    <string name="settings_audio_focus_apps">ಇತರ ಆ್ಯಪ್‌ಗಳು ಧ್ವನಿ ಪ್ಲೇ ಮಾಡಿದಾಗ ವಿರಾಮ</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube ವೀಡಿಯೊಗಳಲ್ಲಿನ ಪ್ರಾಯೋಜಿತ ಭಾಗಗಳನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಸ್ಕಿಪ್ ಮಾಡಿ. Now Playing ನಿಂದ ಒಂದು ವೀಡಿಯೊಗೆ ಆಫ್ ಮಾಡಿ.</string>
     <string name="sponsor_block_included">ಈ ವೀಡಿಯೊಗೆ SponsorBlock ಸಕ್ರಿಯವಾಗಿದೆ</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">ವಾಲ್ಯೂಮ್, ವೇಗ, ಈಕ್ವಲೈಸರ್ ಮತ್ತು ವರ್ಚುವಲೈಸರ್</string>
     <string name="settings_speed_hint">ಪ್ಲೇಬ್ಯಾಕ್ ವೇಗ ಮತ್ತು ಪಿಚ್</string>
     <string name="settings_eq_hint">ಹತ್ತು-ಬ್ಯಾಂಡ್ ಈಕ್ವಲೈಸರ್, ಬಾಸ್ ಬೂಸ್ಟ್, ವರ್ಚುವಲೈಸರ್</string>
+    <string name="settings_system_audio_fx">ಸಿಸ್ಟಮ್ ಸೌಂಡ್ ಎಫೆಕ್ಟ್‌ಗಳನ್ನು ಬಳಸಿ</string>
+    <string name="settings_system_audio_fx_hint">ನಿಮ್ಮ ಸಾಧನದ ಈಕ್ವಲೈಸರ್ ಆ್ಯಪ್‌ಗಳು ಧ್ವನಿಯನ್ನು ರೂಪಿಸಲು ಬಿಡಿ. ಆ್ಯಪ್‌ನ ಈಕ್ವಲೈಸರ್ ಆಫ್ ಆಗುತ್ತದೆ.</string>
     <string name="sound_title">ಧ್ವನಿ</string>
     <string name="sound_playback">ಪ್ಲೇಬ್ಯಾಕ್</string>
-    <string name="sound_volume">ವಾಲ್ಯೂಮ್ %1$d%%</string>
+    <string name="sound_volume">ವಾಲ್ಯೂಮ್ %1$d%</string>
     <string name="sound_speed">ವೇಗ</string>
     <string name="sound_pitch">ಪಿಚ್ %1$s</string>
     <string name="sound_eq">ಈಕ್ವಲೈಸರ್</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">ಕಾಮೆಂಟ್ ಅಳಿಸಿ</string>
     <string name="video_details_delete_message">ನಿಮ್ಮ ಕಾಮೆಂಟ್ ಮತ್ತು ಅದರ ಎಲ್ಲಾ ಪ್ರತ್ಯುತ್ತರಗಳನ್ನು ಶಾಶ್ವತವಾಗಿ ಅಳಿಸಬೇಕೇ?</string>
     <string name="video_details_deleted">ಕಾಮೆಂಟ್ ಅಳಿಸಲಾಗಿದೆ</string>
+    <string name="menu_details_comments">ವಿವರಗಳು ಮತ್ತು ಕಾಮೆಂಟ್‌ಗಳು</string>
+    <string name="menu_speed_pitch">ವೇಗ ಮತ್ತು ಪಿಚ್</string>
 </resources>

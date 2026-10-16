@@ -863,6 +863,12 @@ function notifySourceOpen(ms: MediaSource): void {
 const blobUrls: Record<string, MediaSource> = {};
 
 let activeMedia: HTMLMediaElement | null = null;
+let loopAtEnd: (() => void) | null = null;
+
+/** What a looping element runs on reaching the end, once per pass. */
+export function onLoopAtEnd(fn: (() => void) | null): void {
+  loopAtEnd = fn;
+}
 let mediaTick: ReturnType<typeof setTimeout> | null = null;
 
 function stopMediaTick(): void {
@@ -882,8 +888,18 @@ function pipelineEnded(): boolean {
 }
 
 function maybeFireEnded(el: HTMLMediaElement): boolean {
-  if (el["paused"] || el["ended"] || el["loop"] || el["seeking"]) return false;
+  if (el["paused"] || el["ended"] || el["seeking"]) return false;
   if (!pipelineEnded()) return false;
+  // A looping element never ends. base.js restarts a loop with its own seekTo(0)
+  // ("videoplayer_loop"); an element-side seek it did not ask for, it seeks back.
+  if (el["loop"]) {
+    if (!el._looped && loopAtEnd) {
+      el._looped = true;
+      console.info("mse loop clock=" + __mseCurrentTime() + " dur=" + Number(el["duration"]));
+      loopAtEnd();
+    }
+    return false;
+  }
   el["ended"] = true;
   el["paused"] = true;
   stopMediaTick();
@@ -931,6 +947,7 @@ function initHtmlMedia(self: HTMLMediaElement): void {
   self["loop"] = false;
   self["seeking"] = false;
   self._stalled = false;
+  self._looped = false;
   self["muted"] = false;
   self["volume"] = 1;
   self._rate = 1;
@@ -953,6 +970,7 @@ class HTMLMediaElement {
   ["loop"]!: boolean;
   ["seeking"]!: boolean;
   _stalled!: boolean;
+  _looped!: boolean;
   ["muted"]!: boolean;
   ["volume"]!: number;
   _rate!: number;
@@ -1180,6 +1198,7 @@ class HTMLMediaElement {
     return __mseCurrentTime();
   }
   set ["currentTime"](t: number) {
+    this._looped = false;
     const raw = Number(t);
     t = raw;
     /* Chrome stores the assigned time. Do not rewrite a large finite value to 0

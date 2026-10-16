@@ -7,6 +7,7 @@ import io.ymusic.dynamicengine.JsSourceProvider
 import io.ymusic.dynamicengine.embeddedPlayerJsSource
 import io.ymusic.dynamicengine.player.DynamicEnginePlayer
 import io.ymusic.mse.MseVideoSurface
+import io.ymusic.player.AudioSessionSource
 import io.ymusic.player.AudioTrackState
 import io.ymusic.player.CaptionLine
 import io.ymusic.player.CaptionState
@@ -87,7 +88,8 @@ class MsePlayer internal constructor(
     logger: Logger?,
     private val playerJs: JsSourceProvider,
     private val buildPlayer: (engineThread: CoroutineDispatcher, playerJs: String) -> DynamicEnginePlayer,
-) : YtEngine {
+) : YtEngine,
+    AudioSessionSource {
     private val log = logger?.fork("mse")
 
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -114,6 +116,9 @@ class MsePlayer internal constructor(
 
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
+
+    private val _audioSessionId = MutableStateFlow(0)
+    override val audioSessionId: StateFlow<Int> = _audioSessionId.asStateFlow()
 
     private val _watchNextSeen = MutableSharedFlow<WatchNextSeen>(extraBufferCapacity = 8)
     override val watchNextSeen: SharedFlow<WatchNextSeen> = _watchNextSeen.asSharedFlow()
@@ -296,7 +301,7 @@ class MsePlayer internal constructor(
         loadTimeoutJob?.cancel()
         loadTimeoutJob = null
         send { it.stop(log) }
-        _status.update { it.copy(state = PlaybackState.Idle, videoSize = null, details = null) }
+        _status.update { it.copy(state = PlaybackState.Idle, details = null) }
         _progress.value = Progress()
     }
 
@@ -401,7 +406,7 @@ class MsePlayer internal constructor(
     private fun startSession(reason: String) {
         check(session == null) { "mse session already running" }
         log?.log(Logger.Level.INFO, "mse session start ($reason) freshConfig=$freshConfigNext")
-        _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true), videoSize = null) }
+        _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = true)) }
         val newSession = Session(SupervisorJob(mainScope.coroutineContext[Job]))
         session = newSession
         val previousClose = closing
@@ -506,6 +511,7 @@ class MsePlayer internal constructor(
         loadTimeoutJob?.cancel()
         loadTimeoutJob = null
         loadTrace = null
+        _audioSessionId.value = 0
         _captionLines.value = emptyList()
         val oldSession = session ?: return
         session = null
@@ -610,6 +616,7 @@ class MsePlayer internal constructor(
     }
 
     private fun applyListen(json: JsonObject) {
+        _audioSessionId.value = if (hostLive()) videoSurface.audioSessionId() else 0
         json.objectOrNull("progress")?.let { applyProgress(it) }
         json.objectOrNull("state")?.let { applyState(it) }
         json.objectOrNull("picture")?.let { applyPicture(it) }

@@ -219,6 +219,8 @@
     <string name="settings_theme_system">सिस्टमनुसार</string>
     <string name="settings_theme_light">लाइट</string>
     <string name="settings_theme_dark">डार्क</string>
+    <string name="settings_theme_amoled">काळा (AMOLED)</string>
+    <string name="settings_accent_color">अॅक्सेंट रंग</string>
     <string name="settings_debug">डीबग</string>
     <string name="settings_show_fps">FPS दाखवा</string>
     <string name="settings_show_fps_hint">प्ले होत असलेल्या व्हिडिओवर प्रति सेकंद फ्रेम दाखवा. थांबवल्यावर किंवा ती स्क्रीन सोडल्यावर मोजणी थांबते.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">ॲप सुधारण्यास मदत करण्यासाठी निनावी वापर संकेत शेअर करा.</string>
     <string name="settings_enable_pip">पिक्चर-इन-पिक्चर</string>
     <string name="settings_enable_pip_hint">प्लेअर स्क्रीन किंवा पूर्ण स्क्रीनमध्ये व्हिडिओ पाहताना ॲप सोडल्यास तो लहान विंडोमध्ये सुरू राहील. अन्यथा तुम्ही परत येईपर्यंत व्हिडिओ फक्त ऑडिओवर जाईल.</string>
+    <string name="settings_audio_focus">ऑडिओ फोकस</string>
+    <string name="settings_audio_focus_calls">फक्त फोन कॉलसाठी थांबवा</string>
+    <string name="settings_audio_focus_apps">इतर अ‍ॅप्स आवाज वाजवतात तेव्हा थांबवा</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube व्हिडिओमधील प्रायोजित भाग आपोआप वगळा. एखाद्या व्हिडिओसाठी प्लेअर स्क्रीनवरून बंद करा.</string>
     <string name="sponsor_block_included">या व्हिडिओसाठी SponsorBlock सुरू केले</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">व्हॉल्यूम, वेग, इक्वेलायझर आणि व्हर्च्युअलायझर</string>
     <string name="settings_speed_hint">प्लेबॅक वेग आणि पिच</string>
     <string name="settings_eq_hint">दहा-बँड इक्वेलायझर, बास बूस्ट, व्हर्च्युअलायझर</string>
+    <string name="settings_system_audio_fx">सिस्टम साउंड इफेक्ट्स वापरा</string>
+    <string name="settings_system_audio_fx_hint">तुमच्या डिव्हाइसवरील इक्वलायझर ॲप्सना आवाज घडवू द्या. ॲपमधील इक्वलायझर बंद होतो.</string>
     <string name="sound_title">आवाज</string>
     <string name="sound_playback">प्लेबॅक</string>
-    <string name="sound_volume">व्हॉल्यूम %1$d%%</string>
+    <string name="sound_volume">व्हॉल्यूम %1$d%</string>
     <string name="sound_speed">वेग</string>
     <string name="sound_pitch">पिच %1$s</string>
     <string name="sound_eq">इक्वेलायझर</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">टिप्पणी हटवा</string>
     <string name="video_details_delete_message">तुमची टिप्पणी आणि तिची सर्व उत्तरे कायमची हटवायची?</string>
     <string name="video_details_deleted">टिप्पणी हटवली</string>
+    <string name="menu_details_comments">तपशील आणि टिप्पण्या</string>
+    <string name="menu_speed_pitch">वेग आणि पिच</string>
 </resources>

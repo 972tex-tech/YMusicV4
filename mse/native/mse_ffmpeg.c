@@ -161,6 +161,11 @@ struct MseAv {
     double mc_dec_ema;
     int64_t mc_pts0;
     int mc_pts0_set;
+    int mc_eos;
+    double mc_in_pts;
+    int mc_n_shown;
+    int mc_n_dropped;
+    int64_t mc_stats_t0;
 #endif
 };
 
@@ -219,6 +224,7 @@ static void mc_flush(MseAv *a)
         return;
     AMediaCodec_flush(a->mc);
     a->mc_pts0_set = 0;
+    a->mc_eos = 0;
     a->v_pictured = 0;
 }
 #endif
@@ -1106,6 +1112,7 @@ static void mc_close(MseAv *a)
     AMediaCodec_stop(a->mc);
     AMediaCodec_delete(a->mc);
     a->mc = NULL;
+    a->mc_eos = 0;
     vlog("close mediacodec");
 }
 
@@ -1250,6 +1257,8 @@ static int mc_open(MseAv *a)
                 av_bsf_free(&a->vbsf);
         }
     }
+    mse_critf(MSE_LOG_INFO, "mse-v mediacodec open %s %dx%d win=%p", mime, w, h,
+              (void *)a->mc_win);
     vlog("open mediacodec %s %dx%d", mime, w, h);
     return 0;
 }
@@ -1360,6 +1369,7 @@ static int mc_queue(MseAv *a, const uint8_t *data, int n, int64_t pts_us, int ke
     }
     if (AMediaCodec_queueInputBuffer(a->mc, (size_t)ix, 0, (size_t)n, pts_us - a->mc_pts0, flags) != AMEDIA_OK)
         return -1;
+    a->mc_in_pts = pts_us / 1e6;
     mc_cost_note_in(a, pts_us / 1e6);
     return 0;
 }
@@ -1432,6 +1442,30 @@ static int mc_out_late(const MseAv *a, double p, double clock)
     return p < clock - late && !(a->show_late && p >= clock - 0.35);
 }
 
+/* The old session drains to EOS before a rep switch reopens it: the next
+   rep's AUs never enter it, and its last pictures still play. */
+static void mc_drain_for_switch(MseAv *a, double clock)
+{
+    ssize_t ix;
+    if (a->mc_eos)
+        return;
+    if (!a->mc_pts0_set) {
+        a->mc_eos = 2;
+        return;
+    }
+    ix = AMediaCodec_dequeueInputBuffer(a->mc, 0);
+    if (ix < 0)
+        return;
+    if (AMediaCodec_queueInputBuffer(a->mc, (size_t)ix, 0, 0, 0,
+                                     AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != AMEDIA_OK) {
+        mse_critf(MSE_LOG_WARN, "mse-v mediacodec eos queue failed, switching now");
+        a->mc_eos = 2;
+        return;
+    }
+    a->mc_eos = 1;
+    vlog_state(a, clock, "switch-drain", a->v_switch_pts - clock);
+}
+
 /* Frames at/after a pending rep switch are lost when the decoder reopens, so
    only that window keeps clock pacing. */
 static int mc_feed_paced(MseAv *a, double clock, double pts)
@@ -1449,6 +1483,18 @@ static int mc_feed_paced(MseAv *a, double clock, double pts)
 static int mc_feed(MseAv *a, double clock)
 {
     int sent = 0, i;
+    if (a->mc && a->mc_eos && !a->vpar_next) {
+        vlog_state(a, clock, "switch-cancel", -1);
+        mc_flush(a);
+        a->mc_eos = 0;
+        a->need_rap[0] = 1;
+    }
+    if (a->mc_eos == 1 &&
+        clock > (a->mc_in_pts > a->v_switch_pts ? a->mc_in_pts : a->v_switch_pts) + 0.3) {
+        mse_critf(MSE_LOG_WARN, "mse-v mediacodec no eos 0.3s past the last input clock=%.3f in=%.3f",
+                  clock, a->mc_in_pts);
+        a->mc_eos = 2;
+    }
     for (i = 0; i < 64; i++) {
         size_t rd0 = a->vf.rd;
         double sp;
@@ -1467,6 +1513,10 @@ static int mc_feed(MseAv *a, double clock)
             break;
         sp = a->vf.f[a->vf.rd].pts;
         key = a->vf.f[a->vf.rd].key;
+        if (a->vpar_next && a->v_switch_pts >= 0 && sp >= a->v_switch_pts - 0.001) {
+            mc_drain_for_switch(a, clock);
+            break;
+        }
         if (mc_feed_paced(a, clock, sp)) {
             vlog_starve_ahead(a, clock, a->vf.rd);
             break;
@@ -1490,6 +1540,23 @@ static int mc_feed(MseAv *a, double clock)
     return sent;
 }
 
+/* A frozen picture with these counts still rising means the window's consumer stopped. */
+static void mc_stats(MseAv *a, double clock)
+{
+    int64_t now = mc_now_us();
+    if (!a->mc_stats_t0) {
+        a->mc_stats_t0 = now;
+        return;
+    }
+    if (now - a->mc_stats_t0 < 5000000)
+        return;
+    mse_critf(MSE_LOG_INFO, "mse-v stats 5s shown=%d dropped=%d clock=%.3f v_sent=%.3f win=%p",
+              a->mc_n_shown, a->mc_n_dropped, clock, a->v_sent, (void *)a->mc_win);
+    a->mc_n_shown = 0;
+    a->mc_n_dropped = 0;
+    a->mc_stats_t0 = now;
+}
+
 static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
 {
     const double early = 0.04;
@@ -1497,6 +1564,7 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
     mc_feed(a, clock);
     if (!a->mc)
         return 0;
+    mc_stats(a, clock);
     if (a->mc_hold) {
         double p = (a->mc_hold_pts_us + a->mc_pts0) / 1e6;
         double d = p - clock;
@@ -1511,8 +1579,10 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
             vlog_state(a, clock, "hold-late", d);
             mc_cost_note_out(a, p);
             mc_hold_drop(a, 0);
+            a->mc_n_dropped++;
         } else {
             mc_hold_drop(a, 1);
+            a->mc_n_shown++;
             *pts = p;
             a->v_sent = p;
             a->v_pictured = 1;
@@ -1528,6 +1598,17 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
     for (i = 0; i < 96; i++) {
         AMediaCodecBufferInfo info;
         ssize_t ox = AMediaCodec_dequeueOutputBuffer(a->mc, &info, 0);
+        if (ox >= 0 && (info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM)) {
+            a->mc_eos = 2;
+            vlog_state(a, clock, "switch-drained", a->v_switch_pts - clock);
+            if (info.size <= 0) {
+                AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 0);
+                mc_feed(a, clock);
+                if (!a->mc)
+                    return 0;
+                continue;
+            }
+        }
         if (ox >= 0) {
             double p = (info.presentationTimeUs + a->mc_pts0) / 1e6;
             double d = p - clock;
@@ -1546,9 +1627,11 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
                     vlog_state(a, clock, "recv-late", d);
                 mc_cost_note_out(a, p);
                 AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 0);
+                a->mc_n_dropped++;
                 continue;
             }
             AMediaCodec_releaseOutputBuffer(a->mc, (size_t)ox, 1);
+            a->mc_n_shown++;
             *pts = p;
             a->v_sent = p;
             a->v_pictured = 1;
@@ -1974,11 +2057,18 @@ static int leftover_before_switch(const MseAv *a)
 #endif
     if (a->vf.rd < a->vf.n && a->vf.f[a->vf.rd].pts < a->v_switch_pts - 0.001)
         return 1;
+#ifdef __ANDROID__
+    if (a->mc && a->mc_eos != 2)
+        return 1;
+#endif
     return 0;
 }
 
 static void apply_pending_video_rep(MseAv *a)
 {
+#ifdef __ANDROID__
+    double sw = a->v_switch_pts;
+#endif
     if (!a->vpar_next)
         return;
     vlog("video-rep apply %dx%d -> %dx%d switch=%.3f vf=%zu rd=%zu",
@@ -1992,8 +2082,18 @@ static void apply_pending_video_rep(MseAv *a)
     a->v_switch_pts = -1;
 #ifdef __ANDROID__
     a->mc_fail = 0;
-    if (mc_try_open(a) == 0)
+    if (mc_try_open(a) == 0) {
+        /* mc_open resyncs to the key before v_sent: an old-rep GOP. */
+        if (sw >= 0) {
+            size_t i;
+            for (i = 0; i < a->vf.n && a->vf.f[i].pts < sw - 0.001; i++)
+                ;
+            a->vf.rd = i;
+            for (; i < a->vf.n; i++)
+                a->vf.f[i].sent = 0;
+        }
         return;
+    }
 #endif
 #ifdef __APPLE__
     if (apple_vt_codec(a->vpar)) {
@@ -2392,6 +2492,7 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
         double *sp = NULL;
         int nsp = 0, j;
         size_t rd0 = dst->rd;
+        double rd_pts = rd0 < dst->n ? dst->f[rd0].pts : -1;
         if (r->n == 0)
             r->first = first;
         r->last = last;
@@ -2443,7 +2544,12 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
            (Auto at 5.3s + 10–14s segment jumped rd to 23s → starve-ahead).
            v_sent/a_sent < 0 means nothing shown yet (audio-only → video):
            keep sequential rd or leftover starts ahead of the clock forever. */
-        {
+        /* A later segment leaves the read position alone: v_sent can sit ahead of the decoder
+           (a seek sets it to the target while the clock holds behind the buffered end), and a
+           recompute from it skipped unsent references, then rewound onto frames already fed. */
+        if (nsp == 0 && rd_pts >= 0 && first >= rd_pts) {
+            dst->rd = rd0;
+        } else {
             double want = idx ? a->a_sent : a->v_sent;
             double floor_pts = first;
             if (want < 0)
@@ -2671,18 +2777,15 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                         vlog("video-rep %dx%d -> %dx%d keep vf=%zu",
                              a->vpar->width, a->vpar->height, par->width, par->height,
                              a->vf.n);
-#ifdef __ANDROID__
-                        /* Live 298→135: draining leftover feeds 480p into a 720p session. */
-                        cfb_free(&a->vf);
-                        apply_pending_video_rep(a);
-#else
                         if (!a->vdec
 #ifdef __APPLE__
                             && !apple_vt_codec(a->vpar)
 #endif
+#ifdef __ANDROID__
+                            && !a->mc
+#endif
                         )
                             open_decoder(a, 1, a->vpar);
-#endif
                     }
                     avcodec_parameters_free(&par);
                     par = NULL;
@@ -4167,7 +4270,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     return 0;
 }
 
-int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *rate, int *ch, double *pts)
+int mse_av_pull_audio(MseAv *a, double clock, double until, int16_t **s16, int *frames, int *rate, int *ch,
+                      double *pts)
 {
     AVFrame *frame;
     uint8_t *tmp;
@@ -4194,9 +4298,9 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
     got = 1;
     {
         int i;
-        /* Host passes playhead+0.35. Skip packets already behind the DAC so
-           an overlapping append cannot dump old PTS into the ring. */
-        const double behind = clock - 0.40;
+        /* Skip packets already behind the playhead so an overlapping append
+           cannot dump old PTS into the ring. */
+        const double behind = clock - 0.05;
         for (i = 0; i < 16; i++) {
             got = avcodec_receive_frame(a->adec, frame);
             if (got == 0) {
@@ -4211,7 +4315,7 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
                 a->af.f[a->af.rd].sent = 1;
                 a->af.rd++;
             }
-            if (a->af.rd >= a->af.n || a->af.f[a->af.rd].pts > clock + 0.08)
+            if (a->af.rd >= a->af.n || a->af.f[a->af.rd].pts > until + 0.08)
                 break;
             if (send_coded(&a->af, a->adec, NULL) < 0)
                 break;

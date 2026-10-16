@@ -30,6 +30,13 @@ fun PlaybackState.isPlaying(): Boolean = (this as? PlaybackState.Prepared)?.play
 
 fun PlaybackState.isEnded(): Boolean = (this as? PlaybackState.Prepared)?.ended == true
 
+/** Video is on screen: not audio-only by the user's pick, and the source has a video track (engines
+ *  report [VideoQualityState.AUDIO_ONLY] as the actual quality when it has none). */
+fun showsVideo(config: PlaybackConfig, quality: VideoQualityState): Boolean =
+    !config.audioOnly &&
+        quality.preferredQuality != VideoQualityState.AUDIO_ONLY &&
+        quality.actualQuality != VideoQualityState.AUDIO_ONLY
+
 /** A current queue item and the user's play intent — true across Idle/Uninitialized load gaps. */
 fun isPlaying(status: PlaybackStatus, queue: QueueState): Boolean =
     queue.currentItem != null && status.playWhenReady
@@ -65,6 +72,8 @@ data class PlaybackConfig(
     val virtualizer: Float = 1f,
     /** Level trim into the equalizer, −12..+12 dB, on top of its automatic loudness matching. */
     val preampDb: Float = 0f,
+    /** False bypasses the equalizer/bass/virtualizer/preamp (system audio effects take over); the values are kept. */
+    val inAppAudioFx: Boolean = true,
     val loop: Boolean = false,
     val preferCaptionLanguage: Pair<String, Long> = UNDETERMINED_LANGUAGE to 0L,
     val scaleMode: ScaleMode = ScaleMode.CONTAIN,
@@ -225,7 +234,8 @@ fun formatProgressClock(ms: Long): String {
  */
 data class PlaybackStatus(
     val state: PlaybackState = PlaybackState.Uninitialized(isInitializing = false),
-    /** Dimensions of the current video track, or null for audio-only / an audio-only file. */
+    /** The last picture's size, kept across loads and audio-only; null until the first one. Whether
+     *  video is on screen is [showsVideo], never this. */
     val videoSize: VideoSize? = null,
     /** Unbounded stream (HTML duration Infinity). DVR vs head-only is [Progress.seekable]. */
     val live: Boolean = false,

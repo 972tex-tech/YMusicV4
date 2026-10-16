@@ -66,7 +66,7 @@ object AppSettings {
     // The CONTENT locale (YouTube hl/gl) is deliberately absent: it lives in the engine
     // (yt/locale/apply + the engine's own ladder), not in app settings.
 
-    /** Theme accent placeholder; empty = platform default accent. */
+    /** The accent color as `RRGGBB`; empty = the default orange. */
     val themeAccent = StringSetting("theme.accent", "")
 
     /**
@@ -113,11 +113,11 @@ object AppSettings {
     val lastLoadedPlayerJsVer = IntSetting("telemetry.lastLoadedPlayerJsVer", 0)
 
     /**
-     * Theme: "light" | "dark", or empty to follow the system appearance.
+     * Theme: "light" | "dark" | "amoled" (dark on pure black), or empty to follow the system appearance.
      *
      * Defaults to DARK rather than to the system: this is a music app that is mostly looked at
      * while something else has the foreground, and a white sheet is the wrong default for that.
-     * Following the system is still one choice among three, just not the unset one.
+     * Following the system is still one of the choices, just not the unset one.
      */
     val theme = StringSetting("app.theme", "dark")
 
@@ -138,6 +138,20 @@ object AppSettings {
      * fullscreen video is up. Off: going to background drops to AudioOnly until the app returns.
      */
     val enablePip = BoolSetting("playback.enablePip", true)
+
+    /**
+     * Android: publish the audio session to equalizer apps (AudioEffect control-session broadcasts)
+     * and bypass the in-app equalizer. Ignored on shells that don't offer it.
+     */
+    val systemAudioEffects = BoolSetting("playback.systemAudioEffects", true)
+
+    /**
+     * Android: when other audio pauses playback — [AUDIO_FOCUS_APPS] (default) follows audio focus
+     * and pauses whenever another app plays, [AUDIO_FOCUS_CALLS] pauses only for phone calls.
+     */
+    val audioFocus = StringSetting("playback.audioFocus", AUDIO_FOCUS_APPS)
+    const val AUDIO_FOCUS_CALLS = "calls"
+    const val AUDIO_FOCUS_APPS = "apps"
 
     /** The sleep-timer dialog's last chosen duration, its starting value next time. */
     val sleepTimerMinutes = IntSetting("playback.sleepTimerMinutes", 30)

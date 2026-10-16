@@ -219,6 +219,8 @@
     <string name="settings_theme_system">சிஸ்டத்தைப் பின்பற்று</string>
     <string name="settings_theme_light">லைட்</string>
     <string name="settings_theme_dark">டார்க்</string>
+    <string name="settings_theme_amoled">கருப்பு (AMOLED)</string>
+    <string name="settings_accent_color">அக்சென்ட் நிறம்</string>
     <string name="settings_debug">பிழைத்திருத்தம்</string>
     <string name="settings_show_fps">FPS காட்டு</string>
     <string name="settings_show_fps_hint">Now Playing வீடியோவின் மேல் ஒரு வினாடிக்கான படங்களைக் காட்டு. இடைநிறுத்தும்போதோ அந்தத் திரையை விட்டு வெளியேறும்போதோ அளவிடல் நிற்கும்.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">ஆப்ஸை மேம்படுத்த உதவ அநாமதேய பயன்பாட்டுத் தகவலைப் பகிரவும்.</string>
     <string name="settings_enable_pip">பிக்சர்-இன்-பிக்சர்</string>
     <string name="settings_enable_pip_hint">Now Playing அல்லது முழுத்திரையில் வீடியோ பார்க்கும்போது ஆப்ஸை விட்டு வெளியேறினால் சிறிய சாளரத்தில் தொடரும். இல்லையெனில் நீங்கள் திரும்பும் வரை வீடியோ ஆடியோ மட்டுமாக மாறும்.</string>
+    <string name="settings_audio_focus">ஆடியோ ஃபோகஸ்</string>
+    <string name="settings_audio_focus_calls">ஃபோன் அழைப்புகளுக்கு மட்டும் இடைநிறுத்து</string>
+    <string name="settings_audio_focus_apps">பிற ஆப்ஸ் ஒலி இயக்கும்போது இடைநிறுத்து</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube வீடியோக்களில் ஸ்பான்சர் பகுதிகளைத் தானாகத் தவிர்க்கவும். Now Playing இலிருந்து ஒரு வீடியோவுக்கு முடக்கலாம்.</string>
     <string name="sponsor_block_included">இந்த வீடியோவுக்கு SponsorBlock இயக்கப்பட்டது</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">ஒலியளவு, வேகம், ஈக்வலைசர் மற்றும் விர்ச்சுவலைசர்</string>
     <string name="settings_speed_hint">இயக்க வேகமும் சுருதியும்</string>
     <string name="settings_eq_hint">பத்து-பேண்ட் ஈக்வலைசர், பேஸ் பூஸ்ட், விர்ச்சுவலைசர்</string>
+    <string name="settings_system_audio_fx">சிஸ்டம் ஒலி விளைவுகளைப் பயன்படுத்து</string>
+    <string name="settings_system_audio_fx_hint">உங்கள் சாதனத்தின் ஈக்வலைசர் ஆப்ஸ் ஒலியை வடிவமைக்க அனுமதிக்கும். ஆப்ஸின் ஈக்வலைசர் முடக்கப்படும்.</string>
     <string name="sound_title">ஒலி</string>
     <string name="sound_playback">இயக்கம்</string>
-    <string name="sound_volume">ஒலியளவு %1$d%%</string>
+    <string name="sound_volume">ஒலியளவு %1$d%</string>
     <string name="sound_speed">வேகம்</string>
     <string name="sound_pitch">சுருதி %1$s</string>
     <string name="sound_eq">ஈக்வலைசர்</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">கருத்தை நீக்கு</string>
     <string name="video_details_delete_message">உங்கள் கருத்தையும் அதன் எல்லாப் பதில்களையும் நிரந்தரமாக நீக்கவா?</string>
     <string name="video_details_deleted">கருத்து நீக்கப்பட்டது</string>
+    <string name="menu_details_comments">விவரங்களும் கருத்துகளும்</string>
+    <string name="menu_speed_pitch">வேகமும் சுருதியும்</string>
 </resources>

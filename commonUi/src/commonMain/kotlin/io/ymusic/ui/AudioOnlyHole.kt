@@ -59,6 +59,7 @@ import androidx.lifecycle.compose.currentStateAsState
 import io.ymusic.imageloader.ImageRequest
 import io.ymusic.player.Player
 import io.ymusic.player.VideoQualityState
+import io.ymusic.player.showsVideo
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.SettingsStore
 import io.ymusic.settings.flow
@@ -84,17 +85,17 @@ private fun windowVisible(): Boolean {
 
 /**
  * Audio-only by the user's pick, or because the source has no video to show. Between items the
- * engine knows neither yet, so it stays audio-only until a picture actually arrives — otherwise
- * the art view (and its song-change transition) would be torn down and rebuilt on every track.
+ * engine has not reported the new tracks yet, so it stays audio-only until it does — otherwise the
+ * art view (and its song-change transition) would be torn down and rebuilt on every track.
  */
 @Composable
 internal fun showsAudioOnly(player: Player): Boolean {
     val config by player.config.collectAsState()
     val quality by player.videoQuality.collectAsState()
-    val status by player.status.collectAsState()
-    val known = config.audioOnly || quality.actualQuality == VideoQualityState.AUDIO_ONLY
+    val known = !showsVideo(config, quality)
+    val tracksUnknown = quality.options.isEmpty() && quality.actualQuality == VideoQualityState.AUTO
     val last = remember { AudioOnlyMemo(known) }
-    val shown = known || (last.value && status.videoSize == null)
+    val shown = known || (last.value && tracksUnknown)
     SideEffect { last.value = shown }
     return shown
 }

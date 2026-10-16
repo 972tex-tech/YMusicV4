@@ -206,6 +206,10 @@ class AppGraph(
      * `componentResized` and clears it after 300ms without another event. Unused on mobile.
      */
     val windowResizing: MutableStateFlow<Boolean> = MutableStateFlow(false),
+    /** The shell honors [io.ymusic.settings.AppSettings.systemAudioEffects] (Android); false hides the setting. */
+    val systemAudioEffects: Boolean = false,
+    /** The shell honors [io.ymusic.settings.AppSettings.audioFocus] (Android); false hides the setting. */
+    val audioFocusSetting: Boolean = false,
     /** The player cache, for its size limit and Settings' usage line; null hides the setting. */
     val playerCache: io.ymusic.ytmedia.cache.MediaCache? = null,
     /**

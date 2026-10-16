@@ -218,6 +218,8 @@
     <string name="settings_theme_system">Ikuti sistem</string>
     <string name="settings_theme_light">Terang</string>
     <string name="settings_theme_dark">Gelap</string>
+    <string name="settings_theme_amoled">Hitam (AMOLED)</string>
+    <string name="settings_accent_color">Warna aksen</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_show_fps">Tampilkan FPS</string>
     <string name="settings_show_fps_hint">Tampilkan jumlah gambar per detik di atas video yang sedang diputar. Pengukuran berhenti saat dijeda atau saat Anda meninggalkan layar tersebut.</string>
@@ -357,6 +359,9 @@
     <string name="settings_stats_hint">Bagikan data penggunaan anonim untuk membantu meningkatkan aplikasi.</string>
     <string name="settings_enable_pip">Picture-in-picture</string>
     <string name="settings_enable_pip_hint">Saat menonton video di layar Sedang diputar atau layar penuh, lanjutkan di jendela kecil jika Anda keluar dari aplikasi. Jika tidak, video beralih ke audio saja sampai Anda kembali.</string>
+    <string name="settings_audio_focus">Fokus audio</string>
+    <string name="settings_audio_focus_calls">Jeda hanya saat panggilan telepon</string>
+    <string name="settings_audio_focus_apps">Jeda saat aplikasi lain memutar suara</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Lewati segmen sponsor di video YouTube secara otomatis. Nonaktifkan untuk video tertentu dari layar Sedang diputar.</string>
     <string name="sponsor_block_included">SponsorBlock diaktifkan untuk video ini</string>
@@ -365,9 +370,11 @@
     <string name="settings_sound_hint">Volume, kecepatan, ekualiser, dan virtualizer</string>
     <string name="settings_speed_hint">Kecepatan pemutaran dan nada</string>
     <string name="settings_eq_hint">Ekualiser sepuluh band, penguat bass, virtualizer</string>
+    <string name="settings_system_audio_fx">Gunakan efek suara sistem</string>
+    <string name="settings_system_audio_fx_hint">Biarkan aplikasi equalizer di perangkat Anda membentuk suara. Mematikan equalizer aplikasi.</string>
     <string name="sound_title">Suara</string>
     <string name="sound_playback">Pemutaran</string>
-    <string name="sound_volume">Volume %1$d%%</string>
+    <string name="sound_volume">Volume %1$d%</string>
     <string name="sound_speed">Kecepatan</string>
     <string name="sound_pitch">Nada %1$s</string>
     <string name="sound_eq">Ekualiser</string>
@@ -509,4 +516,6 @@
     <string name="video_details_delete_title">Hapus komentar</string>
     <string name="video_details_delete_message">Hapus komentar Anda beserta semua balasannya secara permanen?</string>
     <string name="video_details_deleted">Komentar dihapus</string>
+    <string name="menu_details_comments">Detail dan komentar</string>
+    <string name="menu_speed_pitch">Kecepatan dan nada</string>
 </resources>

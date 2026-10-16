@@ -220,6 +220,8 @@
     <string name="settings_theme_system">Prema sustavu</string>
     <string name="settings_theme_light">Svijetla</string>
     <string name="settings_theme_dark">Tamna</string>
+    <string name="settings_theme_amoled">Crna (AMOLED)</string>
+    <string name="settings_accent_color">Boja naglaska</string>
     <string name="settings_debug">Otklanjanje pogrešaka</string>
     <string name="settings_show_fps">Prikaži FPS</string>
     <string name="settings_show_fps_hint">Prikazuje broj sličica u sekundi preko videozapisa na zaslonu Sada svira. Mjerenje se zaustavlja pri pauzi ili kad napustite zaslon.</string>
@@ -359,6 +361,9 @@
     <string name="settings_stats_hint">Dijelite anonimne podatke o korištenju kako biste pomogli poboljšati aplikaciju.</string>
     <string name="settings_enable_pip">Slika u slici</string>
     <string name="settings_enable_pip_hint">Kad gledate videozapis na zaslonu Sada svira ili preko cijelog zaslona, nastavite u malom prozoru ako napustite aplikaciju. U suprotnom videozapis prelazi na samo zvuk dok se ne vratite.</string>
+    <string name="settings_audio_focus">Audio fokus</string>
+    <string name="settings_audio_focus_calls">Pauziraj samo za telefonske pozive</string>
+    <string name="settings_audio_focus_apps">Pauziraj kada druge aplikacije reproduciraju zvuk</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Automatski preskače sponzorirane dijelove u YouTube videozapisima. Za pojedini videozapis isključite na zaslonu Sada svira.</string>
     <string name="sponsor_block_included">SponsorBlock uključen za ovaj videozapis</string>
@@ -367,9 +372,11 @@
     <string name="settings_sound_hint">Glasnoća, brzina, ekvilizator i virtualizator</string>
     <string name="settings_speed_hint">Brzina reprodukcije i visina tona</string>
     <string name="settings_eq_hint">Ekvilizator s deset pojaseva, pojačanje basa, virtualizator</string>
+    <string name="settings_system_audio_fx">Koristi zvučne efekte sustava</string>
+    <string name="settings_system_audio_fx_hint">Neka aplikacije ekvilizatora na uređaju oblikuju zvuk. Isključuje ekvilizator aplikacije.</string>
     <string name="sound_title">Zvuk</string>
     <string name="sound_playback">Reprodukcija</string>
-    <string name="sound_volume">Glasnoća %1$d%%</string>
+    <string name="sound_volume">Glasnoća %1$d%</string>
     <string name="sound_speed">Brzina</string>
     <string name="sound_pitch">Visina tona %1$s</string>
     <string name="sound_eq">Ekvilizator</string>
@@ -519,4 +526,6 @@
     <string name="video_details_delete_title">Izbriši komentar</string>
     <string name="video_details_delete_message">Trajno izbrisati vaš komentar i sve odgovore na njega?</string>
     <string name="video_details_deleted">Komentar izbrisan</string>
+    <string name="menu_details_comments">Detalji i komentari</string>
+    <string name="menu_speed_pitch">Brzina i visina tona</string>
 </resources>

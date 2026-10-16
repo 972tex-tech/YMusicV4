@@ -128,3 +128,10 @@ interface AudioTrackSelectable {
 
     fun selectAudioTrack(id: String)
 }
+
+// --- System audio effects (Android) ---
+
+/** An engine whose audio output has an Android audio session; 0 while it has none. */
+interface AudioSessionSource {
+    val audioSessionId: StateFlow<Int>
+}

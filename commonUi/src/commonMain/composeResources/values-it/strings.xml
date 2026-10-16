@@ -220,6 +220,8 @@
     <string name="settings_theme_system">Predefinito di sistema</string>
     <string name="settings_theme_light">Chiaro</string>
     <string name="settings_theme_dark">Scuro</string>
+    <string name="settings_theme_amoled">Nero (AMOLED)</string>
+    <string name="settings_accent_color">Colore principale</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_show_fps">Mostra FPS</string>
     <string name="settings_show_fps_hint">Mostra i fotogrammi al secondo sul video in riproduzione. La misurazione si interrompe in pausa o quando esci da quella schermata.</string>
@@ -359,6 +361,9 @@
     <string name="settings_stats_hint">Condividi dati di utilizzo anonimi per aiutare a migliorare l'app.</string>
     <string name="settings_enable_pip">Picture in picture</string>
     <string name="settings_enable_pip_hint">Quando guardi un video in riproduzione o a schermo intero, continua in una piccola finestra se esci dall'app. Altrimenti il video passa a solo audio finché non torni.</string>
+    <string name="settings_audio_focus">Focus audio</string>
+    <string name="settings_audio_focus_calls">Metti in pausa solo durante le chiamate</string>
+    <string name="settings_audio_focus_apps">Metti in pausa quando altre app riproducono suoni</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Salta automaticamente i segmenti sponsorizzati nei video di YouTube. Disattivabile per singolo video dalla schermata di riproduzione.</string>
     <string name="sponsor_block_included">SponsorBlock attivato per questo video</string>
@@ -367,9 +372,11 @@
     <string name="settings_sound_hint">Volume, velocità, equalizzatore e virtualizzatore</string>
     <string name="settings_speed_hint">Velocità di riproduzione e intonazione</string>
     <string name="settings_eq_hint">Equalizzatore a dieci bande, potenziamento bassi, virtualizzatore</string>
+    <string name="settings_system_audio_fx">Usa gli effetti sonori di sistema</string>
+    <string name="settings_system_audio_fx_hint">Lascia che le app di equalizzazione del dispositivo modellino il suono. Disattiva l'equalizzatore dell'app.</string>
     <string name="sound_title">Audio</string>
     <string name="sound_playback">Riproduzione</string>
-    <string name="sound_volume">Volume %1$d%%</string>
+    <string name="sound_volume">Volume %1$d%</string>
     <string name="sound_speed">Velocità</string>
     <string name="sound_pitch">Intonazione %1$s</string>
     <string name="sound_eq">Equalizzatore</string>
@@ -519,4 +526,6 @@
     <string name="video_details_delete_title">Elimina commento</string>
     <string name="video_details_delete_message">Eliminare definitivamente il tuo commento e tutte le sue risposte?</string>
     <string name="video_details_deleted">Commento eliminato</string>
+    <string name="menu_details_comments">Dettagli e commenti</string>
+    <string name="menu_speed_pitch">Velocità e intonazione</string>
 </resources>

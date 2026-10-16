@@ -9,6 +9,7 @@ import {
   mseCreateObjectURL,
   mseRevokeObjectURL,
   dumpDrain,
+  onLoopAtEnd,
   resetDrainCounts,
 } from "../../protocol/mse";
 import { installOrigEnv } from "./env";
@@ -836,6 +837,10 @@ class Player {
 
   private ensureCreated(out: Record<string, unknown>): YtApp {
     if (this.player) return this.player;
+    onLoopAtEnd(function () {
+      const player = moviePlayer();
+      if (player) player["seekTo"](0, true);
+    });
     const create = this.createFn;
     if (typeof create !== "function")
       throw new JsEngineErrorImpl("yt.player.Application.create missing", "E20076");
@@ -960,10 +965,11 @@ class Player {
     /* Chrome /player uses watch URL as originalUrl / currentUrl / graftUrl. */
     setLocation(ORIGIN + "/watch?v=" + videoId, "/watch", "?v=" + videoId);
     this.setQuality(q || "auto", ao);
-    this.setLoop(options.loop);
     this.setSpeedPitch(options.speed, options.pitch);
     try {
       this.loadById(videoId, options.startSeconds > 0 ? options.startSeconds : 0);
+      // After the load: base.js clears loop for every new video.
+      this.setLoop(options.loop);
       /* Same JS turn as loadVideoById: no frame plays before the pause lands. */
       if (!options.playWhenReady) this.pause();
     } catch (e) {
@@ -1111,6 +1117,10 @@ class Player {
     if (!player) throw new JsEngineErrorImpl("player not created", "E20084");
     player["stopVideo"]();
     bindHtmlMediaEvents();
+    // The host drops its video size on stop; a next video of the same size must report it again.
+    pictureW = 0;
+    pictureH = 0;
+    notifyListen("picture");
   }
 
   /** Clock group: position, buffer, duration, seek window. Same payload as webview `_progress`. */

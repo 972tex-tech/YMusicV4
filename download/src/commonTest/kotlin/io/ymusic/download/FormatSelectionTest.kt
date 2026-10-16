@@ -23,6 +23,7 @@ class FormatSelectionTest {
     private val formats = listOf(
         audio(140, "audio/mp4; codecs=\"mp4a.40.2\"", 3_000_000),
         audio(251, "audio/webm; codecs=\"opus\"", 3_500_000),
+        audio(328, "audio/mp4; codecs=\"ec-3\"", 9_000_000), // E-AC-3 5.1: mp4, but not AAC
         audio(233, "audio/mp4; codecs=\"mp4a.40.2\"", 500_000, default = false), // dubbed alt track
         video(160, "video/mp4; codecs=\"avc1\"", 144, 1_000_000),
         video(136, "video/mp4; codecs=\"avc1\"", 720, 8_000_000),
@@ -31,19 +32,24 @@ class FormatSelectionTest {
     )
 
     @Test
-    fun best_audio_prefers_webm_opus_when_not_aac() {
-        assertEquals(251, FormatSelection.bestAudio(formats, preferAac = false)?.itag)
+    fun best_audio_opus_takes_only_opus() {
+        assertEquals(251, FormatSelection.bestAudio(formats, AudioCodec.OPUS)?.itag)
     }
 
     @Test
-    fun best_audio_prefers_mp4_aac_when_requested() {
-        assertEquals(140, FormatSelection.bestAudio(formats, preferAac = true)?.itag)
+    fun best_audio_aac_takes_only_mp4a() {
+        assertEquals(140, FormatSelection.bestAudio(formats, AudioCodec.AAC)?.itag)
+    }
+
+    @Test
+    fun best_audio_any_takes_the_largest_of_every_codec() {
+        assertEquals(328, FormatSelection.bestAudio(formats, AudioCodec.ANY)?.itag)
     }
 
     @Test
     fun best_audio_skips_non_default_dub_track() {
         // itag 233 is a non-default (dubbed) AAC track; the default 140 must win even though both are mp4.
-        assertEquals(140, FormatSelection.bestAudio(formats, preferAac = true)?.itag)
+        assertEquals(140, FormatSelection.bestAudio(formats, AudioCodec.AAC)?.itag)
     }
 
     @Test
@@ -65,6 +71,6 @@ class FormatSelectionTest {
     @Test
     fun no_audio_returns_null() {
         val onlyVideo = formats.filter { it.isVideo }
-        assertNull(FormatSelection.bestAudio(onlyVideo, preferAac = false))
+        assertNull(FormatSelection.bestAudio(onlyVideo, AudioCodec.ANY))
     }
 }

@@ -253,7 +253,7 @@ kotlin.sourceSets.getByName("jvmMain").resources.srcDir(files(jvmJniResourcesDir
 // ---------------------------------------------------------------------------------------------
 // Android JNI: build libquickjsjni.so per ABI with the NDK and stage into androidMain/jniLibs.
 // ---------------------------------------------------------------------------------------------
-val androidAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+val androidAbis = FfmpegBuild.ANDROID_ABIS
 // ANDROID_NDK_ROOT pins the NDK (CI matches the one its ffmpeg packs were built with); otherwise the
 // newest NDK installed in the SDK.
 val ndkDir: File? = System.getenv("ANDROID_NDK_ROOT")?.let(::File)?.takeIf { it.isDirectory } ?: run {

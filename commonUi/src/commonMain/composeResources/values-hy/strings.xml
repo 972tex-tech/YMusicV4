@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Ինչպես համակարգում</string>
     <string name="settings_theme_light">Բաց</string>
     <string name="settings_theme_dark">Մուգ</string>
+    <string name="settings_theme_amoled">Սև (AMOLED)</string>
+    <string name="settings_accent_color">Շեշտադրման գույն</string>
     <string name="settings_debug">Վրիպազերծում</string>
     <string name="settings_show_fps">Ցույց տալ FPS-ը</string>
     <string name="settings_show_fps_hint">Ցուցադրում է կադրերի քանակը վայրկյանում «Հիմա հնչում է» տեսանյութի վրա։ Չափումը դադարում է դադարի ժամանակ կամ էկրանից դուրս գալիս։</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">Կիսվեք օգտագործման անանուն տվյալներով՝ հավելվածը բարելավելու համար։</string>
     <string name="settings_enable_pip">Նկար նկարի մեջ</string>
     <string name="settings_enable_pip_hint">«Հիմա հնչում է» կամ լիաէկրան ռեժիմում տեսանյութ դիտելիս, եթե դուրս գաք հավելվածից, այն կշարունակվի փոքր պատուհանում։ Հակառակ դեպքում տեսանյութը կանցնի միայն աուդիոյի, մինչև վերադառնաք։</string>
+    <string name="settings_audio_focus">Աուդիո ֆոկուս</string>
+    <string name="settings_audio_focus_calls">Դադարեցնել միայն հեռախոսազանգերի ժամանակ</string>
+    <string name="settings_audio_focus_apps">Դադարեցնել, երբ այլ հավելվածներ ձայն են նվագարկում</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Ավտոմատ բաց թողնել հովանավորվող հատվածները YouTube տեսանյութերում։ Կոնկրետ տեսանյութի համար անջատեք «Հիմա հնչում է» էկրանից։</string>
     <string name="sponsor_block_included">SponsorBlock-ը միացված է այս տեսանյութի համար</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">Ձայնի ուժգնություն, արագություն, էկվալայզեր և վիրտուալիզատոր</string>
     <string name="settings_speed_hint">Նվագարկման արագություն և տոն</string>
     <string name="settings_eq_hint">Տասը շերտանի էկվալայզեր, բասի ուժեղացում, վիրտուալիզատոր</string>
+    <string name="settings_system_audio_fx">Օգտագործել համակարգի ձայնային էֆեկտները</string>
+    <string name="settings_system_audio_fx_hint">Թույլ տվեք սարքի էկվալայզեր հավելվածներին ձևավորել ձայնը։ Անջատում է հավելվածի էկվալայզերը։</string>
     <string name="sound_title">Ձայն</string>
     <string name="sound_playback">Նվագարկում</string>
-    <string name="sound_volume">Ձայնի ուժգնություն %1$d%%</string>
+    <string name="sound_volume">Ձայնի ուժգնություն %1$d%</string>
     <string name="sound_speed">Արագություն</string>
     <string name="sound_pitch">Տոն %1$s</string>
     <string name="sound_eq">Էկվալայզեր</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">Ջնջել մեկնաբանությունը</string>
     <string name="video_details_delete_message">Ընդմիշտ ջնջե՞լ ձեր մեկնաբանությունը և դրա բոլոր պատասխանները։</string>
     <string name="video_details_deleted">Մեկնաբանությունը ջնջվեց</string>
+    <string name="menu_details_comments">Մանրամասներ և մեկնաբանություններ</string>
+    <string name="menu_speed_pitch">Արագություն և տոն</string>
 </resources>

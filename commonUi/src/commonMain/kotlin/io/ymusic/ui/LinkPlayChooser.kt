@@ -30,12 +30,12 @@ import org.jetbrains.compose.resources.stringResource
 fun LinkPlayChooser(settings: SettingsStore, onPick: (LinkAction?) -> Unit) {
     val tag = settings.flow(AppSettings.uiLanguage).value.ifBlank { defaultUiLanguageTag() }
     remember(tag) { applyUiLocale(tag) }
-    val dark = when (settings.flow(AppSettings.theme).value) {
-        "light" -> false
-        "dark" -> true
-        else -> androidx.compose.foundation.isSystemInDarkTheme()
-    }
-    YMusicTheme(dark) {
+    val palette = designPaletteFor(
+        settings.flow(AppSettings.theme).value,
+        androidx.compose.foundation.isSystemInDarkTheme(),
+        settings.flow(AppSettings.themeAccent).value,
+    )
+    YMusicTheme(palette) {
         ElevatedBarDialog(
             title = stringResource(Res.string.menu_play),
             onDismiss = { onPick(null) },

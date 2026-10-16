@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
 import android.os.Build
+import android.os.SystemClock
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
@@ -47,11 +48,15 @@ import io.ymusic.mediastore.mediaStoreAndroidDriver
 import io.ymusic.mediastore.model.BucketDraft
 import io.ymusic.mse.MseVideoSurface
 import io.ymusic.player.LocalPlayerContext
+import io.ymusic.player.PlayableItem
+import io.ymusic.player.PlaybackState
+import io.ymusic.player.Player
 import io.ymusic.player.PlayerEngines
 import io.ymusic.player.createLocalPlayer
 import io.ymusic.player.createPlayer
 import io.ymusic.player.isPlaying
 import io.ymusic.player.mse.MsePlayer
+import io.ymusic.player.showsVideo
 import io.ymusic.remoteconfig.ApiService
 import io.ymusic.remoteconfig.HttpApiService
 import io.ymusic.remoteconfig.RemoteConfig
@@ -225,7 +230,7 @@ class YMusicApplication : Application() {
                     uiModes.setApplicationNightMode(
                         when (theme) {
                             "light" -> UiModeManager.MODE_NIGHT_NO
-                            "dark" -> UiModeManager.MODE_NIGHT_YES
+                            "dark", "amoled" -> UiModeManager.MODE_NIGHT_YES
                             else -> UiModeManager.MODE_NIGHT_AUTO
                         },
                     )
@@ -416,7 +421,7 @@ class YMusicApplication : Application() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
         mseTexture.visibility = View.GONE
-        val mseBridge = MseSurfaceBridge(mseTexture)
+        val mseBridge = MseSurfaceBridge(mseTexture, rootLogger.fork("mse-surface"))
         mseTexture.surfaceTextureListener = mseBridge.listener
         val graph = withContext(Dispatchers.Default) {
             buildGraphOffMain(videoContainer, downloadContainer, mseTexture, mseBridge)
@@ -440,7 +445,8 @@ class YMusicApplication : Application() {
                     }
                 }
         }
-        AudioFocusCoordinator(this, graph.player, appScope).start()
+        AudioFocusCoordinator(this, graph.player, graph.settings, appScope).start()
+        SystemAudioEffects(this, graph.player, graph.settings, appScope, rootLogger.fork("system-audio-fx")).start()
         widgets.attach(graph)
         // Same pattern for downloads: any change that (re)starts work also (re)starts the
         // dataSync foreground host; the service winds itself down when the queue drains. Enqueue
@@ -538,6 +544,7 @@ class YMusicApplication : Application() {
                 },
             ),
         )
+        mseBridge.videoShown = { showsYoutubeVideo(player) }
 
         // Offline downloads: SABR stack + on-device ffmpeg. Spec from MSE /player + decoded SABR URL.
         val downloadService = run {
@@ -603,6 +610,8 @@ class YMusicApplication : Application() {
             player,
             logger = rootLogger,
             playerCache = playerCache,
+            systemAudioEffects = true,
+            audioFocusSetting = true,
             stats = shared.stats,
             updates = shared.updates,
             premium = premium,
@@ -660,7 +669,10 @@ class YMusicApplication : Application() {
             // (unlike Swing/UIKit), so adding the container directly throws "child already has a
             // parent". So each AndroidView gets its own empty host and re-parents the shared container
             // into whichever is active, detaching from the previous parent first.
-            val status by player.status.collectAsState()
+            val queue by player.queue.collectAsState()
+            val config by player.config.collectAsState()
+            val quality by player.videoQuality.collectAsState()
+            val showMse = queue.currentItem is PlayableItem.YtMedia && showsVideo(config, quality)
             AndroidView(
                 factory = { context -> FrameLayout(context) },
                 modifier = modifier.fillMaxSize(),
@@ -670,7 +682,6 @@ class YMusicApplication : Application() {
                         host.addView(videoContainer)
                         mseBridge.reattach(mseTexture)
                     }
-                    val showMse = status.videoSize != null
                     mseTexture.visibility = if (showMse) View.VISIBLE else View.GONE
                     if (showMse) mseTexture.bringToFront()
                 },
@@ -787,20 +798,65 @@ class YMusicApplication : Application() {
  * TextureView; releasing the SurfaceTexture there tears MediaCodec and glitches audio. Keep the
  * producer and restore it after re-attach (`setSurfaceTexture`); only bind MediaCodec once.
  */
-private class MseSurfaceBridge(private val textureView: TextureView) {
+private fun showsYoutubeVideo(player: Player): Boolean =
+    player.queue.value.currentItem is PlayableItem.YtMedia && showsVideo(player.config.value, player.videoQuality.value)
+
+private class MseSurfaceBridge(private val textureView: TextureView, private val log: Logger) {
     private var player: MsePlayer? = null
+    var videoShown: () -> Boolean = { false }
     private var pending: Surface? = null
     private var texture: SurfaceTexture? = null
+    private var frames = 0L
+    private var watchedFrames = 0L
+    private var stalledSinceMs = 0L
+
+    /* Pairs with native "mse-v stats": decoder frames rising while this sees none = a stale consumer. */
+    private val watchdog = object : Runnable {
+        override fun run() {
+            checkFrames()
+            textureView.postDelayed(this, WATCH_MS)
+        }
+    }
 
     fun attach(p: MsePlayer) {
         player = p
         pending?.let { p.setVideoSurface(MseVideoSurface(it)) }
+        textureView.post {
+            textureView.removeCallbacks(watchdog)
+            textureView.postDelayed(watchdog, WATCH_MS)
+        }
     }
 
     fun reattach(tv: TextureView) {
         val st = texture ?: return
         if (tv.surfaceTexture === st) return
         runCatching { tv.setSurfaceTexture(st) }
+    }
+
+    private fun checkFrames() {
+        val status = player?.status?.value ?: return
+        val prepared = status.state as? PlaybackState.Prepared
+        val expectFrames = videoShown() && prepared != null &&
+            prepared.playWhenReady && !prepared.buffering && !prepared.ended &&
+            textureView.isShown && textureView.windowVisibility == View.VISIBLE
+        val delta = frames - watchedFrames
+        watchedFrames = frames
+        val now = SystemClock.uptimeMillis()
+        if (expectFrames && delta == 0L) {
+            if (stalledSinceMs != 0L) return
+            stalledSinceMs = now - WATCH_MS
+            log.log(
+                Logger.Level.INFO,
+                "no frames for ${WATCH_MS}ms while playing: attached=${textureView.isAttachedToWindow} " +
+                    "available=${textureView.isAvailable} ownTexture=${textureView.surfaceTexture === texture} " +
+                    "view=${textureView.width}x${textureView.height} video=${status.videoSize}",
+            )
+        } else if (delta > 0L && stalledSinceMs != 0L) {
+            log.log(Logger.Level.INFO, "frames resumed after ${now - stalledSinceMs}ms")
+            stalledSinceMs = 0L
+        } else if (!expectFrames) {
+            stalledSinceMs = 0L
+        }
     }
 
     val listener = object : TextureView.SurfaceTextureListener {
@@ -812,6 +868,7 @@ private class MseSurfaceBridge(private val textureView: TextureView) {
                 return
             }
             if (st !== texture) {
+                log.log(Logger.Level.INFO, "new SurfaceTexture on reattach; restoring the bound one")
                 texture?.let { kept -> runCatching { textureView.setSurfaceTexture(kept) } }
             }
         }
@@ -823,6 +880,12 @@ private class MseSurfaceBridge(private val textureView: TextureView) {
             return false
         }
 
-        override fun onSurfaceTextureUpdated(st: SurfaceTexture) = Unit
+        override fun onSurfaceTextureUpdated(st: SurfaceTexture) {
+            frames++
+        }
+    }
+
+    private companion object {
+        const val WATCH_MS = 2000L
     }
 }

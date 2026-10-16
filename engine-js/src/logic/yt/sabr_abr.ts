@@ -6,6 +6,8 @@
 // (17) and those buffered_ranges (3). A 144p range in (3) means cover is done
 // — skip fake UMP. Live AO: no 40=1, no fake UMP, keep 144p on the ladder so
 // auto-tiny loads real tiny and rest-video parks the decoder.
+// Playable audio (16) is narrowed to its best itag so the server cannot step
+// down the audio ladder.
 
 const INITIALIZED_FORMAT_IDS = 2;
 const BUFFERED_RANGES = 3;
@@ -470,6 +472,22 @@ function rewriteCas40(cas: Uint8Array): Uint8Array {
 
 let lastPlayable = "";
 
+/** Best first. 774/141 are Premium-only (256 kbps); 600/599 are the ultralow rungs. */
+const AUDIO_ITAG_RANK = [774, 141, 251, 140, 250, 249, 139, 600, 599];
+
+function bestPlayableAudioItag(fs: Field[]): number {
+  let best = -1;
+  for (let i = 0; i < fs.length; i++) {
+    const f = fs[i]!;
+    if (f.field !== PLAYABLE_AUDIO_FORMAT_IDS || f.wire !== 2 || !(f.value instanceof Uint8Array))
+      continue;
+    const t = formatItag(f.value);
+    const rank = t == null ? -1 : AUDIO_ITAG_RANK.indexOf(t);
+    if (rank >= 0 && (best < 0 || rank < best)) best = rank;
+  }
+  return best >= 0 ? AUDIO_ITAG_RANK[best]! : -1;
+}
+
 function rewriteAbr(
   u: Uint8Array,
   videoId: string,
@@ -485,6 +503,7 @@ function rewriteAbr(
   let has144Buffered = false;
   let buffered144End = 0;
   let playerTimeMs = 0;
+  const bestAudio = bestPlayableAudioItag(fs);
   for (let i = 0; i < fs.length; i++) {
     const f = fs[i]!;
     if (f.field === 1 && f.wire === 2 && f.value instanceof Uint8Array) {
@@ -504,6 +523,10 @@ function rewriteAbr(
     if (f.field === PLAYABLE_AUDIO_FORMAT_IDS && f.wire === 2 && f.value instanceof Uint8Array) {
       const t = formatItag(f.value);
       if (t != null) playAud.push(t);
+      if (bestAudio >= 0 && t !== bestAudio) {
+        stripped = true;
+        continue;
+      }
     }
     if (f.field === PLAYABLE_VIDEO_FORMAT_IDS && f.wire === 2 && f.value instanceof Uint8Array) {
       const id = parseFormatId(f.value);
@@ -526,7 +549,13 @@ function rewriteAbr(
     out.push(f);
   }
   const playable =
-    "sabr playable audio=[" + playAud.join(",") + "] video=[" + playVid.join(",") + "]";
+    "sabr playable audio=[" +
+    playAud.join(",") +
+    "] pinned=" +
+    bestAudio +
+    " video=[" +
+    playVid.join(",") +
+    "]";
   if (playable !== lastPlayable) {
     lastPlayable = playable;
     console.info(playable);

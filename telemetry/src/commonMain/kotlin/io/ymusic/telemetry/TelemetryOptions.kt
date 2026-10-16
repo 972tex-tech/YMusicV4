@@ -40,7 +40,9 @@ fun SentryOptions.applyYMusicTelemetry() {
  */
 internal fun fingerprintPolicy(event: SentryEvent): SentryEvent {
     if (event.getTag(REPORT_TYPE_TAG) == REPORT_TYPE_FEEDBACK) {
-        event.fingerprint = mutableListOf(REPORT_TYPE_FEEDBACK, event.message?.message.orEmpty())
+        // sentry-java's captureMessage fills Message.formatted only; .message stays null.
+        val subject = event.message?.let { it.formatted ?: it.message }.orEmpty()
+        event.fingerprint = mutableListOf(REPORT_TYPE_FEEDBACK, subject)
         return event
     }
     event.setTag(REPORT_TYPE_TAG, REPORT_TYPE_ERROR)

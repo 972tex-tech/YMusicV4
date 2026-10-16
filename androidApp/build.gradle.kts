@@ -37,12 +37,12 @@ sentry {
 
 val appVersionName = appVersionName()
 
-// Outputs read YMusic-<versionName>-<abi|universal>-release.apk.
+// Outputs read YMusic-<versionName>-<abi>-release.apk.
 base { archivesName.set("YMusic-$appVersionName") }
 
 // The ABIs every native the app needs — quickjs, mse, ffmpeg — is built for. A device on any other
 // ABI could install an APK carrying only some of them and crash at the first engine call.
-val appAbis = listOf("arm64-v8a", "x86_64")
+val appAbis = FfmpegBuild.ANDROID_ABIS
 
 android {
     namespace = "io.ymusic.android"
@@ -56,7 +56,7 @@ android {
         applicationId = "io.ymusic.android"
         minSdk = Versions.minSdk
         targetSdk = Versions.targetSdk
-        versionCode = 4
+        versionCode = 5
         versionName = appVersionName
         buildConfigField("String", "SENTRY_DSN", "\"${sentryDsn()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${gitCommit()}\"")
@@ -77,14 +77,12 @@ android {
         buildConfig = true
     }
 
-    // One APK per ABI plus a universal one carrying both. All share the versionCode: they are the
-    // same release, and the updater may move a device from the universal APK to its own split.
+    // One APK per ABI, no universal one. All share the versionCode: they are the same release.
     splits {
         abi {
             isEnable = true
             reset()
             include(*appAbis.toTypedArray())
-            isUniversalApk = true
         }
     }
 
@@ -124,8 +122,6 @@ android {
         // and both the CLI and MSE load the same libav via $ORIGIN.
         jniLibs {
             useLegacyPackaging = true
-            // quickjs ships armeabi-v7a and ffmpeg x86; without the rest of the natives they are dead weight.
-            excludes += listOf("armeabi-v7a", "x86").map { "lib/$it/**" }
         }
     }
 

@@ -42,6 +42,22 @@ void mse_host_end_of_stream(MseHost *h);
 int mse_host_video_size(MseHost *h, int *w, int *ht);
 int mse_host_frames(MseHost *h);
 int64_t mse_host_samples_played(MseHost *h);
+#ifdef __ANDROID__
+/* Android plays the PCM ring through a Kotlin AudioSink thread (MseAudioOutput) driving these. */
+enum { MSE_DAC_GEN, MSE_DAC_RATE, MSE_DAC_CH, MSE_DAC_RUN, MSE_DAC_DRAIN, MSE_DAC_STATE_N };
+/* The sink's audio session id, 0 while there is none. */
+int mse_host_audio_session(MseHost *h);
+/* No PCM reaches the ring until a DAC is attached. Detach before mse_host_destroy. */
+void mse_host_dac_attach(MseHost *h, int attached);
+/* Copies up to cap bytes of ring PCM into dst while the DAC should run; while paused, first waits up
+   to wait_ms for a state change. Fills state: GEN changes on every flush (the DAC drops what it holds), RUN = play, DRAIN =
+   the stream ended and the ring is empty. Returns bytes copied, -1 once the host is released. */
+int mse_host_dac_poll(MseHost *h, uint8_t *dst, int cap, int wait_ms, int state[MSE_DAC_STATE_N]);
+/* Frames played out (-1 = unknown) / written since generation gen began; pending = the DAC still holds
+   audio; buffer_us = the DAC's own buffer (0 = unknown). */
+void mse_host_dac_report(MseHost *h, int gen, int64_t position, int64_t written, int pending, int64_t buffer_us);
+void mse_host_dac_session(MseHost *h, int session);
+#endif
 /* Last decoded BGRA. dst=NULL or cap too small → returns bytes needed (w/h/gen still set). 0 = none. */
 int mse_host_copy_frame(MseHost *h, uint8_t *dst, int cap, int *w, int *ht, int *gen);
 

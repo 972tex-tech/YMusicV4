@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Като системата</string>
     <string name="settings_theme_light">Светла</string>
     <string name="settings_theme_dark">Тъмна</string>
+    <string name="settings_theme_amoled">Черна (AMOLED)</string>
+    <string name="settings_accent_color">Акцентен цвят</string>
     <string name="settings_debug">Отстраняване на грешки</string>
     <string name="settings_show_fps">Показвай FPS</string>
     <string name="settings_show_fps_hint">Показва кадрите в секунда върху видеото в „Сега се изпълнява“. Отчитането спира при пауза или когато напуснете екрана.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">Споделяйте анонимни данни за използването, за да помогнете за подобряване на приложението.</string>
     <string name="settings_enable_pip">Картина в картината</string>
     <string name="settings_enable_pip_hint">Когато гледате видео в „Сега се изпълнява“ или на цял екран, продължава в малък прозорец, ако напуснете приложението. Иначе видеото минава в режим само аудио, докато се върнете.</string>
+    <string name="settings_audio_focus">Аудио фокус</string>
+    <string name="settings_audio_focus_calls">Пауза само при телефонни обаждания</string>
+    <string name="settings_audio_focus_apps">Пауза, когато други приложения възпроизвеждат звук</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Автоматично пропуска спонсорираните сегменти във видеоклиповете в YouTube. Изключете за отделно видео от „Сега се изпълнява“.</string>
     <string name="sponsor_block_included">SponsorBlock е включен за това видео</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">Сила на звука, скорост, еквалайзер и виртуализатор</string>
     <string name="settings_speed_hint">Скорост на възпроизвеждане и височина на тона</string>
     <string name="settings_eq_hint">10-лентов еквалайзер, усилване на басите, виртуализатор</string>
+    <string name="settings_system_audio_fx">Системни звукови ефекти</string>
+    <string name="settings_system_audio_fx_hint">Позволете на приложенията за еквалайзер на устройството да оформят звука. Изключва вградения еквалайзер.</string>
     <string name="sound_title">Звук</string>
     <string name="sound_playback">Възпроизвеждане</string>
-    <string name="sound_volume">Сила на звука %1$d%%</string>
+    <string name="sound_volume">Сила на звука %1$d%</string>
     <string name="sound_speed">Скорост</string>
     <string name="sound_pitch">Тон %1$s</string>
     <string name="sound_eq">Еквалайзер</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">Изтриване на коментара</string>
     <string name="video_details_delete_message">Да се изтрият ли окончателно коментарът ви и всички отговори към него?</string>
     <string name="video_details_deleted">Коментарът е изтрит</string>
+    <string name="menu_details_comments">Подробности и коментари</string>
+    <string name="menu_speed_pitch">Скорост и тон</string>
 </resources>

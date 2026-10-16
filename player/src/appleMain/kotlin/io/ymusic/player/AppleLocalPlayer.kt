@@ -199,7 +199,7 @@ internal class AppleLocalPlayer(
         player.pause()
         player.replaceCurrentItemWithPlayerItem(null)
         _progress.value = Progress()
-        _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
+        _status.update { it.copy(state = PlaybackState.Idle) }
         surface?.setVisible(false)
     }
 

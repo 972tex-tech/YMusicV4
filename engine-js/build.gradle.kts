@@ -36,7 +36,7 @@ plugins {
 // no runtime global, no extern. PRODUCTION is the same -Pproduction bake as Kotlin
 // BuildFlags.PRODUCTION: `debug(function () { return concat; })` does not call the thunk
 // when true (esbuild inlines; Closure DCE drops the dead branch).
-val production = providers.gradleProperty("production").map(String::toBoolean).getOrElse(false)
+val production = isProductionBuild()
 fun esbuildDefines(bundleName: String, backendVersion: Long) = arrayOf(
     "--define:BUNDLE_NAME=\"$bundleName\"",
     "--define:BACKEND_VERSION=$backendVersion",

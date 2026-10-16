@@ -219,6 +219,8 @@
     <string name="settings_theme_system">پیروی از سیستم</string>
     <string name="settings_theme_light">روشن</string>
     <string name="settings_theme_dark">تیره</string>
+    <string name="settings_theme_amoled">سیاه (AMOLED)</string>
+    <string name="settings_accent_color">رنگ تأکیدی</string>
     <string name="settings_debug">اشکال‌زدایی</string>
     <string name="settings_show_fps">نمایش FPS</string>
     <string name="settings_show_fps_hint">نمایش تعداد فریم در ثانیه روی ویدیوی در حال پخش. نمونه‌برداری هنگام توقف یا خروج از آن صفحه متوقف می‌شود.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">داده‌های ناشناس استفاده را برای بهبود برنامه به اشتراک بگذارید.</string>
     <string name="settings_enable_pip">تصویر در تصویر</string>
     <string name="settings_enable_pip_hint">هنگام تماشای ویدیو در صفحه پخش یا تمام‌صفحه، اگر از برنامه خارج شوید پخش در یک پنجره کوچک ادامه می‌یابد. در غیر این صورت تا بازگشت شما، ویدیو به حالت فقط صدا می‌رود.</string>
+    <string name="settings_audio_focus">فوکوس صدا</string>
+    <string name="settings_audio_focus_calls">توقف فقط هنگام تماس تلفنی</string>
+    <string name="settings_audio_focus_apps">توقف هنگام پخش صدا توسط برنامه‌های دیگر</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">رد کردن خودکار بخش‌های تبلیغاتی اسپانسر در ویدیوهای YouTube. برای هر ویدیو از صفحه پخش قابل خاموش کردن است.</string>
     <string name="sponsor_block_included">SponsorBlock برای این ویدیو فعال شد</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">بلندی صدا، سرعت، اکولایزر و مجازی‌ساز</string>
     <string name="settings_speed_hint">سرعت پخش و زیر و بمی</string>
     <string name="settings_eq_hint">اکولایزر ده‌باندی، تقویت بیس، مجازی‌ساز</string>
+    <string name="settings_system_audio_fx">استفاده از جلوه‌های صوتی سیستم</string>
+    <string name="settings_system_audio_fx_hint">اجازه دهید برنامه‌های اکولایزر دستگاه صدا را تنظیم کنند. اکولایزر داخلی برنامه خاموش می‌شود.</string>
     <string name="sound_title">صدا</string>
     <string name="sound_playback">پخش</string>
-    <string name="sound_volume">بلندی صدا %1$d%%</string>
+    <string name="sound_volume">بلندی صدا %1$d%</string>
     <string name="sound_speed">سرعت</string>
     <string name="sound_pitch">زیر و بمی %1$s</string>
     <string name="sound_eq">اکولایزر</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">حذف نظر</string>
     <string name="video_details_delete_message">نظر شما و همه پاسخ‌های آن برای همیشه حذف شود؟</string>
     <string name="video_details_deleted">نظر حذف شد</string>
+    <string name="menu_details_comments">جزئیات و نظرات</string>
+    <string name="menu_speed_pitch">سرعت و زیر و بمی</string>
 </resources>

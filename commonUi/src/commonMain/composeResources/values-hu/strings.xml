@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Rendszer szerint</string>
     <string name="settings_theme_light">Világos</string>
     <string name="settings_theme_dark">Sötét</string>
+    <string name="settings_theme_amoled">Fekete (AMOLED)</string>
+    <string name="settings_accent_color">Kiemelőszín</string>
     <string name="settings_debug">Hibakeresés</string>
     <string name="settings_show_fps">FPS megjelenítése</string>
     <string name="settings_show_fps_hint">Másodpercenkénti képkockaszám megjelenítése a Most szól videón. A mérés leáll szüneteltetéskor vagy a képernyő elhagyásakor.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">Névtelen használati adatok megosztása az alkalmazás fejlesztéséhez.</string>
     <string name="settings_enable_pip">Kép a képben</string>
     <string name="settings_enable_pip_hint">Ha a Most szól képernyőn vagy teljes képernyőn nézel videót, kis ablakban folytatódik, amikor elhagyod az alkalmazást. Ellenkező esetben a videó csak hangra vált, amíg vissza nem térsz.</string>
+    <string name="settings_audio_focus">Hangfókusz</string>
+    <string name="settings_audio_focus_calls">Szüneteltetés csak telefonhívásnál</string>
+    <string name="settings_audio_focus_apps">Szüneteltetés, ha más alkalmazás hangot játszik le</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">A szponzorált részek automatikus átugrása a YouTube-videókban. Egy adott videónál a Most szól képernyőn kapcsolható ki.</string>
     <string name="sponsor_block_included">SponsorBlock bekapcsolva ehhez a videóhoz</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">Hangerő, sebesség, hangszínszabályzó és virtualizáló</string>
     <string name="settings_speed_hint">Lejátszási sebesség és hangmagasság</string>
     <string name="settings_eq_hint">Tízsávos hangszínszabályzó, basszuskiemelés, virtualizáló</string>
+    <string name="settings_system_audio_fx">Rendszer hangeffektusainak használata</string>
+    <string name="settings_system_audio_fx_hint">Az eszköz hangszínszabályzó alkalmazásai alakíthatják a hangot. Kikapcsolja az alkalmazás hangszínszabályzóját.</string>
     <string name="sound_title">Hang</string>
     <string name="sound_playback">Lejátszás</string>
-    <string name="sound_volume">Hangerő %1$d%%</string>
+    <string name="sound_volume">Hangerő %1$d%</string>
     <string name="sound_speed">Sebesség</string>
     <string name="sound_pitch">Hangmagasság %1$s</string>
     <string name="sound_eq">Hangszínszabályzó</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">Hozzászólás törlése</string>
     <string name="video_details_delete_message">Véglegesen törlöd a hozzászólásodat és az összes rá érkezett választ?</string>
     <string name="video_details_deleted">Hozzászólás törölve</string>
+    <string name="menu_details_comments">Részletek és hozzászólások</string>
+    <string name="menu_speed_pitch">Sebesség és hangmagasság</string>
 </resources>

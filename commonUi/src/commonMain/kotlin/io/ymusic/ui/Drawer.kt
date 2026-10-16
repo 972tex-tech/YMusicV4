@@ -193,10 +193,7 @@ private fun DrawerRow(icon: ImageVector, label: String, active: Boolean, onClick
                 icon,
                 null,
                 Modifier.size(23.dp),
-                tint = when {
-                    active -> DesignColors.Accent
-                    else -> DesignColors.Ink
-                },
+                tint = if (active) scheme.onPrimaryContainer else DesignColors.Ink,
             )
             val labelStyle = when {
                 active -> TextStyle(fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold, color = scheme.onPrimaryContainer)

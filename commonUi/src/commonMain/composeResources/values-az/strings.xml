@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Sistemə uyğun</string>
     <string name="settings_theme_light">Açıq</string>
     <string name="settings_theme_dark">Tünd</string>
+    <string name="settings_theme_amoled">Qara (AMOLED)</string>
+    <string name="settings_accent_color">Vurğu rəngi</string>
     <string name="settings_debug">Sazlama</string>
     <string name="settings_show_fps">FPS-i göstər</string>
     <string name="settings_show_fps_hint">İndi oxudulur videosunun üzərində saniyədəki kadr sayını göstərir. Fasilədə və ya ekrandan çıxdıqda ölçmə dayanır.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">Tətbiqi təkmilləşdirməyə kömək etmək üçün anonim istifadə məlumatlarını paylaşın.</string>
     <string name="settings_enable_pip">Şəkil içində şəkil</string>
     <string name="settings_enable_pip_hint">İndi oxudulur və ya tam ekranda video izləyərkən tətbiqdən çıxsanız, kiçik pəncərədə davam edir. Əks halda siz qayıdana qədər video yalnız audioya keçir.</string>
+    <string name="settings_audio_focus">Audio fokus</string>
+    <string name="settings_audio_focus_calls">Yalnız telefon zəngləri üçün dayandır</string>
+    <string name="settings_audio_focus_apps">Digər tətbiqlər səs çalanda dayandır</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube videolarında sponsorlu hissələri avtomatik keçir. Bir video üçün İndi oxudulur ekranından söndürün.</string>
     <string name="sponsor_block_included">SponsorBlock bu video üçün aktivdir</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">Səs səviyyəsi, sürət, ekvalayzer və virtualizator</string>
     <string name="settings_speed_hint">Oxutma sürəti və tonu</string>
     <string name="settings_eq_hint">On zolaqlı ekvalayzer, bas gücləndirici, virtualizator</string>
+    <string name="settings_system_audio_fx">Sistem səs effektlərindən istifadə et</string>
+    <string name="settings_system_audio_fx_hint">Cihazınızdakı ekvalayzer tətbiqləri səsi formalaşdırsın. Tətbiqdaxili ekvalayzeri söndürür.</string>
     <string name="sound_title">Səs</string>
     <string name="sound_playback">Oxutma</string>
-    <string name="sound_volume">Səs səviyyəsi %1$d%%</string>
+    <string name="sound_volume">Səs səviyyəsi %1$d%</string>
     <string name="sound_speed">Sürət</string>
     <string name="sound_pitch">Ton %1$s</string>
     <string name="sound_eq">Ekvalayzer</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">Şərhi sil</string>
     <string name="video_details_delete_message">Şərhiniz və bütün cavabları həmişəlik silinsin?</string>
     <string name="video_details_deleted">Şərh silindi</string>
+    <string name="menu_details_comments">Təfərrüatlar və şərhlər</string>
+    <string name="menu_speed_pitch">Sürət və ton</string>
 </resources>

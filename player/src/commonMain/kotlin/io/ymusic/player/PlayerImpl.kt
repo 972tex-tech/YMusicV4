@@ -88,6 +88,9 @@ internal class PlayerImpl(
     private val _audioTracks = MutableStateFlow(AudioTrackState.DEFAULT)
     override val audioTracks: StateFlow<AudioTrackState> = _audioTracks.asStateFlow()
 
+    private val _audioSessionId = MutableStateFlow(0)
+    override val audioSessionId: StateFlow<Int> = _audioSessionId.asStateFlow()
+
     private val _watchNextSeen = MutableSharedFlow<WatchNextSeen>(extraBufferCapacity = 8)
     override val watchNextSeen: SharedFlow<WatchNextSeen> = _watchNextSeen.asSharedFlow()
 
@@ -100,6 +103,19 @@ internal class PlayerImpl(
     private var currentConfig: PlaybackConfig
         get() = _config.value
         set(value) { _config.value = value }
+
+    private var ducked = false
+
+    /** What the engines apply: [currentConfig] with the audio effects flattened while they are off
+     *  and the volume lowered while [ducked]. */
+    private val engineConfig: PlaybackConfig
+        get() = currentConfig.let {
+            if (it.inAppAudioFx) {
+                it
+            } else {
+                it.copy(eqBands = List(10) { 0f }, bassBoostDb = 0f, virtualizer = 1f, preampDb = 0f)
+            }
+        }.let { if (ducked) it.copy(volume = it.volume * DUCK_VOLUME) else it }
 
     /** The engine bound to the current item — internal routing state; not exposed (the UI hands one
      *  video container to the engines and each owns its own surface, so it never needs this). */
@@ -315,6 +331,12 @@ internal class PlayerImpl(
         get() = currentConfig.volume
         set(value) = pushConfig(currentConfig.copy(volume = value.coerceIn(0f, 1f)))
 
+    override fun setDucked(ducked: Boolean) {
+        if (this.ducked == ducked) return
+        this.ducked = ducked
+        _currentEngine.value?.setConfig(engineConfig)
+    }
+
     override var speed: Float
         get() = currentConfig.speed
         set(value) = pushConfig(currentConfig.copy(speed = value.coerceIn(0.25f, 4f)))
@@ -332,6 +354,8 @@ internal class PlayerImpl(
         pushConfig(currentConfig.copy(virtualizer = width.coerceIn(0f, 2f)))
 
     override fun setPreamp(db: Float) = pushConfig(currentConfig.copy(preampDb = db.coerceIn(-12f, 12f)))
+
+    override fun setInAppAudioFx(enabled: Boolean) = pushConfig(currentConfig.copy(inAppAudioFx = enabled))
 
     override fun setAudioOnly(audioOnly: Boolean) {
         pushConfig(currentConfig.copy(audioOnly = audioOnly))
@@ -361,7 +385,7 @@ internal class PlayerImpl(
     private fun pushConfig(next: PlaybackConfig) {
         if (next == currentConfig) return
         currentConfig = next
-        _currentEngine.value?.setConfig(next)
+        _currentEngine.value?.setConfig(engineConfig)
     }
 
     override fun selectAudioTrack(id: String) {
@@ -422,7 +446,7 @@ internal class PlayerImpl(
         val factory = engines.youtube ?: return
         val engine = ytEngine ?: factory().also { ytEngine = it }
         engine.init()
-        engine.setConfig(currentConfig)
+        engine.setConfig(engineConfig)
     }
 
     override fun pcmLevels(out: FloatArray): Int =
@@ -440,6 +464,7 @@ internal class PlayerImpl(
         localEngine = null
         ytEngine = null
         _currentEngine.value = null
+        _audioSessionId.value = 0
     }
 
     private fun publishQueue(refreshNext: Boolean = true) {
@@ -679,9 +704,9 @@ internal class PlayerImpl(
     private fun loadOn(engine: MediaEngine<*>, item: PlayableItem, startPositionMs: Long) {
         when (item) {
             is PlayableItem.LocalMedia ->
-                (engine as LocalPlayer).load(item, startPositionMs, playWhenReadyIntent, currentConfig)
+                (engine as LocalPlayer).load(item, startPositionMs, playWhenReadyIntent, engineConfig)
             is PlayableItem.YtMedia ->
-                (engine as YtEngine).load(item, startPositionMs, playWhenReadyIntent, currentConfig)
+                (engine as YtEngine).load(item, startPositionMs, playWhenReadyIntent, engineConfig)
         }
     }
 
@@ -733,8 +758,13 @@ internal class PlayerImpl(
         holdPrepareTimeout = false
         previous?.stop()
         _currentEngine.value = engine
-        if (engine == null) return
+        if (engine == null) {
+            _audioSessionId.value = 0
+            return
+        }
         engineJobs += scope.launch {
+            // An engine stays Ended until the next load reaches it; only entering Ended ends a track.
+            var ended = engine.status.value.state.isEnded()
             engine.status.collect { snapshot ->
                 if (holdPrepareTimeout && snapshot.state.notYetLoaded()) {
                     maybePreloadNext()
@@ -742,7 +772,9 @@ internal class PlayerImpl(
                 }
                 holdPrepareTimeout = false
                 publishStatus(snapshot)
-                if (snapshot.state.isEnded()) onTrackEnded() else maybePreloadNext()
+                val wasEnded = ended
+                ended = snapshot.state.isEnded()
+                if (!ended) maybePreloadNext() else if (!wasEnded) onTrackEnded()
             }
         }
         engineJobs += scope.launch {
@@ -755,6 +787,7 @@ internal class PlayerImpl(
         bindCapability(engine as? CaptionSelectable, _captions, CaptionState.DEFAULT) { it.captions }
         bindCapability(engine as? CaptionRenderable, _captionLines, emptyList()) { it.captionLines }
         bindCapability(engine as? AudioTrackSelectable, _audioTracks, AudioTrackState.DEFAULT) { it.audioTracks }
+        bindCapability(engine as? AudioSessionSource, _audioSessionId, 0) { it.audioSessionId }
         (engine as? YtEngine)?.let { yt ->
             engineJobs += scope.launch {
                 yt.watchNextSeen.collect { _watchNextSeen.tryEmit(it) }
@@ -917,6 +950,8 @@ internal class PlayerImpl(
         this is PlaybackState.Uninitialized || this == PlaybackState.Idle
 
     private companion object {
+        const val DUCK_VOLUME = 0.3f
+
         /** Played longer than this, "previous" restarts the current track instead. */
         const val SMART_PREV_THRESHOLD_MS = 3_000L
 

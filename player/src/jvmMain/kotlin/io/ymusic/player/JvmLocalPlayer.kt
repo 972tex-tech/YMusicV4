@@ -207,12 +207,7 @@ internal class JvmLocalPlayer(
         val gen = loadGen.incrementAndGet()
         uiEpoch.incrementAndGet()
         pendingSeekMs.set(-1)
-        _status.update {
-            it.copy(
-                state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false),
-                videoSize = null,
-            )
-        }
+        _status.update { it.copy(state = PlaybackState.Prepared(playWhenReady, buffering = true, ended = false)) }
         _progress.value = Progress(positionMs = startPositionMs.coerceAtLeast(0L))
         _videoQuality.value = VideoQualityState.DEFAULT.copy(preferredQuality = preferVideoQuality)
         showSurface(true)
@@ -327,7 +322,7 @@ internal class JvmLocalPlayer(
         synchronized(nativeCues) { nativeCues.clear() }
         _captionLines.value = emptyList()
         _progress.value = Progress()
-        _status.update { it.copy(state = PlaybackState.Idle, videoSize = null) }
+        _status.update { it.copy(state = PlaybackState.Idle) }
         showSurface(false)
         dispatch {
             pumping = false

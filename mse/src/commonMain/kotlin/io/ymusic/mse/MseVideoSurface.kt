@@ -18,4 +18,7 @@ expect class MseVideoSurface {
 
     /** Fixed-position log-frequency bars in 0..1. Returns count written. */
     fun pcmLevels(out: FloatArray): Int
+
+    /** Android: the audio output's session id, for system audio effects. 0 = none (or not Android). */
+    fun audioSessionId(): Int
 }

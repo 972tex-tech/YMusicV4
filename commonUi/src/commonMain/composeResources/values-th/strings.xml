@@ -218,6 +218,8 @@
     <string name="settings_theme_system">ตามระบบ</string>
     <string name="settings_theme_light">สว่าง</string>
     <string name="settings_theme_dark">มืด</string>
+    <string name="settings_theme_amoled">ดำ (AMOLED)</string>
+    <string name="settings_accent_color">สีเน้น</string>
     <string name="settings_debug">ดีบัก</string>
     <string name="settings_show_fps">แสดง FPS</string>
     <string name="settings_show_fps_hint">แสดงจำนวนภาพต่อวินาทีซ้อนบนวิดีโอที่กำลังเล่น การวัดจะหยุดเมื่อหยุดชั่วคราวหรือออกจากหน้าจอนั้น</string>
@@ -357,6 +359,9 @@
     <string name="settings_stats_hint">แชร์ข้อมูลการใช้งานแบบไม่ระบุตัวตนเพื่อช่วยปรับปรุงแอป</string>
     <string name="settings_enable_pip">การแสดงภาพซ้อนภาพ</string>
     <string name="settings_enable_pip_hint">เมื่อดูวิดีโอในหน้ากำลังเล่นหรือเต็มหน้าจอ จะเล่นต่อในหน้าต่างขนาดเล็กหากคุณออกจากแอป หากปิดไว้ วิดีโอจะเปลี่ยนเป็นเสียงเท่านั้นจนกว่าคุณจะกลับมา</string>
+    <string name="settings_audio_focus">โฟกัสเสียง</string>
+    <string name="settings_audio_focus_calls">หยุดชั่วคราวเฉพาะเมื่อมีสายโทรเข้า</string>
+    <string name="settings_audio_focus_apps">หยุดชั่วคราวเมื่อแอปอื่นเล่นเสียง</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">ข้ามช่วงผู้สนับสนุนในวิดีโอ YouTube โดยอัตโนมัติ ปิดสำหรับวิดีโอใดก็ได้จากหน้ากำลังเล่น</string>
     <string name="sponsor_block_included">เปิด SponsorBlock สำหรับวิดีโอนี้แล้ว</string>
@@ -365,9 +370,11 @@
     <string name="settings_sound_hint">ระดับเสียง ความเร็ว อีควอไลเซอร์ และเวอร์ชวลไลเซอร์</string>
     <string name="settings_speed_hint">ความเร็วในการเล่นและระดับเสียงสูงต่ำ</string>
     <string name="settings_eq_hint">อีควอไลเซอร์ 10 แบนด์ เพิ่มเสียงเบส เวอร์ชวลไลเซอร์</string>
+    <string name="settings_system_audio_fx">ใช้เอฟเฟกต์เสียงของระบบ</string>
+    <string name="settings_system_audio_fx_hint">ให้แอปอีควอไลเซอร์ในอุปกรณ์ปรับแต่งเสียง ปิดอีควอไลเซอร์ในแอป</string>
     <string name="sound_title">เสียง</string>
     <string name="sound_playback">การเล่น</string>
-    <string name="sound_volume">ระดับเสียง %1$d%%</string>
+    <string name="sound_volume">ระดับเสียง %1$d%</string>
     <string name="sound_speed">ความเร็ว</string>
     <string name="sound_pitch">ระดับเสียงสูงต่ำ %1$s</string>
     <string name="sound_eq">อีควอไลเซอร์</string>
@@ -509,4 +516,6 @@
     <string name="video_details_delete_title">ลบความคิดเห็น</string>
     <string name="video_details_delete_message">ลบความคิดเห็นของคุณและการตอบกลับทั้งหมดอย่างถาวรไหม</string>
     <string name="video_details_deleted">ลบความคิดเห็นแล้ว</string>
+    <string name="menu_details_comments">รายละเอียดและความคิดเห็น</string>
+    <string name="menu_speed_pitch">ความเร็วและระดับเสียง</string>
 </resources>

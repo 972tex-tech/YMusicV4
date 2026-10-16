@@ -48,6 +48,9 @@ import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.dialog_cancel
+import io.ymusic.ui.resources.settings_audio_focus
+import io.ymusic.ui.resources.settings_audio_focus_apps
+import io.ymusic.ui.resources.settings_audio_focus_calls
 import io.ymusic.ui.resources.settings_auto_update
 import io.ymusic.ui.resources.settings_auto_update_hint
 import io.ymusic.ui.resources.settings_changelog
@@ -78,6 +81,7 @@ import io.ymusic.ui.resources.settings_sponsor_block_hint
 import io.ymusic.ui.resources.settings_stats
 import io.ymusic.ui.resources.settings_stats_hint
 import io.ymusic.ui.resources.settings_theme
+import io.ymusic.ui.resources.settings_theme_amoled
 import io.ymusic.ui.resources.settings_theme_dark
 import io.ymusic.ui.resources.settings_theme_light
 import io.ymusic.ui.resources.settings_theme_system
@@ -102,6 +106,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
     val scope = rememberCoroutineScope()
     val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
     val theme by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
+    val accent by remember(graph) { graph.settings.flow(AppSettings.themeAccent) }.collectAsState()
     // The content locale LIVES in the engine; this screen has exactly two jobs: ask the engine for
     // the region menu + the current pick (one call, when the screen opens and again after a pick),
     // and report picks with applyYtLocale. There is ONE language: the app language doubles as the
@@ -138,6 +143,13 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
                 current = theme,
                 onSelect = { value -> scope.launch { graph.settings.put(AppSettings.theme, value) } },
             )
+            AccentRow(
+                current = accentColorOf(accent),
+                onPick = { color ->
+                    val hex = accentHexOf(color).takeIf { it != accentHexOf(DefaultAccent) }.orEmpty()
+                    scope.launch { graph.settings.put(AppSettings.themeAccent, hex) }
+                },
+            )
             LanguageRow(
                 current = uiLanguage.ifBlank { defaultUiLanguageTag() },
                 onSelect = { tag ->
@@ -167,6 +179,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             SoundRow(graph, speed = true)
             SoundRow(graph, speed = false)
             ToggleRow(graph, AppSettings.enablePip, Res.string.settings_enable_pip, Res.string.settings_enable_pip_hint)
+            if (graph.audioFocusSetting) AudioFocusRow(graph)
             ToggleRow(
                 graph,
                 AppSettings.sponsorBlockEnabled,
@@ -192,6 +205,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             ToggleRow(graph, AppSettings.stats, Res.string.settings_stats, Res.string.settings_stats_hint)
         }
         SettingsSection(Res.string.settings_section_about) {
+            VersionsRow(graph)
             // Download updates in the background (on by default); installing still waits for a tap.
             if (graph.updates != null) {
                 ToggleRow(graph, AppSettings.autoDownloadUpdates, Res.string.settings_auto_update, Res.string.settings_auto_update_hint)
@@ -200,7 +214,6 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             config?.changelogUrl?.let { LinkRow(Res.string.settings_changelog, it) }
             LinkRow(Res.string.settings_source_code, SourceCodeUrl)
             LicensesRow()
-            VersionsRow(graph)
         }
         SettingsSection(Res.string.settings_debug) {
             ToggleRow(graph, AppSettings.showFps, Res.string.settings_show_fps, Res.string.settings_show_fps_hint)
@@ -233,7 +246,7 @@ private fun SoundRow(graph: AppGraph, speed: Boolean) {
     }
     if (open) {
         if (speed) PlaybackFxSheet(graph.player, onDismiss = { open = false })
-        else EqualizerFxSheet(graph.player, onDismiss = { open = false })
+        else EqualizerFxSheet(graph, onDismiss = { open = false })
     }
 }
 
@@ -262,6 +275,47 @@ internal fun ToggleRow(graph: AppGraph, setting: BoolSetting, title: StringResou
             )
         }
         CompactSwitch(enabled)
+    }
+}
+
+private val AudioFocusOptions: List<Pair<String, StringResource>> = listOf(
+    AppSettings.AUDIO_FOCUS_APPS to Res.string.settings_audio_focus_apps,
+    AppSettings.AUDIO_FOCUS_CALLS to Res.string.settings_audio_focus_calls,
+)
+
+@Composable
+private fun AudioFocusRow(graph: AppGraph) {
+    val scope = rememberCoroutineScope()
+    val current by remember(graph) { graph.settings.flow(AppSettings.audioFocus) }.collectAsState()
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clickable { open = true }
+                .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
+        ) {
+            Text(
+                stringResource(Res.string.settings_audio_focus),
+                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            )
+            Text(
+                stringResource((AudioFocusOptions.firstOrNull { it.first == current } ?: AudioFocusOptions.first()).second),
+                style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+                modifier = Modifier.padding(top = DesignSpacing.Space2),
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            AudioFocusOptions.forEach { (value, label) ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(label)) },
+                    onClick = {
+                        open = false
+                        scope.launch { graph.settings.put(AppSettings.audioFocus, value) }
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -501,6 +555,7 @@ private val ThemeOptions: List<Pair<String, StringResource>> = listOf(
     "" to Res.string.settings_theme_system,
     "light" to Res.string.settings_theme_light,
     "dark" to Res.string.settings_theme_dark,
+    "amoled" to Res.string.settings_theme_amoled,
 )
 
 @Composable

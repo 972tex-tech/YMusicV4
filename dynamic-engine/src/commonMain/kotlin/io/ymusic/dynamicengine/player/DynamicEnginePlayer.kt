@@ -319,16 +319,28 @@ class DynamicEnginePlayer private constructor(
             onBackendVersion: ((Int) -> Unit)? = null,
         ): DynamicEnginePlayer {
             var nativeMse: NativeMseHost? = null
-            val engine = DynamicEngine.createEngine(
-                client, appVersion, dispatcher, logger, engineJs, cacheStore, cookieJar, settings,
-            ) { parked ->
-                if (videoSurface != null) nativeMse = bindNativeMse(this, videoSurface)
-                installMainProxy(parked) { cmd ->
-                    val mgr = main ?: throw NoMainEngine()
-                    mgr.use { it.openPipe(cmd) }
+            val engine = try {
+                DynamicEngine.createEngine(
+                    client, appVersion, dispatcher, logger, engineJs, cacheStore, cookieJar, settings,
+                ) { parked ->
+                    if (videoSurface != null) nativeMse = bindNativeMse(this, videoSurface)
+                    installMainProxy(parked) { cmd ->
+                        val mgr = main ?: throw NoMainEngine()
+                        mgr.use { it.openPipe(cmd) }
+                    }
                 }
+            } catch (t: Throwable) {
+                runCatching { nativeMse?.close() }.exceptionOrNull()?.let(t::addSuppressed)
+                throw t
             }
-            onBackendVersion?.invoke(engine.healthCheck())
+            try {
+                onBackendVersion?.invoke(engine.healthCheck())
+            } catch (t: Throwable) {
+                /* JS stops before the C host it calls into is freed. */
+                runCatching { engine.closeNow() }.exceptionOrNull()?.let(t::addSuppressed)
+                runCatching { nativeMse?.close() }.exceptionOrNull()?.let(t::addSuppressed)
+                throw t
+            }
             logger?.bindMseNativeLogs()
             val jsEventBridge: (String) -> Unit = { eventName -> engine.fire(eventName) }
             MseJsEventBridge.setJsEventBridge(jsEventBridge)

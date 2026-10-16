@@ -27,13 +27,20 @@
 #endif
 #ifdef __ANDROID__
 #include <android/native_window.h>
-#include <SLES/OpenSLES.h>
-#include <SLES/OpenSLES_Android.h>
 static void blit_window(ANativeWindow *win, int w, int h, const uint8_t *bgra);
 #endif
 
 #if defined(MSE_AQ) || defined(__ANDROID__)
 #define MSE_DAC 1
+#define DAC_CHECKPOINTS 8
+/* Handover holds cover queue latency, not a wall clock that ran away while audio was missing. */
+#define DAC_HANDOVER_MAX_S 0.5
+#define DAC_START_WAIT_NS 2e9
+#endif
+#ifdef __ANDROID__
+#define DAC_FIRST_REPORT_NS 1e9
+/* Longest the clock runs ahead of the sink's last position report. */
+#define DAC_EXTRAPOLATE_S 0.05
 #endif
 
 static void (*g_js_event)(const char *name);
@@ -99,6 +106,26 @@ struct MseHost {
     int aq_buf_bytes;
     int flushing;
     double dac_tick_ns;
+    /* Last clock handed out, and whether it came from the audio device (see dac_handover). */
+    double clk_last;
+    int clk_dac;
+    double flush_ns;
+    /* Device frames since the last ring flush: dac_pos audible (Android: the sink's report;
+       AudioQueue: handed to the queue), dac_polled read out of the ring. samples_played is
+       dac_pos - dac_base. */
+    int64_t dac_pos;
+    int64_t dac_base;
+    int64_t dac_polled;
+    /* PCM is stretched before the ring, so a rate change takes effect at the frame where the old
+       rate's audio ends: device frames before dac_cp_edge[i] play at dac_cp_speed[i]. */
+    int64_t dac_cp_edge[DAC_CHECKPOINTS];
+    double dac_cp_speed[DAC_CHECKPOINTS];
+    int dac_cp_n;
+    /* Set by every ring flush: the first PCM written after it puts seek_base at its own pts. */
+    int pcm_anchor;
+    /* The audio stream ended (endOfStream, all of it played) while the media runs on: the clock
+       continues on wall time instead of freezing at the last sample. */
+    int audio_out;
 #endif
 #ifdef MSE_AQ
     AudioQueueRef aq;
@@ -106,17 +133,18 @@ struct MseHost {
     struct AqFadeJob *aq_fade;
 #endif
 #ifdef __ANDROID__
-    /* Serializes host-side calls on the OpenSL objects against their Destroy. Never taken by
-       sl_callback; never acquired while holding mu. */
-    pthread_mutex_t sl_mu;
-    SLObjectItf sl_engine;
-    SLObjectItf sl_mix;
-    SLObjectItf sl_player;
-    SLPlayItf sl_play;
-    SLAndroidSimpleBufferQueueItf sl_bq;
-    uint8_t *sl_bufs;
-    int sl_nbufs;
-    int sl_i;
+    /* The ring is drained by the Kotlin AudioSink thread (MseAudioOutput) through mse_host_dac_*.
+       dac_* positions are sink output frames since the last ring flush. */
+    int dac_attached;
+    int dac_live;
+    /* audio_done, refreshed by the decode loop: the poll must not touch av (mse_host_reset swaps it). */
+    int dac_drain;
+    int dac_pending;
+    /* The track's own buffer: decoding must run that far past the clock or a full-buffer start never comes. */
+    double dac_buffer_s;
+    double dac_start_ns;
+    int64_t dac_written;
+    _Atomic int dac_session;
 #endif
 };
 
@@ -192,7 +220,83 @@ static double play_speed(MseHost *h)
     return (double)s;
 }
 
-/* h->mu held. Do not take MseAv locks: OpenSL's callback needs h->mu, and
+#ifdef MSE_DAC
+/* h->mu held. Media seconds of `frames` device frames past dac_base. */
+static double dac_media_s(MseHost *h, double frames, double sp)
+{
+    double t = 0, at = 0;
+    int i;
+    if (h->rate <= 0)
+        return 0;
+    for (i = 0; i < h->dac_cp_n; i++) {
+        double end = (double)(h->dac_cp_edge[i] - h->dac_base);
+        if (end <= at)
+            continue;
+        if (frames <= end)
+            return t + (frames - at) * h->dac_cp_speed[i] / (double)h->rate;
+        t += (end - at) * h->dac_cp_speed[i] / (double)h->rate;
+        at = end;
+    }
+    return t + (frames - at) * sp / (double)h->rate;
+}
+
+/* h->mu held. Fold checkpoints the audible position has passed into seek_base. */
+static void dac_cp_fold(MseHost *h, int64_t audible)
+{
+    while (h->dac_cp_n > 0 && audible >= h->dac_cp_edge[0]) {
+        if (h->rate > 0 && h->dac_cp_edge[0] > h->dac_base) {
+            h->seek_base += (double)(h->dac_cp_edge[0] - h->dac_base) / (double)h->rate * h->dac_cp_speed[0];
+            h->dac_base = h->dac_cp_edge[0];
+        }
+        h->dac_cp_n--;
+        memmove(h->dac_cp_edge, h->dac_cp_edge + 1, (size_t)h->dac_cp_n * sizeof(h->dac_cp_edge[0]));
+        memmove(h->dac_cp_speed, h->dac_cp_speed + 1, (size_t)h->dac_cp_n * sizeof(h->dac_cp_speed[0]));
+    }
+    h->samples_played = h->dac_pos > h->dac_base ? h->dac_pos - h->dac_base : 0;
+}
+
+/* h->mu held. The caller moved seek_base to the current media time: count from dac_pos. */
+static void dac_rebase(MseHost *h)
+{
+    int i, w = 0;
+    h->dac_base = h->dac_pos;
+    h->samples_played = 0;
+    for (i = 0; i < h->dac_cp_n; i++) {
+        if (h->dac_cp_edge[i] > h->dac_pos) {
+            h->dac_cp_edge[w] = h->dac_cp_edge[i];
+            h->dac_cp_speed[w] = h->dac_cp_speed[i];
+            w++;
+        }
+    }
+    h->dac_cp_n = w;
+}
+
+#ifdef MSE_AQ
+/* Frames handed to the AudioQueue that have not reached the speaker: ~4 buffers. */
+static int64_t aq_latency_frames(MseHost *h)
+{
+    int fb = h->ch > 0 ? h->ch * 2 : 4;
+    int one = h->aq_buf_bytes > 0 ? h->aq_buf_bytes / fb : (int)(0.02 * h->rate);
+    return (int64_t)one * 4;
+}
+#endif
+#endif
+
+#ifdef MSE_DAC
+/* h->mu held. Wall time → audio clock never steps back (Media3 DefaultMediaClock): while the
+   device clock is behind what was already handed out, hold there until it catches up. */
+static double dac_handover(MseHost *h, double dac)
+{
+    if (!h->clk_dac) {
+        if (h->playing && dac < h->clk_last && dac > h->clk_last - DAC_HANDOVER_MAX_S)
+            return h->clk_last;
+        h->clk_dac = 1;
+    }
+    return dac;
+}
+#endif
+
+/* h->mu held. Do not take MseAv locks: the DAC callback/poll needs h->mu, and
    MediaCodec configure holds a->mu for tens of ms (audio-only → Auto). */
 static double clock_with_span(MseHost *h, int have, double first, double last, int has_video)
 {
@@ -214,26 +318,57 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
         if (h->playing)
             h->origin_ns = now_ns();
         t = hold;
+#ifdef MSE_DAC
+        h->clk_dac = 0;
+#endif
     } else {
-        if (h->playing && h->origin_ns > 0)
+        int wait_audio = 0;
+#ifdef MSE_DAC
+        /* After a flush, a stream with audio holds the clock until the device starts (Chrome keeps
+           currentTime until audio covers it) rather than running ahead on wall time: the audio
+           would start behind it. A device that never starts falls back to wall time. */
+        wait_audio = h->rate > 0 && !h->aq_started && !h->audio_out &&
+                     now_ns() - h->flush_ns < DAC_START_WAIT_NS;
+#endif
+        if (wait_audio && h->playing)
+            h->origin_ns = now_ns();
+        else if (h->playing && h->origin_ns > 0)
             t += (now_ns() - h->origin_ns) / 1e9 * play_speed(h);
 #ifdef MSE_DAC
         /* Audio is the master clock while the DAC is running (Chrome
            AudioRendererImpl). Wall time was winning after sink-delay
            subtract because dac < wall, so video stayed ~100ms early. */
-        if (h->aq_started && h->rate > 0 && h->samples_played > 0) {
+#ifdef __ANDROID__
+        /* The sink reports what has left the speaker. Until its first report the clock holds at the
+           start (the AudioTrack is still filling); a sink that never reports falls back to wall time. */
+        if (h->aq_started && h->rate > 0 && !h->audio_out &&
+            (h->dac_live || now_ns() - h->dac_start_ns < DAC_FIRST_REPORT_NS)) {
             double sp = play_speed(h);
-            double dac = h->seek_base + (double)h->samples_played / (double)h->rate * sp;
+            double dac = h->seek_base + dac_media_s(h, (double)h->samples_played, sp);
+            /* Wall time stands still while the clock holds, so a sink that never reports falls back
+               from the held position instead of a second ahead of it. */
+            if (!h->dac_live && h->playing)
+                h->origin_ns = now_ns();
+            if (h->playing && h->dac_tick_ns > 0) {
+                double extra = (now_ns() - h->dac_tick_ns) / 1e9;
+                if (extra > DAC_EXTRAPOLATE_S)
+                    extra = DAC_EXTRAPOLATE_S;
+                if (extra > 0)
+                    dac += extra * sp;
+            }
+            t = dac_handover(h, dac);
+        } else {
+            h->clk_dac = 0;
+        }
+#else
+        if (h->aq_started && h->rate > 0 && h->samples_played > 0 && !h->audio_out) {
+            double sp = play_speed(h);
+            double dac = h->seek_base +
+                         dac_media_s(h, (double)(h->samples_played - aq_latency_frames(h)), sp);
             double one = 0.02;
-            int nbufs = 4;
             if (h->aq_buf_bytes > 0 && h->ch > 0)
                 one = (double)h->aq_buf_bytes /
                       (double)(h->rate * (h->ch > 0 ? h->ch * 2 : 4));
-#ifdef __ANDROID__
-            if (h->sl_nbufs > 0)
-                nbufs = h->sl_nbufs;
-#endif
-            dac -= one * (double)nbufs * sp;
             if (h->dac_tick_ns > 0) {
                 double extra = (now_ns() - h->dac_tick_ns) / 1e9;
                 if (extra > one)
@@ -241,8 +376,11 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
                 if (extra > 0)
                     dac += extra * sp;
             }
-            t = dac;
+            t = dac_handover(h, dac);
+        } else {
+            h->clk_dac = 0;
         }
+#endif
 #endif
         /* Linear play: stay inside leftover. Sit 1s behind leftover end
            (live head of what we have) so SABR can fetch+parse the next
@@ -275,7 +413,7 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
                 h->origin_ns = now_ns();
 #ifdef MSE_DAC
                 h->seek_base = cap;
-                h->samples_played = 0;
+                dac_rebase(h);
                 h->dac_tick_ns = 0;
 #endif
             }
@@ -285,7 +423,12 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
        Infinity; clamping currentTime there freezes the playhead (log23). */
     if (h->yt_dur > 0 && t > h->yt_dur && (!have || last <= h->yt_dur + 0.75))
         t = h->yt_dur;
-    return t < 0 ? 0 : t;
+    if (t < 0)
+        t = 0;
+#ifdef MSE_DAC
+    h->clk_last = t;
+#endif
+    return t;
 }
 
 static double host_clock(MseHost *h)
@@ -331,7 +474,7 @@ static void ring_write(MseHost *h, const uint8_t *p, int n)
     }
 }
 
-static int ring_read(MseHost *h, uint8_t *p, int n)
+static int ring_read(MseHost *h, uint8_t *p, int n, int color)
 {
     int got = 0;
     int fb = frame_bytes(h);
@@ -353,12 +496,30 @@ static int ring_read(MseHost *h, uint8_t *p, int n)
         h->ring_n -= chunk;
         got += chunk;
     }
-    if (got > 0 && h->fx && h->ch > 0) {
+    if (color && got > 0 && h->fx && h->ch > 0) {
         int fb = frame_bytes(h);
         if (fb > 0)
             audio_fx_color(h->fx, (int16_t *)p, got / fb, h->ch);
     }
     return got;
+}
+
+/* h->mu held. Drops queued PCM; the DAC must drop what it holds of the old generation too. */
+static void ring_flush(MseHost *h)
+{
+    h->ring_r = h->ring_w = h->ring_n = 0;
+    h->ring_gen++;
+    h->flush_ns = now_ns();
+    h->dac_pos = h->dac_base = h->dac_polled = 0;
+    h->dac_cp_n = 0;
+    h->pcm_anchor = 1;
+    h->audio_out = 0;
+#ifdef __ANDROID__
+    h->dac_live = 0;
+    h->dac_drain = 0;
+    h->dac_pending = 0;
+    h->dac_written = 0;
+#endif
 }
 
 #ifdef MSE_AQ
@@ -386,9 +547,11 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
      * ~100 ms into every resume; the ring's next audio is what belongs in it. */
     live = h->ring != NULL;
     if (live)
-        n = ring_read(h, (uint8_t *)buf->mAudioData, cap);
+        n = ring_read(h, (uint8_t *)buf->mAudioData, cap, 1);
     if (n > 0 && h->rate > 0 && h->ch > 0) {
-        h->samples_played += n / frame_bytes(h);
+        h->dac_polled += n / frame_bytes(h);
+        h->dac_pos += n / frame_bytes(h);
+        dac_cp_fold(h, h->dac_pos - aq_latency_frames(h));
         h->dac_tick_ns = now_ns();
     }
     pthread_cond_broadcast(&h->cv);
@@ -409,6 +572,7 @@ static void aq_callback(void *user, AudioQueueRef q, AudioQueueBufferRef buf)
  */
 #define AQ_FADE_S 0.015
 #define AQ_FADE_PAUSE_NS (25 * 1000 * 1000)
+#define AQ_STALL_NS 1e9
 
 typedef struct AqFadeJob {
     pthread_mutex_t mu;
@@ -520,8 +684,7 @@ static int start_aq(MseHost *h, int rate, int ch)
     h->ch = ch;
     h->ring = ring;
     h->ring_cap = cap;
-    h->ring_r = h->ring_w = h->ring_n = 0;
-    h->ring_gen++;
+    ring_flush(h);
     h->aq_buf_bytes = buf_bytes;
     pthread_mutex_unlock(&h->mu);
     for (i = 0; i < 4; i++) {
@@ -538,192 +701,21 @@ static int start_aq(MseHost *h, int rate, int ch)
 #endif
 
 #ifdef __ANDROID__
-static void sl_destroy(MseHost *h)
+/* h->mu held. Format change: a fresh ring the sink re-configures for (it sees the new gen). */
+static int dac_setup(MseHost *h, int rate, int ch)
 {
-    SLObjectItf player = h->sl_player;
-    SLObjectItf mix = h->sl_mix;
-    SLObjectItf eng = h->sl_engine;
-    SLPlayItf play = h->sl_play;
-    SLAndroidSimpleBufferQueueItf bq = h->sl_bq;
-    uint8_t *bufs = h->sl_bufs;
-    h->sl_player = NULL;
-    h->sl_play = NULL;
-    h->sl_bq = NULL;
-    h->sl_mix = NULL;
-    h->sl_engine = NULL;
-    h->sl_bufs = NULL;
-    h->sl_nbufs = 0;
-    h->sl_i = 0;
-    pthread_mutex_unlock(&h->mu);
-    pthread_mutex_lock(&h->sl_mu);
-    if (play)
-        (*play)->SetPlayState(play, SL_PLAYSTATE_STOPPED);
-    if (bq)
-        (*bq)->Clear(bq);
-    if (player)
-        (*player)->Destroy(player);
-    if (mix)
-        (*mix)->Destroy(mix);
-    if (eng)
-        (*eng)->Destroy(eng);
-    pthread_mutex_unlock(&h->sl_mu);
-    free(bufs);
-    pthread_mutex_lock(&h->mu);
-}
-
-static void sl_callback(SLAndroidSimpleBufferQueueItf bq, void *user)
-{
-    MseHost *h = (MseHost *)user;
-    uint8_t *dst;
-    int n = 0, cap, idx;
-    pthread_mutex_lock(&h->mu);
-    cap = h->aq_buf_bytes;
-    if (cap <= 0 || !h->sl_bufs || h->sl_nbufs <= 0) {
-        pthread_mutex_unlock(&h->mu);
-        return;
-    }
-    idx = h->sl_i;
-    h->sl_i = (idx + 1) % h->sl_nbufs;
-    dst = h->sl_bufs + idx * cap;
-    if (h->released || h->flushing || !h->sl_bq) {
-        pthread_mutex_unlock(&h->mu);
-        return;
-    }
-    /* Same as aq_callback: a buffer requested around pause plays on resume, so it gets the ring's audio. */
-    if (h->ring)
-        n = ring_read(h, dst, cap);
-    if (n > 0 && h->rate > 0 && h->ch > 0) {
-        h->samples_played += n / frame_bytes(h);
-        h->dac_tick_ns = now_ns();
-    }
-    if (n <= 0) {
-        memset(dst, 0, (size_t)cap);
-        n = cap;
-    }
-    pthread_cond_broadcast(&h->cv);
-    pthread_mutex_unlock(&h->mu);
-    (*bq)->Enqueue(bq, dst, (SLuint32)n);
-}
-
-static void sl_set_playing(MseHost *h, int playing)
-{
-    SLPlayItf play;
-    pthread_mutex_lock(&h->sl_mu);
-    pthread_mutex_lock(&h->mu);
-    play = h->sl_play;
-    pthread_mutex_unlock(&h->mu);
-    if (play)
-        (*play)->SetPlayState(play, playing ? SL_PLAYSTATE_PLAYING : SL_PLAYSTATE_PAUSED);
-    pthread_mutex_unlock(&h->sl_mu);
-}
-
-static int start_sl(MseHost *h, int rate, int ch)
-{
-    SLObjectItf engine = NULL, mix = NULL, player = NULL;
-    SLEngineItf engItf = NULL;
-    SLPlayItf play = NULL;
-    SLAndroidSimpleBufferQueueItf bq = NULL;
-    SLDataLocator_AndroidSimpleBufferQueue locBq;
-    SLDataFormat_PCM fmt;
-    SLDataLocator_OutputMix locMix;
-    SLDataSource src;
-    SLDataSink sink;
-    SLInterfaceID ids[1];
-    SLboolean req[1];
-    uint8_t *ring = NULL, *bufs = NULL;
-    int i, buf_bytes, cap, nbufs = 4;
-    SLresult r;
-    if (h->sl_player)
-        return 0;
-    cap = rate * ch * 2; /* 1s */
-    buf_bytes = 2048 * ch * 2;
-    pthread_mutex_unlock(&h->mu);
-    r = slCreateEngine(&engine, 0, NULL, 0, NULL, NULL);
-    if (r != SL_RESULT_SUCCESS) {
-        pthread_mutex_lock(&h->mu);
+    int cap = rate * ch * 2; /* 1s */
+    uint8_t *ring = (uint8_t *)calloc(1, (size_t)cap);
+    if (!ring)
         return -1;
-    }
-    (*engine)->Realize(engine, SL_BOOLEAN_FALSE);
-    (*engine)->GetInterface(engine, SL_IID_ENGINE, &engItf);
-    (*engItf)->CreateOutputMix(engItf, &mix, 0, NULL, NULL);
-    (*mix)->Realize(mix, SL_BOOLEAN_FALSE);
-    locBq.locatorType = SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE;
-    locBq.numBuffers = (SLuint32)nbufs;
-    memset(&fmt, 0, sizeof(fmt));
-    fmt.formatType = SL_DATAFORMAT_PCM;
-    fmt.numChannels = (SLuint32)ch;
-    fmt.samplesPerSec = (SLuint32)rate * 1000;
-    fmt.bitsPerSample = SL_PCMSAMPLEFORMAT_FIXED_16;
-    fmt.containerSize = 16;
-    fmt.channelMask = ch == 1 ? SL_SPEAKER_FRONT_CENTER
-                              : (SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT);
-    fmt.endianness = SL_BYTEORDER_LITTLEENDIAN;
-    src.pLocator = &locBq;
-    src.pFormat = &fmt;
-    locMix.locatorType = SL_DATALOCATOR_OUTPUTMIX;
-    locMix.outputMix = mix;
-    sink.pLocator = &locMix;
-    sink.pFormat = NULL;
-    ids[0] = SL_IID_ANDROIDSIMPLEBUFFERQUEUE;
-    req[0] = SL_BOOLEAN_TRUE;
-    r = (*engItf)->CreateAudioPlayer(engItf, &player, &src, &sink, 1, ids, req);
-    if (r != SL_RESULT_SUCCESS) {
-        (*mix)->Destroy(mix);
-        (*engine)->Destroy(engine);
-        pthread_mutex_lock(&h->mu);
-        return -1;
-    }
-    (*player)->Realize(player, SL_BOOLEAN_FALSE);
-    (*player)->GetInterface(player, SL_IID_PLAY, &play);
-    (*player)->GetInterface(player, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &bq);
-    ring = (uint8_t *)calloc(1, (size_t)cap);
-    bufs = (uint8_t *)calloc((size_t)nbufs, (size_t)buf_bytes);
-    if (!ring || !bufs) {
-        free(ring);
-        free(bufs);
-        (*player)->Destroy(player);
-        (*mix)->Destroy(mix);
-        (*engine)->Destroy(engine);
-        pthread_mutex_lock(&h->mu);
-        return -1;
-    }
-    pthread_mutex_lock(&h->sl_mu);
-    pthread_mutex_lock(&h->mu);
-    if (h->sl_player || h->released) {
-        pthread_mutex_unlock(&h->mu);
-        pthread_mutex_unlock(&h->sl_mu);
-        free(ring);
-        free(bufs);
-        (*player)->Destroy(player);
-        (*mix)->Destroy(mix);
-        (*engine)->Destroy(engine);
-        pthread_mutex_lock(&h->mu);
-        return 0;
-    }
-    h->sl_engine = engine;
-    h->sl_mix = mix;
-    h->sl_player = player;
-    h->sl_play = play;
-    h->sl_bq = bq;
-    h->sl_bufs = bufs;
-    h->sl_nbufs = nbufs;
-    h->sl_i = 0;
-    h->rate = rate;
-    h->ch = ch;
+    free(h->ring);
     h->ring = ring;
     h->ring_cap = cap;
-    h->ring_r = h->ring_w = h->ring_n = 0;
-    h->ring_gen++;
-    h->aq_buf_bytes = buf_bytes;
-    pthread_mutex_unlock(&h->mu);
-    (*bq)->RegisterCallback(bq, sl_callback, h);
-    for (i = 0; i < nbufs; i++) {
-        uint8_t *p = bufs + i * buf_bytes;
-        memset(p, 0, (size_t)buf_bytes);
-        (*bq)->Enqueue(bq, p, (SLuint32)buf_bytes);
-    }
-    pthread_mutex_unlock(&h->sl_mu);
-    pthread_mutex_lock(&h->mu);
+    h->rate = rate;
+    h->ch = ch;
+    h->aq_started = 0;
+    h->aq_buf_bytes = 2048 * ch * 2;
+    ring_flush(h);
     return 0;
 }
 #endif
@@ -801,7 +793,7 @@ static void *vid_loop(void *arg)
             }
             pthread_mutex_unlock(&h->mu);
             /* v_rest is on a->mu. Do not nest under h->mu: rest-off's
-               mc_close holds a->mu and OpenSL needs h->mu. */
+               mc_close holds a->mu and the DAC needs h->mu. */
             if (!mse_av_video_rested(h->av)) {
                 pthread_mutex_lock(&h->mu);
                 if (h->released) {
@@ -869,6 +861,66 @@ static void *vid_loop(void *arg)
     }
 }
 
+static int audio_done(MseHost *h);
+
+#ifdef MSE_DAC
+/* Media3 hands the clock to wall time when the audio renderer has read its stream to the end but
+   the period runs on (DefaultMediaClock, ExoPlayer #1874): a shorter audio track must not freeze
+   the video at its last sample. Only after endOfStream; a SABR starve stays waiting. */
+static void audio_out_check(MseHost *h)
+{
+    int out;
+    double t;
+    if (mse_av_audio_pending(h->av))
+        return;
+    pthread_mutex_lock(&h->mu);
+    out = h->playing && h->eos && h->aq_started && !h->audio_out && h->ring && h->ring_n <= 0;
+#ifdef __ANDROID__
+    out = out && !h->dac_pending;
+#endif
+    pthread_mutex_unlock(&h->mu);
+    if (!out)
+        return;
+    t = host_clock(h);
+    pthread_mutex_lock(&h->mu);
+    if (h->playing && h->eos && !h->audio_out && h->ring_n <= 0) {
+        h->hold = t;
+        h->origin_ns = now_ns();
+        h->audio_out = 1;
+    }
+    pthread_mutex_unlock(&h->mu);
+}
+#endif
+
+#ifdef MSE_AQ
+static void aq_kill(MseHost *h);
+
+/* A queue that stops calling back (route change, audio server restart, a vendor bug) freezes the
+   clock with audio waiting in the ring. Media3 resets an output stuck this way after 200 ms; the
+   queue's own callback cadence is coarser, so wait 1 s, then reopen it from where playback is. */
+static void aq_watchdog(MseHost *h)
+{
+    double t;
+    pthread_mutex_lock(&h->mu);
+    if (!h->playing || !h->aq || !h->aq_started || h->flushing || h->aq_fade || h->ring_n <= 0 ||
+        h->dac_tick_ns <= 0 || now_ns() - h->dac_tick_ns < AQ_STALL_NS) {
+        pthread_mutex_unlock(&h->mu);
+        return;
+    }
+    h->dac_tick_ns = now_ns();
+    pthread_mutex_unlock(&h->mu);
+    t = host_clock(h);
+    mse_critf(MSE_LOG_WARN, "mse audio queue stalled with audio queued, reopening at %.3f", t);
+    aq_kill(h);
+    pthread_mutex_lock(&h->mu);
+    h->hold = t;
+    h->seek_base = t;
+    h->origin_ns = now_ns();
+    ring_flush(h);
+    pthread_mutex_unlock(&h->mu);
+}
+#endif
+
 static void *dec_loop(void *arg)
 {
     MseHost *h = (MseHost *)arg;
@@ -881,9 +933,6 @@ static void *dec_loop(void *arg)
         int filled;
 #ifdef MSE_AQ
         AudioQueueRef start_q = NULL;
-#endif
-#ifdef __ANDROID__
-        int start_sl_play = 0;
 #endif
 #endif
         pthread_mutex_lock(&h->mu);
@@ -906,14 +955,33 @@ static void *dec_loop(void *arg)
             int want;
             int dac = 0;
             unsigned gen;
+            double lead = 0.35;
+            double until;
             pthread_mutex_lock(&h->mu);
             want = ring_ms(h) < 400;
             gen = h->ring_gen;
+            /* The lead is output time: the device queue sits on top of it, and at 2x it covers
+               twice the media. */
+#ifdef __ANDROID__
+            lead += h->dac_buffer_s;
+#endif
+#ifdef MSE_AQ
+            if (h->rate > 0)
+                lead += (double)aq_latency_frames(h) / (double)h->rate;
+#endif
+            lead *= play_speed(h);
+            until = clock + lead;
+#ifdef __ANDROID__
+            /* Until the sink reports playout the clock holds, and a streaming AudioTrack starts only
+               once full: decode as far as ring + sink take (Media3 feeds until handleBuffer refuses). */
+            if (!h->dac_live)
+                until = clock + 3600.0;
+#endif
             pthread_mutex_unlock(&h->mu);
             if (!want)
                 break;
             pcm = NULL;
-            if (mse_av_pull_audio(h->av, clock + 0.35, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
+            if (mse_av_pull_audio(h->av, clock, until, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
                 break;
             host_stretch(h, &pcm, &frames, ch, rate);
             if (frames <= 0) {
@@ -943,28 +1011,35 @@ static void *dec_loop(void *arg)
                 dac = h->aq != NULL;
 #endif
 #ifdef __ANDROID__
-                if (h->sl_player && (h->rate != rate || h->ch != ch)) {
-                    free(h->ring);
-                    h->ring = NULL;
-                    h->aq_started = 0;
-                    sl_destroy(h);
+                if (h->dac_attached && rate > 0 && ch > 0 &&
+                    (!h->ring || h->rate != rate || h->ch != ch)) {
+                    /* The chunk was pulled for this format: it opens the new generation. */
+                    int fresh = gen == h->ring_gen;
+                    if (dac_setup(h, rate, ch) == 0 && fresh)
+                        gen = h->ring_gen;
                 }
-                if (!h->sl_player && rate > 0 && ch > 0)
-                    start_sl(h, rate, ch);
-                dac = h->sl_player != NULL;
+                dac = h->dac_attached && h->ring != NULL;
 #endif
                 h->samples_pulled += frames;
-                if (dac && !h->flushing && gen == h->ring_gen)
+                if (dac && !h->flushing && gen == h->ring_gen) {
+                    /* The audio clock starts at the first sample's own time, not the seek target
+                       (Media3 takes startMediaTimeUs from the first buffer): a seek lands up to a
+                       frame early, and a reopened queue resumes past the audio its ring lost. */
+                    if (h->pcm_anchor && h->dac_polled == 0) {
+                        h->seek_base = pts;
+                        h->pcm_anchor = 0;
+                    }
                     ring_write(h, (const uint8_t *)pcm, nbytes);
+                }
                 if (dac && !h->aq_started && ring_ms(h) >= 160) {
                     h->aq_started = 1;
-                    h->samples_played = 0;
+                    dac_rebase(h);
                     h->dac_tick_ns = 0;
 #ifdef MSE_AQ
                     start_q = h->aq;
 #endif
 #ifdef __ANDROID__
-                    start_sl_play = 1;
+                    h->dac_start_ns = now_ns();
 #endif
                 }
                 pthread_mutex_unlock(&h->mu);
@@ -976,12 +1051,8 @@ static void *dec_loop(void *arg)
         if (start_q)
             aq_start_faded(start_q, 0);
 #endif
-#ifdef __ANDROID__
-        if (start_sl_play)
-            sl_set_playing(h, 1);
-#endif
 #else
-        if (mse_av_pull_audio(h->av, clock + 0.35, &pcm, &frames, &rate, &ch, &pts) > 0 && pcm) {
+        if (mse_av_pull_audio(h->av, clock, clock + 0.35, &pcm, &frames, &rate, &ch, &pts) > 0 && pcm) {
             int nbytes;
             host_stretch(h, &pcm, &frames, ch, rate);
             if (h->fx && frames > 0)
@@ -997,6 +1068,20 @@ static void *dec_loop(void *arg)
         }
 #endif
 
+#ifdef MSE_AQ
+        aq_watchdog(h);
+#endif
+#ifdef MSE_DAC
+        audio_out_check(h);
+#endif
+#ifdef __ANDROID__
+        {
+            int done = audio_done(h);
+            pthread_mutex_lock(&h->mu);
+            h->dac_drain = done;
+            pthread_mutex_unlock(&h->mu);
+        }
+#endif
         maybe_notify_ended(h);
         {
             struct timespec sl;
@@ -1022,18 +1107,12 @@ MseHost *mse_host_create(void)
     pthread_mutex_init(&h->mu, NULL);
     pthread_mutex_init(&h->frame_mu, NULL);
     pthread_cond_init(&h->cv, NULL);
-#ifdef __ANDROID__
-    pthread_mutex_init(&h->sl_mu, NULL);
-#endif
     h->av = mse_av_create();
     h->fx = audio_fx_create();
     h->speed = 1.f;
     h->playing = 0;
     h->vpts = -1;
     if (!h->av) {
-#ifdef __ANDROID__
-        pthread_mutex_destroy(&h->sl_mu);
-#endif
         free(h);
         return NULL;
     }
@@ -1082,29 +1161,14 @@ static void aq_pause_flush(MseHost *h)
     AudioQueueRef aq;
     AqFadeJob *fade;
 #endif
-#ifdef __ANDROID__
-    SLPlayItf play;
-    SLAndroidSimpleBufferQueueItf bq;
-    uint8_t *bufs;
-    int i, nbufs, buf_bytes;
-    pthread_mutex_lock(&h->sl_mu);
-#endif
     pthread_mutex_lock(&h->mu);
     h->flushing = 1;
     h->aq_started = 0;
-    h->ring_r = h->ring_w = h->ring_n = 0;
-    h->ring_gen++;
+    ring_flush(h);
     pthread_cond_broadcast(&h->cv);
 #ifdef MSE_AQ
     aq = h->aq;
     fade = aq_fade_take(h);
-#endif
-#ifdef __ANDROID__
-    play = h->sl_play;
-    bq = h->sl_bq;
-    bufs = h->sl_bufs;
-    nbufs = h->sl_nbufs;
-    buf_bytes = h->aq_buf_bytes;
 #endif
     pthread_mutex_unlock(&h->mu);
 #ifdef MSE_AQ
@@ -1114,25 +1178,10 @@ static void aq_pause_flush(MseHost *h)
         AudioQueueFlush(aq);
     }
 #endif
-#ifdef __ANDROID__
-    if (play)
-        (*play)->SetPlayState(play, SL_PLAYSTATE_PAUSED);
-    if (bq) {
-        (*bq)->Clear(bq);
-        for (i = 0; i < nbufs && bufs && buf_bytes > 0; i++) {
-            uint8_t *p = bufs + i * buf_bytes;
-            memset(p, 0, (size_t)buf_bytes);
-            (*bq)->Enqueue(bq, p, (SLuint32)buf_bytes);
-        }
-    }
-#endif
     pthread_mutex_lock(&h->mu);
     h->flushing = 0;
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
-#ifdef __ANDROID__
-    pthread_mutex_unlock(&h->sl_mu);
-#endif
 }
 #endif
 
@@ -1175,11 +1224,6 @@ void mse_host_destroy(MseHost *h)
         h->aq = NULL;
     }
 #endif
-#ifdef __ANDROID__
-    pthread_mutex_lock(&h->mu);
-    sl_destroy(h);
-    pthread_mutex_unlock(&h->mu);
-#endif
 #ifdef MSE_DAC
     free(h->ring);
     h->ring = NULL;
@@ -1207,9 +1251,6 @@ void mse_host_destroy(MseHost *h)
     free(h->fx_pcm);
     pthread_mutex_destroy(&h->frame_mu);
     pthread_mutex_destroy(&h->mu);
-#ifdef __ANDROID__
-    pthread_mutex_destroy(&h->sl_mu);
-#endif
     pthread_cond_destroy(&h->cv);
     free(h);
 }
@@ -1309,9 +1350,6 @@ void mse_host_play(MseHost *h)
     AqFadeJob *fade;
     int started;
 #endif
-#ifdef __ANDROID__
-    int started;
-#endif
     if (!h)
         return;
     dur = mse_av_duration(h->av);
@@ -1328,9 +1366,14 @@ void mse_host_play(MseHost *h)
         h->eos = 0;
         h->ended_sent = 0;
 #ifdef MSE_DAC
-        h->samples_played = 0;
+        h->audio_out = 0;
+        dac_rebase(h);
+        h->dac_cp_n = 0;
         h->aq_started = 0;
         h->dac_tick_ns = 0;
+#endif
+#ifdef __ANDROID__
+        ring_flush(h);
 #endif
         pthread_mutex_unlock(&h->mu);
         mse_av_seek(h->av, 0);
@@ -1339,6 +1382,14 @@ void mse_host_play(MseHost *h)
     if (!h->playing) {
         h->origin_ns = now_ns();
         h->playing = 1;
+#ifdef __ANDROID__
+        /* No extrapolation from a report taken while paused: the track restarts from that position. */
+        h->dac_tick_ns = 0;
+#elif defined(MSE_AQ)
+        /* The stall watchdog times from the resume, not from the last callback before the pause. */
+        if (h->dac_tick_ns > 0)
+            h->dac_tick_ns = now_ns();
+#endif
     }
     ensure_thread(h);
     pthread_cond_broadcast(&h->cv);
@@ -1347,19 +1398,12 @@ void mse_host_play(MseHost *h)
     started = h->aq_started;
     fade = aq_fade_take(h);
 #endif
-#ifdef __ANDROID__
-    started = h->aq_started;
-#endif
     pthread_mutex_unlock(&h->mu);
 #ifdef MSE_AQ
     /* A pause still fading out never stopped the queue: just ramp back up from where it is. */
     aq_fade_cancel(fade);
     if (aq && started)
         aq_start_faded(aq, fade != NULL);
-#endif
-#ifdef __ANDROID__
-    if (started)
-        sl_set_playing(h, 1);
 #endif
 }
 
@@ -1402,9 +1446,6 @@ void mse_host_pause(MseHost *h)
         }
     }
 #endif
-#ifdef __ANDROID__
-    sl_set_playing(h, 0);
-#endif
     pthread_mutex_lock(&h->mu);
     if (h->playing) {
         h->hold = t;
@@ -1429,18 +1470,8 @@ static void seek_common(MseHost *h, double seconds)
     if (seconds > prev + 1.0 || prev > seconds + 1.0) {
 #ifdef MSE_AQ
         aq_kill(h);
-#endif
-#ifdef __ANDROID__
-        pthread_mutex_lock(&h->mu);
-        h->flushing = 1;
-        h->aq_started = 0;
-        sl_destroy(h);
-        free(h->ring);
-        h->ring = NULL;
-        h->ring_cap = h->ring_r = h->ring_w = h->ring_n = 0;
-        h->ring_gen++;
-        h->flushing = 0;
-        pthread_mutex_unlock(&h->mu);
+#else
+        aq_pause_flush(h);
 #endif
     } else {
         aq_pause_flush(h);
@@ -1459,8 +1490,7 @@ static void seek_common(MseHost *h, double seconds)
     h->samples_played = 0;
     h->aq_started = 0;
     h->dac_tick_ns = 0;
-    h->ring_r = h->ring_w = h->ring_n = 0;
-    h->ring_gen++;
+    ring_flush(h);
 #endif
     h->vpts = -1;
     pthread_mutex_unlock(&h->mu);
@@ -1478,19 +1508,6 @@ void mse_host_reset(MseHost *h)
 #ifdef MSE_DAC
 #ifdef MSE_AQ
     aq_kill(h);
-#endif
-#ifdef __ANDROID__
-    pthread_mutex_lock(&h->mu);
-    h->playing = 0;
-    h->flushing = 1;
-    h->aq_started = 0;
-    sl_destroy(h);
-    free(h->ring);
-    h->ring = NULL;
-    h->ring_cap = h->ring_r = h->ring_w = h->ring_n = 0;
-    h->ring_gen++;
-    h->flushing = 0;
-    pthread_mutex_unlock(&h->mu);
 #endif
 #endif
     pthread_mutex_lock(&h->mu);
@@ -1511,8 +1528,7 @@ void mse_host_reset(MseHost *h)
     h->samples_played = 0;
     h->aq_started = 0;
     h->dac_tick_ns = 0;
-    h->ring_r = h->ring_w = h->ring_n = 0;
-    h->ring_gen++;
+    ring_flush(h);
 #endif
     h->vpts = -1;
     pthread_mutex_lock(&h->frame_mu);
@@ -1597,9 +1613,10 @@ void mse_host_set_duration(MseHost *h, double seconds)
     pthread_mutex_unlock(&h->mu);
 }
 
-int mse_host_ended(MseHost *h)
+/* All audio has been handed to the DAC and the stream is over; what the DAC still holds is not checked. */
+static int audio_done(MseHost *h)
 {
-    int eos, ring_empty, near_dur;
+    int eos, ring_empty, near_dur, out = 0;
     double last, yt_dur;
     if (!h)
         return 0;
@@ -1611,17 +1628,39 @@ int mse_host_ended(MseHost *h)
     yt_dur = h->yt_dur;
 #ifdef MSE_DAC
     ring_empty = !h->ring || h->ring_n <= 0;
+    out = h->audio_out;
 #else
     ring_empty = 1;
 #endif
     pthread_mutex_unlock(&h->mu);
     if (!ring_empty)
         return 0;
+    /* A seek also empties the ring while the rest of the media is buffered: the playhead must be
+       there. Past the end of a shorter audio track the wall clock plays the video out. */
+    if (host_clock(h) + (out ? 0.05 : 1.0) < last)
+        return 0;
     /* Same window as clock_with_span near_eos. Miller skips endOfStream on
        VOD audio-only (40=1 + fake 144p); last ≈ duration is Chrome's other
        IsEnded path. SABR starve (last ≪ yt_dur) stays waiting. */
     near_dur = yt_dur > 0 && last + 1.5 >= yt_dur && last <= yt_dur + 0.75;
     return eos || near_dur;
+}
+
+int mse_host_ended(MseHost *h)
+{
+#ifdef __ANDROID__
+    int pending;
+#endif
+    if (!audio_done(h))
+        return 0;
+#ifdef __ANDROID__
+    pthread_mutex_lock(&h->mu);
+    pending = h->dac_attached && h->dac_pending;
+    pthread_mutex_unlock(&h->mu);
+    if (pending)
+        return 0;
+#endif
+    return 1;
 }
 
 void mse_host_end_of_stream(MseHost *h)
@@ -1678,6 +1717,96 @@ int mse_host_frames(MseHost *h)
         return 0;
     return atomic_load_explicit(&h->frames, memory_order_relaxed);
 }
+
+#ifdef __ANDROID__
+int mse_host_audio_session(MseHost *h)
+{
+    return h ? atomic_load(&h->dac_session) : 0;
+}
+
+void mse_host_dac_attach(MseHost *h, int attached)
+{
+    if (!h)
+        return;
+    pthread_mutex_lock(&h->mu);
+    h->dac_attached = attached;
+    if (!attached) {
+        h->aq_started = 0;
+        ring_flush(h);
+        atomic_store(&h->dac_session, 0);
+    }
+    pthread_cond_broadcast(&h->cv);
+    pthread_mutex_unlock(&h->mu);
+}
+
+int mse_host_dac_poll(MseHost *h, uint8_t *dst, int cap, int wait_ms, int state[MSE_DAC_STATE_N])
+{
+    int n = 0, run, ch;
+    if (!h)
+        return -1;
+    pthread_mutex_lock(&h->mu);
+    /* Only paused waits here: while playing, the decode loop signals cv every few ms. */
+    if (wait_ms > 0 && !h->released && !h->playing && h->dac_attached) {
+        struct timespec until;
+        clock_gettime(CLOCK_REALTIME, &until);
+        until.tv_nsec += (long)wait_ms * 1000000L;
+        until.tv_sec += until.tv_nsec / 1000000000L;
+        until.tv_nsec %= 1000000000L;
+        pthread_cond_timedwait(&h->cv, &h->mu, &until);
+    }
+    if (h->released) {
+        pthread_mutex_unlock(&h->mu);
+        return -1;
+    }
+    run = h->playing && h->aq_started && h->ring && !h->flushing;
+    if (run && dst && cap > 0)
+        n = ring_read(h, dst, cap, 0);
+    if (n > 0) {
+        /* Until the sink's next report: the chunk is out of the ring but not in the track yet. */
+        h->dac_pending = 1;
+        h->dac_polled += n / frame_bytes(h);
+    }
+    ch = h->ch;
+    state[MSE_DAC_GEN] = (int)h->ring_gen;
+    state[MSE_DAC_RATE] = h->rate;
+    state[MSE_DAC_CH] = h->ch;
+    state[MSE_DAC_RUN] = run;
+    state[MSE_DAC_DRAIN] = h->dac_drain && h->ring_n <= 0;
+    pthread_mutex_unlock(&h->mu);
+    if (n > 0 && h->fx && ch > 0)
+        audio_fx_color(h->fx, (int16_t *)dst, n / (ch * 2), ch);
+    return n;
+}
+
+void mse_host_dac_report(MseHost *h, int gen, int64_t position, int64_t written, int pending, int64_t buffer_us)
+{
+    if (!h)
+        return;
+    pthread_mutex_lock(&h->mu);
+    if (buffer_us > 0)
+        h->dac_buffer_s = (double)buffer_us / 1e6;
+    if ((unsigned)gen == h->ring_gen) {
+        h->dac_written = written;
+        h->dac_pending = pending;
+    }
+    if ((unsigned)gen == h->ring_gen && position >= 0) {
+        h->dac_pos = position;
+        dac_cp_fold(h, position);
+        if (h->aq_started) {
+            h->dac_tick_ns = now_ns();
+            if (position > 0)
+                h->dac_live = 1;
+        }
+    }
+    pthread_mutex_unlock(&h->mu);
+}
+
+void mse_host_dac_session(MseHost *h, int session)
+{
+    if (h)
+        atomic_store(&h->dac_session, session);
+}
+#endif
 
 int64_t mse_host_samples_played(MseHost *h)
 {
@@ -1942,9 +2071,33 @@ void mse_host_set_speed(MseHost *h, float speed, float tempo)
     }
     h->speed = speed;
 #ifdef MSE_DAC
-    /* Keep currentTime continuous: samples * new_rate = samples * old_rate. */
-    if (h->samples_played > 0)
-        h->samples_played = (int64_t)((double)h->samples_played * (double)old / (double)speed);
+    /* What is still queued (ring + device) was stretched at the old rate and plays at it. */
+    {
+        int64_t edge = h->dac_polled + (h->ch > 0 ? h->ring_n / frame_bytes(h) : 0);
+        int64_t audible = h->dac_pos;
+#ifdef MSE_AQ
+        audible -= aq_latency_frames(h);
+#endif
+        if (edge > audible && edge > h->dac_base) {
+            if (h->dac_cp_n < DAC_CHECKPOINTS) {
+                h->dac_cp_edge[h->dac_cp_n] = edge;
+                h->dac_cp_speed[h->dac_cp_n] = (double)old;
+                h->dac_cp_n++;
+            } else {
+                /* Full: widen the last span to the new edge at its frame-weighted speed, so the
+                   media time across it stays exact. */
+                int last = DAC_CHECKPOINTS - 1;
+                int64_t from = h->dac_cp_edge[last - 1];
+                double kept = (double)(h->dac_cp_edge[last] - from);
+                double added = (double)(edge - h->dac_cp_edge[last]);
+                if (kept < 0)
+                    kept = 0;
+                if (kept + added > 0)
+                    h->dac_cp_speed[last] = (kept * h->dac_cp_speed[last] + added * (double)old) / (kept + added);
+                h->dac_cp_edge[last] = edge;
+            }
+        }
+    }
 #else
     if (h->origin_ns > 0) {
         double n = now_ns();
@@ -1992,20 +2145,21 @@ static int vis_delay_frames(MseHost *h)
     int delay = 0;
 #ifdef MSE_DAC
     pthread_mutex_lock(&h->mu);
+#ifdef __ANDROID__
+    if (h->aq_started && h->dac_written > h->dac_pos)
+        delay = (int)(h->dac_written - h->dac_pos);
+#else
     if (h->aq_started && h->rate > 0 && h->aq_buf_bytes > 0) {
         int one = h->aq_buf_bytes / frame_bytes(h);
         int nbufs = 4;
         int extra = 0;
-#ifdef __ANDROID__
-        if (h->sl_nbufs > 0)
-            nbufs = h->sl_nbufs;
-#endif
         if (h->dac_tick_ns > 0)
             extra = (int)((now_ns() - h->dac_tick_ns) / 1e9 * h->rate);
         if (extra > one)
             extra = one;
         delay = one * nbufs - (extra > 0 ? extra : 0);
     }
+#endif
     pthread_mutex_unlock(&h->mu);
 #endif
     return delay;

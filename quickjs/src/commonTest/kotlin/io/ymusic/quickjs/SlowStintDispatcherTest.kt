@@ -23,7 +23,7 @@ class SlowStintDispatcherTest {
     @Test
     fun one_long_stint_fires_but_long_suspending_work_does_not() = runTest {
         val hit = CompletableDeferred<Long>()
-        val dispatcher = QuickJsRuntime.newDispatcher(slowStintMs = 50L, onSlowStint = { ms, _ -> hit.complete(ms) })
+        val dispatcher = QuickJsRuntime.newDispatcher(slowStintMs = 50L, onSlowStint = { ms, _, _ -> hit.complete(ms) })
         try {
             // 250ms of wall time as many short stints: real delays (DefaultDelay — the wrapper
             // implements no Delay), each resumption its own dispatch. Must not fire.

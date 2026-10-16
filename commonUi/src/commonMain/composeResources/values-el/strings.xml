@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Όπως το σύστημα</string>
     <string name="settings_theme_light">Ανοιχτό</string>
     <string name="settings_theme_dark">Σκούρο</string>
+    <string name="settings_theme_amoled">Μαύρο (AMOLED)</string>
+    <string name="settings_accent_color">Χρώμα έμφασης</string>
     <string name="settings_debug">Εντοπισμός σφαλμάτων</string>
     <string name="settings_show_fps">Εμφάνιση FPS</string>
     <string name="settings_show_fps_hint">Εμφανίζει τα καρέ ανά δευτερόλεπτο πάνω στο βίντεο της Αναπαραγωγής τώρα. Η μέτρηση σταματά σε παύση ή όταν φύγετε από την οθόνη.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">Μοιραστείτε ανώνυμα δεδομένα χρήσης για να βελτιωθεί η εφαρμογή.</string>
     <string name="settings_enable_pip">Picture-in-picture</string>
     <string name="settings_enable_pip_hint">Όταν βλέπετε βίντεο στην Αναπαραγωγή τώρα ή σε πλήρη οθόνη, συνεχίζει σε μικρό παράθυρο αν βγείτε από την εφαρμογή. Διαφορετικά το βίντεο γίνεται μόνο ήχος μέχρι να επιστρέψετε.</string>
+    <string name="settings_audio_focus">Εστίαση ήχου</string>
+    <string name="settings_audio_focus_calls">Παύση μόνο για τηλεφωνικές κλήσεις</string>
+    <string name="settings_audio_focus_apps">Παύση όταν άλλες εφαρμογές παίζουν ήχο</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Αυτόματη παράλειψη χορηγούμενων τμημάτων στα βίντεο του YouTube. Απενεργοποιήστε το για ένα βίντεο από την Αναπαραγωγή τώρα.</string>
     <string name="sponsor_block_included">Το SponsorBlock ενεργοποιήθηκε για αυτό το βίντεο</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">Ένταση, ταχύτητα, ισοσταθμιστής και virtualizer</string>
     <string name="settings_speed_hint">Ταχύτητα αναπαραγωγής και τονικότητα</string>
     <string name="settings_eq_hint">Ισοσταθμιστής δέκα ζωνών, ενίσχυση μπάσων, virtualizer</string>
+    <string name="settings_system_audio_fx">Χρήση ηχητικών εφέ συστήματος</string>
+    <string name="settings_system_audio_fx_hint">Αφήστε τις εφαρμογές ισοσταθμιστή της συσκευής να διαμορφώνουν τον ήχο. Απενεργοποιεί τον ισοσταθμιστή της εφαρμογής.</string>
     <string name="sound_title">Ήχος</string>
     <string name="sound_playback">Αναπαραγωγή</string>
-    <string name="sound_volume">Ένταση %1$d%%</string>
+    <string name="sound_volume">Ένταση %1$d%</string>
     <string name="sound_speed">Ταχύτητα</string>
     <string name="sound_pitch">Τονικότητα %1$s</string>
     <string name="sound_eq">Ισοσταθμιστής</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">Διαγραφή σχολίου</string>
     <string name="video_details_delete_message">Να διαγραφεί οριστικά το σχόλιό σας και όλες οι απαντήσεις του;</string>
     <string name="video_details_deleted">Το σχόλιο διαγράφηκε</string>
+    <string name="menu_details_comments">Λεπτομέρειες και σχόλια</string>
+    <string name="menu_speed_pitch">Ταχύτητα και τονικότητα</string>
 </resources>

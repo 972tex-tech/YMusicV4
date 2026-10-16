@@ -17,7 +17,7 @@ env:
   # The ffmpeg-build commit the apps link against. Bumping it rebuilds every ffmpeg pack once;
   # otherwise each pack comes from the cache keyed on this ref.
   FFMPEG_BUILD_REPO: ymusic-io/ffmpeg-build
-  FFMPEG_BUILD_REF: a12edf9513f0b29724687e336be611ac55a496a0
+  FFMPEG_BUILD_REF: 5b3bb3beafd31b51b8a2067a4b79c8e4f00afc4b
   # The NDK (r28c) for the Android ffmpeg packs and the app's own native code, installed with the
   # runner's sdkmanager: the image's ANDROID_NDK_LATEST_HOME moves (r30 fails android-x86_64).
   NDK_VERSION: 28.2.13676358
@@ -32,6 +32,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - { slug: android-armeabi-v7a, runner: ubuntu-24.04 }
           - { slug: android-arm64-v8a, runner: ubuntu-24.04 }
           - { slug: android-x86, runner: ubuntu-24.04 }
           - { slug: android-x86_64, runner: ubuntu-24.04 }
@@ -90,6 +91,12 @@ jobs:
         with:
           path: YMusicV4
 
+      - name: Restore ffmpeg android-armeabi-v7a
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ffmpeg-build/out/android-armeabi-v7a
+          key: ffmpeg-android-armeabi-v7a-${{ env.FFMPEG_BUILD_REF }}-ndk${{ env.NDK_VERSION }}
+          fail-on-cache-miss: true
       - name: Restore ffmpeg android-arm64-v8a
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -134,7 +141,7 @@ jobs:
       # source context for this build, so crashes from the shipped APKs symbolicate.
       - name: Assemble release APKs
         working-directory: YMusicV4
-        run: ./gradlew :androidApp:assembleRelease :engine-js:closureJs :engine-js:closurePlayerJs
+        run: ./gradlew -Pproduction=true :androidApp:assembleRelease :engine-js:closureJs :engine-js:closurePlayerJs
 
       - name: Discard secrets
         if: always()
@@ -267,14 +274,33 @@ jobs:
 
       # Signed with the imported identity; notarized + stapled with the mac.notarization.* account
       # from secrets.enc when both are present. Otherwise an unsigned DMG.
+      # Right after notarytool accepts, stapler can fail to fetch the fresh ticket (exit 68): retry the
+      # staple alone. It only succeeds when Apple holds a ticket for this exact DMG, so a rejected or
+      # never-submitted DMG still fails the job.
       - name: Package DMG
         working-directory: YMusicV4
         run: |
-          if [ -n "$YMUSIC_MAC_IDENTITY" ] && grep -q '^mac.notarization.appleId=.' secrets.properties 2>/dev/null; then
-            ./gradlew :desktopApp:packageReleaseDmg :desktopApp:notarizeReleaseDmg
-          else
-            ./gradlew :desktopApp:packageReleaseDmg
+          if [ -z "$YMUSIC_MAC_IDENTITY" ] || ! grep -q '^mac.notarization.appleId=.' secrets.properties 2>/dev/null; then
+            ./gradlew -Pproduction=true :desktopApp:packageReleaseDmg
+            exit 0
           fi
+          ./gradlew -Pproduction=true :desktopApp:packageReleaseDmg :desktopApp:notarizeReleaseDmg && exit 0
+          dmg="$(ls desktopApp/build/compose/binaries/main-release/dmg/*.dmg 2>/dev/null | head -n 1)"
+          [ -n "$dmg" ] || { echo "no DMG to staple" >&2; exit 1; }
+          for attempt in 1 2 3 4 5; do
+            echo "::warning::notarize/staple failed; staple retry $attempt in 30 s"
+            sleep 30
+            xcrun stapler staple "$dmg" && xcrun stapler validate "$dmg" && exit 0
+          done
+          exit 1
+
+      - name: Upload notarization logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.slug }}-compose-logs
+          path: YMusicV4/desktopApp/build/compose/logs/
+          if-no-files-found: ignore
 
       - name: Discard secrets
         if: always()
@@ -313,9 +339,10 @@ jobs:
           mkdir -p release
           # Fixed, version-free asset names. Each glob must match exactly one build output.
           one() { set -- $1; [ $# -eq 1 ] && [ -f "$1" ] || { echo "expected one file for: $*" >&2; exit 1; }; echo "$1"; }
+          cp "$(one 'artifacts/android-apks/*-armeabi-v7a-release.apk')" release/android-armv7.apk
           cp "$(one 'artifacts/android-apks/*-arm64-v8a-release.apk')" release/android-arm64.apk
+          cp "$(one 'artifacts/android-apks/*-x86-release.apk')" release/android-x86.apk
           cp "$(one 'artifacts/android-apks/*-x86_64-release.apk')" release/android-x86_64.apk
-          cp "$(one 'artifacts/android-apks/*-universal-release.apk')" release/android-universal.apk
           cp "$(one 'artifacts/macos-arm64-dmg/*.dmg')" release/macos-arm64.dmg
           cp "$(one 'artifacts/macos-x86_64-dmg/*.dmg')" release/macos-intel.dmg
           cp "$(one 'artifacts/js-bundles/engine.*.js')" "$(one 'artifacts/js-bundles/player.*.js')" release/

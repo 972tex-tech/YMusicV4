@@ -51,7 +51,7 @@ endif()
 
 if(ANDROID)
   find_library(log-lib log)
-  target_link_libraries(mseffmpegjni PRIVATE android ${log-lib} mediandk OpenSLES m z atomic)
+  target_link_libraries(mseffmpegjni PRIVATE android ${log-lib} mediandk m z atomic)
   # -Bsymbolic: ffmpeg aarch64 asm uses ADRP against globals; lld only accepts that
   # in a DSO when those symbols cannot bind externally (ffmpeg SHFLAGS does the same).
   target_link_options(mseffmpegjni PRIVATE

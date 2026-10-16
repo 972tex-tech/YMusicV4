@@ -37,6 +37,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.CropFree
@@ -58,8 +61,13 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.ClosedCaptionOff
+import androidx.compose.material.icons.outlined.Equalizer
 import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -94,6 +102,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -150,11 +159,14 @@ import io.ymusic.ui.resources.cd_repeat_off
 import io.ymusic.ui.resources.cd_repeat_one
 import io.ymusic.ui.resources.cd_rewind10
 import io.ymusic.ui.resources.cd_shuffle
+import io.ymusic.ui.resources.download_audio_track
 import io.ymusic.ui.resources.download_quality
 import io.ymusic.ui.resources.error_captcha
 import io.ymusic.ui.resources.ic_sponsor_block
 import io.ymusic.ui.resources.menu_add_to_playlist
+import io.ymusic.ui.resources.menu_details_comments
 import io.ymusic.ui.resources.menu_reload_player
+import io.ymusic.ui.resources.menu_speed_pitch
 import io.ymusic.ui.resources.playback_failed
 import io.ymusic.ui.resources.playback_file_missing
 import io.ymusic.ui.resources.playback_retry_later
@@ -169,11 +181,9 @@ import io.ymusic.ui.resources.remove_from_queue
 import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.signin_button
 import io.ymusic.ui.resources.sound_eq
-import io.ymusic.ui.resources.sound_speed
 import io.ymusic.ui.resources.sponsor_block_excluded
 import io.ymusic.ui.resources.sponsor_block_included
 import io.ymusic.ui.resources.up_next
-import io.ymusic.ui.resources.video_details
 import io.ymusic.ui.resources.video_quality_auto
 import io.ymusic.ui.resources.yt_playlist_queue_empty
 import io.ymusic.ui.sponsorblock.SponsorBlockState
@@ -344,7 +354,7 @@ fun NowPlayingScreen(
     val status by coordinator.player.status.collectAsState()
     val playWhenReady = status.playWhenReady
     val audioOnly = showsAudioOnly(coordinator.player)
-    KeepScreenOn(status.state.isPlaying() && !status.state.isEnded() && !audioOnly && status.videoSize != null)
+    KeepScreenOn(status.state.isPlaying() && !status.state.isEnded() && !audioOnly)
     val armed = VideoOverlayNative.armed
     val overlayVisible = VideoOverlayNative.visible
     val showGen = VideoOverlayNative.showGen
@@ -1124,8 +1134,56 @@ private fun selectedCheck(selected: Boolean): (@Composable () -> Unit)? = if (se
     null
 }
 
-/** The ⋮ menu: reload + audio-track selection. Captions live on the video CC control; audio-only
- *  is a quality-chip option, not a toggle here. */
+/** Material's menu-item width cap; fixed so labels wrap instead of setting the menu's width. */
+private val MoreMenuWidth = 280.dp
+
+@Composable
+private fun MoreMenuItem(
+    icon: ImageVector,
+    text: String,
+    value: String? = null,
+    submenu: Boolean = false,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = { Text(text, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = { Icon(icon, contentDescription = null, Modifier.size(20.dp), tint = DesignColors.InkMuted) },
+        trailingIcon = if (value == null && !submenu) {
+            null
+        } else {
+            {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (value != null) {
+                        Text(
+                            value,
+                            style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 96.dp),
+                        )
+                    }
+                    if (submenu) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            Modifier.size(18.dp),
+                            tint = DesignColors.InkSecondary,
+                        )
+                    }
+                }
+            }
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun MoreMenuDivider() {
+    HorizontalDivider(Modifier.padding(vertical = DesignSpacing.Space4), color = DesignColors.Divider)
+}
+
+/** The ⋮ menu, grouped: this video + queue · sound · player. Captions live on the video CC control;
+ *  audio-only is a quality-chip option, not a toggle here. */
 @Composable
 private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     val player = coordinator.player
@@ -1139,54 +1197,83 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     val snackbar = LocalSnackbar.current
     val noVideos = stringResource(Res.string.yt_playlist_queue_empty)
     val scope = rememberCoroutineScope()
-    HoldVideoOverlay(open || playbackOpen || eqOpen || detailsOpen)
+    var tracksOpen by remember { mutableStateOf(false) }
+    val config by player.config.collectAsState()
+    HoldVideoOverlay(open || tracksOpen || playbackOpen || eqOpen || detailsOpen)
 
     Box {
         ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), onClick = { open = true })
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.width(MoreMenuWidth)) {
             if (video != null) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(Res.string.video_details)) },
-                    onClick = { detailsOpen = true; open = false },
-                )
+                MoreMenuItem(Icons.Outlined.Info, stringResource(Res.string.menu_details_comments)) {
+                    detailsOpen = true
+                    open = false
+                }
                 if (ytPlaylists != null) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(Res.string.menu_add_to_playlist)) },
-                        onClick = { ytPlaylists.addToPlaylist(video.videoId); open = false },
-                    )
+                    MoreMenuItem(Icons.AutoMirrored.Outlined.PlaylistAdd, stringResource(Res.string.menu_add_to_playlist)) {
+                        ytPlaylists.addToPlaylist(video.videoId)
+                        open = false
+                    }
                 }
             }
             if (ytPlaylists != null) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(Res.string.queue_save_as_yt_playlist)) },
-                    onClick = {
-                        open = false
-                        scope.launch {
-                            val videoIds = queueVideoIds(coordinator.graph, player.queue.value.items)
-                            if (videoIds.isEmpty()) snackbar(noVideos) else ytPlaylists.saveAsPlaylist(videoIds)
-                        }
-                    },
-                )
-            }
-            DropdownMenuItem(
-                text = { Text(stringResource(Res.string.sound_speed)) },
-                onClick = { playbackOpen = true; open = false },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(Res.string.sound_eq)) },
-                onClick = { eqOpen = true; open = false },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(Res.string.menu_reload_player)) },
-                onClick = { player.reload(); open = false },
-            )
-            if (audioTracks.tracks.size > 1) {
-                audioTracks.tracks.forEach { t ->
-                    DropdownMenuItem(
-                        text = { Text(if (t.id == audioTracks.selectedId) "✓ ${t.displayName}" else t.displayName) },
-                        onClick = { player.selectAudioTrack(t.id); open = false },
-                    )
+                MoreMenuItem(Icons.AutoMirrored.Outlined.QueueMusic, stringResource(Res.string.queue_save_as_yt_playlist)) {
+                    open = false
+                    scope.launch {
+                        val videoIds = queueVideoIds(coordinator.graph, player.queue.value.items)
+                        if (videoIds.isEmpty()) snackbar(noVideos) else ytPlaylists.saveAsPlaylist(videoIds)
+                    }
                 }
+            }
+            if (video != null || ytPlaylists != null) MoreMenuDivider()
+            MoreMenuItem(
+                Icons.Outlined.Speed,
+                stringResource(Res.string.menu_speed_pitch),
+                value = "${trimFloat(config.speed)}×",
+            ) {
+                playbackOpen = true
+                open = false
+            }
+            MoreMenuItem(
+                Icons.Outlined.Equalizer,
+                stringResource(Res.string.sound_eq),
+                value = if (config.inAppAudioFx) stringResource(eqPresetLabel(config.eqBands)) else null,
+            ) {
+                eqOpen = true
+                open = false
+            }
+            if (audioTracks.tracks.size > 1) {
+                MoreMenuItem(
+                    Icons.Outlined.GraphicEq,
+                    stringResource(Res.string.download_audio_track),
+                    value = audioTracks.tracks.firstOrNull { it.id == audioTracks.selectedId }?.displayName,
+                    submenu = true,
+                ) {
+                    tracksOpen = true
+                    open = false
+                }
+            }
+            MoreMenuDivider()
+            MoreMenuItem(Icons.Outlined.Refresh, stringResource(Res.string.menu_reload_player)) {
+                player.reload()
+                open = false
+            }
+        }
+        DropdownMenu(expanded = tracksOpen, onDismissRequest = { tracksOpen = false }, modifier = Modifier.width(MoreMenuWidth)) {
+            audioTracks.tracks.forEach { track ->
+                val selected = track.id == audioTracks.selectedId
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            track.displayName,
+                            color = if (selected) DesignColors.Accent else DesignColors.Ink,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                    },
+                    trailingIcon = selectedCheck(selected),
+                    onClick = { player.selectAudioTrack(track.id); tracksOpen = false },
+                    modifier = Modifier.menuChoice(selected),
+                )
             }
         }
     }
@@ -1203,7 +1290,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
         )
     }
     if (eqOpen) {
-        EqualizerFxSheet(player, onDismiss = { eqOpen = false })
+        EqualizerFxSheet(coordinator.graph, onDismiss = { eqOpen = false })
     }
 }
 

@@ -221,6 +221,8 @@
     <string name="settings_theme_system">Як у системі</string>
     <string name="settings_theme_light">Світла</string>
     <string name="settings_theme_dark">Темна</string>
+    <string name="settings_theme_amoled">Чорна (AMOLED)</string>
+    <string name="settings_accent_color">Колір акценту</string>
     <string name="settings_debug">Налагодження</string>
     <string name="settings_show_fps">Показувати FPS</string>
     <string name="settings_show_fps_hint">Показувати кількість кадрів за секунду поверх відео на екрані відтворення. Підрахунок зупиняється на паузі або коли ви залишаєте екран.</string>
@@ -360,6 +362,9 @@
     <string name="settings_stats_hint">Ділитися анонімними даними про використання, щоб покращити застосунок.</string>
     <string name="settings_enable_pip">Картинка в картинці</string>
     <string name="settings_enable_pip_hint">Під час перегляду відео на екрані відтворення чи в повноекранному режимі продовжувати в маленькому вікні, якщо ви виходите із застосунку. Інакше відео перемкнеться на аудіо, доки ви не повернетеся.</string>
+    <string name="settings_audio_focus">Аудіофокус</string>
+    <string name="settings_audio_focus_calls">Пауза лише під час дзвінків</string>
+    <string name="settings_audio_focus_apps">Пауза, коли інші застосунки відтворюють звук</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Автоматично пропускати спонсорські вставки у відео YouTube. Для окремого відео можна вимкнути на екрані відтворення.</string>
     <string name="sponsor_block_included">SponsorBlock увімкнено для цього відео</string>
@@ -368,9 +373,11 @@
     <string name="settings_sound_hint">Гучність, швидкість, еквалайзер і віртуалізатор</string>
     <string name="settings_speed_hint">Швидкість відтворення й тон</string>
     <string name="settings_eq_hint">10-смуговий еквалайзер, підсилення басів, віртуалізатор</string>
+    <string name="settings_system_audio_fx">Системні звукові ефекти</string>
+    <string name="settings_system_audio_fx_hint">Дозволити програмам-еквалайзерам на пристрої обробляти звук. Вбудований еквалайзер вимикається.</string>
     <string name="sound_title">Звук</string>
     <string name="sound_playback">Відтворення</string>
-    <string name="sound_volume">Гучність %1$d%%</string>
+    <string name="sound_volume">Гучність %1$d%</string>
     <string name="sound_speed">Швидкість</string>
     <string name="sound_pitch">Тон %1$s</string>
     <string name="sound_eq">Еквалайзер</string>
@@ -524,4 +531,6 @@
     <string name="video_details_delete_title">Видалити коментар</string>
     <string name="video_details_delete_message">Остаточно видалити коментар і всі відповіді на нього?</string>
     <string name="video_details_deleted">Коментар видалено</string>
+    <string name="menu_details_comments">Опис і коментарі</string>
+    <string name="menu_speed_pitch">Швидкість і тон</string>
 </resources>

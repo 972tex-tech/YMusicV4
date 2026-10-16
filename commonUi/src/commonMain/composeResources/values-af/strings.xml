@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Volg stelsel</string>
     <string name="settings_theme_light">Lig</string>
     <string name="settings_theme_dark">Donker</string>
+    <string name="settings_theme_amoled">Swart (AMOLED)</string>
+    <string name="settings_accent_color">Aksentkleur</string>
     <string name="settings_debug">Ontfouting</string>
     <string name="settings_show_fps">Wys FPS</string>
     <string name="settings_show_fps_hint">Wys rame per sekonde oor die Speel nou-video. Meting stop wanneer onderbreek of wanneer jy daardie skerm verlaat.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">Deel anonieme gebruiksdata om die app te help verbeter.</string>
     <string name="settings_enable_pip">Prent-in-prent</string>
     <string name="settings_enable_pip_hint">Wanneer jy video in Speel nou of volskerm kyk, gaan dit in 'n klein venster voort as jy die app verlaat. Andersins skakel video na net oudio oor totdat jy terugkeer.</string>
+    <string name="settings_audio_focus">Oudiofokus</string>
+    <string name="settings_audio_focus_calls">Onderbreek net vir oproepe</string>
+    <string name="settings_audio_focus_apps">Onderbreek wanneer ander programme klank speel</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Slaan geborgde gedeeltes in YouTube-video's outomaties oor. Skakel dit vir 'n video af vanuit Speel nou.</string>
     <string name="sponsor_block_included">SponsorBlock geaktiveer vir hierdie video</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">Volume, spoed, gelykmaker en virtualiseerder</string>
     <string name="settings_speed_hint">Speelspoed en toonhoogte</string>
     <string name="settings_eq_hint">Tienband-gelykmaker, basversterking, virtualiseerder</string>
+    <string name="settings_system_audio_fx">Gebruik stelselklankeffekte</string>
+    <string name="settings_system_audio_fx_hint">Laat gelykmaker-toepassings op jou toestel die klank vorm. Skakel die ingeboude gelykmaker af.</string>
     <string name="sound_title">Klank</string>
     <string name="sound_playback">Terugspeel</string>
-    <string name="sound_volume">Volume %1$d%%</string>
+    <string name="sound_volume">Volume %1$d%</string>
     <string name="sound_speed">Spoed</string>
     <string name="sound_pitch">Toonhoogte %1$s</string>
     <string name="sound_eq">Gelykmaker</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">Skrap kommentaar</string>
     <string name="video_details_delete_message">Skrap jou kommentaar en al sy antwoorde permanent?</string>
     <string name="video_details_deleted">Kommentaar geskrap</string>
+    <string name="menu_details_comments">Besonderhede en kommentaar</string>
+    <string name="menu_speed_pitch">Spoed en toonhoogte</string>
 </resources>

@@ -68,8 +68,8 @@ class DownloadedStreams(
  *  2. picks the concrete audio/video [AdaptiveFormat]s for the task and the caption tracks for [captions].
  *  3. streams each audio/video track to its own scratch file over SABR — resumable (the scratch's
  *     on-disk length is the resume point), re-attesting once if the PO token is rejected mid-stream.
- *  4. fetches each selected caption over plain HTTP (its baseUrl is already signature-decoded + pot-bound
- *     by the MSE player) into a scratch file.
+ *  4. fetches each selected caption over plain HTTP (its baseUrl carries the content PO token, see
+ *     [timedTextUrl]) into a scratch file.
  *
  * Scratch files live in app-private storage ([DownloadStorage.scratch]) — unrelated to the user's
  * download-location setting, which only governs where the *final* file is published.
@@ -150,9 +150,9 @@ class YtStreamDownloader(
 
     /** Choose the audio (and, for video outputs, video) [AdaptiveFormat]s for a [format] output. */
     private fun selectFormats(task: DownloadTask, format: DownloadFormat, formats: List<AdaptiveFormat>): Pair<AdaptiveFormat, AdaptiveFormat?> {
-        val preferAac = format == DownloadFormat.M4A || format == DownloadFormat.VIDEO_MP4
-        val audio = FormatSelection.bestAudio(formats, preferAac = preferAac, audioTrackId = task.audioTrackId, audioLanguage = task.audioLanguage)
-            ?: throw TechnicalException("E70011", "no audio format for ${task.videoId}")
+        val codec = AudioCodec.of(format)
+        val audio = FormatSelection.bestAudio(formats, codec, audioTrackId = task.audioTrackId, audioLanguage = task.audioLanguage)
+            ?: throw TechnicalException("E70011", "no $codec audio format for ${task.videoId} ($format)")
         val video = if (format.kind == DownloadKind.VIDEO) {
             FormatSelection.videoNearest(formats, task.requestedHeight, format)
                 ?: throw TechnicalException("E70012", "no video format for ${task.videoId}")
@@ -162,7 +162,7 @@ class YtStreamDownloader(
         return audio to video
     }
 
-    /** GET the caption's WebVTT into a scratch file. The baseUrl is already GET-ready (sig/n + pot). */
+    /** GET the caption's WebVTT into a scratch file. A body without cues is a failure, never an empty track. */
     private suspend fun downloadCaption(taskId: String, track: CaptionTrack): DownloadedCaption {
         val scratch = storage.scratch(taskId, "cc.${captionKey(track.languageCode, track.isAsr)}.vtt")
         scratch.delete() // tiny file — always refetch whole rather than resume a partial
@@ -171,6 +171,7 @@ class YtStreamDownloader(
         try {
             if (!response.isSuccessful) throw IOException("caption ${track.languageCode} HTTP ${response.code}")
             val bytes = response.body.byteString()
+            if (!bytes.utf8().contains("-->")) throw IOException("caption ${track.languageCode} has no cues (${bytes.size} bytes)")
             scratch.appendSink().use { sink -> sink.write(bytes); sink.flush() }
         } finally {
             response.close()

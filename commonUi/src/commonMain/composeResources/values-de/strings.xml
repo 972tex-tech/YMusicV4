@@ -219,6 +219,8 @@
     <string name="settings_theme_system">Systemstandard</string>
     <string name="settings_theme_light">Hell</string>
     <string name="settings_theme_dark">Dunkel</string>
+    <string name="settings_theme_amoled">Schwarz (AMOLED)</string>
+    <string name="settings_accent_color">Akzentfarbe</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_show_fps">FPS anzeigen</string>
     <string name="settings_show_fps_hint">Bilder pro Sekunde über dem Video in „Aktuelle Wiedergabe“ einblenden. Die Messung stoppt bei Pause oder wenn du den Bildschirm verlässt.</string>
@@ -358,6 +360,9 @@
     <string name="settings_stats_hint">Anonyme Nutzungsdaten teilen, um die App zu verbessern.</string>
     <string name="settings_enable_pip">Bild-im-Bild</string>
     <string name="settings_enable_pip_hint">Wenn du ein Video in „Aktuelle Wiedergabe“ oder im Vollbild ansiehst, läuft es beim Verlassen der App in einem kleinen Fenster weiter. Andernfalls wechselt es zu Nur Audio, bis du zurückkehrst.</string>
+    <string name="settings_audio_focus">Audiofokus</string>
+    <string name="settings_audio_focus_calls">Nur bei Anrufen pausieren</string>
+    <string name="settings_audio_focus_apps">Pausieren, wenn andere Apps Ton abspielen</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Gesponserte Abschnitte in YouTube-Videos automatisch überspringen. In „Aktuelle Wiedergabe“ für einzelne Videos abschaltbar.</string>
     <string name="sponsor_block_included">SponsorBlock für dieses Video aktiviert</string>
@@ -366,9 +371,11 @@
     <string name="settings_sound_hint">Lautstärke, Geschwindigkeit, Equalizer und Virtualizer</string>
     <string name="settings_speed_hint">Wiedergabegeschwindigkeit und Tonhöhe</string>
     <string name="settings_eq_hint">Zehnband-Equalizer, Bassverstärkung, Virtualizer</string>
+    <string name="settings_system_audio_fx">System-Soundeffekte verwenden</string>
+    <string name="settings_system_audio_fx_hint">Equalizer-Apps auf deinem Gerät den Klang formen lassen. Schaltet den App-Equalizer aus.</string>
     <string name="sound_title">Sound</string>
     <string name="sound_playback">Wiedergabe</string>
-    <string name="sound_volume">Lautstärke %1$d%%</string>
+    <string name="sound_volume">Lautstärke %1$d%</string>
     <string name="sound_speed">Geschwindigkeit</string>
     <string name="sound_pitch">Tonhöhe %1$s</string>
     <string name="sound_eq">Equalizer</string>
@@ -514,4 +521,6 @@
     <string name="video_details_delete_title">Kommentar löschen</string>
     <string name="video_details_delete_message">Deinen Kommentar und alle Antworten darauf endgültig löschen?</string>
     <string name="video_details_deleted">Kommentar gelöscht</string>
+    <string name="menu_details_comments">Details &amp; Kommentare</string>
+    <string name="menu_speed_pitch">Tempo &amp; Tonhöhe</string>
 </resources>

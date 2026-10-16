@@ -220,6 +220,8 @@
     <string name="settings_theme_system">Ca sistemul</string>
     <string name="settings_theme_light">Luminoasă</string>
     <string name="settings_theme_dark">Întunecată</string>
+    <string name="settings_theme_amoled">Negru (AMOLED)</string>
+    <string name="settings_accent_color">Culoare de accent</string>
     <string name="settings_debug">Depanare</string>
     <string name="settings_show_fps">Afișează FPS</string>
     <string name="settings_show_fps_hint">Afișează cadrele pe secundă peste videoclipul din Se redă acum. Măsurarea se oprește când pui pauză sau părăsești ecranul.</string>
@@ -359,6 +361,9 @@
     <string name="settings_stats_hint">Partajează semnale anonime de utilizare pentru a ajuta la îmbunătățirea aplicației.</string>
     <string name="settings_enable_pip">Picture-in-picture</string>
     <string name="settings_enable_pip_hint">Când urmărești un videoclip în Se redă acum sau pe ecran complet, continuă într-o fereastră mică dacă părăsești aplicația. Altfel, videoclipul trece la doar audio până revii.</string>
+    <string name="settings_audio_focus">Focus audio</string>
+    <string name="settings_audio_focus_calls">Întrerupe doar pentru apeluri telefonice</string>
+    <string name="settings_audio_focus_apps">Întrerupe când alte aplicații redau sunet</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Omite automat segmentele sponsorizate din videoclipurile YouTube. Dezactivează pentru un videoclip din Se redă acum.</string>
     <string name="sponsor_block_included">SponsorBlock activat pentru acest videoclip</string>
@@ -367,9 +372,11 @@
     <string name="settings_sound_hint">Volum, viteză, egalizator și virtualizator</string>
     <string name="settings_speed_hint">Viteza de redare și tonalitatea</string>
     <string name="settings_eq_hint">Egalizator cu zece benzi, amplificare bas, virtualizator</string>
+    <string name="settings_system_audio_fx">Folosește efectele sonore ale sistemului</string>
+    <string name="settings_system_audio_fx_hint">Lasă aplicațiile de egalizator de pe dispozitiv să modeleze sunetul. Dezactivează egalizatorul aplicației.</string>
     <string name="sound_title">Sunet</string>
     <string name="sound_playback">Redare</string>
-    <string name="sound_volume">Volum %1$d%%</string>
+    <string name="sound_volume">Volum %1$d%</string>
     <string name="sound_speed">Viteză</string>
     <string name="sound_pitch">Tonalitate %1$s</string>
     <string name="sound_eq">Egalizator</string>
@@ -519,4 +526,6 @@
     <string name="video_details_delete_title">Șterge comentariul</string>
     <string name="video_details_delete_message">Ștergi definitiv comentariul și toate răspunsurile la acesta?</string>
     <string name="video_details_deleted">Comentariu șters</string>
+    <string name="menu_details_comments">Detalii și comentarii</string>
+    <string name="menu_speed_pitch">Viteză și tonalitate</string>
 </resources>

@@ -271,6 +271,8 @@
     <string name="settings_theme_system">Follow system</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_amoled">Black (AMOLED)</string>
+    <string name="settings_accent_color">Accent color</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_show_fps">Show FPS</string>
     <string name="settings_show_fps_hint">Overlay pictures per second on the Now Playing video. Sampling stops when paused or you leave that screen.</string>
@@ -424,6 +426,9 @@
     <string name="settings_stats_hint">Share anonymous usage signals to help improve the app.</string>
     <string name="settings_enable_pip">Picture in picture</string>
     <string name="settings_enable_pip_hint">When watching video in Now Playing or fullscreen, continue in a small window if you leave the app. Otherwise video switches to audio-only until you return.</string>
+    <string name="settings_audio_focus">Audio focus</string>
+    <string name="settings_audio_focus_calls">Only pause for phone calls</string>
+    <string name="settings_audio_focus_apps">Pause when other apps play sound</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Automatically skip sponsored segments in YouTube videos. Turn off for a video from Now Playing.</string>
     <string name="sponsor_block_included">SponsorBlock enabled for this video</string>
@@ -432,9 +437,11 @@
     <string name="settings_sound_hint">Volume, speed, equalizer, and virtualizer</string>
     <string name="settings_speed_hint">Playback speed and pitch</string>
     <string name="settings_eq_hint">Ten-band equalizer, bass boost, virtualizer</string>
+    <string name="settings_system_audio_fx">Use system sound effects</string>
+    <string name="settings_system_audio_fx_hint">Let equalizer apps on your device shape the sound. Turns off the in-app equalizer.</string>
     <string name="sound_title">Sound</string>
     <string name="sound_playback">Playback</string>
-    <string name="sound_volume">Volume %1$d%%</string>
+    <string name="sound_volume">Volume %1$d%</string>
     <string name="sound_speed">Speed</string>
     <string name="sound_pitch">Pitch %1$s</string>
     <string name="sound_eq">Equalizer</string>
@@ -621,4 +628,6 @@
     <string name="link_unsupported">YMusic can't open this link</string>
     <string name="link_queued_next">Will play next</string>
     <string name="link_queued_last">Added to the end of the queue</string>
+    <string name="menu_details_comments">Details &amp; comments</string>
+    <string name="menu_speed_pitch">Speed &amp; pitch</string>
 </resources>

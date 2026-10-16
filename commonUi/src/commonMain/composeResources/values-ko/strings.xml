@@ -218,6 +218,8 @@
     <string name="settings_theme_system">시스템 설정 따르기</string>
     <string name="settings_theme_light">라이트</string>
     <string name="settings_theme_dark">다크</string>
+    <string name="settings_theme_amoled">블랙(AMOLED)</string>
+    <string name="settings_accent_color">강조 색상</string>
     <string name="settings_debug">디버그</string>
     <string name="settings_show_fps">FPS 표시</string>
     <string name="settings_show_fps_hint">재생 중인 동영상 위에 초당 프레임 수를 표시합니다. 일시정지하거나 화면을 벗어나면 측정이 중지됩니다.</string>
@@ -357,6 +359,9 @@
     <string name="settings_stats_hint">앱 개선을 위해 익명 사용 정보를 공유합니다.</string>
     <string name="settings_enable_pip">PIP 모드</string>
     <string name="settings_enable_pip_hint">재생 화면이나 전체 화면에서 동영상을 보다가 앱을 나가면 작은 창에서 계속 재생합니다. 끄면 돌아올 때까지 오디오 전용으로 전환됩니다.</string>
+    <string name="settings_audio_focus">오디오 포커스</string>
+    <string name="settings_audio_focus_calls">전화 통화 중에만 일시정지</string>
+    <string name="settings_audio_focus_apps">다른 앱에서 소리가 재생되면 일시정지</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube 동영상의 스폰서 구간을 자동으로 건너뜁니다. 재생 화면에서 동영상별로 끌 수 있습니다.</string>
     <string name="sponsor_block_included">이 동영상에 SponsorBlock 사용</string>
@@ -365,9 +370,11 @@
     <string name="settings_sound_hint">볼륨, 속도, 이퀄라이저, 버추얼라이저</string>
     <string name="settings_speed_hint">재생 속도 및 음높이</string>
     <string name="settings_eq_hint">10밴드 이퀄라이저, 저음 강화, 버추얼라이저</string>
+    <string name="settings_system_audio_fx">시스템 사운드 효과 사용</string>
+    <string name="settings_system_audio_fx_hint">기기의 이퀄라이저 앱이 사운드를 조정할 수 있도록 합니다. 앱 내 이퀄라이저가 꺼집니다.</string>
     <string name="sound_title">사운드</string>
     <string name="sound_playback">재생</string>
-    <string name="sound_volume">볼륨 %1$d%%</string>
+    <string name="sound_volume">볼륨 %1$d%</string>
     <string name="sound_speed">속도</string>
     <string name="sound_pitch">음높이 %1$s</string>
     <string name="sound_eq">이퀄라이저</string>
@@ -509,4 +516,6 @@
     <string name="video_details_delete_title">댓글 삭제</string>
     <string name="video_details_delete_message">댓글과 모든 답글을 영구적으로 삭제할까요?</string>
     <string name="video_details_deleted">댓글을 삭제했습니다</string>
+    <string name="menu_details_comments">세부정보 및 댓글</string>
+    <string name="menu_speed_pitch">속도 및 음높이</string>
 </resources>
