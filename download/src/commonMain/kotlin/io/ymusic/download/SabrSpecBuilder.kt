@@ -33,7 +33,7 @@ object SabrSpecBuilder {
         val clientVersion = data.stringOrNull("clientVersion")
         val clientName = data.intOrNull("clientNameId") ?: 1
         val formats = adaptiveFormats(streaming)
-        val captions = captionEntries(data).map { it.toTrack() }
+        val captions = captionEntries(data).map { it.toTrack(poTokenBase64) }
         return SabrStreamSpec(
             videoId = videoId,
             sabrUrl = sabrUrl,

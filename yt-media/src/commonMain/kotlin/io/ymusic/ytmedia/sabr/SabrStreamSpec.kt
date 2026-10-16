@@ -20,7 +20,7 @@ class SabrStreamSpec(
     /**
      * Timed-text tracks from the player response. Not part of the SABR protocol — carried here because
      * they come from the same player response and the downloader needs them. Their [CaptionTrack.baseUrl]
-     * arrives ready to GET (signature/n decoded, pot bound; done by the MSE player).
+     * arrives ready to GET (PO token bound by the download's spec builder).
      */
     val captionTracks: List<CaptionTrack> = emptyList(),
 )

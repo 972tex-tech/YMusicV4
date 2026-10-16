@@ -1,6 +1,7 @@
 package io.ymusic.download
 
 import io.ymusic.ytmedia.sabr.CaptionTrack
+import kmpcommon.uri.UriBuilder
 import kotlinx.serialization.json.JsonObject
 import projectcommon.json.boolOrNull
 import projectcommon.json.objects
@@ -17,8 +18,16 @@ internal class CaptionEntry(
 ) {
     val key: String get() = captionKey(languageCode, isAsr)
 
-    fun toTrack(): CaptionTrack = CaptionTrack(languageCode, name, baseUrl, isDefault, isAsr)
+    fun toTrack(poToken: String?): CaptionTrack =
+        CaptionTrack(languageCode, name, timedTextUrl(baseUrl, poToken), isDefault, isAsr)
 }
+
+/** An `exp=xpe` track answers HTTP 200 with an empty body unless the GET carries `c=WEB` and the content PO token. */
+internal fun timedTextUrl(baseUrl: String, poToken: String?): String =
+    UriBuilder.from(baseUrl)
+        .appendQueryParam("c", "WEB")
+        .apply { if (!poToken.isNullOrBlank()) appendQueryParam("pot", poToken) }
+        .buildString()
 
 /**
  * The captions a download can pick, one per language code: an uploaded track wins over the
