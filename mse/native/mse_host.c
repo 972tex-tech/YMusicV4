@@ -102,6 +102,9 @@ struct MseHost {
     int aq_buf_bytes;
     int flushing;
     double dac_tick_ns;
+    /* Last clock handed out, and whether it came from the audio device (see dac_handover). */
+    double clk_last;
+    int clk_dac;
 #endif
 #ifdef MSE_AQ
     AudioQueueRef aq;
@@ -220,6 +223,20 @@ static double dac_played_s(MseHost *h, double sp)
 }
 #endif
 
+#ifdef MSE_DAC
+/* h->mu held. Wall time → audio clock never steps back (Media3 DefaultMediaClock): while the
+   device clock is behind what was already handed out, hold there until it catches up. */
+static double dac_handover(MseHost *h, double dac)
+{
+    if (!h->clk_dac) {
+        if (h->playing && dac < h->clk_last)
+            return h->clk_last;
+        h->clk_dac = 1;
+    }
+    return dac;
+}
+#endif
+
 /* h->mu held. Do not take MseAv locks: the DAC callback/poll needs h->mu, and
    MediaCodec configure holds a->mu for tens of ms (audio-only → Auto). */
 static double clock_with_span(MseHost *h, int have, double first, double last, int has_video)
@@ -242,6 +259,9 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
         if (h->playing)
             h->origin_ns = now_ns();
         t = hold;
+#ifdef MSE_DAC
+        h->clk_dac = 0;
+#endif
     } else {
         if (h->playing && h->origin_ns > 0)
             t += (now_ns() - h->origin_ns) / 1e9 * play_speed(h);
@@ -263,7 +283,9 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
                 if (extra > 0)
                     dac += extra * sp;
             }
-            t = dac;
+            t = dac_handover(h, dac);
+        } else {
+            h->clk_dac = 0;
         }
 #else
         if (h->aq_started && h->rate > 0 && h->samples_played > 0) {
@@ -282,7 +304,9 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
                 if (extra > 0)
                     dac += extra * sp;
             }
-            t = dac;
+            t = dac_handover(h, dac);
+        } else {
+            h->clk_dac = 0;
         }
 #endif
 #endif
@@ -330,7 +354,12 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
        Infinity; clamping currentTime there freezes the playhead (log23). */
     if (h->yt_dur > 0 && t > h->yt_dur && (!have || last <= h->yt_dur + 0.75))
         t = h->yt_dur;
-    return t < 0 ? 0 : t;
+    if (t < 0)
+        t = 0;
+#ifdef MSE_DAC
+    h->clk_last = t;
+#endif
+    return t;
 }
 
 static double host_clock(MseHost *h)
