@@ -4264,7 +4264,8 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
     return 0;
 }
 
-int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *rate, int *ch, double *pts)
+int mse_av_pull_audio(MseAv *a, double clock, double until, int16_t **s16, int *frames, int *rate, int *ch,
+                      double *pts)
 {
     AVFrame *frame;
     uint8_t *tmp;
@@ -4291,9 +4292,9 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
     got = 1;
     {
         int i;
-        /* Host passes playhead+0.35. Skip packets already behind the DAC so
-           an overlapping append cannot dump old PTS into the ring. */
-        const double behind = clock - 0.40;
+        /* Skip packets already behind the playhead so an overlapping append
+           cannot dump old PTS into the ring. */
+        const double behind = clock - 0.05;
         for (i = 0; i < 16; i++) {
             got = avcodec_receive_frame(a->adec, frame);
             if (got == 0) {
@@ -4308,7 +4309,7 @@ int mse_av_pull_audio(MseAv *a, double clock, int16_t **s16, int *frames, int *r
                 a->af.f[a->af.rd].sent = 1;
                 a->af.rd++;
             }
-            if (a->af.rd >= a->af.n || a->af.f[a->af.rd].pts > clock + 0.08)
+            if (a->af.rd >= a->af.n || a->af.f[a->af.rd].pts > until + 0.08)
                 break;
             if (send_coded(&a->af, a->adec, NULL) < 0)
                 break;

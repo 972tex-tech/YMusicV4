@@ -803,7 +803,7 @@ static void *dec_loop(void *arg)
             if (!want)
                 break;
             pcm = NULL;
-            if (mse_av_pull_audio(h->av, clock + lead, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
+            if (mse_av_pull_audio(h->av, clock, clock + lead, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
                 break;
             host_stretch(h, &pcm, &frames, ch, rate);
             if (frames <= 0) {
@@ -867,7 +867,7 @@ static void *dec_loop(void *arg)
             aq_start_faded(start_q, 0);
 #endif
 #else
-        if (mse_av_pull_audio(h->av, clock + 0.35, &pcm, &frames, &rate, &ch, &pts) > 0 && pcm) {
+        if (mse_av_pull_audio(h->av, clock, clock + 0.35, &pcm, &frames, &rate, &ch, &pts) > 0 && pcm) {
             int nbytes;
             host_stretch(h, &pcm, &frames, ch, rate);
             if (h->fx && frames > 0)
