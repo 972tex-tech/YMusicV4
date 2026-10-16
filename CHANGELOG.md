@@ -1,5 +1,35 @@
 # Changelog
 
+## 4.0.4
+
+### NEW
+- Android: equalizer apps and system sound effects work on YouTube playback, with a "Use system sound effects" switch in the Equalizer ([9c6f8a4fb..df765d62b](https://github.com/ymusic-io/YMusicV4/compare/fff79b8a504965f7d0080ca9483883fa3f87b318...df765d62b91054c5828ccd581239f70c68bf2a57))
+- Android: Audio focus setting (pause when other apps play, or for calls only); unplugging headphones pauses YouTube too ([86c471ff4](https://github.com/ymusic-io/YMusicV4/commit/86c471ff4f8ef18ce20df0bbecb9380521baebcf))
+- Android: runs on 32-bit ARM and x86 devices ([2ea5eccb1..73a20ca37](https://github.com/ymusic-io/YMusicV4/compare/839115bfa34fb7bef79cf9a6a84ad5d6c6043545...73a20ca37d30cd7281a898da92a975bdbc85ec16))
+- Black (AMOLED) theme, and an accent color picker with presets ([d31440369](https://github.com/ymusic-io/YMusicV4/commit/d314403691451ff81dcdc48e762fcc4dd904d6d7))
+
+### IMPROVED
+- YouTube audio and video stay in sync after seeks, speed changes and resumes ([2643636b9..abef10006](https://github.com/ymusic-io/YMusicV4/compare/0a3e3014ba6d579aef61e9de400ae0058acf6653...abef100069c482f77d722aef3b54003674e1f5e6))
+- YouTube audio plays at the best quality available ([a05021e53](https://github.com/ymusic-io/YMusicV4/commit/a05021e53c5f362c8b054a8925c9c369d4dc230a))
+- Android: changing video quality no longer stalls or downloads the video again ([530a1d1d0](https://github.com/ymusic-io/YMusicV4/commit/530a1d1d011c276a3d3651177563e826de44f902))
+- Downloads: only MP3 is re-encoded; M4A, WebM and video keep the original streams, and videos with Dolby audio download ([c5f29e06c..0a3e3014b](https://github.com/ymusic-io/YMusicV4/compare/38984c08b91079cc741e481b5dd32e14a19e15b1...0a3e3014ba6d579aef61e9de400ae0058acf6653))
+- Speed and pitch sliders apply when you let go ([921e16461](https://github.com/ymusic-io/YMusicV4/commit/921e16461b153beb5f235467b67315fbbd017c07))
+- Now Playing ⋮ menu grouped with icons and current values ([f6df44187](https://github.com/ymusic-io/YMusicV4/commit/f6df441875c39bbbb59cc3026963f5a622606b5a))
+- Home feed: wide list on more phones, with up to three title lines ([0c3fa7e26..af1181f6b](https://github.com/ymusic-io/YMusicV4/compare/3136aa1f1c8017e78938146434ff86fc1d908d91...af1181f6bffcecf631de0cef189ada2423a3b8a1))
+- Faster recovery when YouTube is slow to respond ([4bbf9b189](https://github.com/ymusic-io/YMusicV4/commit/4bbf9b189de64ae39ade60127b3c5381045c0586))
+- Settings → About lists the app versions first ([04270e012](https://github.com/ymusic-io/YMusicV4/commit/04270e012e7cfcfa16c8b9435773f08d0bf2fcb9))
+
+### FIXED
+- Playlist skipping every second song ([9b2e0d3c9](https://github.com/ymusic-io/YMusicV4/commit/9b2e0d3c991e8b723b828348c6b8d6a2b58c90fc))
+- Repeat one not looping YouTube videos ([839115bfa](https://github.com/ymusic-io/YMusicV4/commit/839115bfa34fb7bef79cf9a6a84ad5d6c6043545))
+- Search suggestions not showing ([85e7d7a96](https://github.com/ymusic-io/YMusicV4/commit/85e7d7a9695b2300438b18c4347c2e67b03588b3))
+- Downloaded subtitles that showed nothing ([cca979d54](https://github.com/ymusic-io/YMusicV4/commit/cca979d54b7d19c923d15aa90ec18bbe8ada7326))
+- Volume staying low after another app lowered it ([7905af815](https://github.com/ymusic-io/YMusicV4/commit/7905af815caa9fe0413cb65e0fac076bcd63d814))
+- Seeking near the end of a YouTube track skipped to the next one ([cdb430450](https://github.com/ymusic-io/YMusicV4/commit/cdb4304506439786977e1c268eb3f146f2e4acae))
+- iOS, macOS: audio skipped when resuming after a pause ([ddb55f7d1](https://github.com/ymusic-io/YMusicV4/commit/ddb55f7d1fe35ad593284c524e598847f85d89c2))
+- Speed & pitch dialog showing "Volume 100%%" ([3136aa1f1](https://github.com/ymusic-io/YMusicV4/commit/3136aa1f1c8017e78938146434ff86fc1d908d91))
+- Desktop: occasional crash at startup on slow machines ([a38bc9bad](https://github.com/ymusic-io/YMusicV4/commit/a38bc9badb084f01bab7f17df6b7ead0d03d2283))
+
 ## 4.0.3
 
 ### NEW
