@@ -122,6 +122,11 @@ struct MseHost {
     int64_t dac_pos;
     int64_t dac_base;
     int64_t dac_written;
+    /* Frames handed to the sink this generation. */
+    int64_t dac_polled;
+    /* PCM is stretched before the ring: sink frames before dac_sp_edge play at dac_sp_old. */
+    int64_t dac_sp_edge;
+    double dac_sp_old;
     _Atomic int dac_session;
 #endif
 };
@@ -198,6 +203,23 @@ static double play_speed(MseHost *h)
     return (double)s;
 }
 
+#ifdef __ANDROID__
+/* h->mu held. Media seconds of the sink frames played since dac_base. */
+static double dac_played_s(MseHost *h, double sp)
+{
+    double played = (double)h->samples_played;
+    if (h->rate <= 0)
+        return 0;
+    if (h->dac_sp_edge > h->dac_base) {
+        double old_n = (double)(h->dac_sp_edge - h->dac_base);
+        if (played <= old_n)
+            return played / (double)h->rate * h->dac_sp_old;
+        return (old_n * h->dac_sp_old + (played - old_n) * sp) / (double)h->rate;
+    }
+    return played / (double)h->rate * sp;
+}
+#endif
+
 /* h->mu held. Do not take MseAv locks: the DAC callback/poll needs h->mu, and
    MediaCodec configure holds a->mu for tens of ms (audio-only → Auto). */
 static double clock_with_span(MseHost *h, int have, double first, double last, int has_video)
@@ -233,7 +255,7 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
         if (h->aq_started && h->rate > 0 &&
             (h->dac_live || now_ns() - h->dac_start_ns < DAC_FIRST_REPORT_NS)) {
             double sp = play_speed(h);
-            double dac = h->seek_base + (double)h->samples_played / (double)h->rate * sp;
+            double dac = h->seek_base + dac_played_s(h, sp);
             if (h->playing && h->dac_tick_ns > 0) {
                 double extra = (now_ns() - h->dac_tick_ns) / 1e9;
                 if (extra > DAC_EXTRAPOLATE_S)
@@ -394,6 +416,7 @@ static void ring_flush(MseHost *h)
     h->dac_drain = 0;
     h->dac_pending = 0;
     h->dac_pos = h->dac_base = h->dac_written = 0;
+    h->dac_polled = h->dac_sp_edge = 0;
 #endif
 }
 
@@ -1542,6 +1565,7 @@ int mse_host_dac_poll(MseHost *h, uint8_t *dst, int cap, int wait_ms, int state[
     if (n > 0) {
         /* Until the sink's next report: the chunk is out of the ring but not in the track yet. */
         h->dac_pending = 1;
+        h->dac_polled += n / frame_bytes(h);
     }
     ch = h->ch;
     state[MSE_DAC_GEN] = (int)h->ring_gen;
@@ -1568,6 +1592,13 @@ void mse_host_dac_report(MseHost *h, int gen, int64_t position, int64_t written,
     }
     if ((unsigned)gen == h->ring_gen && position >= 0) {
         h->dac_pos = position;
+        if (h->dac_sp_edge > 0 && position >= h->dac_sp_edge) {
+            if (h->rate > 0 && h->dac_sp_edge > h->dac_base) {
+                h->seek_base += (double)(h->dac_sp_edge - h->dac_base) / (double)h->rate * h->dac_sp_old;
+                h->dac_base = h->dac_sp_edge;
+            }
+            h->dac_sp_edge = 0;
+        }
         if (h->aq_started) {
             h->samples_played = position > h->dac_base ? position - h->dac_base : 0;
             h->dac_tick_ns = now_ns();
@@ -1848,11 +1879,14 @@ void mse_host_set_speed(MseHost *h, float speed, float tempo)
     }
     h->speed = speed;
 #ifdef __ANDROID__
-    /* Keep currentTime continuous: what played so far counts at the old rate. */
-    if (h->rate > 0)
-        h->seek_base += (double)h->samples_played / (double)h->rate * (double)old;
+    /* Keep currentTime continuous, and count what is still queued (ring + sink) at the old rate. */
+    h->seek_base += dac_played_s(h, (double)old);
     h->samples_played = 0;
     h->dac_base = h->dac_pos;
+    h->dac_sp_edge = h->dac_polled + (h->ch > 0 ? h->ring_n / frame_bytes(h) : 0);
+    h->dac_sp_old = (double)old;
+    if (h->dac_sp_edge <= h->dac_pos)
+        h->dac_sp_edge = 0;
 #elif defined(MSE_DAC)
     /* Keep currentTime continuous: samples * new_rate = samples * old_rate. */
     if (h->samples_played > 0)
