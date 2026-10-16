@@ -519,4 +519,6 @@
     <string name="video_details_delete_title">Изтриване на коментара</string>
     <string name="video_details_delete_message">Да се изтрият ли окончателно коментарът ви и всички отговори към него?</string>
     <string name="video_details_deleted">Коментарът е изтрит</string>
+    <string name="menu_details_comments">Подробности и коментари</string>
+    <string name="menu_speed_pitch">Скорост и тон</string>
 </resources>

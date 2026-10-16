@@ -529,4 +529,6 @@
     <string name="video_details_delete_title">Видалити коментар</string>
     <string name="video_details_delete_message">Остаточно видалити коментар і всі відповіді на нього?</string>
     <string name="video_details_deleted">Коментар видалено</string>
+    <string name="menu_details_comments">Опис і коментарі</string>
+    <string name="menu_speed_pitch">Швидкість і тон</string>
 </resources>

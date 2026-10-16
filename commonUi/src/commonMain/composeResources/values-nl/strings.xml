@@ -519,4 +519,6 @@
     <string name="video_details_delete_title">Reactie verwijderen</string>
     <string name="video_details_delete_message">Je reactie en alle antwoorden erop definitief verwijderen?</string>
     <string name="video_details_deleted">Reactie verwijderd</string>
+    <string name="menu_details_comments">Details en reacties</string>
+    <string name="menu_speed_pitch">Snelheid en toonhoogte</string>
 </resources>

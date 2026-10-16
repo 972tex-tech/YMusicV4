@@ -519,4 +519,6 @@
     <string name="video_details_delete_title">I-delete ang komento</string>
     <string name="video_details_delete_message">Permanenteng i-delete ang iyong komento at lahat ng sagot dito?</string>
     <string name="video_details_deleted">Na-delete ang komento</string>
+    <string name="menu_details_comments">Mga detalye at komento</string>
+    <string name="menu_speed_pitch">Bilis at pitch</string>
 </resources>

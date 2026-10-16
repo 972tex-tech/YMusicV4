@@ -524,4 +524,6 @@
     <string name="video_details_delete_title">Elimina commento</string>
     <string name="video_details_delete_message">Eliminare definitivamente il tuo commento e tutte le sue risposte?</string>
     <string name="video_details_deleted">Commento eliminato</string>
+    <string name="menu_details_comments">Dettagli e commenti</string>
+    <string name="menu_speed_pitch">Velocità e intonazione</string>
 </resources>

@@ -519,4 +519,6 @@
     <string name="video_details_delete_title">கருத்தை நீக்கு</string>
     <string name="video_details_delete_message">உங்கள் கருத்தையும் அதன் எல்லாப் பதில்களையும் நிரந்தரமாக நீக்கவா?</string>
     <string name="video_details_deleted">கருத்து நீக்கப்பட்டது</string>
+    <string name="menu_details_comments">விவரங்களும் கருத்துகளும்</string>
+    <string name="menu_speed_pitch">வேகமும் சுருதியும்</string>
 </resources>

@@ -519,4 +519,6 @@
     <string name="video_details_delete_title">Διαγραφή σχολίου</string>
     <string name="video_details_delete_message">Να διαγραφεί οριστικά το σχόλιό σας και όλες οι απαντήσεις του;</string>
     <string name="video_details_deleted">Το σχόλιο διαγράφηκε</string>
+    <string name="menu_details_comments">Λεπτομέρειες και σχόλια</string>
+    <string name="menu_speed_pitch">Ταχύτητα και τονικότητα</string>
 </resources>

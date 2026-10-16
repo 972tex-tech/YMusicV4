@@ -592,4 +592,6 @@
     <string name="link_unsupported">لا يمكن لـ YMusic فتح هذا الرابط</string>
     <string name="link_queued_next">سيتم تشغيله تاليًا</string>
     <string name="link_queued_last">تمت الإضافة إلى نهاية قائمة الانتظار</string>
+    <string name="menu_details_comments">التفاصيل والتعليقات</string>
+    <string name="menu_speed_pitch">السرعة وطبقة الصوت</string>
 </resources>

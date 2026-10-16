@@ -599,4 +599,6 @@
     <string name="link_unsupported">YMusic không mở được liên kết này</string>
     <string name="link_queued_next">Sẽ phát tiếp theo</string>
     <string name="link_queued_last">Đã thêm vào cuối danh sách phát</string>
+    <string name="menu_details_comments">Chi tiết &amp; bình luận</string>
+    <string name="menu_speed_pitch">Tốc độ &amp; cao độ</string>
 </resources>

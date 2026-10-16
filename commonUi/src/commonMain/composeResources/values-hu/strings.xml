@@ -519,4 +519,6 @@
     <string name="video_details_delete_title">Hozzászólás törlése</string>
     <string name="video_details_delete_message">Véglegesen törlöd a hozzászólásodat és az összes rá érkezett választ?</string>
     <string name="video_details_deleted">Hozzászólás törölve</string>
+    <string name="menu_details_comments">Részletek és hozzászólások</string>
+    <string name="menu_speed_pitch">Sebesség és hangmagasság</string>
 </resources>

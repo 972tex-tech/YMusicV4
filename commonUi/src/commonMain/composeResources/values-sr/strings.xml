@@ -524,4 +524,6 @@
     <string name="video_details_delete_title">Избриши коментар</string>
     <string name="video_details_delete_message">Трајно избрисати ваш коментар и све одговоре на њега?</string>
     <string name="video_details_deleted">Коментар је избрисан</string>
+    <string name="menu_details_comments">Детаљи и коментари</string>
+    <string name="menu_speed_pitch">Брзина и висина тона</string>
 </resources>

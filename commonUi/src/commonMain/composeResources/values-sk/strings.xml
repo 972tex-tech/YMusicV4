@@ -529,4 +529,6 @@
     <string name="video_details_delete_title">Odstrániť komentár</string>
     <string name="video_details_delete_message">Natrvalo odstrániť váš komentár a všetky odpovede naň?</string>
     <string name="video_details_deleted">Komentár odstránený</string>
+    <string name="menu_details_comments">Podrobnosti a komentáre</string>
+    <string name="menu_speed_pitch">Rýchlosť a výška tónu</string>
 </resources>

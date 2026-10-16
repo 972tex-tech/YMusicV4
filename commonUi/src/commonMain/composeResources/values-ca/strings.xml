@@ -524,4 +524,6 @@
     <string name="video_details_delete_title">Suprimeix el comentari</string>
     <string name="video_details_delete_message">Vols suprimir permanentment el teu comentari i totes les respostes?</string>
     <string name="video_details_deleted">Comentari suprimit</string>
+    <string name="menu_details_comments">Detalls i comentaris</string>
+    <string name="menu_speed_pitch">Velocitat i to</string>
 </resources>

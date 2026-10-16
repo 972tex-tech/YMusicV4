@@ -519,4 +519,6 @@
     <string name="video_details_delete_title">ಕಾಮೆಂಟ್ ಅಳಿಸಿ</string>
     <string name="video_details_delete_message">ನಿಮ್ಮ ಕಾಮೆಂಟ್ ಮತ್ತು ಅದರ ಎಲ್ಲಾ ಪ್ರತ್ಯುತ್ತರಗಳನ್ನು ಶಾಶ್ವತವಾಗಿ ಅಳಿಸಬೇಕೇ?</string>
     <string name="video_details_deleted">ಕಾಮೆಂಟ್ ಅಳಿಸಲಾಗಿದೆ</string>
+    <string name="menu_details_comments">ವಿವರಗಳು ಮತ್ತು ಕಾಮೆಂಟ್‌ಗಳು</string>
+    <string name="menu_speed_pitch">ವೇಗ ಮತ್ತು ಪಿಚ್</string>
 </resources>

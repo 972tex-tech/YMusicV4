@@ -524,4 +524,6 @@
     <string name="video_details_delete_title">Șterge comentariul</string>
     <string name="video_details_delete_message">Ștergi definitiv comentariul și toate răspunsurile la acesta?</string>
     <string name="video_details_deleted">Comentariu șters</string>
+    <string name="menu_details_comments">Detalii și comentarii</string>
+    <string name="menu_speed_pitch">Viteză și tonalitate</string>
 </resources>

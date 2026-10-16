@@ -569,5 +569,10 @@ private fun smoothPath(points: List<Offset>): Path = Path().apply {
     }
 }
 
+internal fun eqPresetLabel(eqBands: List<Float>): StringResource {
+    val bands = List(EQ_HZ.size) { eqBands.getOrElse(it) { 0f } }
+    return EQ_PRESETS.firstOrNull { bandsMatch(bands, it.bands) }?.label ?: Res.string.sound_preset_custom
+}
+
 private fun bandsMatch(a: List<Float>, b: List<Float>): Boolean =
     a.size == b.size && a.indices.all { abs(a[it] - b[it]) < 0.2f }

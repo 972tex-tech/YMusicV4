@@ -519,4 +519,6 @@
     <string name="video_details_delete_title">Kustuta kommentaar</string>
     <string name="video_details_delete_message">Kas kustutada sinu kommentaar ja kõik selle vastused jäädavalt?</string>
     <string name="video_details_deleted">Kommentaar kustutatud</string>
+    <string name="menu_details_comments">Üksikasjad ja kommentaarid</string>
+    <string name="menu_speed_pitch">Kiirus ja helikõrgus</string>
 </resources>

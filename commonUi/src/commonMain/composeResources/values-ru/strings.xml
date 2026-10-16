@@ -529,4 +529,6 @@
     <string name="video_details_delete_title">Удалить комментарий</string>
     <string name="video_details_delete_message">Удалить комментарий и все ответы на него без возможности восстановления?</string>
     <string name="video_details_deleted">Комментарий удалён</string>
+    <string name="menu_details_comments">Описание и комментарии</string>
+    <string name="menu_speed_pitch">Скорость и тон</string>
 </resources>

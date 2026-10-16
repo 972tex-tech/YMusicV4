@@ -514,4 +514,6 @@
     <string name="video_details_delete_title">ลบความคิดเห็น</string>
     <string name="video_details_delete_message">ลบความคิดเห็นของคุณและการตอบกลับทั้งหมดอย่างถาวรไหม</string>
     <string name="video_details_deleted">ลบความคิดเห็นแล้ว</string>
+    <string name="menu_details_comments">รายละเอียดและความคิดเห็น</string>
+    <string name="menu_speed_pitch">ความเร็วและระดับเสียง</string>
 </resources>

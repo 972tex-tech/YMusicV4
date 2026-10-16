@@ -524,4 +524,6 @@
     <string name="video_details_delete_title">Excluir comentário</string>
     <string name="video_details_delete_message">Excluir permanentemente seu comentário e todas as respostas?</string>
     <string name="video_details_deleted">Comentário excluído</string>
+    <string name="menu_details_comments">Detalhes e comentários</string>
+    <string name="menu_speed_pitch">Velocidade e tom</string>
 </resources>

@@ -519,4 +519,6 @@
     <string name="video_details_delete_title">අදහස මකන්න</string>
     <string name="video_details_delete_message">ඔබගේ අදහස සහ එහි සියලු පිළිතුරු ස්ථිරවම මකන්නද?</string>
     <string name="video_details_deleted">අදහස මකන ලදී</string>
+    <string name="menu_details_comments">විස්තර සහ අදහස්</string>
+    <string name="menu_speed_pitch">වේගය සහ තාරතාව</string>
 </resources>

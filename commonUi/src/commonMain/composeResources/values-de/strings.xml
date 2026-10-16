@@ -519,4 +519,6 @@
     <string name="video_details_delete_title">Kommentar löschen</string>
     <string name="video_details_delete_message">Deinen Kommentar und alle Antworten darauf endgültig löschen?</string>
     <string name="video_details_deleted">Kommentar gelöscht</string>
+    <string name="menu_details_comments">Details &amp; Kommentare</string>
+    <string name="menu_speed_pitch">Tempo &amp; Tonhöhe</string>
 </resources>

@@ -519,4 +519,6 @@
     <string name="video_details_delete_title">Избриши коментар</string>
     <string name="video_details_delete_message">Трајно да се избришат вашиот коментар и сите одговори на него?</string>
     <string name="video_details_deleted">Коментарот е избришан</string>
+    <string name="menu_details_comments">Детали и коментари</string>
+    <string name="menu_speed_pitch">Брзина и висина</string>
 </resources>
