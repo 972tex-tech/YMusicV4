@@ -1414,6 +1414,9 @@ static int audio_done(MseHost *h)
     pthread_mutex_unlock(&h->mu);
     if (!ring_empty)
         return 0;
+    /* A seek also empties the ring while the rest of the media is buffered: the playhead must be there. */
+    if (host_clock(h) + 1.0 < last)
+        return 0;
     /* Same window as clock_with_span near_eos. Miller skips endOfStream on
        VOD audio-only (40=1 + fake 144p); last ≈ duration is Chrome's other
        IsEnded path. SABR starve (last ≪ yt_dur) stays waiting. */
