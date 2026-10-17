@@ -1210,18 +1210,34 @@
     return String(el.tagName || "").toUpperCase();
   }
 
+  var DASHED = {};
+
+  function dashed(camel) {
+    var d = DASHED[camel];
+    if (d === undefined)
+      d = DASHED[camel] = camel.replace(/[A-Z]/g, function (c) {
+        return "-" + c.toLowerCase();
+      });
+    return d;
+  }
+
   function css(el, camel) {
+    var key, memo, value;
+    if (layoutMemo === null) return computeCss(el, camel);
+    key = "css " + camel;
+    memo = layoutMemo[key] || (layoutMemo[key] = new Map());
+    if (memo.has(el)) return memo.get(el);
+    value = computeCss(el, camel);
+    memo.set(el, value);
+    return value;
+  }
+
+  function computeCss(el, camel) {
     var st = el && el.nodeType === 1 ? el.style : null;
     var v;
     if (!st || typeof st !== "object") return "";
     v = st[camel];
-    if (v == null || v === "")
-      v =
-        st[
-          camel.replace(/[A-Z]/g, function (c) {
-            return "-" + c.toLowerCase();
-          })
-        ];
+    if (v == null || v === "") v = st[dashed(camel)];
     return v == null
       ? ""
       : String(v)
@@ -1243,7 +1259,47 @@
     return m ? +m[1] : null;
   }
 
+  /* Per-element results, kept only for the outermost layout call: one read lays out each node once
+     (uncached, every node re-walked its ancestors: ~18 s of BotGuard on the player DOM in QuickJS),
+     and the next read sees DOM changes made since. */
+  var layoutMemo = null;
+
+  function cached(kind, el, compute) {
+    var outer = layoutMemo === null,
+      memo;
+    if (outer) layoutMemo = {};
+    try {
+      memo = layoutMemo[kind] || (layoutMemo[kind] = new Map());
+      if (memo.has(el)) return memo.get(el);
+      var value = compute(el);
+      memo.set(el, value);
+      return value;
+    } finally {
+      if (outer) layoutMemo = null;
+    }
+  }
+
   function fontOf(el) {
+    return cached("font", el, computeFont);
+  }
+
+  function rendered(el) {
+    return cached("rendered", el, computeRendered);
+  }
+
+  function boxWidth(el) {
+    return cached("width", el, computeBoxWidth);
+  }
+
+  function layoutBox(el) {
+    return cached("box", el, computeLayoutBox);
+  }
+
+  function offsetLeftOf(el) {
+    return cached("left", el, computeOffsetLeft);
+  }
+
+  function computeFont(el) {
     var size = px(inheritedCss(el, "fontSize")) || 10;
     var mono = /monospace/i.test(inheritedCss(el, "fontFamily"));
     var lh = px(inheritedCss(el, "lineHeight"));
@@ -1318,7 +1374,7 @@
     return String(node.textContent || "");
   }
 
-  function rendered(el) {
+  function computeRendered(el) {
     var root = typeof document !== "undefined" && document ? document.documentElement : null;
     var n;
     for (n = el; n; n = n.parentNode) {
@@ -1337,7 +1393,22 @@
     var p = el.parentNode;
     while (p && p.nodeType === 1 && isInline(p)) p = p.parentNode;
     if (!p || p.nodeType !== 1) return 1280;
-    return layoutBox(p).w;
+    return boxWidth(p);
+  }
+
+  /* layoutBox(el).w without the height: a width depends only on ancestors, never on children,
+     so containerWidth must not go through layoutBox (parent height -> child width -> parent). */
+  function computeBoxWidth(el) {
+    var ow = layoutOverride(el, "offsetWidth");
+    var tag, w;
+    if (ow == null) ow = layoutOverride(el, "clientWidth");
+    if (ow != null) return ow;
+    if (!rendered(el)) return 0;
+    tag = tagOf(el);
+    if (REPLACED_SIZE[tag]) return REPLACED_SIZE[tag][0];
+    if (isInline(el)) return textWidth(collapse(textOf(el)).trim(), fontOf(el));
+    w = styleWidth(el, fontOf(el));
+    return w != null ? w : containerWidth(el);
   }
 
   function styleWidth(el, font) {
@@ -1348,7 +1419,7 @@
   }
 
   /* {w, h, inline}, fractional like getBoundingClientRect. */
-  function layoutBox(el) {
+  function computeLayoutBox(el) {
     var ow = layoutOverride(el, "offsetWidth"),
       oh = layoutOverride(el, "offsetHeight");
     if (ow == null) ow = layoutOverride(el, "clientWidth");
@@ -1408,7 +1479,7 @@
   }
 
   /* x of el's border box in its offsetParent: inline boxes laid out left to right on one line. */
-  function offsetLeftOf(el) {
+  function computeOffsetLeft(el) {
     var parent = offsetParentOf(el);
     var x = 0,
       found = null;
