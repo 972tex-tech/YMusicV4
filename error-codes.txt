@@ -106,7 +106,7 @@ E60060 D "Play again" session list failed to load (commonUi PlayAgainScreen)
 E60061 D "Play again" saved queue failed to load/decode on restore (commonUi PlayAgainScreen)
 E60062 D "Play again" session failed to delete (commonUi PlayAgainScreen)
 E60063 D queue page (QueueSource.loadMore) failed with an uncoded error (commonUi Now Playing queue footer)
-E60064 - MSE video stream has no working MediaCodec decoder; playback fails instead of a CPU fallback (player MsePlayer, Android)
+E60064 D MSE video stream has no working MediaCodec decoder; playback fails instead of a CPU fallback (player MsePlayer, Android)
 
 E70001 D unclassified download failure (download DownloadService.execute fallback)
 E70010 D no SABR stream; progressive download not yet supported (download YtStreamDownloader)
