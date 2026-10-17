@@ -268,6 +268,11 @@ class HttpClientSmokeTests {
     }
 
     @Test
+    fun testRangeSurvivesRedirect() = runTest {
+        assertRangeSurvivesRedirect(client)
+    }
+
+    @Test
     fun testPriorResponseChain() = runTest {
         val request = RequestBuilder().url(TestServer.url("/redirect/2")).get().build()
         client.execute(request).use { response ->
