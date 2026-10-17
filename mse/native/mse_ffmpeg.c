@@ -2577,9 +2577,20 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
                      kept.f[i].data, kept.f[i].n);
         qsort(dst->f, dst->n, sizeof(Cf), cf_cmp);
         if (sp) {
+            double sent_max = -1e300;
+            for (j = 0; j < nsp; j++) {
+                if (sp[j] > sent_max)
+                    sent_max = sp[j];
+            }
             for (i = 0; i < (int)dst->n; i++) {
                 if (dst->f[i].sent)
                     continue;
+                /* Audio frames stand alone: like Chrome's demuxer, never feed a replacement that
+                   starts before audio already fed (a gapless next track overlapping the tail). */
+                if (idx && dst->f[i].pts < sent_max - 0.001) {
+                    dst->f[i].sent = 1;
+                    continue;
+                }
                 for (j = 0; j < nsp; j++) {
                     double d = dst->f[i].pts - sp[j];
                     if (d < 0)
