@@ -3473,7 +3473,12 @@ void mse_av_seek(MseAv *a, double seconds)
     if (a->vf.rd >= a->vf.n || !coded_is_rap(a, &a->vf.f[a->vf.rd])) {
         a->pend_n[0] = 0;
         a->cluster_tc_n[0] = 0;
-        close_video_decoder(a);
+#ifdef __ANDROID__
+        /* MediaCodec drops the old GOP in the flush below and need_rap feeds a key next: a reopen
+           would hold this (JS) thread ~20 ms, and another on the video thread. */
+        if (!a->mc)
+#endif
+            close_video_decoder(a);
     } else {
         if (a->vdec)
             avcodec_flush_buffers(a->vdec);
