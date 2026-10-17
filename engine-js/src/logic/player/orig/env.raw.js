@@ -1140,6 +1140,437 @@
     return p;
   }
 
+  /* Chrome's layout of a youtube.com page (body font 10px Roboto, 1280px wide), enough to answer
+   * size/offset probes: detached or display:none is 0, a block fills its container (or its style
+   * width) and wraps words, inlines flow left to right with their margins. Derived from the DOM and
+   * styles alone, so a BotGuard replay recomputes them exactly. Checked against Chrome on macOS.
+   * ROBOTO_10PX: Chrome's advances for U+0020..U+007E. */
+  var ROBOTO_10PX = [
+    2.4805, 2.5781, 3.2031, 6.1572, 5.6201, 7.3242, 6.2207, 1.748, 3.4229, 3.4814, 4.3066, 5.6738,
+    1.9678, 2.7637, 2.6367, 4.126, 5.6201, 5.6201, 5.6201, 5.6201, 5.6201, 5.6201, 5.6201, 5.6201,
+    5.6201, 5.6201, 2.4219, 2.1143, 5.083, 5.4883, 5.2295, 4.7266, 8.9795, 6.5234, 6.2305, 6.5088,
+    6.5625, 5.6836, 5.5273, 6.8115, 7.1338, 2.7197, 5.5176, 6.2744, 5.3857, 8.7305, 7.1338, 6.8799,
+    6.3086, 6.8799, 6.1621, 5.9375, 5.9668, 6.4844, 6.3672, 8.8721, 6.2695, 6.0059, 5.9912, 2.6514,
+    4.1064, 2.6514, 4.1797, 4.5117, 3.0908, 5.4395, 5.6152, 5.2344, 5.6396, 5.3027, 3.4766, 5.6152,
+    5.5078, 2.4316, 2.3926, 5.0684, 2.4316, 8.7695, 5.5225, 5.7031, 5.6152, 5.6836, 3.3887, 5.1611,
+    3.2715, 5.5127, 4.8438, 7.5146, 4.9609, 4.7314, 4.9609, 3.3838, 2.4414, 3.3838, 6.8018,
+  ];
+  var MONO_ADVANCE = 0.60205078125; // em
+  var ROBOTO_LINE = 1.171875; // em
+  var INLINE_TAGS = {
+    SPAN: 1,
+    A: 1,
+    B: 1,
+    I: 1,
+    EM: 1,
+    STRONG: 1,
+    SMALL: 1,
+    FONT: 1,
+    LABEL: 1,
+    CODE: 1,
+    ABBR: 1,
+    SUB: 1,
+    SUP: 1,
+    U: 1,
+    S: 1,
+    Q: 1,
+    CITE: 1,
+    MARK: 1,
+    TIME: 1,
+    BDI: 1,
+    BDO: 1,
+    KBD: 1,
+    VAR: 1,
+    SAMP: 1,
+    BR: 1,
+    IMG: 1,
+  };
+  var HIDDEN_TAGS = {
+    SCRIPT: 1,
+    STYLE: 1,
+    LINK: 1,
+    META: 1,
+    TITLE: 1,
+    HEAD: 1,
+    TEMPLATE: 1,
+    NOSCRIPT: 1,
+  };
+  var REPLACED_SIZE = { IFRAME: [304, 154], CANVAS: [300, 150], VIDEO: [300, 150] };
+  var LAYOUT_PROPS = [
+    "offsetWidth",
+    "offsetHeight",
+    "clientWidth",
+    "clientHeight",
+    "scrollWidth",
+    "scrollHeight",
+    "offsetLeft",
+  ];
+
+  function tagOf(el) {
+    return String(el.tagName || "").toUpperCase();
+  }
+
+  var DASHED = {};
+
+  function dashed(camel) {
+    var d = DASHED[camel];
+    if (d === undefined)
+      d = DASHED[camel] = camel.replace(/[A-Z]/g, function (c) {
+        return "-" + c.toLowerCase();
+      });
+    return d;
+  }
+
+  function css(el, camel) {
+    var key, memo, value;
+    if (layoutMemo === null) return computeCss(el, camel);
+    key = "css " + camel;
+    memo = layoutMemo[key] || (layoutMemo[key] = new Map());
+    if (memo.has(el)) return memo.get(el);
+    value = computeCss(el, camel);
+    memo.set(el, value);
+    return value;
+  }
+
+  function computeCss(el, camel) {
+    var st = el && el.nodeType === 1 ? el.style : null;
+    var v;
+    if (!st || typeof st !== "object") return "";
+    v = st[camel];
+    if (v == null || v === "") v = st[dashed(camel)];
+    return v == null
+      ? ""
+      : String(v)
+          .replace(/\s*!important\s*$/i, "")
+          .trim();
+  }
+
+  function inheritedCss(el, camel) {
+    var n, v;
+    for (n = el; n && n.nodeType === 1; n = n.parentNode) {
+      v = css(n, camel);
+      if (v) return v;
+    }
+    return "";
+  }
+
+  function px(v) {
+    var m = /^(-?[\d.]+)px$/.exec(v);
+    return m ? +m[1] : null;
+  }
+
+  /* Per-element results, kept only for the outermost layout call: one read lays out each node once
+     (uncached, every node re-walked its ancestors: ~18 s of BotGuard on the player DOM in QuickJS),
+     and the next read sees DOM changes made since. */
+  var layoutMemo = null;
+
+  /* BotGuard reads layout only while its program loads, before the snapshot; the player UI reads
+     hundreds of sizes afterwards, and those keep the cheap zero answers (see endLayoutProbes). */
+  var layoutProbes = true;
+
+  function cached(kind, el, compute) {
+    var outer = layoutMemo === null,
+      memo;
+    if (outer) layoutMemo = {};
+    try {
+      memo = layoutMemo[kind] || (layoutMemo[kind] = new Map());
+      if (memo.has(el)) return memo.get(el);
+      var value = compute(el);
+      memo.set(el, value);
+      return value;
+    } finally {
+      if (outer) layoutMemo = null;
+    }
+  }
+
+  function fontOf(el) {
+    return cached("font", el, computeFont);
+  }
+
+  function rendered(el) {
+    return cached("rendered", el, computeRendered);
+  }
+
+  function boxWidth(el) {
+    return cached("width", el, computeBoxWidth);
+  }
+
+  function layoutBox(el) {
+    return cached("box", el, computeLayoutBox);
+  }
+
+  function offsetLeftOf(el) {
+    return cached("left", el, computeOffsetLeft);
+  }
+
+  function computeFont(el) {
+    var size = px(inheritedCss(el, "fontSize")) || 10;
+    var mono = /monospace/i.test(inheritedCss(el, "fontFamily"));
+    var lh = px(inheritedCss(el, "lineHeight"));
+    return { size: size, mono: mono, line: lh != null ? lh : size * ROBOTO_LINE };
+  }
+
+  function advance(code, font) {
+    if (font.mono) return MONO_ADVANCE * font.size;
+    if (code >= 32 && code < 127) return (ROBOTO_10PX[code - 32] * font.size) / 10;
+    if (code >= 0x2e80) return font.size;
+    return 0.56 * font.size;
+  }
+
+  function collapse(text) {
+    return String(text).replace(/\s+/g, " ");
+  }
+
+  function textWidth(text, font) {
+    var w = 0,
+      i;
+    for (i = 0; i < text.length; i++) w += advance(text.charCodeAt(i), font);
+    return w;
+  }
+
+  function lineCount(text, font, width, hyphenate) {
+    var words = collapse(text).trim().split(" "),
+      space = advance(32, font),
+      lines = 1,
+      x = 0,
+      i,
+      ww,
+      extra;
+    if (!words[0]) return 0;
+    for (i = 0; i < words.length; i++) {
+      ww = textWidth(words[i], font);
+      if (x > 0 && x + space + ww > width) {
+        lines++;
+        x = 0;
+      } else if (x > 0) x += space;
+      if (ww > width && hyphenate && width > 0) {
+        extra = Math.ceil(ww / width) - 1;
+        lines += extra;
+        x = ww - extra * width;
+      } else x += ww;
+    }
+    return lines;
+  }
+
+  function styleDisplay(el) {
+    return css(el, "display");
+  }
+
+  function isInline(el) {
+    var d = styleDisplay(el);
+    var pos = css(el, "position");
+    if (pos === "fixed" || pos === "absolute") return false;
+    if (d) return d === "inline";
+    return !!INLINE_TAGS[tagOf(el)];
+  }
+
+  function textOf(node) {
+    var kids, out, i;
+    if (!node) return "";
+    if (node.nodeType === 3) return String(node.data != null ? node.data : node.textContent || "");
+    if (HIDDEN_TAGS[tagOf(node)]) return "";
+    kids = node.children;
+    if (kids && kids.length) {
+      out = "";
+      for (i = 0; i < kids.length; i++) out += textOf(kids[i]);
+      return out;
+    }
+    return String(node.textContent || "");
+  }
+
+  function computeRendered(el) {
+    var root = typeof document !== "undefined" && document ? document.documentElement : null;
+    var n;
+    for (n = el; n; n = n.parentNode) {
+      if (n.nodeType === 1 && (styleDisplay(n) === "none" || HIDDEN_TAGS[tagOf(n)])) return false;
+      if (n === root) return true;
+    }
+    return false;
+  }
+
+  function layoutOverride(el, name) {
+    var o = Object.prototype.hasOwnProperty.call(el, "_ymSize") ? el._ymSize : null;
+    return o && typeof o[name] === "number" ? o[name] : null;
+  }
+
+  function containerWidth(el) {
+    var p = el.parentNode;
+    while (p && p.nodeType === 1 && isInline(p)) p = p.parentNode;
+    if (!p || p.nodeType !== 1) return 1280;
+    return boxWidth(p);
+  }
+
+  /* layoutBox(el).w without the height: a width depends only on ancestors, never on children,
+     so containerWidth must not go through layoutBox (parent height -> child width -> parent). */
+  function computeBoxWidth(el) {
+    var ow = layoutOverride(el, "offsetWidth");
+    var tag, w;
+    if (ow == null) ow = layoutOverride(el, "clientWidth");
+    if (ow != null) return ow;
+    if (!rendered(el)) return 0;
+    tag = tagOf(el);
+    if (REPLACED_SIZE[tag]) return REPLACED_SIZE[tag][0];
+    if (isInline(el)) return textWidth(collapse(textOf(el)).trim(), fontOf(el));
+    w = styleWidth(el, fontOf(el));
+    return w != null ? w : containerWidth(el);
+  }
+
+  function styleWidth(el, font) {
+    var v = css(el, "width");
+    var m = /^([\d.]+)ch$/.exec(v);
+    if (m) return +m[1] * advance(48, font);
+    return px(v);
+  }
+
+  /* {w, h, inline}, fractional like getBoundingClientRect. */
+  function computeLayoutBox(el) {
+    var ow = layoutOverride(el, "offsetWidth"),
+      oh = layoutOverride(el, "offsetHeight");
+    if (ow == null) ow = layoutOverride(el, "clientWidth");
+    if (oh == null) oh = layoutOverride(el, "clientHeight");
+    var inline = isInline(el);
+    var tag = tagOf(el);
+    var font, w, h, kids, i, run, hyphenate;
+    if (ow != null && oh != null) return { w: ow, h: oh, inline: inline };
+    if (!rendered(el)) return { w: ow || 0, h: oh || 0, inline: inline };
+    font = fontOf(el);
+    if (REPLACED_SIZE[tag]) {
+      w = REPLACED_SIZE[tag][0];
+      h = REPLACED_SIZE[tag][1];
+    } else if (inline) {
+      w = textWidth(collapse(textOf(el)).trim(), font);
+      h = w > 0 ? font.line : 0;
+    } else {
+      w = styleWidth(el, font);
+      if (w == null) w = containerWidth(el);
+      hyphenate = inheritedCss(el, "hyphens") === "auto";
+      h = 0;
+      run = "";
+      kids = el.children && el.children.length ? el.children : [{ nodeType: 3, data: textOf(el) }];
+      for (i = 0; i <= kids.length; i++) {
+        if (i < kids.length && (kids[i].nodeType !== 1 || isInline(kids[i]))) {
+          run += textOf(kids[i]);
+          continue;
+        }
+        h += lineCount(run, font, w, hyphenate) * font.line;
+        run = "";
+        if (i < kids.length) h += layoutBox(kids[i]).h;
+      }
+    }
+    return { w: ow != null ? ow : w, h: oh != null ? oh : h, inline: inline };
+  }
+
+  function positioned(el) {
+    var pos = css(el, "position");
+    return pos !== "" && pos !== "static";
+  }
+
+  function offsetParentOf(el) {
+    var body = typeof document !== "undefined" && document ? document.body : null;
+    var p;
+    if (!rendered(el) || el === body || el === document.documentElement) return null;
+    if (css(el, "position") === "fixed") return null;
+    for (p = el.parentNode; p && p.nodeType === 1; p = p.parentNode) {
+      if (p === body || positioned(p)) return p;
+    }
+    return body;
+  }
+
+  function margin(el, side) {
+    var v = px(css(el, "margin" + side));
+    if (v == null) v = px(css(el, "margin").split(/\s+/)[0] || "");
+    return v || 0;
+  }
+
+  /* x of el's border box in its offsetParent: inline boxes laid out left to right on one line. */
+  function computeOffsetLeft(el) {
+    var parent = offsetParentOf(el);
+    var x = 0,
+      found = null;
+    if (!parent) return 0;
+    (function walk(n) {
+      var kids = n.children || [],
+        i,
+        c;
+      for (i = 0; i < kids.length && found === null; i++) {
+        c = kids[i];
+        if (!c) continue;
+        if (c.nodeType === 3) {
+          x += textWidth(collapse(textOf(c)), fontOf(n));
+          continue;
+        }
+        if (c.nodeType !== 1 || styleDisplay(c) === "none" || HIDDEN_TAGS[tagOf(c)]) continue;
+        if (isInline(c)) {
+          x += margin(c, "Left");
+          if (c === el) found = x;
+          else {
+            walk(c);
+            x += margin(c, "Right");
+          }
+        } else {
+          x = margin(c, "Left");
+          if (c === el) found = x;
+          else walk(c);
+          x = 0;
+        }
+      }
+    })(parent);
+    return found === null ? 0 : Math.round(found);
+  }
+
+  function parseStyleAttr(el, text) {
+    var st = cssStyle();
+    String(text == null ? "" : text)
+      .split(";")
+      .forEach(function (decl) {
+        var i = decl.indexOf(":");
+        var name, value;
+        if (i < 0) return;
+        name = decl.slice(0, i).trim().toLowerCase();
+        value = decl.slice(i + 1).trim();
+        if (!name) return;
+        st[
+          name.replace(/-([a-z])/g, function (_m, c) {
+            return c.toUpperCase();
+          })
+        ] = value;
+      });
+    st.cssText = String(text == null ? "" : text);
+    el.style = st;
+  }
+
+  function installLayout() {
+    LAYOUT_PROPS.forEach(function (name) {
+      var height = name.indexOf("Height") > 0;
+      var offset = name.indexOf("offset") === 0;
+      Object.defineProperty(htmlElProto, name, {
+        configurable: true,
+        enumerable: true,
+        get: native("get " + name, function () {
+          var o = layoutOverride(this, name),
+            box;
+          if (o != null) return o;
+          if (!layoutProbes) return 0;
+          if (name === "offsetLeft") return offsetLeftOf(this);
+          box = layoutBox(this);
+          if (box.inline && !offset) return 0;
+          return Math.round(height ? box.h : box.w);
+        }),
+        set: native("set " + name, function (v) {
+          if (!Object.prototype.hasOwnProperty.call(this, "_ymSize")) hide(this, "_ymSize", {});
+          this._ymSize[name] = +v;
+        }),
+      });
+    });
+    Object.defineProperty(htmlElProto, "offsetParent", {
+      configurable: true,
+      enumerable: true,
+      get: native("get offsetParent", function () {
+        return offsetParentOf(this);
+      }),
+    });
+  }
+
   (function installElementProto() {
     var n, impl;
     impl = {
@@ -1190,12 +1621,15 @@
         return !!(this.attributes && this.attributes.length);
       },
       setAttribute: function (n, v) {
-        this[n] = v;
+        if (String(n).toLowerCase() === "style") parseStyleAttr(this, v);
+        else this[n] = v;
       },
       setAttributeNS: function (ns, n, v) {
         this[n] = v;
       },
       getAttribute: function (n) {
+        if (String(n).toLowerCase() === "style")
+          return this.style && this.style.cssText ? String(this.style.cssText) : null;
         return this[n] == null ? null : String(this[n]);
       },
       getAttributeNS: function (ns, n) {
@@ -1214,8 +1648,11 @@
         delete this[n];
       },
       getBoundingClientRect: function () {
-        var w = this.clientWidth || 0,
-          h = this.clientHeight || 0;
+        var box = layoutProbes
+            ? layoutBox(this)
+            : { w: this.clientWidth || 0, h: this.clientHeight || 0 },
+          w = box.w,
+          h = box.h;
         return { x: 0, y: 0, width: w, height: h, top: 0, left: 0, bottom: h, right: w };
       },
       getClientRects: function () {
@@ -1286,6 +1723,7 @@
       },
     });
     hide(iframeProto, "constructor", globalThis.HTMLIFrameElement);
+    installLayout();
     Object.defineProperty(htmlElProto, "childNodes", {
       configurable: true,
       enumerable: false,
@@ -1894,14 +2332,7 @@
     el.dir = "";
     el.scrollTop = 0;
     el.scrollLeft = 0;
-    el.scrollWidth = 0;
-    el.scrollHeight = 0;
-    el.clientWidth = 0;
-    el.clientHeight = 0;
-    el.offsetWidth = 0;
-    el.offsetHeight = 0;
     el.offsetTop = 0;
-    el.offsetLeft = 0;
     el.tabIndex = -1;
     if (typeof Symbol === "function" && Symbol.toStringTag) {
       Object.defineProperty(el, Symbol.toStringTag, {
@@ -2079,7 +2510,6 @@
     documentURI: "https://www.youtube.com/",
     characterSet: "UTF-8",
     charset: "UTF-8",
-    defaultCharset: "windows-1252",
     compatMode: "CSS1Compat",
     contentType: "text/html",
     documentElement: html,
@@ -2378,4 +2808,10 @@
   globalThis.MessagePort.prototype = MessagePort.prototype;
   globalThis.MessageChannel = native("MessageChannel", MessageChannel);
   globalThis.MessageChannel.prototype = MessageChannel.prototype;
+
+  return {
+    endLayoutProbes: function () {
+      layoutProbes = false;
+    },
+  };
 })();

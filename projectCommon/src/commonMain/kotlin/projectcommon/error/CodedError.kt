@@ -44,7 +44,8 @@ private object TransportFailure : CodedError {
 /**
  * The deepest [CodedError] in the cause chain — the code closest to the root cause is the most
  * specific grep target, and outer wrappers must not shadow it. An uncoded transport failure from
- * kmpHttp (timeout, DNS, reset, TLS) counts as [NETWORK_CODE] at its place in the chain.
+ * kmpHttp (timeout, DNS, reset, TLS) counts as [NETWORK_CODE] at its place in the chain, an uncoded
+ * out-of-space failure as [DISK_FULL_CODE].
  */
 fun Throwable.codedError(): CodedError? {
     var deepest: CodedError? = null
@@ -55,6 +56,8 @@ fun Throwable.codedError(): CodedError? {
             deepest = t
         } else if (t.isTransportFailure()) {
             deepest = TransportFailure
+        } else if (t.isOutOfSpace()) {
+            deepest = DiskFullException(t)
         }
         t = t.cause
     }

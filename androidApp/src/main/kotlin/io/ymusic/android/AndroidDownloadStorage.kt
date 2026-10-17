@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path
 import java.io.File
+import java.io.FileNotFoundException
 
 /**
  * Android [DefaultDownloadStorage]: `file://` destinations (app dirs) go through okio as usual; a
@@ -41,6 +42,9 @@ class AndroidDownloadStorage(
             DocumentsContract.createDocument(resolver, parent, mimeFor(name), name)
         } catch (e: SecurityException) {
             // The tree's persisted grant is gone or read-only: only re-picking the folder restores it.
+            throw DownloadFolderAccessException(destinationFolder.toString(), e)
+        } catch (e: FileNotFoundException) {
+            // ExternalStorageProvider's "Missing file for primary:Music": the picked folder was deleted.
             throw DownloadFolderAccessException(destinationFolder.toString(), e)
         } catch (e: IllegalStateException) {
             // ExternalStorageProvider's own wording when File.createNewFile() refuses the path it picked.

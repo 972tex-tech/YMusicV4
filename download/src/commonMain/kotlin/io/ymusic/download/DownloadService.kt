@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import projectcommon.error.DISK_FULL_CODE
 import projectcommon.error.TechnicalException
 import projectcommon.error.codedError
 import projectcommon.error.errorCode
@@ -281,21 +282,31 @@ class DownloadService(
         } catch (e: Throwable) {
             // Outside the pipeline (e.g. a state/progress DB write): still an end state, never a row
             // stuck in DOWNLOADING with no slot.
-            log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))?.captureError(e, "download run failed")
+            val taskLog = log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))
+            if (e.errorCode() == DISK_FULL_CODE) {
+                taskLog?.log(Logger.Level.WARN, "download run hit full storage", e)
+            } else {
+                taskLog?.captureError(e, "download run failed")
+            }
             failure = downloadError(e)
         } finally {
             withContext(NonCancellable) {
                 gate.withLock {
-                    val target = interrupts.remove(task.id)
-                    val completed = store.get(task.id)?.state == DownloadState.COMPLETED
-                    if (interrupted && !completed) {
-                        val state = target ?: DownloadState.PAUSED
-                        if (state == DownloadState.CANCELED) cleanupTemp(task.id)
-                        setState(task.id, state)
-                    } else if (failure != null && !completed) {
-                        setState(task.id, DownloadState.FAILED, error = failure)
+                    try {
+                        val target = interrupts.remove(task.id)
+                        val completed = store.get(task.id)?.state == DownloadState.COMPLETED
+                        if (interrupted && !completed) {
+                            val state = target ?: DownloadState.PAUSED
+                            if (state == DownloadState.CANCELED) cleanupTemp(task.id)
+                            setState(task.id, state)
+                        } else if (failure != null && !completed) {
+                            setState(task.id, DownloadState.FAILED, error = failure)
+                        }
+                    } catch (e: Throwable) {
+                        endStateNotRecorded(task, e)
+                    } finally {
+                        active.remove(task.id)
                     }
-                    active.remove(task.id)
                 }
                 fillSlots()
             }
@@ -335,6 +346,7 @@ class DownloadService(
             when {
                 playabilityOf(code) != null -> taskLog?.log(Logger.Level.WARN, "download refused by playability", e)
                 code == DownloadFolderAccessException.CODE -> taskLog?.log(Logger.Level.WARN, "download folder not writable", e)
+                code == DISK_FULL_CODE -> taskLog?.log(Logger.Level.WARN, "download hit full storage", e)
                 else -> taskLog?.captureError(e, "download failed")
             }
             return@coroutineScope downloadError(e)
@@ -369,6 +381,18 @@ class DownloadService(
     private suspend fun setProgress(id: String, done: Long, total: Long) {
         store.updateProgress(id, done, total, now())
         _changes.emit(DownloadChange.ProgressChanged(id, done, total))
+    }
+
+    /** The row could not take the run's end state (e.g. SQLITE_FULL): the task is reported FAILED to
+     *  listeners all the same, so the card doesn't sit in DOWNLOADING. */
+    private suspend fun endStateNotRecorded(task: DownloadTask, e: Throwable) {
+        val taskLog = log?.fork("task", mapOf("id" to task.id, "videoId" to task.videoId))
+        if (e.errorCode() == DISK_FULL_CODE) {
+            taskLog?.log(Logger.Level.WARN, "download end state not recorded: storage full", e)
+        } else {
+            taskLog?.captureError(e, "download end state not recorded")
+        }
+        _changes.emit(DownloadChange.StateChanged(task.id, DownloadState.FAILED, downloadError(e)))
     }
 
     private fun downloadError(e: Throwable): DownloadError {

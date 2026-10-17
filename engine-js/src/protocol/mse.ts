@@ -455,14 +455,42 @@ function syncReadyState(el: HTMLMediaElement | null): void {
   }
 }
 
-function completeUpdate(sb: SourceBuffer): void {
-  Promise.resolve().then(function () {
-    sb["updating"] = false;
-    fire(sb, "update");
-    fire(sb, "updateend");
-    const el = activeMedia;
-    if (el && el._ms === sb._ms) syncReadyState(el);
-  });
+/* Chrome SourceBuffer appendBuffer / remove: updating is set synchronously, updatestart is a queued
+   task, and the buffer append / range removal runs in a later task that ends with update +
+   updateend. abort() or a detach cancels what has not run yet (the token moves on). */
+function runUpdate(sb: SourceBuffer, work: () => void): void {
+  const token = ++sb._updateToken;
+  sb["updating"] = true;
+  sb._startFired = false;
+  setTimeout(function () {
+    if (sb._updateToken !== token) return;
+    sb._startFired = true;
+    fire(sb, "updatestart");
+    setTimeout(function () {
+      if (sb._updateToken !== token) return;
+      let failed = false;
+      try {
+        work();
+      } catch (e) {
+        failed = true;
+        drainCalls.throw++;
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.warn("mse update failed " + err.name + " " + err.message);
+      }
+      sb._updateToken++;
+      sb["updating"] = false;
+      fire(sb, failed ? "error" : "update");
+      fire(sb, "updateend");
+      const el = activeMedia;
+      if (el && el._ms === sb._ms) syncReadyState(el);
+    }, 0);
+  }, 0);
+}
+
+function anyUpdating(ms: MediaSource): boolean {
+  const bufs = ms["sourceBuffers"];
+  for (let i = 0; i < bufs.length; i++) if (bufs[i]!["updating"]) return true;
+  return false;
 }
 
 function isYmf(u8: Uint8Array): boolean {
@@ -487,6 +515,8 @@ class SourceBuffer {
   _fakeStart: number;
   _fakeEnd: number;
   _fakeFollowAudio: boolean;
+  _updateToken: number;
+  _startFired: boolean;
   constructor(mime: string, ms: MediaSource | null) {
     this["mimeType"] = mime;
     this["id"] = nextId++;
@@ -500,6 +530,8 @@ class SourceBuffer {
     this._fakeStart = 0;
     this._fakeEnd = 0;
     this._fakeFollowAudio = false;
+    this._updateToken = 0;
+    this._startFired = false;
   }
 
   ["addEventListener"](type: string, fn: Listener): void {
@@ -576,55 +608,33 @@ class SourceBuffer {
       console.warn("mse quota a=" + audio + " n=" + u8.length);
       throw quotaExceeded();
     }
-    this["updating"] = true;
-    fire(this, "updatestart");
     const self = this;
-    try {
+    const tsOff = self["timestampOffset"];
+    const winStart = self["appendWindowStart"];
+    const winEnd = self["appendWindowEnd"] === Infinity ? 1e300 : self["appendWindowEnd"];
+    runUpdate(self, function () {
       if (isYmf(u8)) {
         takeFakeMedia(self, u8);
-      } else {
-        if (!audio) clearFakeOverlay(self);
-        const tsOff = self["timestampOffset"];
-        const winStart = self["appendWindowStart"];
-        const winEnd = self["appendWindowEnd"] === Infinity ? 1e300 : self["appendWindowEnd"];
-        __mseAppend(audio, u8, tsOff, winStart, winEnd);
-        /* Chrome appendBuffer does not move currentTime. The native clock
-           holds while the playhead is outside the buffer, until the player seeks. */
-        if (audio) drainCalls.audio++;
-        else drainCalls.video++;
-        logAppend(audio, u8.length, self["mimeType"], tsOff, winStart, winEnd);
+        return;
       }
-    } catch (e) {
-      drainCalls.throw++;
-      self["updating"] = false;
-      const err = e instanceof Error ? e : new Error(String(e));
-      console.warn("mse append throw " + err.name + " a=" + audio + " " + err.message);
-      throw e;
-    }
-    completeUpdate(self);
+      if (!audio) clearFakeOverlay(self);
+      __mseAppend(audio, u8, tsOff, winStart, winEnd);
+      /* Chrome appendBuffer does not move currentTime. The native clock
+         holds while the playhead is outside the buffer, until the player seeks. */
+      if (audio) drainCalls.audio++;
+      else drainCalls.video++;
+      logAppend(audio, u8.length, self["mimeType"], tsOff, winStart, winEnd);
+    });
   }
 
   ["remove"](start: number, end: number): void {
     if (sbRemoved(this)) throw invalidState("SourceBuffer.remove: removed");
     if (this["updating"]) throw invalidState("SourceBuffer.remove: updating");
-    this["updating"] = true;
-    fire(this, "updatestart");
-    const self = this;
-    try {
-      const audio = audioFlag(this["mimeType"]);
+    const audio = audioFlag(this["mimeType"]);
+    runUpdate(this, function () {
       __mseRemove(audio, start, end);
       drainCalls.remove++;
       console.info("mse remove a=" + audio + " " + start + ".." + end);
-    } catch (e) {
-      self["updating"] = false;
-      throw e;
-    }
-    Promise.resolve().then(function () {
-      self["updating"] = false;
-      fire(self, "update");
-      fire(self, "updateend");
-      const el = activeMedia;
-      if (el && el._ms === self._ms) syncReadyState(el);
     });
   }
 
@@ -635,10 +645,13 @@ class SourceBuffer {
     drainCalls.abort++;
     console.info("mse abort a=" + audio + " upd=" + (wasUpdating ? "1" : "0"));
     __mseAbort(audio);
+    this._updateToken++;
     this["updating"] = false;
     /* MSE: abort/updateend only if an update was in progress. Firing updateend while
      * already in updateend (updating=false) re-enters YouTube's listener until the stack blows. */
     if (wasUpdating) {
+      /* Chrome queued updatestart before the abort: it still comes first. */
+      if (!this._startFired) fire(this, "updatestart");
       fire(this, "abort");
       fire(this, "updateend");
     }
@@ -721,6 +734,8 @@ class MediaSource {
     return this._duration;
   }
   set ["duration"](v: number) {
+    if (this["readyState"] === "open" && anyUpdating(this))
+      throw invalidState("MediaSource.duration: a SourceBuffer is updating");
     this._duration = v;
     /* Infinity = live. A leftover finite head must not keep clamping
        currentTime (log23: clock stuck at 17253 after sourceopen). */
@@ -790,6 +805,8 @@ class MediaSource {
 
   ["endOfStream"](): void {
     if (this["readyState"] !== "open") throw invalidState("MediaSource.endOfStream: not open");
+    if (anyUpdating(this))
+      throw invalidState("MediaSource.endOfStream: a SourceBuffer is updating");
     this["readyState"] = "ended";
     console.info("mse endOfStream");
     if (typeof __mseEndOfStream === "function") __mseEndOfStream();
@@ -826,6 +843,7 @@ class MediaSource {
 function detachMediaSource(ms: MediaSource): void {
   const bufs = ms["sourceBuffers"].slice();
   for (let i = 0; i < bufs.length; i++) {
+    bufs[i]!._updateToken++;
     bufs[i]!["updating"] = false;
     bufs[i]!._ms = null;
   }

@@ -87,6 +87,9 @@ actual object MseHostNative {
     external fun audioSessionId(handle: Long): Int
 
     @JvmStatic
+    external fun videoFailure(handle: Long): String?
+
+    @JvmStatic
     external fun dacAttach(handle: Long, attached: Boolean)
 
     @JvmStatic

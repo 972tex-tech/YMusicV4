@@ -40,15 +40,17 @@ internal class MseAudioOutput(private val host: Long) {
     private var configuredAtMs = 0L
     private var configureWarned = ""
     private var running = false
-    private var draining = false
     private var failing = false
 
     /** Frames in [buffer] the sink has not taken yet; 0 = [buffer] is free. */
     private var heldFrames = 0
     private var heldSilence = false
 
-    /** Frames handed to the sink this generation, silence included: the timestamp base. */
+    /** Frames handed to the sink since its last flush, silence included: the timestamp base. */
     private var sinkFrames = 0L
+
+    /** Sink frame where this generation starts: 0 after a flush, later on a track kept running. */
+    private var baseFrames = 0L
 
     /** Start padding (see [padToStart]): [padFrames] of silence written after sink frame [padAt]. */
     private var padAt = 0L
@@ -57,6 +59,9 @@ internal class MseAudioOutput(private val host: Long) {
 
     /** Highest position reported in this generation: AudioTrack timestamps can step backwards. */
     private var reportedFrames = -1L
+
+    /** Sink frame where this generation's audio ended (see [padToEnd]); -1 while it is still coming. */
+    private var endAt = -1L
 
     init {
         handler.post {
@@ -112,16 +117,27 @@ internal class MseAudioOutput(private val host: Long) {
             configured = configure()
         }
         if (state[GEN] != gen || state[RATE] != rate || state[CHANNELS] != channels) {
-            sink.flush()
+            // A flush releases the AudioTrack, and a new one takes ~150 ms to start. After the end of a
+            // generation (the next song, a replay) what the track still holds is that end, so it plays
+            // out and the track runs on; audio queued mid-stream (a seek) is stale and must go. A
+            // generation that wrote nothing leaves whatever an earlier one kept.
+            val sameFormat = configured && state[RATE] == rate && state[CHANNELS] == channels
+            if (sameFormat && (endAt >= 0 || sinkFrames == baseFrames || !sink.hasPendingData())) {
+                // One continuous stream: timestamps keep growing, positions count from baseFrames.
+                baseFrames = sinkFrames
+            } else {
+                sink.flush()
+                sinkFrames = 0
+                baseFrames = 0
+            }
             gen = state[GEN]
             heldFrames = 0
             heldSilence = false
-            sinkFrames = 0
-            padAt = 0
+            padAt = baseFrames
             padFrames = 0
             starvedSinceMs = 0
             reportedFrames = -1
-            draining = false
+            endAt = -1
             if (state[RATE] != rate || state[CHANNELS] != channels || !configured) {
                 rate = state[RATE]
                 channels = state[CHANNELS]
@@ -129,11 +145,8 @@ internal class MseAudioOutput(private val host: Long) {
             }
         }
         if (n > 0 && configured) {
-            // More audio after a drain (a live stream grew): the stopped track cannot take it.
-            if (draining) {
-                sink.flush()
-                draining = false
-            }
+            // More audio after the end (a live stream grew) plays on after the end pad.
+            endAt = -1
             buffer.clear()
             buffer.limit(n)
             heldFrames = n / (channels * BYTES_PER_SAMPLE)
@@ -144,7 +157,9 @@ internal class MseAudioOutput(private val host: Long) {
             running = run
             if (run) sink.play() else sink.pause()
         }
-        if (n == 0 && heldFrames == 0 && running && padFrames == 0L && reportedFrames <= 0 && sinkFrames > 0) {
+        if (n == 0 && heldFrames == 0 && running && padFrames == 0L && reportedFrames <= 0 && sinkFrames > 0 &&
+            baseFrames == 0L
+        ) {
             val now = SystemClock.uptimeMillis()
             if (starvedSinceMs == 0L) starvedSinceMs = now else if (now - starvedSinceMs >= START_STARVED_MS) padToStart()
         }
@@ -159,10 +174,7 @@ internal class MseAudioOutput(private val host: Long) {
                     full = true
                 }
             }
-            if (state[DRAIN] != 0 && heldFrames == 0 && sinkFrames > 0) {
-                sink.playToEndOfStream()
-                draining = true
-            }
+            if (state[DRAIN] != 0 && heldFrames == 0 && sinkFrames > 0 && endAt < 0) padToEnd()
             failing = false
         } catch (error: AudioSink.InitializationException) {
             recover(error)
@@ -176,17 +188,44 @@ internal class MseAudioOutput(private val host: Long) {
     }
 
     private fun report() {
-        val positionUs = sink.getCurrentPositionUs(false)
-        if (positionUs != AudioSink.CURRENT_POSITION_NOT_SET && rate > 0) {
-            val played = positionUs * rate / MICROS_PER_SECOND
-            val media = if (played <= padAt || padFrames == 0L) played else maxOf(padAt, played - padFrames)
-            reportedFrames = maxOf(reportedFrames, media)
+        val raw = playedFrames()
+        if (raw >= 0) {
+            val played = if (endAt >= 0) minOf(raw, endAt) else raw
+            val media = (if (played <= padAt || padFrames == 0L) played else maxOf(padAt, played - padFrames)) - baseFrames
+            // Negative while a kept track still plays the previous generation's end.
+            if (media >= 0) reportedFrames = maxOf(reportedFrames, media)
         }
         val bufferUs = sink.audioTrackBufferSizeUs.takeIf { it != C.TIME_UNSET } ?: 0L
-        // A silence pad still held is counted in padFrames but not yet in sinkFrames.
-        val written = sinkFrames - if (heldSilence) 0L else padFrames
-        val pending = sink.hasPendingData() || heldFrames > 0
+        // A start pad still held is counted in padFrames but not yet in sinkFrames; the end pad is not audio.
+        val padWritten = if (endAt < 0 && heldSilence) 0L else padFrames
+        val written = (if (endAt >= 0) endAt else sinkFrames) - baseFrames - padWritten
+        val pending = if (endAt >= 0) raw < endAt else sink.hasPendingData() || heldFrames > 0
         MseHostNative.dacReport(host, gen, reportedFrames, written, pending, bufferUs)
+    }
+
+    /** Sink frames played since the last flush, pads included; -1 when the sink has no position yet. */
+    private fun playedFrames(): Long {
+        val positionUs = sink.getCurrentPositionUs(false)
+        if (positionUs == AudioSink.CURRENT_POSITION_NOT_SET || rate <= 0) return -1
+        return positionUs * rate / MICROS_PER_SECOND
+    }
+
+    /**
+     * The end of this generation's audio. A running streaming AudioTrack can hold back its last
+     * partial period until more data comes; playToEndOfStream would push it out by stopping the track,
+     * and only a flush (a new AudioTrack) restarts it. A short silence pad pushes it out instead, and
+     * the track keeps running for the next generation. [report] counts audio up to [endAt] only.
+     */
+    private fun padToEnd() {
+        val frameBytes = channels * BYTES_PER_SAMPLE
+        val frames = (rate * END_PAD_MS / 1000).coerceAtMost((buffer.capacity() / frameBytes).toLong()).toInt()
+        endAt = sinkFrames
+        if (frames <= 0) return
+        buffer.clear()
+        buffer.put(SILENCE, 0, frames * frameBytes)
+        buffer.flip()
+        heldFrames = frames
+        heldSilence = true
     }
 
     /**
@@ -276,6 +315,7 @@ internal class MseAudioOutput(private val host: Long) {
         const val RETRY_MS = 100L
         const val PAUSED_WAIT_MS = 200
         const val START_STARVED_MS = 100L
+        const val END_PAD_MS = 50L
         const val CONFIGURE_RETRY_MS = 1000L
 
         /** Pad margin: 1/50 s. */

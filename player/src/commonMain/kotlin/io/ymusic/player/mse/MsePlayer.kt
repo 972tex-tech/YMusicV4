@@ -528,13 +528,22 @@ class MsePlayer internal constructor(
     private suspend fun readyPlayer(): DynamicEnginePlayer = withContext(Dispatchers.Main.immediate) {
         if (released) throw TechnicalException("E60034", "mse engine released")
         init()
-        val state = _status.first { it.state.readyToLoad || it.state is PlaybackState.Error }.state
+        var state = awaitSettled()
+        if (state is PlaybackState.Error && state.error.needReset) {
+            reset("request after ${state.error.code}")
+            state = awaitSettled()
+        }
         val enginePlayer = session?.player
-        if (!state.readyToLoad || enginePlayer == null) {
+        // An error the last playback left behind (no reset needed) doesn't stop a request for another video.
+        val usable = state.readyToLoad || (state is PlaybackState.Error && !state.error.needReset)
+        if (!usable || enginePlayer == null) {
             throw TechnicalException("E60034", "mse engine not ready: $state")
         }
         enginePlayer
     }
+
+    private suspend fun awaitSettled(): PlaybackState =
+        _status.first { it.state.readyToLoad || it.state is PlaybackState.Error }.state
 
     /** Native host audio; the host is per session, so [previous] is that session's last push. */
     private fun applySurfaceAudio(previous: PlaybackConfig?, config: PlaybackConfig) {
@@ -617,6 +626,11 @@ class MsePlayer internal constructor(
 
     private fun applyListen(json: JsonObject) {
         _audioSessionId.value = if (hostLive()) videoSurface.audioSessionId() else 0
+        if (hostLive() && _status.value.state !is PlaybackState.Error) {
+            videoSurface.videoFailure()?.let { reason ->
+                fail(TechnicalException("E60064", "video decoder failed: $reason"), "video decoder failed", needReset = true)
+            }
+        }
         json.objectOrNull("progress")?.let { applyProgress(it) }
         json.objectOrNull("state")?.let { applyState(it) }
         json.objectOrNull("picture")?.let { applyPicture(it) }
