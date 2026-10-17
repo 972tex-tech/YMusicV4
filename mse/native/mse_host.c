@@ -1870,11 +1870,14 @@ int mse_host_prepare_append(MseHost *h, int audio, int n)
     if (have + (size_t)n <= cap)
         return 1;
     t = mse_host_current_time(h);
-    if (t > 1.0) {
-        hold_at_playhead(h);
-        mse_av_evict_before(h->av, audio, t - 1.0, have + (size_t)n - cap);
-    }
+    hold_at_playhead(h);
+    mse_av_evict_before(h->av, audio, t - 1.0, have + (size_t)n - cap);
     have = mse_av_leftover_bytes(h->av, audio);
+    if (have + (size_t)n <= cap)
+        return 1;
+    mse_av_evict_ahead(h->av, audio, t + 1.0, have + (size_t)n - cap);
+    have = mse_av_leftover_bytes(h->av, audio);
+    mse_logf("mse gc ahead a=%d have=%zu need=%d cap=%zu clock=%.3f", audio, have, n, cap, t);
     if (have + (size_t)n <= cap)
         return 1;
     mse_critf(MSE_LOG_WARN, "mse quota a=%d have=%zu need=%d cap=%zu clock=%.3f", audio, have, n,

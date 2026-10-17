@@ -3105,36 +3105,61 @@ size_t mse_av_leftover_bytes(MseAv *a, int audio)
     return n;
 }
 
+/* Frames [from, to) leave the buffer; the read position keeps pointing at the same frame. */
+static void cfb_drop_span(Cfb *b, size_t from, size_t to)
+{
+    size_t i;
+    if (from >= to)
+        return;
+    for (i = from; i < to; i++) {
+        b->bytes = b->bytes >= b->f[i].n ? b->bytes - b->f[i].n : 0;
+        free(b->f[i].data);
+    }
+    memmove(&b->f[from], &b->f[to], (b->n - to) * sizeof(Cf));
+    b->n -= to - from;
+    if (b->rd >= to)
+        b->rd -= to - from;
+    else if (b->rd > from)
+        b->rd = from;
+}
+
 void mse_av_evict_before(MseAv *a, int audio, double before, size_t need)
 {
     Cfb *b;
-    size_t i, w = 0, dropped_rd = 0, freed = 0;
+    size_t i = 0, freed = 0;
     if (!a || need == 0)
         return;
     av_lock(a, audio);
     b = audio ? &a->af : &a->vf;
-    for (i = 0; i < b->n; i++) {
-        int evict = freed < need && b->f[i].pts + b->f[i].dur <= before;
-        if (evict) {
-            if (i < b->rd)
-                dropped_rd++;
-            if (b->bytes >= b->f[i].n)
-                b->bytes -= b->f[i].n;
-            else
-                b->bytes = 0;
-            freed += b->f[i].n;
-            free(b->f[i].data);
-            continue;
+    while (i < b->n && freed < need) {
+        size_t end = i + 1, bytes = b->f[i].n;
+        int fits = b->f[i].pts + b->f[i].dur <= before;
+        while (!audio && end < b->n && !coded_is_rap(a, &b->f[end])) {
+            if (b->f[end].pts + b->f[end].dur > before)
+                fits = 0;
+            bytes += b->f[end].n;
+            end++;
         }
-        b->f[w++] = b->f[i];
+        if (!fits)
+            break;
+        freed += bytes;
+        i = end;
     }
-    b->n = w;
-    if (b->rd > dropped_rd)
-        b->rd -= dropped_rd;
-    else
-        b->rd = 0;
-    if (b->rd > b->n)
-        b->rd = b->n;
+    cfb_drop_span(b, 0, i);
+    av_unlock(a, audio);
+}
+
+void mse_av_evict_ahead(MseAv *a, int audio, double keep_until, size_t need)
+{
+    Cfb *b;
+    size_t i, freed = 0;
+    if (!a || need == 0)
+        return;
+    av_lock(a, audio);
+    b = audio ? &a->af : &a->vf;
+    for (i = b->n; i > 0 && freed < need && b->f[i - 1].pts >= keep_until; i--)
+        freed += b->f[i - 1].n;
+    cfb_drop_span(b, i, b->n);
     av_unlock(a, audio);
 }
 
