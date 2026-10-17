@@ -85,6 +85,7 @@ import io.ymusic.ui.mediaStoreArtFetcher
 import io.ymusic.ui.playhistory.PlayHistoryStore
 import io.ymusic.ui.playhistory.playHistoryAndroidDriver
 import io.ymusic.ui.registerCompletedDownload
+import io.ymusic.ui.sponsorblock.PublicSponsorBlockApi
 import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
 import io.ymusic.ui.sponsorblock.sponsorBlockAndroidDriver
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
@@ -620,6 +621,7 @@ class YMusicApplication : Application() {
             remoteConfig = shared.remoteConfig.config,
             mediaStore = shared.mediaStore,
             playHistory = PlayHistoryStore(playHistoryAndroidDriver(this)),
+            sponsorBlockApi = PublicSponsorBlockApi(shared.http.engine),
             sponsorBlockStore = SqliteSponsorBlockStore(sponsorBlockAndroidDriver(this)),
             scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
             libraryFolderPicker = { pickAndRegisterFolder(shared.mediaStore) },
