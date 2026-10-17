@@ -248,7 +248,7 @@
     <string name="playback_unavailable">هذا الفيديو غير متاح</string>
     <string name="playback_retry_later">يتعذّر تشغيل هذا الفيديو الآن. حاول مرة أخرى لاحقًا</string>
     <string name="playback_file_missing">لم يعد هذا الملف موجودًا على جهازك</string>
-    <string name="playback_video_unsupported">لا يستطيع جهازك تشغيل تنسيق الفيديو هذا. تم التبديل إلى الصوت فقط؛ اختر جودة أخرى لمشاهدة الفيديو.</string>
+    <string name="playback_video_unsupported">لا يستطيع جهازك تشغيل تنسيق الفيديو هذا. اختر جودة أخرى.</string>
     <string name="menu_reload_player">إعادة تحميل المشغّل</string>
 
 

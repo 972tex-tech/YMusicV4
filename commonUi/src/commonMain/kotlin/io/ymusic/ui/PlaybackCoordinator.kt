@@ -15,7 +15,6 @@ import kmpcommon.log.Logger
 import kmpcommon.log.info
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -65,15 +64,6 @@ class PlaybackCoordinator(
                             prop = mapOf("canRetry" to err.canRetry, "needReset" to err.needReset),
                         )
                     }
-                }
-            }
-        }
-        // A stream the device cannot decode would fail again on retry: the retry plays audio only, and
-        // picking a quality turns video back on.
-        scope.launch {
-            player.status.map { it.error?.code }.distinctUntilChanged().collect { code ->
-                if (code == PlayerError.VIDEO_DECODER_FAILED) {
-                    withContext(Dispatchers.Main) { player.setAudioOnly(true) }
                 }
             }
         }

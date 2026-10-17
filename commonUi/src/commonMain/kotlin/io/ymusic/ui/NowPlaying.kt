@@ -75,7 +75,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -172,6 +171,7 @@ import io.ymusic.ui.resources.playback_file_missing
 import io.ymusic.ui.resources.playback_retry_later
 import io.ymusic.ui.resources.playback_sign_in_required
 import io.ymusic.ui.resources.playback_unavailable
+import io.ymusic.ui.resources.playback_video_unsupported
 import io.ymusic.ui.resources.queue_end
 import io.ymusic.ui.resources.queue_load_failed
 import io.ymusic.ui.resources.queue_load_more
@@ -450,6 +450,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
                     onToggleFullscreen = onExit,
                 )
             }
+            status.error?.let { PlaybackErrorText(graph.player, it, VideoOverlayNative.showing) }
             PlayerCaptionOverlay(graph.player, VideoOverlayNative.showing, fill = fillScreen)
         }
     }
@@ -519,6 +520,7 @@ private fun PortraitNowPlaying(
                         compact = true, onToggleFullscreen = onFullscreen,
                     )
                 }
+                status.error?.let { PlaybackErrorText(player, it, VideoOverlayNative.showing) }
                 val overlayOn = VideoOverlayNative.showing
                 PlayerCaptionOverlay(player, overlayVisible = overlayOn)
                 if (!overlayOn) {
@@ -562,7 +564,6 @@ private fun PortraitNowPlaying(
                             TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
                             Modifier.padding(top = 5.dp),
                         )
-                        status.error?.let { PlaybackErrorRow(player, it) }
                     }
                     SeekBar(player, progress)
                     TransportRow(coordinator, status.playWhenReady)
@@ -628,6 +629,7 @@ private fun LandscapeNowPlaying(
                 AutoHidingOverlay {
                     VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
                 }
+                status.error?.let { PlaybackErrorText(player, it, VideoOverlayNative.showing) }
                 PlayerCaptionOverlay(player, VideoOverlayNative.showing)
             }
         }
@@ -638,9 +640,6 @@ private fun LandscapeNowPlaying(
                 .background(DesignColors.Surface),
         ) {
             PlayerTopBar(coordinator, sleepMs, onClose)
-            status.error?.let {
-                Box(Modifier.padding(horizontal = 16.dp)) { PlaybackErrorRow(player, it) }
-            }
             QueueHeader(coordinator, queue.currentIndex, queue.displayTotal, queue.shuffle, queue.loopMode)
             HorizontalDivider(color = DesignColors.Divider)
             val queueListState = rememberLazyListState()
@@ -927,16 +926,50 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
 /** Engine track kind for YouTube auto-translate languages (clones of a source track, one per language). */
 private const val AUTO_TRANSLATE_KIND = "asrt"
 
-/** A playability verdict or a captcha as its own message (with its action), else "Failed (code)"; + a
- *  Retry action when retryable. */
+/**
+ * The playback error on a dark panel at the bottom of the picture, above the overlay chrome so its actions
+ * stay tappable, and lifted over the controls strip while that shows: up to two lines of message (a playability verdict, captcha or decoder verdict, else
+ * "Failed (code)"), then its actions as text.
+ */
 @Composable
-private fun PlaybackErrorRow(player: io.ymusic.player.Player, error: io.ymusic.player.PlayerError) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        val captcha = error.code == CAPTCHA_CODE
+private fun BoxScope.PlaybackErrorText(
+    player: io.ymusic.player.Player,
+    error: io.ymusic.player.PlayerError,
+    overlayVisible: Boolean,
+) {
+    val controlsInset by animateDpAsState(if (overlayVisible) VideoControlsStrip else 44.dp)
+    val captcha = error.code == CAPTCHA_CODE
+    val signIn = error.playability() == Playability.SignInRequired
+    val resolver = LocalCaptchaResolver.current
+    val openLogin = LocalOpenLogin.current
+    val actions = buildList<Pair<String, () -> Unit>> {
+        if (signIn) add(stringResource(Res.string.signin_button) to openLogin)
+        if (captcha && resolver != null) add(stringResource(resolver.label) to { resolver.resolve { player.play() } })
+        // play() reloads the current item after a retryable error. A stream the device cannot decode
+        // would fail again, so that retry plays audio only; picking a quality turns video back on.
+        if (error.canRetry) {
+            add(
+                stringResource(Res.string.retry) to {
+                    if (error.code == io.ymusic.player.PlayerError.VIDEO_DECODER_FAILED) player.setAudioOnly(true)
+                    player.play()
+                },
+            )
+        }
+    }
+    Column(
+        Modifier.align(Alignment.BottomCenter)
+            .padding(start = 16.dp, end = 16.dp, bottom = controlsInset)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.8f))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Text(
             when {
                 captcha -> stringResource(Res.string.error_captcha)
                 error.code == io.ymusic.player.PlayerError.FILE_MISSING -> stringResource(Res.string.playback_file_missing)
+                error.code == io.ymusic.player.PlayerError.VIDEO_DECODER_FAILED ->
+                    stringResource(Res.string.playback_video_unsupported)
                 else -> when (error.playability()) {
                     Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
                     Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
@@ -944,36 +977,30 @@ private fun PlaybackErrorRow(player: io.ymusic.player.Player, error: io.ymusic.p
                     null -> stringResource(Res.string.playback_failed, error.code)
                 }
             },
-            color = MaterialTheme.colorScheme.error,
-            fontSize = 12.sp,
+            color = Color.White,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
-        if (error.playability() == Playability.SignInRequired) {
-            ErrorRowAction(stringResource(Res.string.signin_button), LocalOpenLogin.current)
-        }
-        val resolver = LocalCaptchaResolver.current
-        if (captcha && resolver != null) {
-            ErrorRowAction(stringResource(resolver.label)) { resolver.resolve { player.play() } }
-        }
-        if (error.canRetry) {
-            // play() reloads the current item after a retryable error (the facade's port
-            // of the legacy recovery path), so retry is just play.
-            ErrorRowAction(stringResource(Res.string.retry)) { player.play() }
+        if (actions.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                actions.forEachIndexed { index, (label, onClick) ->
+                    if (index > 0) Text("·", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+                    Text(
+                        label,
+                        color = DesignColors.Accent,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(onClick = onClick)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
         }
     }
-}
-
-@Composable
-private fun ErrorRowAction(label: String, onClick: () -> Unit) {
-    Text(
-        label,
-        color = DesignColors.Accent,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-    )
 }
 
 /** chevron-down · [right:] download · sponsorblock · sleep timer · quality chip · ⋮ (reload + tracks). */

@@ -243,7 +243,7 @@
     <string name="playback_unavailable">Video này không khả dụng</string>
     <string name="playback_retry_later">Hiện không thể phát video này. Hãy thử lại sau</string>
     <string name="playback_file_missing">Tệp này không còn trên thiết bị của bạn</string>
-    <string name="playback_video_unsupported">Thiết bị của bạn không phát được định dạng video này. Đã chuyển sang chỉ âm thanh; hãy chọn chất lượng khác để xem video.</string>
+    <string name="playback_video_unsupported">Thiết bị của bạn không phát được định dạng video này. Hãy chọn chất lượng khác.</string>
     <string name="menu_reload_player">Tải lại trình phát</string>
 
 
