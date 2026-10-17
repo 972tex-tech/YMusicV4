@@ -12,7 +12,7 @@ import {
   onLoopAtEnd,
   resetDrainCounts,
 } from "../../protocol/mse";
-import { installOrigEnv } from "./env";
+import { applyNavigatorLanguages, installOrigEnv } from "./env";
 import { installXhr } from "../yt/xhr";
 import { fetchCacheState, installFetch } from "../yt/fetch";
 import { utf8Encode } from "../../transport";
@@ -729,6 +729,7 @@ class Player {
     out["step"] = "config";
     const cfg = await fetchPlayerConfig();
     this.config = cfg;
+    applyNavigatorLanguages(cfg["acceptLanguage"]);
 
     out["step"] = "minter";
     this.mintFn = await minterFromConfig(cfg, out);

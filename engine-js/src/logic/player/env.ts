@@ -21,6 +21,30 @@ export function installOrigEnv(): void {
   (0, eval)(origIdlStubsJs);
 }
 
+/** navigator.language(s) as Chrome derives them from the Accept-Language the homepage was fetched
+ *  with; kept at the env default when the config predates `acceptLanguage`. */
+export function applyNavigatorLanguages(acceptLanguage: unknown): void {
+  if (typeof acceptLanguage !== "string") return;
+  const tags = acceptLanguage
+    .split(",")
+    .map((part) => (part.split(";")[0] ?? "").trim())
+    .filter((tag) => tag.length > 0);
+  const first = tags[0];
+  if (first === undefined) return;
+  const nav = (globalThis as unknown as Record<string, unknown>)["navigator"] as
+    Record<string, unknown> | undefined;
+  if (nav == null) return;
+  nav["language"] = first;
+  nav["languages"] = tags;
+}
+
+/** navigator.languages as the BotGuard VM reads them, for the replay record. */
+export function navigatorLanguages(): unknown {
+  const nav = (globalThis as unknown as Record<string, unknown>)["navigator"] as
+    Record<string, unknown> | undefined;
+  return nav == null ? undefined : nav["languages"];
+}
+
 let eventIdGets = 0;
 let ytGets = 0;
 let countYtAccess = true;
