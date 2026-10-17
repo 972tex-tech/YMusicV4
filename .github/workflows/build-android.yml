@@ -35,8 +35,6 @@ jobs:
           - { slug: android-arm64-v8a, runner: ubuntu-24.04 }
           - { slug: android-x86, runner: ubuntu-24.04 }
           - { slug: android-x86_64, runner: ubuntu-24.04 }
-          - { slug: macos-arm64, runner: macos-14 }
-          - { slug: macos-x86_64, runner: macos-15-intel }
     steps:
       - id: cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
