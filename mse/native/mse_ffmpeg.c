@@ -2871,10 +2871,10 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                         a->mc_fail = 0;
                         a->mc_open_tries = 0;
                     }
-                    if (mc_try_open(a) == 0) {
-                        avcodec_parameters_free(&par);
-                        par = NULL;
-                    }
+                    /* MediaCodec opens on the video thread (pull_video): a configure here holds the
+                       JS thread, and the audio appends queued behind it, for tens of ms. */
+                    avcodec_parameters_free(&par);
+                    par = NULL;
 #endif
 #ifdef __APPLE__
                     /* Native VTDecompressionSession in pull_video. A second
