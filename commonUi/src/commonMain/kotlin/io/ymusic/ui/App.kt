@@ -48,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
@@ -422,6 +423,8 @@ private fun AppRoot(
         val nowPlayingOpen by graph.pip.nowPlayingOpen.collectAsState()
         var nowPlayingPeeking by remember { mutableStateOf(false) }
         val snackbarHostState = remember { SnackbarHostState() }
+        // Snackbars sit above the mini player, which is drawn deep in the shell.
+        var miniHeightPx by remember { mutableIntStateOf(0) }
         val showSnackbar: (String) -> Unit = { message ->
             scope.launch {
                 snackbarHostState.currentSnackbarData?.dismiss()
@@ -1126,11 +1129,12 @@ private fun AppRoot(
                                     }
                                 }
                                 val mini: @Composable (Modifier) -> Unit = { mod ->
+                                    DisposableEffect(Unit) { onDispose { miniHeightPx = 0 } }
                                     MiniPlayer(
                                         coordinator,
                                         surface = if (needsSurface && !nowPlayingOpen) graph.playerSurface else null,
                                         onExpand = { graph.pip.nowPlayingOpen.value = true },
-                                        modifier = mod,
+                                        modifier = mod.onSizeChanged { miniHeightPx = it.height },
                                     )
                                 }
                                 if (desktopLayoutHole) {
@@ -1143,7 +1147,6 @@ private fun AppRoot(
                                     }
                                 } else {
                                     val miniVisible = coordinator.player.queue.collectAsState().value.currentItem != null
-                                    var miniHeightPx by remember { mutableIntStateOf(0) }
                                     val miniInset = if (miniVisible) with(LocalDensity.current) { miniHeightPx.toDp() } else 0.dp
                                     Box(Modifier.fillMaxSize()) {
                                         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -1152,8 +1155,7 @@ private fun AppRoot(
                                         mini(
                                             Modifier.align(Alignment.BottomCenter)
                                                 .fillMaxWidth()
-                                                .navigationBarsPadding()
-                                                .onSizeChanged { miniHeightPx = it.height },
+                                                .navigationBarsPadding(),
                                         )
                                     }
                                 }
@@ -1213,7 +1215,11 @@ private fun AppRoot(
             }
             // Last, so messages land over everything — the shell, Now Playing — whichever screen is up.
             Box(Modifier.fillMaxSize()) {
-                SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+                val snackbarLift = if (nowPlayingOpen) 0.dp else with(LocalDensity.current) { miniHeightPx.toDp() }
+                SnackbarHost(
+                    snackbarHostState,
+                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = snackbarLift),
+                )
             }
         }
     }
