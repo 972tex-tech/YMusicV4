@@ -64,6 +64,7 @@ import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_download
 import io.ymusic.ui.resources.cd_sort
 import io.ymusic.ui.resources.error_captcha
+import io.ymusic.ui.resources.error_disk_full
 import io.ymusic.ui.resources.error_generic
 import io.ymusic.ui.resources.error_network
 import io.ymusic.ui.resources.feed_empty
@@ -93,6 +94,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.DISK_FULL_CODE
 import projectcommon.error.errorCode
 
 /** Paged feed loading over any yt page source (browse / search / watch-next continuations).
@@ -489,6 +491,7 @@ internal fun errorMessage(code: String): String = errorText(code).resolve()
 
 internal fun errorText(code: String): UiText = when (code) {
     "network" -> UiText.Resource(Res.string.error_network)
+    DISK_FULL_CODE -> UiText.Resource(Res.string.error_disk_full)
     CAPTCHA_CODE -> UiText.Resource(Res.string.error_captcha)
     else -> UiText.Resource(Res.string.error_generic, code)
 }

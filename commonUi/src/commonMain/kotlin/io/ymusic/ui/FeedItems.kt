@@ -272,7 +272,7 @@ fun FeedListItem(
             )
             val sub = listOfNotNull(item.subtitleLine1, item.subtitleLine2).joinToString(" · ")
             if (sub.isNotEmpty()) {
-                Text(sub, style = ListSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                Text(sub, style = ListSubStyle, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
             }
         }
         when {

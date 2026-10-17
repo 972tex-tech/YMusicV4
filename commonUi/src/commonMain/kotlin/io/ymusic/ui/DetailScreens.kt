@@ -427,8 +427,8 @@ class ChannelSession(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                log?.captureError(TechnicalException("E60066", "local subscribe failed", cause = error))
-                subscribeErrorCode = "E60066"
+                log?.captureError(TechnicalException("E60067", "local subscribe failed", cause = error))
+                subscribeErrorCode = "E60067"
             } finally {
                 subscribing = false
             }

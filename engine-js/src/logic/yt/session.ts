@@ -277,12 +277,13 @@ async function scrapeSession(): Promise<YtSession> {
   // ytcfg HL echoes the effective value back into this session.
   const hl = await pulledAppLanguage();
   console.info("DBG scrape hl pulled");
+  const acceptLanguage = hl != null ? hl + ",en;q=0.8" : "en-US,en;q=0.9";
   const res = await executeWithCookies(
     ORIGIN + "/",
     HttpRequest.get(ORIGIN + "/")
       .setHeader("User-Agent", DESKTOP_UA)
       .setHeader("Accept", "text/html")
-      .setHeader("Accept-Language", hl != null ? hl + ",en;q=0.8" : "en-US,en;q=0.9")
+      .setHeader("Accept-Language", acceptLanguage)
       .logger(jsLogger("yt/session")),
   );
   const challenge = challengeUrl(res);
@@ -327,7 +328,7 @@ async function scrapeSession(): Promise<YtSession> {
     });
   }
 
-  await storePlayerConfig(html);
+  await storePlayerConfig(html, acceptLanguage);
 
   return {
     clientName: firstMatch(html, "INNERTUBE_CONTEXT_CLIENT_NAME", RE_CLIENT_NAME) ?? "1",
@@ -471,12 +472,14 @@ function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-async function storePlayerConfig(html: string): Promise<void> {
+async function storePlayerConfig(html: string, acceptLanguage: string): Promise<void> {
   const cfg = parsePlayerConfig(html);
   if (cfg == null) {
     console.info("yt session: homepage has no player config");
     return;
   }
+  // The player's navigator.languages must match the Accept-Language this homepage was fetched with.
+  cfg["acceptLanguage"] = acceptLanguage;
   inMemoryPlayer = cfg;
   try {
     await Cache.setJson(CACHE_SCOPE, PLAYER_CONFIG_KEY, cfg);

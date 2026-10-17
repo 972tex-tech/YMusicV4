@@ -29,6 +29,7 @@
 #include "mse_hwdev.h"
 #endif
 
+#include <math.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -148,9 +149,16 @@ struct MseAv {
     ANativeWindow *mc_win;
     enum AVCodecID mc_codec_id;
     int mc_fail;
+    /* Failed opens in a row; the next try waits until mc_retry_us. */
+    int mc_open_tries;
+    int64_t mc_retry_us;
+    /* Set once MediaCodec gave up on this stream; the player fails playback on it. */
+    char mc_failure[128];
     int mc_hold;
     int mc_hold_ix;
     int64_t mc_hold_pts_us;
+    /* vbsf output MediaCodec had no input slot for; queued before anything else. */
+    AVPacket *mc_bsf_out;
     int mc_w;
     int mc_h;
     int mc_cfg_w;
@@ -185,6 +193,9 @@ static void maybe_apply_video_rep(MseAv *a);
 
 #ifdef __ANDROID__
 #define MSE_SEND_AHEAD 0.25
+#define MC_OPEN_WAIT 1
+#define MC_OPEN_TRIES 3
+#define MC_OPEN_RETRY_US 300000
 #else
 #define MSE_SEND_AHEAD 0.08
 #endif
@@ -220,6 +231,10 @@ static void mc_flush(MseAv *a)
     if (!a->mc)
         return;
     mc_hold_drop(a, 0);
+    if (a->mc_bsf_out)
+        av_packet_unref(a->mc_bsf_out);
+    if (a->vbsf)
+        av_bsf_flush(a->vbsf);
     if (!a->mc_pts0_set)
         return;
     AMediaCodec_flush(a->mc);
@@ -865,8 +880,9 @@ static int near_std_fps(double fps)
 
 /* SABR WebM 60fps clusters often demux at 12fps ×5 duration (18s → 90s,
    266s → 1321s, log21 tb=1/11988). Scale so GOP fps is a standard rate.
-   Do not use the playhead (90/3.7 ≈ 24 is not a timescale). */
-static void scale_gop_pts(Cfb *tmp)
+   Do not use the playhead (90/3.7 ≈ 24 is not a timescale). WebM only: an MP4 at a real 12 fps
+   matches the same pattern. Times scale around ts_off, the SourceBuffer timestampOffset. */
+static void scale_gop_pts(Cfb *tmp, double ts_off)
 {
     double first, last, span, fps;
     int n, k, i;
@@ -903,8 +919,8 @@ static void scale_gop_pts(Cfb *tmp)
         if (best_k > 1) {
             vlog("pts/%d fps=%.2f->%.2f first=%.3f n=%d", best_k, fps, fps * best_k, first, n);
             for (i = 0; i < n; i++) {
-                tmp->f[i].pts /= (double)best_k;
-                tmp->f[i].dts /= (double)best_k;
+                tmp->f[i].pts = ts_off + (tmp->f[i].pts - ts_off) / (double)best_k;
+                tmp->f[i].dts = ts_off + (tmp->f[i].dts - ts_off) / (double)best_k;
                 tmp->f[i].dur /= (double)best_k;
             }
         }
@@ -1109,6 +1125,8 @@ static void mc_close(MseAv *a)
     if (!a->mc)
         return;
     mc_hold_drop(a, 0);
+    if (a->mc_bsf_out)
+        av_packet_unref(a->mc_bsf_out);
     AMediaCodec_stop(a->mc);
     AMediaCodec_delete(a->mc);
     a->mc = NULL;
@@ -1374,6 +1392,29 @@ static int mc_queue(MseAv *a, const uint8_t *data, int n, int64_t pts_us, int ke
     return 0;
 }
 
+static int mc_drain_bsf(MseAv *a)
+{
+    int r;
+    if (!a->mc_bsf_out && !(a->mc_bsf_out = av_packet_alloc()))
+        return -1;
+    for (;;) {
+        if (a->mc_bsf_out->size <= 0) {
+            r = av_bsf_receive_packet(a->vbsf, a->mc_bsf_out);
+            if (r == AVERROR(EAGAIN) || r == AVERROR_EOF)
+                return 0;
+            if (r < 0)
+                return r;
+        }
+        r = mc_queue(a, a->mc_bsf_out->data, a->mc_bsf_out->size, a->mc_bsf_out->pts * 1000,
+                     !!(a->mc_bsf_out->flags & AV_PKT_FLAG_KEY));
+        if (r == AVERROR(EAGAIN))
+            return r;
+        av_packet_unref(a->mc_bsf_out);
+        if (r < 0)
+            return r;
+    }
+}
+
 static int mc_send_one(MseAv *a)
 {
     Cf *cf;
@@ -1382,7 +1423,13 @@ static int mc_send_one(MseAv *a)
         return 0;
     cf = &a->vf.f[a->vf.rd];
     if (a->vbsf) {
-        AVPacket *pkt = av_packet_alloc();
+        AVPacket *pkt;
+        r = mc_drain_bsf(a);
+        if (r == AVERROR(EAGAIN))
+            return 0;
+        if (r < 0)
+            return r;
+        pkt = av_packet_alloc();
         if (!pkt)
             return -1;
         if (av_new_packet(pkt, (int)cf->n) < 0) {
@@ -1390,8 +1437,8 @@ static int mc_send_one(MseAv *a)
             return -1;
         }
         memcpy(pkt->data, cf->data, cf->n);
-        pkt->pts = (int64_t)(cf->pts * 1000.0);
-        pkt->dts = (int64_t)(cf->dts * 1000.0);
+        pkt->pts = llround(cf->pts * 1000.0);
+        pkt->dts = llround(cf->dts * 1000.0);
         pkt->time_base = (AVRational){ 1, 1000 };
         if (cf->key)
             pkt->flags |= AV_PKT_FLAG_KEY;
@@ -1403,26 +1450,8 @@ static int mc_send_one(MseAv *a)
             return r;
         cf->sent = 1;
         a->vf.rd++;
-        pkt = av_packet_alloc();
-        if (!pkt)
-            return -1;
-        for (;;) {
-            r = av_bsf_receive_packet(a->vbsf, pkt);
-            if (r == AVERROR(EAGAIN) || r == AVERROR_EOF)
-                break;
-            if (r < 0) {
-                av_packet_free(&pkt);
-                return r;
-            }
-            r = mc_queue(a, pkt->data, pkt->size, (int64_t)(cf->pts * 1e6), cf->key);
-            av_packet_unref(pkt);
-            if (r < 0 && r != AVERROR(EAGAIN)) {
-                av_packet_free(&pkt);
-                return r;
-            }
-        }
-        av_packet_free(&pkt);
-        return 0;
+        r = mc_drain_bsf(a);
+        return r == AVERROR(EAGAIN) ? 0 : r;
     }
     r = mc_queue(a, cf->data, (int)cf->n, (int64_t)(cf->pts * 1e6), cf->key);
     if (r == AVERROR(EAGAIN))
@@ -1694,17 +1723,30 @@ static int pull_mc(MseAv *a, double clock, int *w, int *h, double *pts)
     return 0;
 }
 
+/* A configure can fail while the window is still connected to the codec just closed (Codec2
+   disconnects asynchronously): retry before giving up on the stream. */
 static int mc_try_open(MseAv *a)
 {
     if (a->v_rest || !a->mc_win || !a->vpar || a->mc_fail)
         return -1;
     if (a->mc)
         return 0;
+    if (a->mc_open_tries > 0 && mc_now_us() < a->mc_retry_us)
+        return MC_OPEN_WAIT;
     if (mc_open(a) < 0) {
+        if (++a->mc_open_tries < MC_OPEN_TRIES) {
+            a->mc_retry_us = mc_now_us() + MC_OPEN_RETRY_US;
+            return MC_OPEN_WAIT;
+        }
         a->mc_fail = 1;
-        mse_critf(MSE_LOG_WARN, "mse-v mediacodec unavailable, software blit");
+        if (!a->mc_failure[0])
+            snprintf(a->mc_failure, sizeof(a->mc_failure), "%s %dx%d: no MediaCodec after %d tries",
+                     avcodec_get_name(a->vpar->codec_id), a->vpar->width, a->vpar->height,
+                     a->mc_open_tries);
+        mse_critf(MSE_LOG_ERROR, "mse-v %s", a->mc_failure);
         return -1;
     }
+    a->mc_open_tries = 0;
     if (a->vdec) {
         av_frame_free(&a->vhold);
         avcodec_free_context(&a->vdec);
@@ -1869,6 +1911,11 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
 #endif
     ))
         return 0;
+#ifdef __ANDROID__
+    /* Video decodes in MediaCodec only: a CPU blit would hold the window from it for good. */
+    if (video)
+        return -1;
+#endif
     int vp9 = video && (par->codec_id == AV_CODEC_ID_VP9 || par->codec_id == AV_CODEC_ID_VP8);
     if (*ctxp) {
         int same = (*ctxp)->codec_id == par->codec_id;
@@ -1885,6 +1932,10 @@ static int open_decoder(MseAv *a, int video, AVCodecParameters *par)
         avcodec_free_context(ctxp);
         if (video) {
             av_bsf_free(&a->vbsf);
+#ifdef __ANDROID__
+            if (a->mc_bsf_out)
+                av_packet_unref(a->mc_bsf_out);
+#endif
             if (a->sws) {
                 sws_freeContext(a->sws);
                 a->sws = NULL;
@@ -2082,6 +2133,7 @@ static void apply_pending_video_rep(MseAv *a)
     a->v_switch_pts = -1;
 #ifdef __ANDROID__
     a->mc_fail = 0;
+    a->mc_open_tries = 0;
     if (mc_try_open(a) == 0) {
         /* mc_open resyncs to the key before v_sent: an old-rep GOP. */
         if (sw >= 0) {
@@ -2240,6 +2292,7 @@ void mse_av_destroy(MseAv *a)
     avcodec_parameters_free(&a->vpar_next);
 #ifdef __ANDROID__
     mc_close(a);
+    av_packet_free(&a->mc_bsf_out);
 #endif
     if (a->swr)
         swr_free(&a->swr);
@@ -2524,9 +2577,20 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
                      kept.f[i].data, kept.f[i].n);
         qsort(dst->f, dst->n, sizeof(Cf), cf_cmp);
         if (sp) {
+            double sent_max = -1e300;
+            for (j = 0; j < nsp; j++) {
+                if (sp[j] > sent_max)
+                    sent_max = sp[j];
+            }
             for (i = 0; i < (int)dst->n; i++) {
                 if (dst->f[i].sent)
                     continue;
+                /* Audio frames stand alone: like Chrome's demuxer, never feed a replacement that
+                   starts before audio already fed (a gapless next track overlapping the tail). */
+                if (idx && dst->f[i].pts < sent_max - 0.001) {
+                    dst->f[i].sent = 1;
+                    continue;
+                }
                 for (j = 0; j < nsp; j++) {
                     double d = dst->f[i].pts - sp[j];
                     if (d < 0)
@@ -2750,8 +2814,8 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
             cfb_free(&tmp);
             break;
         }
-        if (!audio && nadd > 0 && !wrap)
-            scale_gop_pts(&tmp);
+        if (!audio && nadd > 0 && !wrap && *initn >= 4 && be32(*initp) == MSE_ID_EBML)
+            scale_gop_pts(&tmp, ts_off);
         if (dur > a->duration)
             a->duration = dur;
         if (par) {
@@ -2805,11 +2869,12 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                          (par->height > 0 && a->mc_cfg_h > 0 && par->height != a->mc_cfg_h))) {
                         mc_close(a);
                         a->mc_fail = 0;
+                        a->mc_open_tries = 0;
                     }
-                    if (mc_try_open(a) == 0) {
-                        avcodec_parameters_free(&par);
-                        par = NULL;
-                    }
+                    /* MediaCodec opens on the video thread (pull_video): a configure here holds the
+                       JS thread, and the audio appends queued behind it, for tens of ms. */
+                    avcodec_parameters_free(&par);
+                    par = NULL;
 #endif
 #ifdef __APPLE__
                     /* Native VTDecompressionSession in pull_video. A second
@@ -2880,6 +2945,10 @@ static void close_video_decoder(MseAv *a)
     av_frame_free(&a->vhold);
     avcodec_free_context(&a->vdec);
     av_bsf_free(&a->vbsf);
+#ifdef __ANDROID__
+    if (a->mc_bsf_out)
+        av_packet_unref(a->mc_bsf_out);
+#endif
     if (a->sws) {
         sws_freeContext(a->sws);
         a->sws = NULL;
@@ -2987,6 +3056,7 @@ void mse_av_rest_video(MseAv *a, int on, double clock)
 #ifdef __ANDROID__
         mc_close(a);
         a->mc_fail = 0;
+        a->mc_open_tries = 0;
 #endif
         if (a->vf.rd < a->vf.n)
             a->v_sent = a->vf.f[a->vf.rd].pts;
@@ -3035,36 +3105,61 @@ size_t mse_av_leftover_bytes(MseAv *a, int audio)
     return n;
 }
 
+/* Frames [from, to) leave the buffer; the read position keeps pointing at the same frame. */
+static void cfb_drop_span(Cfb *b, size_t from, size_t to)
+{
+    size_t i;
+    if (from >= to)
+        return;
+    for (i = from; i < to; i++) {
+        b->bytes = b->bytes >= b->f[i].n ? b->bytes - b->f[i].n : 0;
+        free(b->f[i].data);
+    }
+    memmove(&b->f[from], &b->f[to], (b->n - to) * sizeof(Cf));
+    b->n -= to - from;
+    if (b->rd >= to)
+        b->rd -= to - from;
+    else if (b->rd > from)
+        b->rd = from;
+}
+
 void mse_av_evict_before(MseAv *a, int audio, double before, size_t need)
 {
     Cfb *b;
-    size_t i, w = 0, dropped_rd = 0, freed = 0;
+    size_t i = 0, freed = 0;
     if (!a || need == 0)
         return;
     av_lock(a, audio);
     b = audio ? &a->af : &a->vf;
-    for (i = 0; i < b->n; i++) {
-        int evict = freed < need && b->f[i].pts + b->f[i].dur <= before;
-        if (evict) {
-            if (i < b->rd)
-                dropped_rd++;
-            if (b->bytes >= b->f[i].n)
-                b->bytes -= b->f[i].n;
-            else
-                b->bytes = 0;
-            freed += b->f[i].n;
-            free(b->f[i].data);
-            continue;
+    while (i < b->n && freed < need) {
+        size_t end = i + 1, bytes = b->f[i].n;
+        int fits = b->f[i].pts + b->f[i].dur <= before;
+        while (!audio && end < b->n && !coded_is_rap(a, &b->f[end])) {
+            if (b->f[end].pts + b->f[end].dur > before)
+                fits = 0;
+            bytes += b->f[end].n;
+            end++;
         }
-        b->f[w++] = b->f[i];
+        if (!fits)
+            break;
+        freed += bytes;
+        i = end;
     }
-    b->n = w;
-    if (b->rd > dropped_rd)
-        b->rd -= dropped_rd;
-    else
-        b->rd = 0;
-    if (b->rd > b->n)
-        b->rd = b->n;
+    cfb_drop_span(b, 0, i);
+    av_unlock(a, audio);
+}
+
+void mse_av_evict_ahead(MseAv *a, int audio, double keep_until, size_t need)
+{
+    Cfb *b;
+    size_t i, freed = 0;
+    if (!a || need == 0)
+        return;
+    av_lock(a, audio);
+    b = audio ? &a->af : &a->vf;
+    for (i = b->n; i > 0 && freed < need && b->f[i - 1].pts >= keep_until; i--)
+        freed += b->f[i - 1].n;
+    cfb_drop_span(b, i, b->n);
     av_unlock(a, audio);
 }
 
@@ -3229,6 +3324,22 @@ int mse_av_has_video(MseAv *a)
     return n;
 }
 
+int mse_av_video_failure(MseAv *a, char *out, int cap)
+{
+    int failed = 0;
+    if (!a || !out || cap <= 0)
+        return 0;
+    out[0] = 0;
+#ifdef __ANDROID__
+    pthread_mutex_lock(&a->mu);
+    failed = a->mc_failure[0] != 0;
+    if (failed)
+        snprintf(out, (size_t)cap, "%s", a->mc_failure);
+    pthread_mutex_unlock(&a->mu);
+#endif
+    return failed;
+}
+
 int mse_av_video_rested(MseAv *a)
 {
     int on;
@@ -3387,7 +3498,12 @@ void mse_av_seek(MseAv *a, double seconds)
     if (a->vf.rd >= a->vf.n || !coded_is_rap(a, &a->vf.f[a->vf.rd])) {
         a->pend_n[0] = 0;
         a->cluster_tc_n[0] = 0;
-        close_video_decoder(a);
+#ifdef __ANDROID__
+        /* MediaCodec drops the old GOP in the flush below and need_rap feeds a key next: a reopen
+           would hold this (JS) thread ~20 ms, and another on the video thread. */
+        if (!a->mc)
+#endif
+            close_video_decoder(a);
     } else {
         if (a->vdec)
             avcodec_flush_buffers(a->vdec);
@@ -3747,6 +3863,7 @@ void mse_av_set_window(MseAv *a, void *window)
         mc_close(a);
         a->mc_win = win;
         a->mc_fail = 0;
+        a->mc_open_tries = 0;
         vlog("window %p vpar=%d %dx%d", (void *)win, a->vpar ? 1 : 0,
              a->vpar ? a->vpar->width : 0, a->vpar ? a->vpar->height : 0);
         if (win)
@@ -4098,7 +4215,10 @@ int mse_av_pull_video(MseAv *a, double clock, uint8_t **bgra, int *w, int *h, do
         pthread_mutex_unlock(&a->mu);
         return 0;
     }
-    mc_try_open(a);
+    if (mc_try_open(a) == MC_OPEN_WAIT) {
+        pthread_mutex_unlock(&a->mu);
+        return 0;
+    }
     if (a->mc) {
         int r = pull_mc(a, clock, w, h, pts);
         pthread_mutex_unlock(&a->mu);

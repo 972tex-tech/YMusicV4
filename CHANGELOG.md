@@ -1,5 +1,26 @@
 # Changelog
 
+## 4.0.5
+
+### IMPROVED
+- Android: faster song changes, and the last moment of a song is no longer cut off ([7d70b860f..95dfd84fd](https://github.com/ymusic-io/YMusicV4/compare/20de0ace6f1d5058529649112a233169055ae15e...95dfd84fdc3bee2bf46ca64d09142877c24407d0))
+- Fewer YouTube playback failures ("An error occurred") ([1a01634d2..e6909faf8](https://github.com/ymusic-io/YMusicV4/compare/16b2cf4d0d2a0da4e7c6e10595ea928db8f38549...e6909faf81cfe01b0624b84ce62f66d935ebe7e1))
+- Full storage shows "Not enough storage space" instead of an error code ([b3e8b2027..16b2cf4d0](https://github.com/ymusic-io/YMusicV4/compare/bf5fc3943619bca8cf3fd8cc364890d40f785901...16b2cf4d0d2a0da4e7c6e10595ea928db8f38549))
+- Android: a download folder that was deleted asks you to pick the folder again ([bf5fc3943](https://github.com/ymusic-io/YMusicV4/commit/bf5fc3943619bca8cf3fd8cc364890d40f785901))
+- Messages show above the mini player instead of covering it ([d71c20180](https://github.com/ymusic-io/YMusicV4/commit/d71c20180df4188490e7df05bbf85f105200cc5a))
+- Home feed list: the line under the title wraps to two lines ([ada11f166](https://github.com/ymusic-io/YMusicV4/commit/ada11f1666dc91a36c627d8d92b29ae344d38612))
+
+### FIXED
+- Short audio gap after about 10 minutes of YouTube playback ([a64d84ba0](https://github.com/ymusic-io/YMusicV4/commit/a64d84ba0a8ee7935f08fa06e40fb99ba7867e18))
+- Pause or restart after seeking back in long YouTube videos ([a7298582c..c640b7e9a](https://github.com/ymusic-io/YMusicV4/compare/e6909faf81cfe01b0624b84ce62f66d935ebe7e1...c640b7e9af507dce5ff53de3db8c6ffadcaadc7a))
+- Some YouTube videos playing too fast, out of sync with the audio ([ff5197020](https://github.com/ymusic-io/YMusicV4/commit/ff5197020b953c93058b5d1622a9b85cc17c6eb7))
+- Audio freezing at the change to the next song ([20de0ace6](https://github.com/ymusic-io/YMusicV4/commit/20de0ace6f1d5058529649112a233169055ae15e))
+- Downloads failing after a playback error ([9278e7191](https://github.com/ymusic-io/YMusicV4/commit/9278e71910a6fea92039eef7d443257fdfee8512))
+- Android: YouTube video freezing and jumping, mostly on live streams ([d122eaa22](https://github.com/ymusic-io/YMusicV4/commit/d122eaa221fe5a831aba5f90625bbf92ff329860))
+- Android: black YouTube video until restart after turning the screen back on ([fe6158127..dfa555c3d](https://github.com/ymusic-io/YMusicV4/compare/504e253c342672fdb0da418e88c0d4169fe48778...dfa555c3d7209fa8fde4cb29d206ecfd8c89e9de))
+- Android: YouTube playback stuck after a few seconds on some devices ([a8ce568b7](https://github.com/ymusic-io/YMusicV4/commit/a8ce568b796776903c33c38a620c03e02b3a1022))
+- Android: crash when the system restarts the app in the background ([504e253c3](https://github.com/ymusic-io/YMusicV4/commit/504e253c342672fdb0da418e88c0d4169fe48778))
+
 ## 4.0.4
 
 ### NEW

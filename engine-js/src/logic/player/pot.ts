@@ -5,7 +5,13 @@ import { JsEngineErrorImpl } from "../../protocol/command";
 import { executeWithCookies } from "../yt/cookies";
 import { DESKTOP_UA } from "../yt/session";
 import { HttpRequest } from "../../protocol/http";
-import { freezeYtAccessCounts, installYtcfg, ytEventIdGets, ytWindowGets } from "./env";
+import {
+  freezeYtAccessCounts,
+  installYtcfg,
+  navigatorLanguages,
+  ytEventIdGets,
+  ytWindowGets,
+} from "./env";
 import { isAudioOnly, ymQuality } from "./audio_only";
 import { viewportHeight, viewportWidth } from "./viewport";
 import {
@@ -95,6 +101,7 @@ function hostInfo(extras: Record<string, unknown> | null): Record<string, unknow
     "viewport": [viewportWidth(), viewportHeight()],
     "audioOnly": isAudioOnly(),
     "quality": ymQuality(),
+    "languages": navigatorLanguages(),
   };
   if (typeof __timeZone === "function") h["tz"] = __timeZone();
   if (extras && typeof extras["platform"] === "string") h["platform"] = extras["platform"];

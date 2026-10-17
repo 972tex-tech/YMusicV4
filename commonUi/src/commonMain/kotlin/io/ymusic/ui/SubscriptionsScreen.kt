@@ -67,8 +67,8 @@ fun SubscriptionsScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onOpe
         } catch (c: CancellationException) {
             throw c
         } catch (e: Exception) {
-            log?.captureError(TechnicalException("E60064", "local subscriptions feed failed to load", cause = e))
-            errorCode = "E60064"
+            log?.captureError(TechnicalException("E60065", "local subscriptions feed failed to load", cause = e))
+            errorCode = "E60065"
         }
     }
     val partial = stringResource(Res.string.subscriptions_partial)
@@ -119,8 +119,8 @@ fun SubscriptionsScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onOpe
                                             } catch (c: CancellationException) {
                                                 throw c
                                             } catch (e: Exception) {
-                                                log?.captureError(TechnicalException("E60065", "local unsubscribe failed", cause = e))
-                                                actionError = "E60065"
+                                                log?.captureError(TechnicalException("E60066", "local unsubscribe failed", cause = e))
+                                                actionError = "E60066"
                                             }
                                         }
                                     },

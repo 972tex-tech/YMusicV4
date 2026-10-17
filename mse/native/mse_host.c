@@ -27,7 +27,6 @@
 #endif
 #ifdef __ANDROID__
 #include <android/native_window.h>
-static void blit_window(ANativeWindow *win, int w, int h, const uint8_t *bgra);
 #endif
 
 #if defined(MSE_AQ) || defined(__ANDROID__)
@@ -298,6 +297,18 @@ static double dac_handover(MseHost *h, double dac)
 
 /* h->mu held. Do not take MseAv locks: the DAC callback/poll needs h->mu, and
    MediaCodec configure holds a->mu for tens of ms (audio-only → Auto). */
+/* Caller holds mu. */
+static void rebase_hold(MseHost *h, double t)
+{
+    h->hold = t;
+    h->origin_ns = now_ns();
+#ifdef MSE_DAC
+    h->seek_base = t;
+    dac_rebase(h);
+    h->dac_tick_ns = 0;
+#endif
+}
+
 static double clock_with_span(MseHost *h, int have, double first, double last, int has_video)
 {
     double t, hold;
@@ -409,13 +420,7 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
                 t = first;
             else if (t > cap) {
                 t = cap;
-                h->hold = cap;
-                h->origin_ns = now_ns();
-#ifdef MSE_DAC
-                h->seek_base = cap;
-                dac_rebase(h);
-                h->dac_tick_ns = 0;
-#endif
+                rebase_hold(h, cap);
             }
         }
     }
@@ -441,6 +446,17 @@ static double host_clock(MseHost *h)
     t = clock_with_span(h, have, first, last, has_v);
     pthread_mutex_unlock(&h->mu);
     return t;
+}
+
+/* The clock holds at `hold` once leftover no longer covers it, so dropping the head of leftover
+   while playing must first move `hold` to the playhead or currentTime snaps back to it. */
+static void hold_at_playhead(MseHost *h)
+{
+    double t = host_clock(h);
+    pthread_mutex_lock(&h->mu);
+    if (h->playing && h->hold < t)
+        rebase_hold(h, t);
+    pthread_mutex_unlock(&h->mu);
 }
 
 #ifdef MSE_DAC
@@ -819,20 +835,6 @@ static void *vid_loop(void *arg)
         dur = mse_av_duration(h->av);
 
         if (mse_av_pull_video(h->av, clock, &bgra, &w, &ht, &pts) > 0) {
-#ifdef __ANDROID__
-            if (bgra) {
-                ANativeWindow *win;
-                pthread_mutex_lock(&h->mu);
-                win = (ANativeWindow *)h->window;
-                if (win)
-                    ANativeWindow_acquire(win);
-                pthread_mutex_unlock(&h->mu);
-                if (win) {
-                    blit_window(win, w, ht, bgra);
-                    ANativeWindow_release(win);
-                }
-            }
-#endif
             if (bgra) {
                 keep_bgra(h, w, ht, bgra);
                 show = bgra;
@@ -957,6 +959,7 @@ static void *dec_loop(void *arg)
             unsigned gen;
             double lead = 0.35;
             double until;
+            double from = clock;
             pthread_mutex_lock(&h->mu);
             want = ring_ms(h) < 400;
             gen = h->ring_gen;
@@ -976,12 +979,17 @@ static void *dec_loop(void *arg)
                once full: decode as far as ring + sink take (Media3 feeds until handleBuffer refuses). */
             if (!h->dac_live)
                 until = clock + 3600.0;
+            /* A track that has not reported yet may still be opening (a hung audioserver takes
+               seconds) while the clock runs on wall time: the audio behind that clock is what the
+               track plays first, and the clock steps back to it once the sink reports. */
+            if (h->aq_started && !h->dac_live && from > h->seek_base)
+                from = h->seek_base;
 #endif
             pthread_mutex_unlock(&h->mu);
             if (!want)
                 break;
             pcm = NULL;
-            if (mse_av_pull_audio(h->av, clock, until, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
+            if (mse_av_pull_audio(h->av, from, until, &pcm, &frames, &rate, &ch, &pts) <= 0 || !pcm)
                 break;
             host_stretch(h, &pcm, &frames, ch, rate);
             if (frames <= 0) {
@@ -1277,34 +1285,6 @@ void mse_host_set_video_surface(MseHost *h, void *window)
     (void)old;
 #endif
 }
-
-#ifdef __ANDROID__
-/* Fallback when MediaCodec cannot take the TextureView Surface. */
-static void blit_window(ANativeWindow *win, int w, int h, const uint8_t *bgra)
-{
-    ANativeWindow_Buffer buf;
-    int y, stride;
-    if (!win || !bgra || w <= 0 || h <= 0)
-        return;
-    if (ANativeWindow_setBuffersGeometry(win, w, h, WINDOW_FORMAT_RGBX_8888) != 0)
-        return;
-    if (ANativeWindow_lock(win, &buf, NULL) != 0)
-        return;
-    stride = buf.stride;
-    for (y = 0; y < h && y < buf.height; y++) {
-        uint8_t *dst = (uint8_t *)buf.bits + y * stride * 4;
-        const uint8_t *src = bgra + y * w * 4;
-        int x, n = w < buf.width ? w : buf.width;
-        for (x = 0; x < n; x++) {
-            dst[x * 4 + 0] = src[x * 4 + 2];
-            dst[x * 4 + 1] = src[x * 4 + 1];
-            dst[x * 4 + 2] = src[x * 4 + 0];
-            dst[x * 4 + 3] = 255;
-        }
-    }
-    ANativeWindow_unlockAndPost(win);
-}
-#endif
 
 void mse_host_set_sinks(MseHost *h, MseFrameFn on_frame, MsePcmFn on_pcm, MseProgressFn on_prog, void *user)
 {
@@ -1711,6 +1691,11 @@ int mse_host_copy_frame(MseHost *h, uint8_t *dst, int cap, int *w, int *ht, int 
     return n;
 }
 
+int mse_host_video_failure(MseHost *h, char *out, int cap)
+{
+    return h ? mse_av_video_failure(h->av, out, cap) : 0;
+}
+
 int mse_host_frames(MseHost *h)
 {
     if (!h)
@@ -1885,9 +1870,14 @@ int mse_host_prepare_append(MseHost *h, int audio, int n)
     if (have + (size_t)n <= cap)
         return 1;
     t = mse_host_current_time(h);
-    if (t > 1.0)
-        mse_av_evict_before(h->av, audio, t - 1.0, have + (size_t)n - cap);
+    hold_at_playhead(h);
+    mse_av_evict_before(h->av, audio, t - 1.0, have + (size_t)n - cap);
     have = mse_av_leftover_bytes(h->av, audio);
+    if (have + (size_t)n <= cap)
+        return 1;
+    mse_av_evict_ahead(h->av, audio, t + 1.0, have + (size_t)n - cap);
+    have = mse_av_leftover_bytes(h->av, audio);
+    mse_logf("mse gc ahead a=%d have=%zu need=%d cap=%zu clock=%.3f", audio, have, n, cap, t);
     if (have + (size_t)n <= cap)
         return 1;
     mse_critf(MSE_LOG_WARN, "mse quota a=%d have=%zu need=%d cap=%zu clock=%.3f", audio, have, n,
@@ -1915,6 +1905,7 @@ void mse_host_remove(MseHost *h, int audio, double start, double end)
     double pairs[2];
     if (!h)
         return;
+    hold_at_playhead(h);
     mse_av_remove(h->av, audio, start, end);
     /* Audio-only (or a full video wipe) — stop showing the last decoded frame. */
     if (!audio && mse_av_buffered(h->av, 0, pairs, 1) <= 0) {
@@ -1931,20 +1922,6 @@ void mse_host_remove(MseHost *h, int audio, double start, double end)
         }
         pthread_mutex_unlock(&h->frame_mu);
         if (black) {
-#ifdef __ANDROID__
-            {
-                ANativeWindow *win;
-                pthread_mutex_lock(&h->mu);
-                win = (ANativeWindow *)h->window;
-                if (win)
-                    ANativeWindow_acquire(win);
-                pthread_mutex_unlock(&h->mu);
-                if (win) {
-                    blit_window(win, w, ht, black);
-                    ANativeWindow_release(win);
-                }
-            }
-#endif
             if (h->on_frame)
                 h->on_frame(h->user, w, ht, black);
         }
@@ -1992,20 +1969,6 @@ static void show_black(MseHost *h)
     pthread_mutex_unlock(&h->frame_mu);
     if (!black)
         return;
-#ifdef __ANDROID__
-    {
-        ANativeWindow *win;
-        pthread_mutex_lock(&h->mu);
-        win = (ANativeWindow *)h->window;
-        if (win)
-            ANativeWindow_acquire(win);
-        pthread_mutex_unlock(&h->mu);
-        if (win) {
-            blit_window(win, w, ht, black);
-            ANativeWindow_release(win);
-        }
-    }
-#endif
     if (h->on_frame)
         h->on_frame(h->user, w, ht, black);
     pthread_mutex_lock(&h->mu);

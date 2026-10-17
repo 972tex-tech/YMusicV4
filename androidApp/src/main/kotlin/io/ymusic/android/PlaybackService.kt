@@ -240,6 +240,18 @@ class PlaybackService : MediaLibraryService() {
 
     /** The Auto browse surface — all list building lives in [MediaBrowseTree]. */
     private inner class LibraryCallback(private val tree: MediaBrowseTree) : MediaLibrarySession.Callback {
+        // Media3 gives untrusted controllers (any third-party app, e.g. a screen reader dispatching
+        // media keys) read-only player commands and drops the rest silently; any app may drive playback.
+        @OptIn(UnstableApi::class)
+        override fun onConnectAsync(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): ListenableFuture<MediaSession.ConnectionResult> = Futures.immediateFuture(
+            MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
+                .setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS)
+                .build(),
+        )
+
         override fun onMediaButtonEvent(
             session: MediaSession,
             controllerInfo: MediaSession.ControllerInfo,
@@ -371,9 +383,9 @@ class PlaybackService : MediaLibraryService() {
         // super routes MEDIA_BUTTON intents (our notification actions) onto the session.
         val result = super.onStartCommand(intent, flags, startId)
         // The startForegroundService contract: enter foreground now; the collector demotes on pause.
-        startForeground(NOTIFICATION_ID, buildNotification())
-        foreground = true
-        foregroundRefused = false
+        // A plain start from the background (the system restarting the sticky service after the
+        // process died) is refused promotion and stays a background service.
+        foreground = promote(buildNotification())
         return result
     }
 

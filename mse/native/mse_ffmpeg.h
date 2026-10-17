@@ -43,8 +43,11 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
                           double win_start, double win_end);
 void mse_av_remove(MseAv *a, int audio, double start, double end);
 size_t mse_av_leftover_bytes(MseAv *a, int audio);
-/* Drop coded frames with pts+dur <= before until `need` bytes are freed (Chrome MSE GC). */
+/* Chrome MSE coded-frame eviction, until `need` bytes are freed. From the front: frames ending by
+   `before`, whole GOPs for video so buffered always starts on a keyframe. */
 void mse_av_evict_before(MseAv *a, int audio, double before, size_t need);
+/* Then from the back (Chrome's reverse pass): the last frames first, never one before `keep_until`. */
+void mse_av_evict_ahead(MseAv *a, int audio, double keep_until, size_t need);
 void mse_av_flush(MseAv *a, int audio, int video);
 void mse_av_abort(MseAv *a, int audio);
 /* MSE changeType: reset parser + drop init for that track; leftover stays. */
@@ -95,6 +98,8 @@ int mse_av_video_pending(MseAv *a);
 int mse_av_video_due(MseAv *a, double clock);
 int mse_av_audio_pending(MseAv *a);
 int mse_av_has_video(MseAv *a);
+/* 1 and the reason in out when the platform decoder gave up on the video stream (Android). */
+int mse_av_video_failure(MseAv *a, char *out, int cap);
 /* 1 if __mseRestVideo: decoder asleep (audio-only / product-zero). */
 int mse_av_video_rested(MseAv *a);
 

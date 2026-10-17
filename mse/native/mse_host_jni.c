@@ -246,6 +246,16 @@ Java_io_ymusic_mse_MseHostNative_audioSessionId(JNIEnv *env, jclass cls, jlong h
     return mse_host_audio_session((MseHost *)(intptr_t)handle);
 }
 
+JNIEXPORT jstring JNICALL
+Java_io_ymusic_mse_MseHostNative_videoFailure(JNIEnv *env, jclass cls, jlong handle)
+{
+    char reason[128];
+    (void)cls;
+    if (!mse_host_video_failure((MseHost *)(intptr_t)handle, reason, (int)sizeof(reason)))
+        return NULL;
+    return (*env)->NewStringUTF(env, reason);
+}
+
 JNIEXPORT void JNICALL
 Java_io_ymusic_mse_MseHostNative_dacAttach(JNIEnv *env, jclass cls, jlong handle, jboolean attached)
 {
