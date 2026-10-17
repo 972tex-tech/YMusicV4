@@ -107,6 +107,9 @@ data class PlayerError(
     companion object {
         /** A local item's file is gone from storage (deleted/moved since the scan) — never retryable. */
         const val FILE_MISSING = "file_missing"
+
+        /** The platform video decoder refused the stream (size or profile beyond the device). */
+        const val VIDEO_DECODER_FAILED = "E60064"
     }
 }
 

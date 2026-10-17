@@ -627,8 +627,12 @@ class MsePlayer internal constructor(
     private fun applyListen(json: JsonObject) {
         _audioSessionId.value = if (hostLive()) videoSurface.audioSessionId() else 0
         if (hostLive() && _status.value.state !is PlaybackState.Error) {
-            videoSurface.videoFailure()?.let { reason ->
-                fail(TechnicalException("E60064", "video decoder failed: $reason"), "video decoder failed", needReset = true)
+            val reason = videoSurface.videoFailure()
+            if (reason != null) {
+                // The session would keep playing and its next state would bury this error.
+                tearDownSession("video decoder failed")
+                fail(TechnicalException(PlayerError.VIDEO_DECODER_FAILED, "video decoder failed: $reason"), "video decoder failed", needReset = true)
+                return
             }
         }
         json.objectOrNull("progress")?.let { applyProgress(it) }
