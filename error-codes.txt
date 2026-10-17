@@ -129,6 +129,7 @@ E60066 D MsePlayer player/init not done within 30 s (player MsePlayer)
 E60067 - local subscriptions feed failed to load (commonUi SubscriptionsScreen)
 E60068 - local unsubscribe failed to save (commonUi SubscriptionsScreen)
 E60069 - local subscribe/unsubscribe failed to save (commonUi ChannelSession)
+E60070 - local subscriptions import failed: empty clipboard, unreadable text or save error (commonUi SubscriptionsScreen)
 
 E70001 D unclassified download failure (download DownloadService.execute fallback)
 E70010 D no SABR stream; progressive download not yet supported (download YtStreamDownloader)

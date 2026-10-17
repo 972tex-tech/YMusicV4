@@ -52,6 +52,20 @@ class LocalSubscriptions(
         save(channels.value.filterNot { it.id == channelId })
     }
 
+    /** The channel list as text, ready to keep in a note or move to another phone. */
+    fun export(): String = encode(channels.value)
+
+    /** Adds the channels in [raw] (an [export] text) that are not subscribed yet; returns how many were added. */
+    suspend fun importFrom(raw: String?): Int {
+        require(!raw.isNullOrBlank()) { "nothing to import" }
+        val incoming = decode(raw)
+        require(incoming.isNotEmpty()) { "no channels found in the text" }
+        val held = channels.value.map { it.id }.toSet()
+        val added = incoming.filter { it.id !in held }.distinctBy { it.id }
+        if (added.isNotEmpty()) save(channels.value + added)
+        return added.size
+    }
+
     suspend fun latest(): LocalFeed = coroutineScope {
         val results = channels.value.map { channel -> async { readChannel(channel) } }.awaitAll()
         val items = results.filterNotNull().flatten().sortedByDescending { it.second }.map { it.first }.take(MAX_ITEMS)
