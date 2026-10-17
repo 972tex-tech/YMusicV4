@@ -83,6 +83,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       SECRETS_PASSPHRASE: ${{ secrets.SECRETS_PASSPHRASE }}
+      HYBRID_KEYSTORE_B64: ${{ secrets.HYBRID_KEYSTORE_B64 }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -134,16 +135,27 @@ jobs:
         working-directory: YMusicV4
         run: ./decrypt.sh
 
+      # A fixed signing key kept in the HYBRID_* repository secrets, so every build is signed the
+      # same way and installs over the previous one. Without it the build is debug-signed.
+      - name: Restore signing key
+        if: env.HYBRID_KEYSTORE_B64 != ''
+        working-directory: YMusicV4
+        run: echo "$HYBRID_KEYSTORE_B64" | base64 -d > hybrid.keystore
+
       # With the decrypted sentry.auth.token the Sentry plugin uploads the ProGuard mapping and
       # source context for this build, so crashes from the shipped APKs symbolicate.
       - name: Assemble release APKs
         working-directory: YMusicV4
+        env:
+          YMUSIC_ANDROID_STORE_FILE: ${{ secrets.HYBRID_KEYSTORE_B64 != '' && 'hybrid.keystore' || '' }}
+          YMUSIC_ANDROID_STORE_PASSWORD: ${{ secrets.HYBRID_STORE_PASSWORD }}
+          YMUSIC_ANDROID_KEY_ALIAS: ${{ secrets.HYBRID_KEY_ALIAS }}
         run: ./gradlew -Pproduction=true :androidApp:assembleRelease :engine-js:closureJs :engine-js:closurePlayerJs
 
       - name: Discard secrets
         if: always()
         working-directory: YMusicV4
-        run: rm -rf secrets.properties signing
+        run: rm -rf secrets.properties signing hybrid.keystore
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
