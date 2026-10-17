@@ -221,6 +221,10 @@ class AppGraph(
     sponsorBlockStore: SponsorBlockStore = InMemorySponsorBlockStore(),
     /** Account-free subscriptions; null hides the section's content. */
     val localSubscriptions: LocalSubscriptions? = null,
+    /** Put text on the system clipboard; null hides the channel list backup. */
+    val copyToClipboard: ((String) -> Unit)? = null,
+    /** The text currently on the system clipboard, if any. */
+    val readClipboard: (() -> String?)? = null,
     // Kept last so shells pass it as the trailing lambda.
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {

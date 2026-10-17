@@ -625,6 +625,14 @@ class YMusicApplication : Application() {
             sponsorBlockApi = PublicSponsorBlockApi(shared.http.engine),
             sponsorBlockStore = SqliteSponsorBlockStore(sponsorBlockAndroidDriver(this)),
             localSubscriptions = LocalSubscriptions(shared.settings, shared.http.engine, rootLogger),
+            copyToClipboard = { text ->
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("YMusic", text))
+            },
+            readClipboard = {
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
+            },
             scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
             libraryFolderPicker = { pickAndRegisterFolder(shared.mediaStore) },
             canWriteFolder = { uri ->

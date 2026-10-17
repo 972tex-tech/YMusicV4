@@ -28,12 +28,17 @@ import io.ymusic.ui.resources.menu_unsubscribe
 import io.ymusic.ui.resources.queue_last
 import io.ymusic.ui.resources.queue_next
 import io.ymusic.ui.resources.subscriptions_channels
+import io.ymusic.ui.resources.subscriptions_copied
+import io.ymusic.ui.resources.subscriptions_copy
 import io.ymusic.ui.resources.subscriptions_empty
+import io.ymusic.ui.resources.subscriptions_imported
 import io.ymusic.ui.resources.subscriptions_latest
 import io.ymusic.ui.resources.subscriptions_partial
+import io.ymusic.ui.resources.subscriptions_paste
 import io.ymusic.ui.subscriptions.LocalFeed
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.TechnicalException
 
@@ -94,6 +99,34 @@ fun SubscriptionsScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onOpe
         ) {
             FeedChip(stringResource(Res.string.subscriptions_latest), selected = !showChannels) { showChannels = false }
             FeedChip(stringResource(Res.string.subscriptions_channels), selected = showChannels) { showChannels = true }
+        }
+        val copy = graph.copyToClipboard
+        val read = graph.readClipboard
+        if (copy != null && read != null) {
+            Row(
+                Modifier.padding(start = DesignSpacing.MarginCompact, end = DesignSpacing.MarginCompact, bottom = DesignSpacing.Space8),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (channels.isNotEmpty()) {
+                    FeedChip(stringResource(Res.string.subscriptions_copy), selected = false) {
+                        copy(store.export())
+                        scope.launch { showSnackbar(getString(Res.string.subscriptions_copied)) }
+                    }
+                }
+                FeedChip(stringResource(Res.string.subscriptions_paste), selected = false) {
+                    scope.launch {
+                        try {
+                            val added = store.importFrom(read())
+                            showSnackbar(getString(Res.string.subscriptions_imported, added))
+                        } catch (c: CancellationException) {
+                            throw c
+                        } catch (e: Exception) {
+                            log?.captureError(TechnicalException("E60068", "local subscriptions import failed", cause = e))
+                            actionError = "E60068"
+                        }
+                    }
+                }
+            }
         }
         when {
             channels.isEmpty() -> EmptyState(stringResource(Res.string.subscriptions_empty), onReload = null)
