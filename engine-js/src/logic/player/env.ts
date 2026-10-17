@@ -12,13 +12,22 @@ function native(nameOrFn: string | Function, impl?: Function): Function {
 }
 
 let origEnvInstalled = false;
+/** The handle env.raw.js evaluates to: wire-shaped (quoted keys), never a global BotGuard can see. */
+let origEnvHandle: Record<string, unknown> | null = null;
 
 /** Player orig env+idl (DOM that Application.create needs). */
 export function installOrigEnv(): void {
   if (origEnvInstalled) return;
   origEnvInstalled = true;
-  (0, eval)(origEnvJs);
+  origEnvHandle = (0, eval)(origEnvJs) as Record<string, unknown> | null;
   (0, eval)(origIdlStubsJs);
+}
+
+/** Layout getters answer 0 from now on: BotGuard only measures before its snapshot, and the player
+ *  UI's hundreds of reads made real layout cost seconds per load in QuickJS. */
+export function endLayoutProbes(): void {
+  const end = origEnvHandle ? origEnvHandle["endLayoutProbes"] : undefined;
+  if (typeof end === "function") (end as () => void)();
 }
 
 /** navigator.language(s) as Chrome derives them from the Accept-Language the homepage was fetched

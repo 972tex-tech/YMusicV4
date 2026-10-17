@@ -12,7 +12,7 @@ import {
   onLoopAtEnd,
   resetDrainCounts,
 } from "../../protocol/mse";
-import { applyNavigatorLanguages, installOrigEnv } from "./env";
+import { applyNavigatorLanguages, endLayoutProbes, installOrigEnv } from "./env";
 import { installXhr } from "../yt/xhr";
 import { fetchCacheState, installFetch } from "../yt/fetch";
 import { utf8Encode } from "../../transport";
@@ -733,6 +733,7 @@ class Player {
 
     out["step"] = "minter";
     this.mintFn = await minterFromConfig(cfg, out);
+    endLayoutProbes();
     const self = this;
     installCaptionMinter(function (id: string) {
       return self.mintToken(id);

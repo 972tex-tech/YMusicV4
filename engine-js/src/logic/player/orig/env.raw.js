@@ -1264,6 +1264,10 @@
      and the next read sees DOM changes made since. */
   var layoutMemo = null;
 
+  /* BotGuard reads layout only while its program loads, before the snapshot; the player UI reads
+     hundreds of sizes afterwards, and those keep the cheap zero answers (see endLayoutProbes). */
+  var layoutProbes = true;
+
   function cached(kind, el, compute) {
     var outer = layoutMemo === null,
       memo;
@@ -1546,6 +1550,7 @@
           var o = layoutOverride(this, name),
             box;
           if (o != null) return o;
+          if (!layoutProbes) return 0;
           if (name === "offsetLeft") return offsetLeftOf(this);
           box = layoutBox(this);
           if (box.inline && !offset) return 0;
@@ -1643,7 +1648,9 @@
         delete this[n];
       },
       getBoundingClientRect: function () {
-        var box = layoutBox(this),
+        var box = layoutProbes
+            ? layoutBox(this)
+            : { w: this.clientWidth || 0, h: this.clientHeight || 0 },
           w = box.w,
           h = box.h;
         return { x: 0, y: 0, width: w, height: h, top: 0, left: 0, bottom: h, right: w };
@@ -2801,4 +2808,10 @@
   globalThis.MessagePort.prototype = MessagePort.prototype;
   globalThis.MessageChannel = native("MessageChannel", MessageChannel);
   globalThis.MessageChannel.prototype = MessageChannel.prototype;
+
+  return {
+    endLayoutProbes: function () {
+      layoutProbes = false;
+    },
+  };
 })();
