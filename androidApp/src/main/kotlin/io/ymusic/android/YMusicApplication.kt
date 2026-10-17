@@ -88,6 +88,7 @@ import io.ymusic.ui.registerCompletedDownload
 import io.ymusic.ui.sponsorblock.PublicSponsorBlockApi
 import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
 import io.ymusic.ui.sponsorblock.sponsorBlockAndroidDriver
+import io.ymusic.ui.subscriptions.LocalSubscriptions
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -623,6 +624,7 @@ class YMusicApplication : Application() {
             playHistory = PlayHistoryStore(playHistoryAndroidDriver(this)),
             sponsorBlockApi = PublicSponsorBlockApi(shared.http.engine),
             sponsorBlockStore = SqliteSponsorBlockStore(sponsorBlockAndroidDriver(this)),
+            localSubscriptions = LocalSubscriptions(shared.settings, shared.http.engine, rootLogger),
             scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
             libraryFolderPicker = { pickAndRegisterFolder(shared.mediaStore) },
             canWriteFolder = { uri ->
