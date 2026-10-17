@@ -880,8 +880,9 @@ static int near_std_fps(double fps)
 
 /* SABR WebM 60fps clusters often demux at 12fps ×5 duration (18s → 90s,
    266s → 1321s, log21 tb=1/11988). Scale so GOP fps is a standard rate.
-   Do not use the playhead (90/3.7 ≈ 24 is not a timescale). */
-static void scale_gop_pts(Cfb *tmp)
+   Do not use the playhead (90/3.7 ≈ 24 is not a timescale). WebM only: an MP4 at a real 12 fps
+   matches the same pattern. Times scale around ts_off, the SourceBuffer timestampOffset. */
+static void scale_gop_pts(Cfb *tmp, double ts_off)
 {
     double first, last, span, fps;
     int n, k, i;
@@ -918,8 +919,8 @@ static void scale_gop_pts(Cfb *tmp)
         if (best_k > 1) {
             vlog("pts/%d fps=%.2f->%.2f first=%.3f n=%d", best_k, fps, fps * best_k, first, n);
             for (i = 0; i < n; i++) {
-                tmp->f[i].pts /= (double)best_k;
-                tmp->f[i].dts /= (double)best_k;
+                tmp->f[i].pts = ts_off + (tmp->f[i].pts - ts_off) / (double)best_k;
+                tmp->f[i].dts = ts_off + (tmp->f[i].dts - ts_off) / (double)best_k;
                 tmp->f[i].dur /= (double)best_k;
             }
         }
@@ -2802,8 +2803,8 @@ MseAvIngest mse_av_append(MseAv *a, int audio, const uint8_t *p, int n, double t
             cfb_free(&tmp);
             break;
         }
-        if (!audio && nadd > 0 && !wrap)
-            scale_gop_pts(&tmp);
+        if (!audio && nadd > 0 && !wrap && *initn >= 4 && be32(*initp) == MSE_ID_EBML)
+            scale_gop_pts(&tmp, ts_off);
         if (dur > a->duration)
             a->duration = dur;
         if (par) {
