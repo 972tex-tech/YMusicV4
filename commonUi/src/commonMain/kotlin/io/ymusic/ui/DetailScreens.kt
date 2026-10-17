@@ -69,11 +69,13 @@ import io.ymusic.ui.resources.playlist_sign_in_to_save
 import io.ymusic.ui.resources.subscribe
 import io.ymusic.ui.resources.subscribed
 import io.ymusic.ui.resources.yt_playlist_removed_video
+import io.ymusic.ui.subscriptions.LocalChannel
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.TechnicalException
 import projectcommon.error.errorCode
 
 /**
@@ -396,6 +398,14 @@ class ChannelSession(
     var subscribing by mutableStateOf(false)
         private set
 
+    /** The on-device subscription (no account); only offered while the YouTube one is unavailable. */
+    private var localSubscribed by mutableStateOf(false)
+    private var localChannel by mutableStateOf<LocalChannel?>(null)
+
+    /** The state the Subscribe pill shows: the account's, else the on-device one; null when neither can subscribe. */
+    val effectiveSubscribed: Boolean?
+        get() = subscribed ?: if (graph.localSubscriptions != null && localChannel != null) localSubscribed else null
+
     /** A failed subscribe/unsubscribe, for the screen to show once and clear. */
     var subscribeErrorCode by mutableStateOf<String?>(null)
 
@@ -403,6 +413,12 @@ class ChannelSession(
         val page = fetch(url, continuation, log)
         page.pageHeader?.title?.let { channelName = it }
         page.pageHeader?.takeIf { it.channelId != null }?.let { subscribed = it.subscribed }
+        page.pageHeader?.let { header ->
+            header.channelId?.let { id ->
+                localChannel = LocalChannel(id, header.title ?: channelName ?: id, header.thumbs.firstOrNull()?.url)
+                localSubscribed = graph.localSubscriptions?.isSubscribed(id) == true
+            }
+        }
         val name = channelName ?: return@FeedSession page
         page.copy(
             sections = page.sections.map { section ->
@@ -417,6 +433,30 @@ class ChannelSession(
 
     init {
         feed.pager.refresh()
+    }
+
+    fun toggle(channelId: String) {
+        if (subscribed != null) toggleSubscription(channelId) else toggleLocal()
+    }
+
+    private fun toggleLocal() {
+        val store = graph.localSubscriptions ?: return
+        val channel = localChannel ?: return
+        if (subscribing) return
+        subscribing = true
+        scope.launch {
+            try {
+                if (localSubscribed) store.unsubscribe(channel.id) else store.subscribe(channel)
+                localSubscribed = !localSubscribed
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                log?.captureError(TechnicalException("E60069", "local subscribe failed", cause = error))
+                subscribeErrorCode = "E60069"
+            } finally {
+                subscribing = false
+            }
+        }
     }
 
     fun toggleSubscription(channelId: String) {
@@ -496,7 +536,7 @@ fun ChannelDetailScreen(
             onOpen = onOpen,
             // Loading is a bare spinner — the header waits for the page instead of rendering from the tapped item.
             topContent = if (onHomeTab && ready != null) {
-                { ChannelHeader(ready?.pageHeader, fallback = item, s.subscribed, s.subscribing) { s.toggleSubscription(it) } }
+                { ChannelHeader(ready?.pageHeader, fallback = item, s.effectiveSubscribed, s.subscribing) { s.toggle(it) } }
             } else {
                 null
             },
