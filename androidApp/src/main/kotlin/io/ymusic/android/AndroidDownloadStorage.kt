@@ -3,6 +3,8 @@ package io.ymusic.android
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.system.Os
+import android.system.OsConstants
 import io.ymusic.download.DefaultDownloadStorage
 import io.ymusic.download.DownloadFileNames
 import io.ymusic.download.DownloadFolderAccessException
@@ -12,6 +14,7 @@ import okio.FileSystem
 import okio.Path
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.FileOutputStream
 
 /**
  * Android [DefaultDownloadStorage]: `file://` destinations (app dirs) go through okio as usual; a
@@ -54,6 +57,10 @@ class AndroidDownloadStorage(
         try {
             resolver.openOutputStream(child)?.use { out ->
                 File(scratchPath).inputStream().use { it.copyTo(out) }
+                // On disk before the task is marked complete; see DefaultDownloadStorage.publish.
+                // A provider that streams through a pipe (cloud storage) has nothing here to sync.
+                val fd = (out as? FileOutputStream)?.fd
+                if (fd != null && OsConstants.S_ISREG(Os.fstat(fd).st_mode)) fd.sync()
             } ?: error("SAF openOutputStream failed for $child")
         } catch (e: Exception) {
             // Drop the partial document so a retry doesn't leave a truncated "name.ext" beside "name_1.ext".
