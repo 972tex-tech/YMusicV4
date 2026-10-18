@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 4.0.6
 
 ### IMPROVED
 - Tapping Install now in the update dialog shows an installing progress bar until the app restarts ([852fd740d..d7e09a867](https://github.com/ymusic-io/YMusicV4/compare/84c97c82f...d7e09a867))
