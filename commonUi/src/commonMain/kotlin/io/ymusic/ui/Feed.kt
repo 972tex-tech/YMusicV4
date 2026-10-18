@@ -67,8 +67,8 @@ import io.ymusic.ui.resources.cd_sort
 import io.ymusic.ui.resources.error_captcha
 import io.ymusic.ui.resources.error_disk_full
 import io.ymusic.ui.resources.error_generic
+import io.ymusic.ui.resources.error_live_still_processing
 import io.ymusic.ui.resources.error_network
-import io.ymusic.ui.resources.error_still_processing
 import io.ymusic.ui.resources.feed_empty
 import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.menu_play_single
@@ -494,7 +494,7 @@ internal fun errorMessage(code: String): String = errorText(code).resolve()
 internal fun errorText(code: String): UiText = when (code) {
     "network" -> UiText.Resource(Res.string.error_network)
     DISK_FULL_CODE -> UiText.Resource(Res.string.error_disk_full)
-    StillProcessingException.CODE -> UiText.Resource(Res.string.error_still_processing)
+    StillProcessingException.CODE -> UiText.Resource(Res.string.error_live_still_processing)
     CAPTCHA_CODE -> UiText.Resource(Res.string.error_captcha)
     else -> UiText.Resource(Res.string.error_generic, code)
 }

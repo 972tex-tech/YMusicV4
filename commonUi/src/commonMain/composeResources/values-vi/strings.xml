@@ -538,7 +538,7 @@
     <string name="error_network">Không kết nối được YouTube. Hãy kiểm tra mạng và thử lại.</string>
     <string name="error_captcha">YouTube muốn xác nhận bạn không phải là robot</string>
     <string name="error_disk_full">Không đủ dung lượng lưu trữ. Hãy giải phóng bớt dung lượng rồi thử lại.</string>
-    <string name="error_still_processing">Buổi phát trực tiếp này vừa kết thúc và đang được xử lý, hãy thử lại sau</string>
+    <string name="error_live_still_processing">Buổi phát trực tiếp này vừa kết thúc và đang được xử lý, hãy thử lại sau</string>
     <string name="captcha_verify">Xác minh</string>
     <string name="captcha_verify_hint">Giải captcha nếu bạn thấy trên màn hình, rồi nhấn Xong</string>
     <string name="settings_player_cache">Bộ nhớ đệm trình phát</string>

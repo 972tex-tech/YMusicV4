@@ -547,7 +547,7 @@
     <string name="error_network">تعذّر الوصول إلى YouTube. تحقق من اتصالك وحاول مرة أخرى.</string>
     <string name="error_captcha">يريد YouTube التأكد من أنك لست روبوتًا</string>
     <string name="error_disk_full">لا توجد مساحة تخزين كافية. أفرغ بعض المساحة ثم أعد المحاولة.</string>
-    <string name="error_still_processing">انتهى هذا البث للتو ولا يزال قيد المعالجة، حاول مرة أخرى لاحقًا</string>
+    <string name="error_live_still_processing">انتهى هذا البث للتو ولا يزال قيد المعالجة، حاول مرة أخرى لاحقًا</string>
     <string name="captcha_verify">تحقّق</string>
     <string name="captcha_verify_hint">حُلّ أي اختبار captcha تراه على الشاشة، ثم انقر على تم</string>
     <string name="settings_player_cache">ذاكرة التخزين المؤقت للمشغّل</string>
