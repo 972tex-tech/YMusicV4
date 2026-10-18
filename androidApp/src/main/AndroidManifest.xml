@@ -13,9 +13,14 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Android 11+ package visibility: premium is "the Support Development app is installed", and
-         Donate starts its donation screen. -->
+         Donate starts its donation screen. The folder picker tells a disabled system Files app from a missing one. -->
     <queries>
         <package android:name="com.kdev.ymusic.support" />
+        <package android:name="com.google.android.documentsui" />
+        <package android:name="com.android.documentsui" />
+        <intent>
+            <action android:name="android.intent.action.OPEN_DOCUMENT_TREE" />
+        </intent>
     </queries>
 
     <application
