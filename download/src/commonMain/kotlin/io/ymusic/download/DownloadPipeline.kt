@@ -241,7 +241,7 @@ class DownloadPipeline(
         val title = task.title.map { if (it.isLetterOrDigit() || it == ' ' || it == '-' || it == '_') it else '_' }
             .joinToString("")
             .trim()
-            .take(80)
+            .let { DownloadFileNames.capBytes(it, DownloadFileNames.MAX_STEM_BYTES - task.videoId.length - 1) }
             .ifBlank { task.videoId }
         return "$title-${task.videoId}"
     }
