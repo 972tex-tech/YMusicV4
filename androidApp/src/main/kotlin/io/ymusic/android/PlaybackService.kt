@@ -377,7 +377,7 @@ class PlaybackService : MediaLibraryService() {
         if (intent?.action == ACTION_DISMISS) {
             super.onStartCommand(intent, flags, startId) // LifecycleService dispatches on super
             player?.stop()
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_REMOVE, log)
             NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
             foreground = false
             stopSelf()
@@ -423,7 +423,7 @@ class PlaybackService : MediaLibraryService() {
     private fun updateNotification() {
         val player = this.player ?: return
         if (player.queue.value.currentItem == null) {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_REMOVE, log)
             NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
             foreground = false
             return
@@ -436,7 +436,7 @@ class PlaybackService : MediaLibraryService() {
             foreground = promote(notification)
         } else {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
+            stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_DETACH, log)
             foreground = false
         }
     }

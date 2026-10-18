@@ -121,7 +121,7 @@ class DownloadForegroundService : Service() {
 
     /** Android 15's dataSync time cap: demote, never crash — the queue survives in the store. */
     override fun onTimeout(startId: Int, fgsType: Int) {
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
+        stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_DETACH, log)
         foreground = false
         stopSelf()
     }
@@ -199,10 +199,10 @@ class DownloadForegroundService : Service() {
     private fun finish(nm: NotificationManagerCompat) {
         releaseLocks()
         if (completedRun + failedRun + pausedRun > 0) {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
+            stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_DETACH, log)
             nm.notify(SUMMARY_NOTIFICATION_ID, idleSummary())
         } else {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_REMOVE, log)
         }
         foreground = false
         stopSelf()
