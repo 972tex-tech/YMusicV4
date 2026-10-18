@@ -148,24 +148,8 @@ interface JsEngineError extends Error {
   userMessage?: string;
 }
 
-interface JsEngineErrorConstructor {
-  /** message first — the debug detail you read most — then the code (category or E2xxxx). */
-  new (message: string, code: string, opts?: JsEngineErrorOptions): JsEngineError;
-  parse(message: string, opts?: JsEngineErrorOptions): JsEngineError;
-  network(message: string, opts?: JsEngineErrorOptions): JsEngineError;
-  /** YouTube served a bot challenge the user must clear in a browser. */
-  captcha(message: string, opts?: JsEngineErrorOptions): JsEngineError;
-  /** A non-2xx response: 408/429/5xx → "network", else `siteCode`. */
-  httpStatus(message: string, status: number, siteCode: string): JsEngineError;
-}
-
-declare var JsEngineError: JsEngineErrorConstructor;
-
 /** A call handler: reads its own head off `src` (format not assumed), writes the result to `out`. */
 type CommandHandlerFn = (src: PipeSource, out: PipeSink, pipe: Pipe) => void | Promise<void>;
-
-/** Wrap a call handler in the error contract, producing a pipe handler for ymix.onAccept. */
-declare var commandHandler: (handler: CommandHandlerFn) => (pipe: Pipe) => Promise<void>;
 
 // ---- HTTP (protocol/http.ts; host side: HttpProtocol.kt) ----
 
@@ -221,7 +205,7 @@ interface HttpRequestBuilder {
   build(): HttpCall;
 }
 
-declare var HttpRequest: {
+interface HttpRequestApi {
   get(url: string): HttpRequestBuilder;
   post(url: string): HttpRequestBuilder;
   put(url: string): HttpRequestBuilder;
@@ -230,7 +214,7 @@ declare var HttpRequest: {
   head(url: string): HttpRequestBuilder;
   method(m: string, url: string): HttpRequestBuilder;
   addInterceptor(fn: import("./protocol/http/intercept").HttpInterceptor): { remove(): void };
-};
+}
 
 // WHATWG fetch (logic/yt/fetch.ts) — quoted names at runtime for eval'd base.js.
 // In-bundle callers must use bracket access so Closure does not rename them apart.

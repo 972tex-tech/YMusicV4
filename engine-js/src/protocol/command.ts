@@ -10,19 +10,19 @@
 // A code is either a well-known category the app localizes ("network", "parse", "oom", "captcha")
 // or a site code E##### — a unique hardcoded literal at one throw site, answered by a global search
 // (E2xxxx = :dynamic-engine, including this remote JS). Codes pass through tiers unchanged: wrap,
-// never re-mint. JsEngineError is the deliberate-throw carrier (message first — the debug detail you
-// read most — then the code):
-//   throw JsEngineError.parse("continuation token missing");
-//   throw new JsEngineError("shelf renderer shape", "E29999", { userMessage: "…" });
-// Types: the ambient contract in src/types.d.ts (JsEngineError, WireError, commandHandler) — this
-// file is checked against it. Bundled+minified into the :engine-js single bundle (src/index.ts);
+// never re-mint. JsEngineErrorImpl is the deliberate-throw carrier (message first — the debug detail
+// you read most — then the code):
+//   throw JsEngineErrorImpl.parse("continuation token missing");
+//   throw new JsEngineErrorImpl("shelf renderer shape", "E29999", { userMessage: "…" });
+// Types: the ambient contract in src/types.d.ts (JsEngineError, WireError) — this file is checked
+// against it. Bundled+minified into the :engine-js single bundle (src/index.ts);
 // never shipped as source.
 
 import { open } from "../transport";
 
 const STACK_CAP = 4096;
 
-export class JsEngineErrorImpl extends Error {
+export class JsEngineErrorImpl extends Error implements JsEngineError {
   code: string;
   userMessage?: string;
 
@@ -52,7 +52,6 @@ export class JsEngineErrorImpl extends Error {
     return new JsEngineErrorImpl(message + " HTTP " + status, transient ? "network" : siteCode);
   }
 }
-globalThis.JsEngineError = JsEngineErrorImpl;
 
 // A thrown value as classify sees it: anything, probed field by field.
 interface ThrownLike {
@@ -132,8 +131,6 @@ export function commandHandler(handler: CommandHandlerFn): (pipe: Pipe) => Promi
     }
   };
 }
-// Global mirror for externally-evaled JS (dev/debug); in-bundle code imports. Mangles in Closure.
-globalThis.commandHandler = commandHandler;
 
 // ---- the caller half of the contract: open a host command, decode its RESET ----
 
