@@ -71,6 +71,9 @@ class MainActivity : FragmentActivity() {
     /** PiP just ended; [onResume] means expand-to-full, [onStop] means the user closed PiP. */
     private var pipExitPending = false
 
+    // Some ROMs declare FEATURE_PICTURE_IN_PICTURE yet the system rejects every PiP call; flipped off on the first rejection.
+    private var pipSupported = false
+
     // Notifications are MANDATORY: playback lives in a foreground service whose notification is
     // its lifeline. While disabled, a non-dismissible dialog sits over the app with granting as
     // the only way out — [notificationsEnabled] is re-checked on every resume, so returning from
@@ -361,7 +364,7 @@ class MainActivity : FragmentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         val g = appGraph ?: return
-        if (Build.VERSION.SDK_INT in 26..30 && g.pip.autoEnterEligible()) {
+        if (Build.VERSION.SDK_INT in 26..30 && pipSupported && g.pip.autoEnterEligible()) {
             enterPip()
         }
     }
@@ -398,6 +401,7 @@ class MainActivity : FragmentActivity() {
         ) {
             return
         }
+        pipSupported = true
         lifecycleScope.launch {
             combine(
                 graph.settings.flow(AppSettings.enablePip),
@@ -408,18 +412,31 @@ class MainActivity : FragmentActivity() {
             ) { _, _, _, _, _ -> }
                 .combine(graph.player.config) { _, _ -> graph.pip.autoEnterEligible() }
                 .collect { eligible ->
+                    if (!pipSupported) return@collect
                     val b = PictureInPictureParams.Builder().setAspectRatio(pipAspectRatio(graph.player.status.value.videoSize))
                     if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(eligible)
-                    setPictureInPictureParams(b.build())
+                    guardPip { setPictureInPictureParams(b.build()) }
                 }
         }
     }
 
     private fun enterPip() {
-        if (Build.VERSION.SDK_INT < 26) return
-        enterPictureInPictureMode(
-            PictureInPictureParams.Builder().setAspectRatio(pipAspectRatio(appGraph?.player?.status?.value?.videoSize)).build(),
-        )
+        if (Build.VERSION.SDK_INT < 26 || !pipSupported) return
+        guardPip {
+            enterPictureInPictureMode(
+                PictureInPictureParams.Builder().setAspectRatio(pipAspectRatio(appGraph?.player?.status?.value?.videoSize)).build(),
+            )
+        }
+    }
+
+    private inline fun guardPip(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: IllegalStateException) {
+            pipSupported = false
+            (application as YMusicApplication).rootLogger.fork("pip")
+                .log(kmpcommon.log.Logger.Level.WARN, "system rejected PiP; disabled for this activity", e)
+        }
     }
 
     // Android rejects ratios outside [1/2.39, 2.39] (config_pictureInPictureMin/MaxAspectRatio); 2.35 keeps float rounding inside.
