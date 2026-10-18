@@ -615,8 +615,8 @@ private fun AppRoot(
         }
         // What a SignInResolver caller resumes after the sign-in browser's gate passes.
         var afterSignIn by remember { mutableStateOf<(() -> Unit)?>(null) }
-        val popLayer = {
-            val top = layers.removeAt(layers.lastIndex)
+        val popLayer: () -> Unit = popLayer@{
+            val top = layers.removeLastOrNull() ?: return@popLayer
             when (top) {
                 is AppLayer.Search -> top.session.close()
                 is AppLayer.Playlist -> top.session.close()
