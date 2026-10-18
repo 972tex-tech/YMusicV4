@@ -352,6 +352,8 @@ jobs:
       # update-config.json: the releases/engineJs/playerJs entries for the server's App config.
       # The update dialog's notes are an annotated tag's message (git tag -a … -m "notes"); a
       # lightweight tag gives none. The dialog shows 7 lines (UpdateDialog.kt ChangeNotes).
+      # Each platform family gets its own notes: the lines under its "[android]" / "[macos]" header; a
+      # message without headers goes to every family (AGENTS.md "Release flow").
       # The signing keys come from secrets.enc (bundle.signing.* / update.* in secrets.properties).
       - name: Restore secrets
         if: env.SECRETS_PASSPHRASE != ''
@@ -363,16 +365,31 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          notes="$RUNNER_TEMP/notes.txt"
+          message="$RUNNER_TEMP/tag-message.txt"
+          notes="$RUNNER_TEMP/notes"
+          mkdir -p "$notes"
           git -C YMusicV4 fetch --depth=1 origin "+refs/tags/$TAG:refs/tags/$TAG"
           if [ "$(git -C YMusicV4 cat-file -t "refs/tags/$TAG")" = tag ]; then
-            git -C YMusicV4 for-each-ref "refs/tags/$TAG" --format='%(contents)' | sed -e 's/[[:space:]]*$//' -e '/./,$!d' > "$notes"
+            git -C YMusicV4 for-each-ref "refs/tags/$TAG" --format='%(contents)' | sed -e 's/[[:space:]]*$//' > "$message"
           else
-            : > "$notes"
+            : > "$message"
           fi
-          if [ "$(grep -c . "$notes")" -gt 7 ] || [ "$(awk 'length > 40' "$notes" | wc -l)" -gt 0 ]; then
-            echo "::warning::release notes exceed 7 lines of 40 chars; the update dialog cuts them off"
-          fi
+          for family in android macos; do
+            awk -v family="$family" '
+              /^\[[a-z]+\]$/ {
+                section = substr($0, 2, length($0) - 2)
+                if (section != "android" && section != "macos") {
+                  print "unknown notes section [" section "]" > "/dev/stderr"; exit 1
+                }
+                next
+              }
+              /./ && (section == "" || section == family) { print }
+            ' "$message" > "$notes/notes-$family.txt"
+            if [ "$(grep -c . "$notes/notes-$family.txt")" -gt 7 ] || [ "$(awk 'length > 40' "$notes/notes-$family.txt" | wc -l)" -gt 0 ]; then
+              echo "::warning::$family release notes exceed 7 lines of 40 chars; the update dialog cuts them off"
+            fi
+            { echo "### $family update notes"; echo '```'; cat "$notes/notes-$family.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          done
           node YMusicV4/.github/update-config.mjs release "$GITHUB_REPOSITORY" "$TAG" YMusicV4 "$notes" \
             > release/update-config.json
           { echo '### update-config.json'; echo '```json'; cat release/update-config.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

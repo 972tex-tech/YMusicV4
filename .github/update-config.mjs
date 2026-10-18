@@ -2,7 +2,10 @@
 // Builds the update part of the server's App config (`releases`, `engineJs`, `playerJs` — shape:
 // ymusic-server src/appConfig.ts) for the files of one GitHub release, ready to paste into the dashboard.
 //
-//   node update-config.mjs <release dir> <owner/repo> <tag> <YMusicV4 checkout> [notes file]
+//   node update-config.mjs <release dir> <owner/repo> <tag> <YMusicV4 checkout> [notes dir]
+//
+// The notes dir holds one update-dialog text per platform family: notes-android.txt, notes-macos.txt
+// (a missing file = no notes for that family).
 //
 // Urls are the release's asset download links, live once the draft is published. Signatures use
 // bundle.signing.private.key (JS bundles) and update.private.key (installers) from the checkout's
@@ -13,9 +16,9 @@ import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'nod
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-const [dir, repo, tag, root, notesFile] = process.argv.slice(2)
+const [dir, repo, tag, root, notesDir] = process.argv.slice(2)
 if (!dir || !repo || !tag || !root) {
-  console.error('usage: update-config.mjs <release dir> <owner/repo> <tag> <YMusicV4 checkout> [notes file]')
+  console.error('usage: update-config.mjs <release dir> <owner/repo> <tag> <YMusicV4 checkout> [notes dir]')
   process.exit(2)
 }
 
@@ -35,7 +38,10 @@ const desktopVersionCode = Number(match('desktopApp/build.gradle.kts', /^val des
 const engineVersion = Number(match('buildSrc/src/main/kotlin/Dependencies.kt', /const val engineJsVersion = (\d+)L/, 'engineJsVersion'))
 const playerVersion = Number(match('buildSrc/src/main/kotlin/Dependencies.kt', /const val playerJsVersion = (\d+)L/, 'playerJsVersion'))
 
-const notes = notesFile ? readFileSync(notesFile, 'utf8').trim() : ''
+const notesFor = (platform) => {
+  const path = notesDir ? join(notesDir, `notes-${platform.split('-')[0]}.txt`) : ''
+  return path && existsSync(path) ? readFileSync(path, 'utf8').trim() : ''
+}
 const changelogUrl = `https://github.com/${repo}/blob/${tag}/CHANGELOG.md`
 const assetUrl = (file) => `https://github.com/${repo}/releases/download/${tag}/${file}`
 
@@ -98,7 +104,7 @@ for (const { platform, file, versionCode } of INSTALLERS) {
   releases[platform] = {
     versionCode,
     versionName,
-    notes,
+    notes: notesFor(platform),
     url: assetUrl(file),
     size: statSync(path).size,
     sha256,
