@@ -256,14 +256,14 @@ static void dac_cp_fold(MseHost *h, int64_t audible)
     h->samples_played = h->dac_pos > h->dac_base ? h->dac_pos - h->dac_base : 0;
 }
 
-/* h->mu held. The caller moved seek_base to the current media time: count from dac_pos. */
-static void dac_rebase(MseHost *h)
+/* h->mu held. The caller moved seek_base to the media time `keep` frames before dac_pos. */
+static void dac_rebase(MseHost *h, int64_t keep)
 {
     int i, w = 0;
-    h->dac_base = h->dac_pos;
-    h->samples_played = 0;
+    h->dac_base = h->dac_pos - keep;
+    h->samples_played = keep;
     for (i = 0; i < h->dac_cp_n; i++) {
-        if (h->dac_cp_edge[i] > h->dac_pos) {
+        if (h->dac_cp_edge[i] > h->dac_base) {
             h->dac_cp_edge[w] = h->dac_cp_edge[i];
             h->dac_cp_speed[w] = h->dac_cp_speed[i];
             w++;
@@ -279,6 +279,20 @@ static int64_t aq_latency_frames(MseHost *h)
     int fb = h->ch > 0 ? h->ch * 2 : 4;
     int one = h->aq_buf_bytes > 0 ? h->aq_buf_bytes / fb : (int)(0.02 * h->rate);
     return (int64_t)one * 4;
+}
+
+/* Wall seconds the device has played since the last callback handed it a buffer, up to one buffer. */
+static double aq_tick_extra_s(MseHost *h)
+{
+    double one = 0.02, extra;
+    if (h->dac_tick_ns <= 0)
+        return 0;
+    if (h->aq_buf_bytes > 0 && h->ch > 0 && h->rate > 0)
+        one = (double)h->aq_buf_bytes / (double)(h->rate * h->ch * 2);
+    extra = (now_ns() - h->dac_tick_ns) / 1e9;
+    if (extra > one)
+        extra = one;
+    return extra > 0 ? extra : 0;
 }
 #endif
 #endif
@@ -306,8 +320,15 @@ static void rebase_hold(MseHost *h, double t)
     h->origin_ns = now_ns();
 #ifdef MSE_DAC
     h->seek_base = t;
-    dac_rebase(h);
+#ifdef MSE_AQ
+    /* t is the audible position: behind it sit the frames the queue still holds, ahead of the last
+       tick the extrapolated ones. Both stay counted and the tick stays, so the clock carries on
+       from t instead of losing a queue (or banking the extrapolation) per rebase. */
+    dac_rebase(h, aq_latency_frames(h) - (int64_t)(aq_tick_extra_s(h) * h->rate));
+#else
+    dac_rebase(h, 0);
     h->dac_tick_ns = 0;
+#endif
 #endif
 }
 
@@ -378,17 +399,7 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
             double sp = play_speed(h);
             double dac = h->seek_base +
                          dac_media_s(h, (double)(h->samples_played - aq_latency_frames(h)), sp);
-            double one = 0.02;
-            if (h->aq_buf_bytes > 0 && h->ch > 0)
-                one = (double)h->aq_buf_bytes /
-                      (double)(h->rate * (h->ch > 0 ? h->ch * 2 : 4));
-            if (h->dac_tick_ns > 0) {
-                double extra = (now_ns() - h->dac_tick_ns) / 1e9;
-                if (extra > one)
-                    extra = one;
-                if (extra > 0)
-                    dac += extra * sp;
-            }
+            dac += aq_tick_extra_s(h) * sp;
             t = dac_handover(h, dac);
         } else {
             h->clk_dac = 0;
@@ -1043,7 +1054,7 @@ static void *dec_loop(void *arg)
                 }
                 if (dac && !h->aq_started && ring_ms(h) >= 160) {
                     h->aq_started = 1;
-                    dac_rebase(h);
+                    dac_rebase(h, 0);
                     h->dac_tick_ns = 0;
 #ifdef MSE_AQ
                     start_q = h->aq;
@@ -1358,7 +1369,7 @@ void mse_host_play(MseHost *h)
         h->ended_sent = 0;
 #ifdef MSE_DAC
         h->audio_out = 0;
-        dac_rebase(h);
+        dac_rebase(h, 0);
         h->dac_cp_n = 0;
         h->aq_started = 0;
         h->dac_tick_ns = 0;
