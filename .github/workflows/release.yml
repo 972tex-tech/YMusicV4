@@ -388,17 +388,43 @@ jobs:
           path: release/update-config.json
           if-no-files-found: error
 
+      # Release notes: GitHub's "Full Changelog" compare line, the trusted-sources warning, then this
+      # version's section of CHANGELOG.md (the tag's "## <version>", e.g. release-v4.0.5 → "## 4.0.5").
+      - name: Build the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/release-notes.md"
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" -q .body > "$notes"
+          cat >> "$notes" <<'EOF'
+          > [!CAUTION]
+          > **Only install YMusic from trusted sources:** [ymusic.io](https://ymusic.io) or [GitHub Releases](https://github.com/ymusic-io/YMusicV4/releases). Anyone can build a modified copy — bad actors can ship a fake app that steals your Google account credentials when you sign in.
+
+          EOF
+          version="${TAG#*-v}"
+          section="$(awk -v head="## $version" '$0 == head { found = 1 } found && /^## / && $0 != head { exit } found' YMusicV4/CHANGELOG.md)"
+          if [ -z "$section" ]; then
+            echo "::warning::CHANGELOG.md has no '## $version' section; the release notes carry only the compare link"
+          else
+            printf '\n%s\n' "$section" >> "$notes"
+          fi
+          cat "$notes" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          notes="$RUNNER_TEMP/release-notes.md"
           draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null || true)"
           case "$draft" in
             "")    gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --draft \
-                     --title "$TAG" --generate-notes ;;
-            # A re-run of the tag refreshes its draft's files.
-            true)  gh release upload "$TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber ;;
+                     --title "$TAG" --notes-file "$notes" ;;
+            # A re-run of the tag refreshes its draft's files and notes.
+            true)  gh release upload "$TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber
+                   gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$notes" ;;
             *)     echo "release $TAG is already published; not touching it" >&2; exit 1 ;;
           esac
