@@ -483,6 +483,7 @@
     <string name="folder_picker_disabled">Системската апликација „Датотеки“ е исклучена. Вклучете ја за да изберете папка.</string>
     <string name="folder_picker_open_settings">Отвори поставки</string>
     <string name="folder_picker_missing">Овој уред нема алатка за избор на папка, па не може да се избере папка.</string>
+    <string name="error_supervised_account">Оваа Google сметка е под надзор, па YouTube не може да се користи овде. Одјавете се или префрлете се на друга сметка.</string>
     <string name="settings_player_cache">Кеш на плеерот</string>
     <string name="settings_player_cache_summary">Макс. %1$s · Искористено %2$s · Заштедено %3$s</string>
     <string name="settings_player_cache_off">Без кеш</string>

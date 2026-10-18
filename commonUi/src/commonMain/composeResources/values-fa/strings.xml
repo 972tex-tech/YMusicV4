@@ -483,6 +483,7 @@
     <string name="folder_picker_disabled">برنامه «فایل‌ها»ی سیستم خاموش است. برای انتخاب پوشه آن را روشن کنید.</string>
     <string name="folder_picker_open_settings">باز کردن تنظیمات</string>
     <string name="folder_picker_missing">این دستگاه انتخابگر پوشه ندارد، بنابراین نمی‌توان پوشه‌ای انتخاب کرد.</string>
+    <string name="error_supervised_account">این حساب Google تحت نظارت است، بنابراین YouTube در اینجا قابل استفاده نیست. از سیستم خارج شوید یا به حساب دیگری بروید.</string>
     <string name="settings_player_cache">حافظه پنهان پخش‌کننده</string>
     <string name="settings_player_cache_summary">حداکثر %1$s · استفاده‌شده %2$s · صرفه‌جویی %3$s</string>
     <string name="settings_player_cache_off">بدون حافظه پنهان</string>

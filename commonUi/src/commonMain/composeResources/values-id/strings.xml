@@ -478,6 +478,7 @@
     <string name="folder_picker_disabled">Aplikasi File sistem dinonaktifkan. Aktifkan untuk memilih folder.</string>
     <string name="folder_picker_open_settings">Buka setelan</string>
     <string name="folder_picker_missing">Perangkat ini tidak memiliki pemilih folder, jadi folder tidak dapat dipilih.</string>
+    <string name="error_supervised_account">Akun Google ini diawasi, jadi YouTube tidak dapat digunakan di sini. Logout atau beralih ke akun lain.</string>
     <string name="settings_player_cache">Cache pemutar</string>
     <string name="settings_player_cache_summary">Maks %1$s · Terpakai %2$s · Hemat %3$s</string>
     <string name="settings_player_cache_off">Tanpa cache</string>

@@ -69,6 +69,7 @@ import io.ymusic.ui.resources.error_disk_full
 import io.ymusic.ui.resources.error_generic
 import io.ymusic.ui.resources.error_live_still_processing
 import io.ymusic.ui.resources.error_network
+import io.ymusic.ui.resources.error_supervised_account
 import io.ymusic.ui.resources.feed_empty
 import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.menu_play_single
@@ -496,11 +497,15 @@ internal fun errorText(code: String): UiText = when (code) {
     DISK_FULL_CODE -> UiText.Resource(Res.string.error_disk_full)
     StillProcessingException.CODE -> UiText.Resource(Res.string.error_live_still_processing)
     CAPTCHA_CODE -> UiText.Resource(Res.string.error_captcha)
+    SUPERVISED_ACCOUNT_CODE -> UiText.Resource(Res.string.error_supervised_account)
     else -> UiText.Resource(Res.string.error_generic, code)
 }
 
 /** YouTube's bot challenge — the engine's category for a google.com/sorry / reCAPTCHA answer. */
 internal const val CAPTCHA_CODE = "captcha"
+
+/** The signed-in account is a supervised (Family Link) one, which YouTube's site turns away. */
+internal const val SUPERVISED_ACCOUNT_CODE = "supervised_account"
 
 /** A captcha failure leads with the resolver's action (which retries once cleared), Retry beside it. */
 @Composable

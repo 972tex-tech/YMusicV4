@@ -483,6 +483,7 @@
     <string name="folder_picker_disabled">सिस्टमको Files एप बन्द छ। फोल्डर छान्न यसलाई सक्रिय गर्नुहोस्।</string>
     <string name="folder_picker_open_settings">सेटिङ खोल्नुहोस्</string>
     <string name="folder_picker_missing">यो डिभाइसमा फोल्डर पिकर छैन, त्यसैले फोल्डर छान्न सकिँदैन।</string>
+    <string name="error_supervised_account">यो Google खाता निगरानीमा छ, त्यसैले यहाँ YouTube प्रयोग गर्न सकिँदैन। साइन आउट गर्नुहोस् वा अर्को खातामा जानुहोस्।</string>
     <string name="settings_player_cache">प्लेयर क्यास</string>
     <string name="settings_player_cache_summary">अधिकतम %1$s · प्रयोग %2$s · बचत %3$s</string>
     <string name="settings_player_cache_off">क्यास छैन</string>

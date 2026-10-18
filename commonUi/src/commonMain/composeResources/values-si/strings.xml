@@ -483,6 +483,7 @@
     <string name="folder_picker_disabled">පද්ධතියේ Files යෙදුම ක්‍රියාවිරහිතයි. ෆෝල්ඩරයක් තේරීමට එය ක්‍රියාත්මක කරන්න.</string>
     <string name="folder_picker_open_settings">සැකසීම් විවෘත කරන්න</string>
     <string name="folder_picker_missing">මෙම උපාංගයේ ෆෝල්ඩර තෝරනයක් නැති නිසා ෆෝල්ඩරයක් තේරිය නොහැක.</string>
+    <string name="error_supervised_account">මෙම Google ගිණුම අධීක්ෂණය යටතේ ඇති බැවින් මෙහි YouTube භාවිත කළ නොහැක. වරන්න හෝ වෙනත් ගිණුමකට මාරු වන්න.</string>
     <string name="settings_player_cache">ප්ලේයර් හැඹිලිය</string>
     <string name="settings_player_cache_summary">උපරිම %1$s · භාවිත %2$s · ඉතිරි කළ %3$s</string>
     <string name="settings_player_cache_off">හැඹිලියක් නැත</string>

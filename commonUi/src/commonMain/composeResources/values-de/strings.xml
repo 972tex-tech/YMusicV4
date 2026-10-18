@@ -483,6 +483,7 @@
     <string name="folder_picker_disabled">Die System-App „Dateien“ ist deaktiviert. Aktiviere sie, um einen Ordner auszuwählen.</string>
     <string name="folder_picker_open_settings">Einstellungen öffnen</string>
     <string name="folder_picker_missing">Dieses Gerät hat keine Ordnerauswahl, daher kann kein Ordner ausgewählt werden.</string>
+    <string name="error_supervised_account">Dieses Google-Konto wird beaufsichtigt, daher kann YouTube hier nicht verwendet werden. Melde dich ab oder wechsle zu einem anderen Konto.</string>
     <string name="settings_player_cache">Player-Cache</string>
     <string name="settings_player_cache_summary">Max. %1$s · Belegt %2$s · Gespart %3$s</string>
     <string name="settings_player_cache_off">Kein Cache</string>

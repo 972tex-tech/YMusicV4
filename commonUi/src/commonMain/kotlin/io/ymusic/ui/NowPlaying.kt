@@ -161,6 +161,7 @@ import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.download_audio_track
 import io.ymusic.ui.resources.download_quality
 import io.ymusic.ui.resources.error_captcha
+import io.ymusic.ui.resources.error_supervised_account
 import io.ymusic.ui.resources.ic_sponsor_block
 import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.menu_details_comments
@@ -967,6 +968,7 @@ private fun BoxScope.PlaybackErrorText(
         Text(
             when {
                 captcha -> stringResource(Res.string.error_captcha)
+                error.code == SUPERVISED_ACCOUNT_CODE -> stringResource(Res.string.error_supervised_account)
                 error.code == io.ymusic.player.PlayerError.FILE_MISSING -> stringResource(Res.string.playback_file_missing)
                 error.code == io.ymusic.player.PlayerError.VIDEO_DECODER_FAILED ->
                     stringResource(Res.string.playback_video_unsupported)

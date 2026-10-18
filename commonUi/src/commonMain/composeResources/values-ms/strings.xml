@@ -478,6 +478,7 @@
     <string name="folder_picker_disabled">Apl Fail sistem dimatikan. Hidupkannya untuk memilih folder.</string>
     <string name="folder_picker_open_settings">Buka tetapan</string>
     <string name="folder_picker_missing">Peranti ini tiada pemilih folder, jadi folder tidak boleh dipilih.</string>
+    <string name="error_supervised_account">Akaun Google ini diselia, jadi YouTube tidak boleh digunakan di sini. Log keluar atau tukar kepada akaun lain.</string>
     <string name="settings_player_cache">Cache pemain</string>
     <string name="settings_player_cache_summary">Maks %1$s · Digunakan %2$s · Dijimatkan %3$s</string>
     <string name="settings_player_cache_off">Tiada cache</string>

@@ -483,6 +483,7 @@
     <string name="folder_picker_disabled">Sistemaren Fitxategiak aplikazioa desaktibatuta dago. Aktibatu karpeta bat aukeratzeko.</string>
     <string name="folder_picker_open_settings">Ireki ezarpenak</string>
     <string name="folder_picker_missing">Gailu honek ez du karpeta-hautatzailerik; beraz, ezin da karpetarik aukeratu.</string>
+    <string name="error_supervised_account">Google kontu hau gainbegiratuta dago; beraz, ezin da YouTube hemen erabili. Amaitu saioa edo aldatu beste kontu batera.</string>
     <string name="settings_player_cache">Erreproduzigailuaren cachea</string>
     <string name="settings_player_cache_summary">Gehienez %1$s · Erabilita %2$s · Aurreztuta %3$s</string>
     <string name="settings_player_cache_off">Cacherik ez</string>

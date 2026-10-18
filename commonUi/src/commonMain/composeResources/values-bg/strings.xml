@@ -483,6 +483,7 @@
     <string name="folder_picker_disabled">Системното приложение „Файлове“ е изключено. Включете го, за да изберете папка.</string>
     <string name="folder_picker_open_settings">Отвори настройките</string>
     <string name="folder_picker_missing">Това устройство няма инструмент за избор на папка, затова не може да се избере папка.</string>
+    <string name="error_supervised_account">Този профил в Google е под надзор, затова YouTube не може да се използва тук. Излезте или превключете към друг профил.</string>
     <string name="settings_player_cache">Кеш на плейъра</string>
     <string name="settings_player_cache_summary">Макс. %1$s · Използвани %2$s · Спестени %3$s</string>
     <string name="settings_player_cache_off">Без кеш</string>

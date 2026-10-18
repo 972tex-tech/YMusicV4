@@ -483,6 +483,7 @@
     <string name="folder_picker_disabled">Η εφαρμογή Αρχεία του συστήματος είναι απενεργοποιημένη. Ενεργοποιήστε την για να επιλέξετε φάκελο.</string>
     <string name="folder_picker_open_settings">Άνοιγμα ρυθμίσεων</string>
     <string name="folder_picker_missing">Αυτή η συσκευή δεν διαθέτει επιλογέα φακέλων, οπότε δεν μπορεί να επιλεγεί φάκελος.</string>
+    <string name="error_supervised_account">Αυτός ο λογαριασμός Google είναι υπό επίβλεψη, επομένως το YouTube δεν μπορεί να χρησιμοποιηθεί εδώ. Αποσυνδεθείτε ή μεταβείτε σε άλλον λογαριασμό.</string>
     <string name="settings_player_cache">Κρυφή μνήμη αναπαραγωγής</string>
     <string name="settings_player_cache_summary">Μέγ. %1$s · Σε χρήση %2$s · Εξοικονόμηση %3$s</string>
     <string name="settings_player_cache_off">Χωρίς κρυφή μνήμη</string>

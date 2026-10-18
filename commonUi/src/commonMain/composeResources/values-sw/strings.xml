@@ -483,6 +483,7 @@
     <string name="folder_picker_disabled">Programu ya Faili ya mfumo imezimwa. Iwashe ili uchague folda.</string>
     <string name="folder_picker_open_settings">Fungua mipangilio</string>
     <string name="folder_picker_missing">Kifaa hiki hakina kichagua folda, kwa hivyo folda haiwezi kuchaguliwa.</string>
+    <string name="error_supervised_account">Akaunti hii ya Google inasimamiwa, kwa hiyo YouTube haiwezi kutumika hapa. Toka au badilisha utumie akaunti nyingine.</string>
     <string name="settings_player_cache">Akiba ya kicheza</string>
     <string name="settings_player_cache_summary">Kikomo %1$s · Imetumika %2$s · Imeokolewa %3$s</string>
     <string name="settings_player_cache_off">Hakuna akiba</string>

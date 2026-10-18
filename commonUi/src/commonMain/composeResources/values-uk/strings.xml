@@ -493,6 +493,7 @@
     <string name="folder_picker_disabled">Системний додаток «Файли» вимкнено. Увімкніть його, щоб вибрати папку.</string>
     <string name="folder_picker_open_settings">Відкрити налаштування</string>
     <string name="folder_picker_missing">На цьому пристрої немає засобу вибору папок, тому вибрати папку неможливо.</string>
+    <string name="error_supervised_account">Цей обліковий запис Google перебуває під наглядом, тому YouTube тут використовувати не можна. Вийдіть або перейдіть на інший обліковий запис.</string>
     <string name="settings_player_cache">Кеш плеєра</string>
     <string name="settings_player_cache_summary">Макс. %1$s · Зайнято %2$s · Заощаджено %3$s</string>
     <string name="settings_player_cache_off">Без кешу</string>
