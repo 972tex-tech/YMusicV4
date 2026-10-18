@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import projectcommon.error.DISK_FULL_CODE
+import projectcommon.error.NETWORK_CODE
 import projectcommon.error.TechnicalException
 import projectcommon.error.codedError
 import projectcommon.error.errorCode
@@ -378,6 +379,7 @@ class DownloadService(
                 playabilityOf(code) != null -> taskLog?.log(Logger.Level.WARN, "download refused by playability", e)
                 code == DownloadFolderAccessException.CODE -> taskLog?.log(Logger.Level.WARN, "download folder not writable", e)
                 code == DISK_FULL_CODE -> taskLog?.log(Logger.Level.WARN, "download hit full storage", e)
+                code == NETWORK_CODE -> taskLog?.log(Logger.Level.WARN, "download hit a network failure", e)
                 code == StillProcessingException.CODE -> taskLog?.log(Logger.Level.WARN, "download of a replay still processing", e)
                 else -> taskLog?.captureError(e, "download failed")
             }
