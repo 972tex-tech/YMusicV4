@@ -477,6 +477,8 @@
         <item quantity="other">%1$d valitud videot on juba sinu Kogus.</item>
     </plurals>
     <string name="error_network">YouTube'iga ei saa ühendust. Kontrolli ühendust ja proovi uuesti.</string>
+    <string name="error_disk_full">Salvestusruumi pole piisavalt. Vabasta ruumi ja proovi uuesti.</string>
+    <string name="error_live_still_processing">See otseülekanne lõppes äsja ja seda alles töödeldakse. Proovi hiljem uuesti</string>
     <string name="settings_player_cache">Pleieri vahemälu</string>
     <string name="settings_player_cache_summary">Max %1$s · Kasutusel %2$s · Säästetud %3$s</string>
     <string name="settings_player_cache_off">Vahemälu pole</string>

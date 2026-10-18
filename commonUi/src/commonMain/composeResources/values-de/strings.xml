@@ -477,6 +477,8 @@
         <item quantity="other">%1$d der ausgewählten Videos sind bereits in deiner Mediathek.</item>
     </plurals>
     <string name="error_network">YouTube ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.</string>
+    <string name="error_disk_full">Nicht genügend Speicherplatz. Gib etwas Speicher frei und versuche es erneut.</string>
+    <string name="error_live_still_processing">Dieser Stream ist gerade zu Ende und wird noch verarbeitet. Versuche es später erneut</string>
     <string name="settings_player_cache">Player-Cache</string>
     <string name="settings_player_cache_summary">Max. %1$s · Belegt %2$s · Gespart %3$s</string>
     <string name="settings_player_cache_off">Kein Cache</string>

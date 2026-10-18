@@ -477,6 +477,8 @@
         <item quantity="other">தேர்ந்தெடுத்த வீடியோக்களில் %1$d ஏற்கனவே உங்கள் லைப்ரரியில் உள்ளன.</item>
     </plurals>
     <string name="error_network">YouTube-ஐ அடைய முடியவில்லை. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயலவும்.</string>
+    <string name="error_disk_full">போதுமான சேமிப்பிடம் இல்லை. சிறிது இடத்தைக் காலியாக்கி மீண்டும் முயலவும்.</string>
+    <string name="error_live_still_processing">இந்த நேரலை இப்போதுதான் முடிந்தது, இன்னும் செயலாக்கப்படுகிறது. பிறகு மீண்டும் முயலவும்</string>
     <string name="settings_player_cache">பிளேயர் தற்காலிகச் சேமிப்பு</string>
     <string name="settings_player_cache_summary">அதிகபட்சம் %1$s · பயன்படுத்தியது %2$s · சேமித்தது %3$s</string>
     <string name="settings_player_cache_off">தற்காலிகச் சேமிப்பு இல்லை</string>

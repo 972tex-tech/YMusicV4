@@ -472,6 +472,8 @@
         <item quantity="other">선택한 동영상 중 %1$d개는 이미 보관함에 있습니다.</item>
     </plurals>
     <string name="error_network">YouTube에 연결할 수 없습니다. 네트워크 연결을 확인하고 다시 시도하세요.</string>
+    <string name="error_disk_full">저장 공간이 부족합니다. 공간을 확보한 후 다시 시도하세요.</string>
+    <string name="error_live_still_processing">방금 종료된 라이브 스트림으로 아직 처리 중입니다. 나중에 다시 시도하세요</string>
     <string name="settings_player_cache">플레이어 캐시</string>
     <string name="settings_player_cache_summary">최대 %1$s · 사용 %2$s · 절약 %3$s</string>
     <string name="settings_player_cache_off">캐시 없음</string>

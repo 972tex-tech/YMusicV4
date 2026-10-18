@@ -477,6 +477,8 @@
         <item quantity="other">निवडलेल्या व्हिडिओपैकी %1$d आधीच तुमच्या लायब्ररीत आहेत.</item>
     </plurals>
     <string name="error_network">YouTube शी संपर्क होऊ शकत नाही. तुमचे कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.</string>
+    <string name="error_disk_full">पुरेशी स्टोरेज जागा नाही. थोडी जागा मोकळी करा आणि पुन्हा प्रयत्न करा.</string>
+    <string name="error_live_still_processing">हे स्ट्रीम नुकतेच संपले आहे आणि अजून प्रक्रिया सुरू आहे. नंतर पुन्हा प्रयत्न करा</string>
     <string name="settings_player_cache">प्लेअर कॅशे</string>
     <string name="settings_player_cache_summary">कमाल %1$s · वापरलेले %2$s · वाचवलेले %3$s</string>
     <string name="settings_player_cache_off">कॅशे नाही</string>

@@ -472,6 +472,8 @@
         <item quantity="other">%1$d video yang dipilih sudah ada di Perpustakaan Anda.</item>
     </plurals>
     <string name="error_network">Tidak dapat terhubung ke YouTube. Periksa koneksi Anda dan coba lagi.</string>
+    <string name="error_disk_full">Ruang penyimpanan tidak cukup. Kosongkan sebagian ruang dan coba lagi.</string>
+    <string name="error_live_still_processing">Siaran ini baru saja berakhir dan masih diproses. Coba lagi nanti</string>
     <string name="settings_player_cache">Cache pemutar</string>
     <string name="settings_player_cache_summary">Maks %1$s · Terpakai %2$s · Hemat %3$s</string>
     <string name="settings_player_cache_off">Tanpa cache</string>

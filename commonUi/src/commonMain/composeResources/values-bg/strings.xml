@@ -477,6 +477,8 @@
         <item quantity="other">%1$d от избраните видеоклипове вече са в библиотеката ви.</item>
     </plurals>
     <string name="error_network">Няма връзка с YouTube. Проверете връзката си и опитайте отново.</string>
+    <string name="error_disk_full">Няма достатъчно място в хранилището. Освободете място и опитайте отново.</string>
+    <string name="error_live_still_processing">Този стрийм току-що приключи и все още се обработва. Опитайте отново по-късно</string>
     <string name="settings_player_cache">Кеш на плейъра</string>
     <string name="settings_player_cache_summary">Макс. %1$s · Използвани %2$s · Спестени %3$s</string>
     <string name="settings_player_cache_off">Без кеш</string>

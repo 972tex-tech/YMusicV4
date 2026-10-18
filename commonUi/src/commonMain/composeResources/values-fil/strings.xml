@@ -477,6 +477,8 @@
         <item quantity="other">Nasa iyong Library na ang %1$d sa mga napiling video.</item>
     </plurals>
     <string name="error_network">Hindi maabot ang YouTube. Tingnan ang iyong koneksyon at subukang muli.</string>
+    <string name="error_disk_full">Kulang ang storage space. Magbakante ng espasyo at subukang muli.</string>
+    <string name="error_live_still_processing">Kakatapos lang ng stream na ito at pinoproseso pa. Subukang muli mamaya</string>
     <string name="settings_player_cache">Cache ng player</string>
     <string name="settings_player_cache_summary">Max %1$s · Nagamit %2$s · Natipid %3$s</string>
     <string name="settings_player_cache_off">Walang cache</string>

@@ -477,6 +477,8 @@
         <item quantity="other">ಆಯ್ಕೆ ಮಾಡಿದ ವೀಡಿಯೊಗಳಲ್ಲಿ %1$d ಈಗಾಗಲೇ ನಿಮ್ಮ ಲೈಬ್ರರಿಯಲ್ಲಿವೆ.</item>
     </plurals>
     <string name="error_network">YouTube ತಲುಪಲಾಗುತ್ತಿಲ್ಲ. ನಿಮ್ಮ ಸಂಪರ್ಕ ಪರಿಶೀಲಿಸಿ ಮತ್ತು ಮರುಪ್ರಯತ್ನಿಸಿ.</string>
+    <string name="error_disk_full">ಸಾಕಷ್ಟು ಸಂಗ್ರಹಣೆ ಸ್ಥಳವಿಲ್ಲ. ಸ್ವಲ್ಪ ಸ್ಥಳ ಖಾಲಿ ಮಾಡಿ ಮತ್ತು ಮರುಪ್ರಯತ್ನಿಸಿ.</string>
+    <string name="error_live_still_processing">ಈ ಸ್ಟ್ರೀಮ್ ಈಗಷ್ಟೇ ಮುಗಿದಿದೆ ಮತ್ತು ಇನ್ನೂ ಪ್ರಕ್ರಿಯೆಗೊಳ್ಳುತ್ತಿದೆ. ನಂತರ ಮರುಪ್ರಯತ್ನಿಸಿ</string>
     <string name="settings_player_cache">ಪ್ಲೇಯರ್ ಕ್ಯಾಶ್</string>
     <string name="settings_player_cache_summary">ಗರಿಷ್ಠ %1$s · ಬಳಸಲಾಗಿದೆ %2$s · ಉಳಿತಾಯ %3$s</string>
     <string name="settings_player_cache_off">ಕ್ಯಾಶ್ ಇಲ್ಲ</string>

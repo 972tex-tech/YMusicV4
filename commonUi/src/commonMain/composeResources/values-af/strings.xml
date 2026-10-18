@@ -477,6 +477,8 @@
         <item quantity="other">%1$d van die gekose video's is reeds in jou Biblioteek.</item>
     </plurals>
     <string name="error_network">Kan nie YouTube bereik nie. Gaan jou verbinding na en probeer weer.</string>
+    <string name="error_disk_full">Nie genoeg bergingspasie nie. Maak 'n bietjie spasie vry en probeer weer.</string>
+    <string name="error_live_still_processing">Hierdie stroom het pas geëindig en word nog verwerk. Probeer later weer</string>
     <string name="settings_player_cache">Spelerkas</string>
     <string name="settings_player_cache_summary">Maks. %1$s · Gebruik %2$s · Bespaar %3$s</string>
     <string name="settings_player_cache_off">Geen kas nie</string>

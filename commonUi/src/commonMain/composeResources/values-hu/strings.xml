@@ -477,6 +477,8 @@
         <item quantity="other">A kiválasztott videók közül %1$d már a Könyvtáradban van.</item>
     </plurals>
     <string name="error_network">A YouTube nem érhető el. Ellenőrizd a kapcsolatot, és próbáld újra.</string>
+    <string name="error_disk_full">Nincs elég tárhely. Szabadíts fel helyet, és próbáld újra.</string>
+    <string name="error_live_still_processing">Ez az élő adás most ért véget, és még feldolgozás alatt áll. Próbáld újra később</string>
     <string name="settings_player_cache">Lejátszó gyorsítótára</string>
     <string name="settings_player_cache_summary">Max. %1$s · Használt %2$s · Megtakarított %3$s</string>
     <string name="settings_player_cache_off">Nincs gyorsítótár</string>

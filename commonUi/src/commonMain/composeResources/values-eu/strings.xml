@@ -477,6 +477,8 @@
         <item quantity="other">Hautatutako bideoetatik %1$d zure Liburutegian daude jada.</item>
     </plurals>
     <string name="error_network">Ezin da YouTubera konektatu. Egiaztatu konexioa eta saiatu berriro.</string>
+    <string name="error_disk_full">Ez dago behar adina biltegiratze-toki. Egin tokia eta saiatu berriro.</string>
+    <string name="error_live_still_processing">Zuzeneko emanaldi hau oraintxe amaitu da eta oraindik prozesatzen ari da. Saiatu berriro geroago</string>
     <string name="settings_player_cache">Erreproduzigailuaren cachea</string>
     <string name="settings_player_cache_summary">Gehienez %1$s · Erabilita %2$s · Aurreztuta %3$s</string>
     <string name="settings_player_cache_off">Cacherik ez</string>

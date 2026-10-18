@@ -482,6 +482,8 @@
         <item quantity="other">%1$d מהסרטונים שנבחרו כבר נמצאים בספרייה שלך.</item>
     </plurals>
     <string name="error_network">לא ניתן להתחבר ל-YouTube. בדוק את החיבור ונסה שוב.</string>
+    <string name="error_disk_full">אין מספיק שטח אחסון. פנה מקום ונסה שוב.</string>
+    <string name="error_live_still_processing">השידור הזה הסתיים זה עתה ועדיין מעובד. נסה שוב מאוחר יותר</string>
     <string name="settings_player_cache">מטמון הנגן</string>
     <string name="settings_player_cache_summary">מקסימום %1$s · בשימוש %2$s · נחסך %3$s</string>
     <string name="settings_player_cache_off">ללא מטמון</string>

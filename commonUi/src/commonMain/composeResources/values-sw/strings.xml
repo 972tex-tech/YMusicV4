@@ -477,6 +477,8 @@
         <item quantity="other">Video %1$d kati ya zilizochaguliwa tayari ziko kwenye Maktaba yako.</item>
     </plurals>
     <string name="error_network">Imeshindwa kufikia YouTube. Angalia muunganisho wako na ujaribu tena.</string>
+    <string name="error_disk_full">Hakuna nafasi ya kutosha ya hifadhi. Futa baadhi ya vitu kupata nafasi kisha ujaribu tena.</string>
+    <string name="error_live_still_processing">Mtiririko huu umeisha hivi punde na bado unachakatwa. Jaribu tena baadaye</string>
     <string name="settings_player_cache">Akiba ya kicheza</string>
     <string name="settings_player_cache_summary">Kikomo %1$s · Imetumika %2$s · Imeokolewa %3$s</string>
     <string name="settings_player_cache_off">Hakuna akiba</string>

@@ -482,6 +482,8 @@
         <item quantity="other">%1$d od odabranih videozapisa već je u vašoj Zbirci.</item>
     </plurals>
     <string name="error_network">YouTube nije dostupan. Provjerite vezu i pokušajte ponovno.</string>
+    <string name="error_disk_full">Nema dovoljno prostora za pohranu. Oslobodite prostor i pokušajte ponovno.</string>
+    <string name="error_live_still_processing">Ovaj prijenos upravo je završio i još se obrađuje. Pokušajte ponovno kasnije</string>
     <string name="settings_player_cache">Predmemorija playera</string>
     <string name="settings_player_cache_summary">Maks. %1$s · Iskorišteno %2$s · Ušteđeno %3$s</string>
     <string name="settings_player_cache_off">Bez predmemorije</string>

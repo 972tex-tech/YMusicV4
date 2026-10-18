@@ -477,6 +477,8 @@
         <item quantity="other">%1$d ka mid ah muuqaalada la doortay horay ayay ugu jireen Gudaha.</item>
     </plurals>
     <string name="error_network">YouTube lama gaadhi karo. Hubi khadkaaga oo markale isku day.</string>
+    <string name="error_disk_full">Meel kayd oo ku filan ma jiro. Bannee meel oo markale isku day.</string>
+    <string name="error_live_still_processing">Baahintan hadda ayay dhammaatay weli waa la habaynayaa. Mar dambe isku day</string>
     <string name="settings_player_cache">Kaydka k/g ee daaraha</string>
     <string name="settings_player_cache_summary">Ugu badnaan %1$s · La isticmaalay %2$s · La badbaadiyay %3$s</string>
     <string name="settings_player_cache_off">Kayd k/g ah majiro</string>

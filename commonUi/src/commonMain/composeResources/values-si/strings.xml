@@ -477,6 +477,8 @@
         <item quantity="other">තෝරාගත් වීඩියෝවලින් %1$d ක් දැනටමත් ඔබගේ පුස්තකාලයේ ඇත.</item>
     </plurals>
     <string name="error_network">YouTube වෙත ළඟා විය නොහැක. ඔබගේ සම්බන්ධතාව පරීක්ෂා කර නැවත උත්සාහ කරන්න.</string>
+    <string name="error_disk_full">ප්‍රමාණවත් ගබඩා ඉඩක් නැත. ඉඩ ටිකක් නිදහස් කර නැවත උත්සාහ කරන්න.</string>
+    <string name="error_live_still_processing">මෙම ප්‍රවාහය දැන් අවසන් වූ අතර තවමත් සකසමින් පවතී. පසුව නැවත උත්සාහ කරන්න</string>
     <string name="settings_player_cache">ප්ලේයර් හැඹිලිය</string>
     <string name="settings_player_cache_summary">උපරිම %1$s · භාවිත %2$s · ඉතිරි කළ %3$s</string>
     <string name="settings_player_cache_off">හැඹිලියක් නැත</string>

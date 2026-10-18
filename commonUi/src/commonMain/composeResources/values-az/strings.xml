@@ -477,6 +477,8 @@
         <item quantity="other">Seçilmiş videolardan %1$d-i artıq Kitabxananızdadır.</item>
     </plurals>
     <string name="error_network">YouTube-a qoşulmaq mümkün deyil. İnternet bağlantınızı yoxlayıb yenidən cəhd edin.</string>
+    <string name="error_disk_full">Yaddaşda kifayət qədər yer yoxdur. Bir az yer boşaldıb yenidən cəhd edin.</string>
+    <string name="error_live_still_processing">Bu yayım indicə bitib və hələ emal olunur. Bir az sonra yenidən cəhd edin</string>
     <string name="settings_player_cache">Pleyer keşi</string>
     <string name="settings_player_cache_summary">Maks. %1$s · İstifadə olunub %2$s · Qənaət %3$s</string>
     <string name="settings_player_cache_off">Keş yoxdur</string>

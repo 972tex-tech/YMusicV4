@@ -487,6 +487,8 @@
         <item quantity="other">%1$d из выбранных видео уже есть в библиотеке.</item>
     </plurals>
     <string name="error_network">Нет связи с YouTube. Проверьте подключение и попробуйте снова.</string>
+    <string name="error_disk_full">Недостаточно места в хранилище. Освободите место и попробуйте снова.</string>
+    <string name="error_live_still_processing">Эта трансляция только что закончилась и ещё обрабатывается. Попробуйте позже</string>
     <string name="settings_player_cache">Кеш плеера</string>
     <string name="settings_player_cache_summary">Макс. %1$s · Занято %2$s · Сэкономлено %3$s</string>
     <string name="settings_player_cache_off">Без кеша</string>

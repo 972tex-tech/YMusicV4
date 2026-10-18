@@ -482,6 +482,8 @@
         <item quantity="other">%1$d dintre videoclipurile selectate sunt deja în Bibliotecă.</item>
     </plurals>
     <string name="error_network">YouTube nu poate fi accesat. Verifică conexiunea și încearcă din nou.</string>
+    <string name="error_disk_full">Spațiu de stocare insuficient. Eliberează spațiu și încearcă din nou.</string>
+    <string name="error_live_still_processing">Această transmisiune tocmai s-a încheiat și încă se procesează. Încearcă din nou mai târziu</string>
     <string name="settings_player_cache">Cache player</string>
     <string name="settings_player_cache_summary">Max. %1$s · Folosit %2$s · Economisit %3$s</string>
     <string name="settings_player_cache_off">Fără cache</string>

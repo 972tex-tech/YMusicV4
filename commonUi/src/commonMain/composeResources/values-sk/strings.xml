@@ -487,6 +487,8 @@
         <item quantity="other">%1$d z vybraných videí už je vo vašej Knižnici.</item>
     </plurals>
     <string name="error_network">Nedá sa spojiť s YouTube. Skontrolujte pripojenie a skúste to znova.</string>
+    <string name="error_disk_full">Nedostatok miesta v úložisku. Uvoľnite miesto a skúste to znova.</string>
+    <string name="error_live_still_processing">Tento stream práve skončil a ešte sa spracúva. Skúste to neskôr</string>
     <string name="settings_player_cache">Vyrovnávacia pamäť prehrávača</string>
     <string name="settings_player_cache_summary">Max. %1$s · Využité %2$s · Ušetrené %3$s</string>
     <string name="settings_player_cache_off">Bez vyrovnávacej pamäte</string>

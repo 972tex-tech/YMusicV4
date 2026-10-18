@@ -477,6 +477,8 @@
         <item quantity="other">തിരഞ്ഞെടുത്ത വീഡിയോകളിൽ %1$d എണ്ണം ഇതിനകം നിങ്ങളുടെ ലൈബ്രറിയിലുണ്ട്.</item>
     </plurals>
     <string name="error_network">YouTube-ൽ എത്താനാകുന്നില്ല. നിങ്ങളുടെ കണക്ഷൻ പരിശോധിച്ച് വീണ്ടും ശ്രമിക്കുക.</string>
+    <string name="error_disk_full">ആവശ്യത്തിന് സ്റ്റോറേജ് ഇടമില്ല. കുറച്ച് ഇടം ഒഴിവാക്കി വീണ്ടും ശ്രമിക്കുക.</string>
+    <string name="error_live_still_processing">ഈ സ്ട്രീം ഇപ്പോൾ അവസാനിച്ചതേയുള്ളൂ, ഇപ്പോഴും പ്രോസസ്സ് ചെയ്യുകയാണ്. പിന്നീട് വീണ്ടും ശ്രമിക്കുക</string>
     <string name="settings_player_cache">പ്ലേയർ കാഷെ</string>
     <string name="settings_player_cache_summary">പരമാവധി %1$s · ഉപയോഗിച്ചത് %2$s · ലാഭിച്ചത് %3$s</string>
     <string name="settings_player_cache_off">കാഷെ ഇല്ല</string>

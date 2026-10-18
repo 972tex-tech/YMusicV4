@@ -477,6 +477,8 @@
         <item quantity="other">Ընտրված տեսանյութերից %1$d-ն արդեն ձեր Գրադարանում են։</item>
     </plurals>
     <string name="error_network">Հնարավոր չէ կապվել YouTube-ի հետ։ Ստուգեք ձեր կապը և կրկին փորձեք։</string>
+    <string name="error_disk_full">Բավարար պահեստային տարածք չկա։ Ազատեք որոշ տեղ և կրկին փորձեք։</string>
+    <string name="error_live_still_processing">Այս հեռարձակումը նոր է ավարտվել և դեռ մշակվում է։ Կրկին փորձեք ավելի ուշ</string>
     <string name="settings_player_cache">Նվագարկչի քեշ</string>
     <string name="settings_player_cache_summary">Առավելագույնը %1$s · Օգտագործված %2$s · Խնայված %3$s</string>
     <string name="settings_player_cache_off">Առանց քեշի</string>

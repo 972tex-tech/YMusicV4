@@ -487,6 +487,8 @@
         <item quantity="other">%1$d z wybranych filmów jest już w Twojej Bibliotece.</item>
     </plurals>
     <string name="error_network">Nie można połączyć się z YouTube. Sprawdź połączenie i spróbuj ponownie.</string>
+    <string name="error_disk_full">Za mało miejsca w pamięci. Zwolnij trochę miejsca i spróbuj ponownie.</string>
+    <string name="error_live_still_processing">Ta transmisja właśnie się zakończyła i jest jeszcze przetwarzana. Spróbuj ponownie później</string>
     <string name="settings_player_cache">Pamięć podręczna odtwarzacza</string>
     <string name="settings_player_cache_summary">Maks. %1$s · Użyto %2$s · Zaoszczędzono %3$s</string>
     <string name="settings_player_cache_off">Bez pamięci podręcznej</string>

@@ -482,6 +482,8 @@
         <item quantity="other">%1$d de los vídeos seleccionados ya están en tu biblioteca.</item>
     </plurals>
     <string name="error_network">No se puede conectar con YouTube. Comprueba tu conexión e inténtalo de nuevo.</string>
+    <string name="error_disk_full">No hay suficiente espacio de almacenamiento. Libera espacio e inténtalo de nuevo.</string>
+    <string name="error_live_still_processing">Esta emisión acaba de terminar y aún se está procesando. Inténtalo de nuevo más tarde</string>
     <string name="settings_player_cache">Caché del reproductor</string>
     <string name="settings_player_cache_summary">Máx. %1$s · Usado %2$s · Ahorrado %3$s</string>
     <string name="settings_player_cache_off">Sin caché</string>

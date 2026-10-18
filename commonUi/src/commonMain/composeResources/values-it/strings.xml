@@ -482,6 +482,8 @@
         <item quantity="other">%1$d dei video selezionati sono già nella tua Libreria.</item>
     </plurals>
     <string name="error_network">Impossibile raggiungere YouTube. Controlla la connessione e riprova.</string>
+    <string name="error_disk_full">Spazio di archiviazione insufficiente. Libera spazio e riprova.</string>
+    <string name="error_live_still_processing">Questa diretta è appena terminata ed è ancora in elaborazione. Riprova più tardi</string>
     <string name="settings_player_cache">Cache del player</string>
     <string name="settings_player_cache_summary">Max %1$s · Usata %2$s · Risparmiata %3$s</string>
     <string name="settings_player_cache_off">Nessuna cache</string>

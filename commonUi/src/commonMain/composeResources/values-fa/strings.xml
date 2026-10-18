@@ -477,6 +477,8 @@
         <item quantity="other">%1$d مورد از ویدیوهای انتخاب‌شده از قبل در کتابخانه شما هستند.</item>
     </plurals>
     <string name="error_network">دسترسی به YouTube ممکن نیست. اتصال اینترنت را بررسی کرده و دوباره تلاش کنید.</string>
+    <string name="error_disk_full">فضای ذخیره‌سازی کافی نیست. کمی فضا آزاد کنید و دوباره تلاش کنید.</string>
+    <string name="error_live_still_processing">این پخش زنده همین حالا تمام شده و هنوز در حال پردازش است. بعداً دوباره تلاش کنید</string>
     <string name="settings_player_cache">حافظه پنهان پخش‌کننده</string>
     <string name="settings_player_cache_summary">حداکثر %1$s · استفاده‌شده %2$s · صرفه‌جویی %3$s</string>
     <string name="settings_player_cache_off">بدون حافظه پنهان</string>

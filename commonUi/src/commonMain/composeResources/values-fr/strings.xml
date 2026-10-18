@@ -482,6 +482,8 @@
         <item quantity="other">%1$d des vidéos sélectionnées sont déjà dans votre bibliothèque.</item>
     </plurals>
     <string name="error_network">Impossible de joindre YouTube. Vérifiez votre connexion et réessayez.</string>
+    <string name="error_disk_full">Espace de stockage insuffisant. Libérez de l'espace et réessayez.</string>
+    <string name="error_live_still_processing">Ce direct vient de se terminer et est encore en cours de traitement. Réessayez plus tard</string>
     <string name="settings_player_cache">Cache du lecteur</string>
     <string name="settings_player_cache_summary">Max %1$s · Utilisé %2$s · Économisé %3$s</string>
     <string name="settings_player_cache_off">Pas de cache</string>

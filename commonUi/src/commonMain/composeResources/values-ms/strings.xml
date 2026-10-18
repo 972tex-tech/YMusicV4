@@ -472,6 +472,8 @@
         <item quantity="other">%1$d daripada video yang dipilih sudah ada dalam Pustaka anda.</item>
     </plurals>
     <string name="error_network">Tidak dapat menghubungi YouTube. Semak sambungan anda dan cuba lagi.</string>
+    <string name="error_disk_full">Ruang storan tidak mencukupi. Kosongkan sedikit ruang dan cuba lagi.</string>
+    <string name="error_live_still_processing">Strim ini baru sahaja tamat dan masih diproses. Cuba lagi kemudian</string>
     <string name="settings_player_cache">Cache pemain</string>
     <string name="settings_player_cache_summary">Maks %1$s · Digunakan %2$s · Dijimatkan %3$s</string>
     <string name="settings_player_cache_off">Tiada cache</string>

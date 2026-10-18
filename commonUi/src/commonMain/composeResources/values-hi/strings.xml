@@ -477,6 +477,8 @@
         <item quantity="other">चुने गए वीडियो में से %1$d पहले से आपकी लाइब्रेरी में हैं।</item>
     </plurals>
     <string name="error_network">YouTube तक नहीं पहुंच सके। अपना कनेक्शन जांचें और फिर से कोशिश करें।</string>
+    <string name="error_disk_full">पर्याप्त स्टोरेज नहीं है। थोड़ी जगह खाली करें और फिर से कोशिश करें।</string>
+    <string name="error_live_still_processing">यह स्ट्रीम अभी-अभी खत्म हुई है और अभी प्रोसेस हो रही है। बाद में फिर से कोशिश करें</string>
     <string name="settings_player_cache">प्लेयर कैश</string>
     <string name="settings_player_cache_summary">अधिकतम %1$s · इस्तेमाल %2$s · बचत %3$s</string>
     <string name="settings_player_cache_off">कोई कैश नहीं</string>
