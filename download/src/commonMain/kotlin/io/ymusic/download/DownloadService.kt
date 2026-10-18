@@ -152,7 +152,7 @@ class DownloadService(
             createdAt = now(),
             updatedAt = now(),
         )
-        scope.launch {
+        command(null) {
             initIfNotYet()
             store.upsert(task)
             _changes.emit(DownloadChange.Added(task))
@@ -165,7 +165,7 @@ class DownloadService(
     fun pause(id: String) {
         // Act under the same lock fillSlots claims with, so a QUEUED task can't be started between the
         // read and the pause (which would lose the pause, or leave a "paused" task still downloading).
-        scope.launch {
+        command(id) {
             gate.withLock {
                 val running = active[id]
                 if (running != null) {
@@ -179,8 +179,8 @@ class DownloadService(
     }
 
     fun resume(id: String) {
-        scope.launch {
-            val task = store.get(id) ?: return@launch
+        command(id) {
+            val task = store.get(id) ?: return@command
             if (task.state == DownloadState.PAUSED || task.state == DownloadState.FAILED) {
                 gate.withLock { queuePaused = false } // resuming a task un-holds the queue
                 setState(id, DownloadState.QUEUED, error = null)
@@ -193,7 +193,7 @@ class DownloadService(
     fun retry(id: String) = resume(id)
 
     fun cancel(id: String) {
-        scope.launch {
+        command(id) {
             gate.withLock {
                 val running = active[id]
                 if (running != null) {
@@ -212,7 +212,7 @@ class DownloadService(
         // Decide + delete under the claim lock so a QUEUED task can't be started into a deleted row. An
         // active task is cancelled — its execute cleans up its own scratch on the CANCELED path; a
         // non-active one is cleaned up here.
-        scope.launch {
+        command(id) {
             gate.withLock {
                 val running = active[id]
                 if (running != null) {
@@ -229,7 +229,7 @@ class DownloadService(
 
     /** Global pause: hold the whole queue — stop every active download and every queued task. */
     fun pauseAll() {
-        scope.launch {
+        command(null) {
             gate.withLock {
                 queuePaused = true
                 active.forEach { (id, job) -> interrupts[id] = DownloadState.PAUSED; job.cancel() }
@@ -240,7 +240,7 @@ class DownloadService(
 
     /** Global resume: re-queue every paused task and run up to [maxConcurrent] of them. */
     fun resumeAll() {
-        scope.launch {
+        command(null) {
             gate.withLock { queuePaused = false }
             store.all().filter { it.state == DownloadState.PAUSED }.forEach { setState(it.id, DownloadState.QUEUED) }
             fillSlots()
@@ -252,18 +252,49 @@ class DownloadService(
     /** Start queued tasks until [maxConcurrent] are running (unless the queue is globally paused). Each
      *  pick is claimed as PREPARING under the lock so the next [DownloadStore.nextQueued] skips it. */
     private fun fillSlots() {
-        scope.launch {
+        command(null) {
             gate.withLock {
                 if (queuePaused) return@withLock
                 while (active.size < maxConcurrent) {
                     val next = store.nextQueued() ?: break
                     // Unreachable by construction (see runTask); never start a second run on one scratch dir.
                     if (next.id in active) break
-                    setState(next.id, DownloadState.PREPARING)
+                    try {
+                        setState(next.id, DownloadState.PREPARING)
+                    } catch (c: CancellationException) {
+                        throw c
+                    } catch (e: Throwable) {
+                        commandFailed(next.id, e)
+                        break
+                    }
                     active[next.id] = scope.launch { runTask(next) }
                 }
             }
         }
+    }
+
+    /** Runs a queue command; a failure (typically a DB write on full storage) is logged and, for a
+     *  task command, shown on that task instead of escaping to the scope's crash handler. */
+    private fun command(id: String?, block: suspend () -> Unit) {
+        scope.launch {
+            try {
+                block()
+            } catch (c: CancellationException) {
+                throw c
+            } catch (e: Throwable) {
+                commandFailed(id, e)
+            }
+        }
+    }
+
+    private suspend fun commandFailed(id: String?, e: Throwable) {
+        val commandLog = log?.fork("command", id?.let { mapOf("id" to it) })
+        if (e.errorCode() == DISK_FULL_CODE) {
+            commandLog?.log(Logger.Level.WARN, "download command hit full storage", e)
+        } else {
+            commandLog?.captureError(e, "download command failed")
+        }
+        if (id != null) _changes.emit(DownloadChange.StateChanged(id, DownloadState.FAILED, downloadError(e)))
     }
 
     /**
