@@ -109,7 +109,6 @@ import io.ymusic.remoteconfig.RemoteConfig
 import io.ymusic.remoteconfig.RunningBundles
 import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
-import io.ymusic.settings.FileSettingsStore
 import io.ymusic.settings.anonymousDeviceId
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
@@ -234,9 +233,9 @@ fun main() {
         }
     }
     // Opened before anything else: crash-reporting consent lives here.
+    val appStore = AppStore.open(ymusicDataDir(), rootLogger.fork("app-store"))
     val settings = kotlinx.coroutines.runBlocking {
-        val dir = ymusicDataDir().apply { mkdirs() }
-        FileSettingsStore.open(File(dir, "settings.properties").absolutePath.toPath()).also {
+        AppStoreSettings.open(appStore).also {
             // First launch decides the app language (device if supported, else English) and persists it.
             ensureAppLanguage(it)
         }
@@ -554,7 +553,7 @@ fun main() {
     }
 }
 
-private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSession): AppGraph {
+private suspend fun buildGraph(settings: AppStoreSettings, session: CookieSession): AppGraph {
     val dataDir = ymusicDataDir().apply { mkdirs() }
     // File-backed jar for YouTube (engine cookie/get|set + player + proxy) and the YMusic API.
     // Desktop has no WebView cookie store: sign-in imports cookies from a phone QR or a browser paste.

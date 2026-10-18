@@ -249,6 +249,7 @@ kotlin {
                 implementation(compose.materialIconsExtended)
                 implementation(compose.components.resources)
                 implementation(Libs.Jna.core)
+                implementation(Libs.SqlDelight.sqliteDriver) // AppStore
                 implementation(project(":telemetry")) // api: sentry-kotlin-multiplatform + SentryLogger
                 implementation(project(":kmpHttp:core"))
                 implementation(project(":projectCommon"))
