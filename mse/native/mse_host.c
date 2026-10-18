@@ -52,6 +52,8 @@ void mse_host_set_js_event(void (*fn)(const char *name))
 struct MseHost {
     pthread_mutex_t mu;
     pthread_mutex_t frame_mu;
+    /* Guards the av pointer for callers off the JS thread: reset frees and replaces it. */
+    pthread_mutex_t av_mu;
     pthread_cond_t cv;
     pthread_t dec;
     pthread_t vdec;
@@ -1114,6 +1116,7 @@ MseHost *mse_host_create(void)
         return NULL;
     pthread_mutex_init(&h->mu, NULL);
     pthread_mutex_init(&h->frame_mu, NULL);
+    pthread_mutex_init(&h->av_mu, NULL);
     pthread_cond_init(&h->cv, NULL);
     h->av = mse_av_create();
     h->fx = audio_fx_create();
@@ -1254,10 +1257,14 @@ void mse_host_destroy(MseHost *h)
     h->last_w = 0;
     h->last_h = 0;
     pthread_mutex_unlock(&h->frame_mu);
+    pthread_mutex_lock(&h->av_mu);
     mse_av_destroy(h->av);
+    h->av = NULL;
+    pthread_mutex_unlock(&h->av_mu);
     audio_fx_destroy(h->fx);
     free(h->fx_pcm);
     pthread_mutex_destroy(&h->frame_mu);
+    pthread_mutex_destroy(&h->av_mu);
     pthread_mutex_destroy(&h->mu);
     pthread_cond_destroy(&h->cv);
     free(h);
@@ -1273,11 +1280,15 @@ void mse_host_set_video_surface(MseHost *h, void *window)
     h->window = window;
     pthread_mutex_unlock(&h->mu);
 #ifdef __ANDROID__
+    pthread_mutex_lock(&h->av_mu);
     mse_av_set_window(h->av, window);
+    pthread_mutex_unlock(&h->av_mu);
     if (old)
         ANativeWindow_release((ANativeWindow *)old);
 #elif defined(__APPLE__)
+    pthread_mutex_lock(&h->av_mu);
     mse_av_set_window(h->av, window);
+    pthread_mutex_unlock(&h->av_mu);
     if (old && old != window)
         mse_vt_detach(old);
 #else
@@ -1516,6 +1527,7 @@ void mse_host_reset(MseHost *h)
     h->last_w = 0;
     h->last_h = 0;
     pthread_mutex_unlock(&h->frame_mu);
+    pthread_mutex_lock(&h->av_mu);
     mse_av_destroy(h->av);
     h->av = mse_av_create();
     /* MediaSource reset drops MseAv (and mc_win / VT layer / blit size).
@@ -1523,6 +1535,7 @@ void mse_host_reset(MseHost *h)
        Keep the hole so 4K does not sws 3840×2160 (log28 hole=0x0, ~1 fps). */
     mse_av_set_window(h->av, h->window);
     mse_av_set_blit_size(h->av, h->blit_w, h->blit_h);
+    pthread_mutex_unlock(&h->av_mu);
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
 }
@@ -1693,7 +1706,13 @@ int mse_host_copy_frame(MseHost *h, uint8_t *dst, int cap, int *w, int *ht, int 
 
 int mse_host_video_failure(MseHost *h, char *out, int cap)
 {
-    return h ? mse_av_video_failure(h->av, out, cap) : 0;
+    int failed;
+    if (!h)
+        return 0;
+    pthread_mutex_lock(&h->av_mu);
+    failed = mse_av_video_failure(h->av, out, cap);
+    pthread_mutex_unlock(&h->av_mu);
+    return failed;
 }
 
 int mse_host_frames(MseHost *h)
