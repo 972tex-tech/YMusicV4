@@ -8,6 +8,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import okio.ByteString.Companion.decodeBase64
+import projectcommon.json.boolOrNull
 import projectcommon.json.intOrNull
 import projectcommon.json.objectOrNull
 import projectcommon.json.objects
@@ -32,6 +33,7 @@ object SabrSpecBuilder {
             ?: error("no videoPlaybackUstreamerConfig for $videoId")
         val clientVersion = data.stringOrNull("clientVersion")
         val clientName = data.intOrNull("clientNameId") ?: 1
+        checkProcessed(data, streaming)
         val formats = adaptiveFormats(streaming)
         val captions = captionEntries(data).map { it.toTrack(poTokenBase64) }
         return SabrStreamSpec(
@@ -52,6 +54,14 @@ object SabrSpecBuilder {
             artist = json.parseToJsonElement(playerResponseJson).jsonObject
                 .objectOrNull("videoDetails")?.stringOrNull("author")?.takeIf { it.isNotBlank() },
         )
+
+    /** @throws StillProcessingException for a just-ended live stream whose replay YouTube hasn't finished processing. */
+    internal fun checkProcessed(data: JsonObject, streaming: JsonObject) {
+        if (data.objectOrNull("videoDetails")?.boolOrNull("isPostLiveDvr") != true) return
+        if (streaming.objects("adaptiveFormats").any { "lastModified" !in it }) {
+            throw StillProcessingException(data.objectOrNull("videoDetails")?.stringOrNull("videoId"))
+        }
+    }
 
     internal fun adaptiveFormats(streaming: JsonObject): List<AdaptiveFormat> =
         streaming.objects("adaptiveFormats").map { it.toAdaptiveFormat() }

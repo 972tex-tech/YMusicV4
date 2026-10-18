@@ -347,6 +347,7 @@ class DownloadService(
                 playabilityOf(code) != null -> taskLog?.log(Logger.Level.WARN, "download refused by playability", e)
                 code == DownloadFolderAccessException.CODE -> taskLog?.log(Logger.Level.WARN, "download folder not writable", e)
                 code == DISK_FULL_CODE -> taskLog?.log(Logger.Level.WARN, "download hit full storage", e)
+                code == StillProcessingException.CODE -> taskLog?.log(Logger.Level.WARN, "download of a replay still processing", e)
                 else -> taskLog?.captureError(e, "download failed")
             }
             return@coroutineScope downloadError(e)

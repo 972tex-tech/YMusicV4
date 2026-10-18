@@ -24,6 +24,18 @@ class LiveVideoException(videoId: String?) : Exception("live video ${videoId.orE
     }
 }
 
+/** A live stream that just ended: YouTube is still processing its replay, which lists formats with no
+ *  `lastModified`/`contentLength` until it finishes. A well-known category ([code] `"processing"`); a later
+ *  retry succeeds. */
+class StillProcessingException(videoId: String?) : Exception("post-live replay still processing ${videoId.orEmpty()}"), CodedError {
+    override val code: String = CODE
+    override val userMessage: String? = null
+
+    companion object {
+        const val CODE = "processing"
+    }
+}
+
 /** One downloadable video height; sizes are estimates for each container (video + its audio track).
  *  [webmBytes] is null when the video has no VP9/AV1 or no Opus stream, so WebM can't be downloaded. */
 class VideoOption(val height: Int, val fps: Int, val mp4Bytes: Long, val webmBytes: Long?)
@@ -71,6 +83,7 @@ class DownloadOptions(
             if (details?.boolOrNull("isLive") == true) throw LiveVideoException(details.stringOrNull("videoId"))
             val streaming = data.objectOrNull("streamingData")
                 ?: throw TechnicalException("E70041", "download options: no streamingData")
+            SabrSpecBuilder.checkProcessed(data, streaming)
             val formats = SabrSpecBuilder.adaptiveFormats(streaming)
             val raw = streaming.objects("adaptiveFormats")
             val durationMs = formats.maxOfOrNull { it.approxDurationMs.toLong() }?.takeIf { it > 0 }
