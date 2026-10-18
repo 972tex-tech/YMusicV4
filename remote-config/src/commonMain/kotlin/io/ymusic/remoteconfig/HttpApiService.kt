@@ -7,16 +7,21 @@ import kmphttp.HttpUrl
 import kmphttp.HttpUrlBuilder
 import kmphttp.KmpHttpClient
 import kmphttp.MediaTypeX.toMediaType
+import kmphttp.Request
 import kmphttp.RequestBody
 import kmphttp.RequestBodyX.asOneshotRequestBody
 import kmphttp.RequestBodyX.toRequestBody
 import kmphttp.RequestBuilder
+import kmphttp.Response
 import kmphttp.asyncSource
 import kmphttp.deleteWithoutBody
 import kmphttp.json.JsonReader
 import kmphttp.json.JsonWriter
 import kmphttp.toHttpUrlOrNull
 import kmphttp.utf8String
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
 import okio.use
 import projectcommon.json.objects
 import projectcommon.json.string
@@ -52,7 +57,7 @@ class HttpApiService(
 
     override suspend fun getConfig(): RemoteConfigData {
         val url = url().addPathSegment("v1").addPathSegment("config").build()
-        return client.execute(request(url).get().build()).use { response ->
+        return exchange(request(url).get().build()) { response ->
             if (!response.isSuccessful) throw HttpStatusException(response.code)
             // Parsed straight off the socket — the body is never held whole. [now] stamps
             // updatedAt at the moment of parse; see RemoteConfigData.from for who may override it.
@@ -74,13 +79,13 @@ class HttpApiService(
         }
         val url = url().addPathSegment("v1").addPathSegment("pulse").build()
         val body = writer.buffer.asOneshotRequestBody("application/json".toMediaType())
-        client.execute(request(url).post(body).build()).use { response ->
+        exchange(request(url).post(body).build()) { response ->
             if (!response.isSuccessful) throw HttpStatusException(response.code)
         }
     }
 
     override suspend fun openDeviceLink(): String {
-        return client.execute(request(linkUrl()).post(RequestBody.EMPTY).build()).use { response ->
+        return exchange(request(linkUrl()).post(RequestBody.EMPTY).build()) { response ->
             if (!response.isSuccessful) throw HttpStatusException(response.code)
             JsonReader(response.body.asyncSource().buffer()).readObject().string("id")
         }
@@ -88,7 +93,7 @@ class HttpApiService(
 
     override suspend fun putDeviceLink(id: String, payload: String): Boolean {
         val body = payload.toRequestBody("text/plain".toMediaType())
-        return client.execute(request(linkUrl(id)).put(body).build()).use { response ->
+        return exchange(request(linkUrl(id)).put(body).build()) { response ->
             when {
                 response.code == 404 -> false
                 response.isSuccessful -> true
@@ -98,7 +103,7 @@ class HttpApiService(
     }
 
     override suspend fun takeDeviceLink(id: String): String? =
-        client.execute(request(linkUrl(id)).get().build()).use { response ->
+        exchange(request(linkUrl(id)).get().build()) { response ->
             when (response.code) {
                 200 -> response.body.utf8String()
                 204 -> null
@@ -107,7 +112,7 @@ class HttpApiService(
         }
 
     override suspend fun closeDeviceLink(id: String) {
-        client.execute(request(linkUrl(id)).deleteWithoutBody().build()).use { response ->
+        exchange(request(linkUrl(id)).deleteWithoutBody().build()) { response ->
             if (!response.isSuccessful) throw HttpStatusException(response.code)
         }
     }
@@ -115,11 +120,16 @@ class HttpApiService(
     override suspend fun getSkipSegments(videoId: String): List<SkipSegment> {
         val url = url().addPathSegment("v1").addPathSegment("sponsorblock").addPathSegment("segments")
             .addQueryParameter("v", videoId).build()
-        return client.execute(request(url).get().build()).use { response ->
+        return exchange(request(url).get().build()) { response ->
             if (!response.isSuccessful) throw HttpStatusException(response.code)
             JsonReader(response.body.asyncSource().buffer()).readObject().objects("segments").map(SkipSegment::from)
         }
     }
+
+    // Off the caller's thread end to end: on JVM, closing an okhttp response drains the rest of a
+    // cache-written body over the socket, a blocking read.
+    private suspend fun <T> exchange(request: Request, read: suspend (Response) -> T): T =
+        withContext(Dispatchers.IO) { client.execute(request).use { read(it) } }
 
     private fun linkUrl(id: String? = null): HttpUrl {
         val url = url().addPathSegment("v1").addPathSegment("link")
