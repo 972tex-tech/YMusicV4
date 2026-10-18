@@ -20,6 +20,7 @@ import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -186,7 +187,8 @@ class AndroidAppUpdates(
         releaseScope.launch {
             val claimed = synchronized(lock) {
                 val download = tracked.value?.takeIf { it.release == release }?.download
-                val busy = download is UpdateDownload.Running || download is UpdateDownload.Ready
+                val busy = download is UpdateDownload.Running || download is UpdateDownload.Ready ||
+                    download is UpdateDownload.Installing
                 if (offer.value?.release != release || busy) {
                     false
                 } else {
@@ -233,6 +235,7 @@ class AndroidAppUpdates(
         val (update, download) = current() ?: return
         if (download !is UpdateDownload.Ready) return
         if (!canInstall()) return needInstallPermission(update, install = true)
+        set(update.release, UpdateDownload.Installing)
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { commit(apkFile(update)) }
@@ -243,6 +246,12 @@ class AndroidAppUpdates(
                 set(update.release, UpdateDownload.Failed("E91013"))
             }
         }
+    }
+
+    /** The install session ended without replacing this process (cancelled, or failed): offer it again. */
+    fun onInstallEnded() {
+        val (update, download) = current() ?: return
+        if (download is UpdateDownload.Installing) set(update.release, UpdateDownload.Ready)
     }
 
     private fun needInstallPermission(update: AppUpdate, install: Boolean) {
@@ -322,6 +331,7 @@ private val AppUpdate.release: String get() = "$versionCode-$sha256"
 
 /** [PackageInstaller]'s answer: shows the system confirmation the session is waiting on. */
 class UpdateInstallReceiver : BroadcastReceiver() {
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun onReceive(context: Context, intent: Intent) {
         when (val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
@@ -330,10 +340,14 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                 context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
             PackageInstaller.STATUS_SUCCESS -> Unit
-            else -> (context.applicationContext as? YMusicApplication)?.rootLogger?.fork("update")?.log(
-                Logger.Level.WARN,
-                "package install ended with status $status: ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}",
-            )
+            else -> {
+                val app = context.applicationContext as? YMusicApplication ?: return
+                app.rootLogger.fork("update").log(
+                    Logger.Level.WARN,
+                    "package install ended with status $status: ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}",
+                )
+                app.services.takeIf { it.isCompleted && !it.isCancelled }?.getCompleted()?.updates?.onInstallEnded()
+            }
         }
     }
 }
