@@ -272,12 +272,82 @@ function initialDataStart(html: string): number {
 
 const RE_INITIAL_GLUE = /^['"\]\s]*=\s*$/;
 
+// CLDR likely region per app language (the app's legacy "iw" is Chrome's "he").
+const LIKELY_REGION: Record<string, string> = {
+  "en": "US",
+  "af": "ZA",
+  "az": "AZ",
+  "id": "ID",
+  "ms": "MY",
+  "ca": "ES",
+  "cs": "CZ",
+  "de": "DE",
+  "et": "EE",
+  "es": "ES",
+  "eu": "ES",
+  "fil": "PH",
+  "fr": "FR",
+  "hr": "HR",
+  "sw": "TZ",
+  "hu": "HU",
+  "nl": "NL",
+  "pl": "PL",
+  "pt": "BR",
+  "ro": "RO",
+  "sk": "SK",
+  "so": "SO",
+  "it": "IT",
+  "vi": "VN",
+  "tr": "TR",
+  "el": "GR",
+  "bg": "BG",
+  "mk": "MK",
+  "ru": "RU",
+  "sr": "RS",
+  "uk": "UA",
+  "hy": "AM",
+  "he": "IL",
+  "ar": "EG",
+  "fa": "IR",
+  "ne": "NP",
+  "mr": "IN",
+  "hi": "IN",
+  "bn": "BD",
+  "gu": "IN",
+  "ta": "IN",
+  "kn": "IN",
+  "ml": "IN",
+  "si": "LK",
+  "th": "TH",
+  "ko": "KR",
+  "ja": "JP",
+  "zh": "CN",
+};
+
+/** The Accept-Language Chrome sends for a UI locale: "<lang>-<REGION>,<lang>,en-US,en" with
+ *  descending q, deduplicated. navigator.language(s) are parsed back from it. */
+function chromeAcceptLanguage(appLanguage: string | undefined): string {
+  const parts = (appLanguage ?? "en").split("-");
+  const raw = (parts[0] ?? "en").toLowerCase();
+  const lang = raw === "iw" ? "he" : raw === "in" ? "id" : raw;
+  const region = parts[1] !== undefined ? parts[1].toUpperCase() : LIKELY_REGION[lang];
+  const tags: string[] = [];
+  for (const tag of [region !== undefined ? lang + "-" + region : lang, lang, "en-US", "en"]) {
+    if (tags.indexOf(tag) < 0) tags.push(tag);
+  }
+  return tags
+    .map(function (tag, i) {
+      return i === 0 ? tag : tag + ";q=" + (1 - i / 10).toFixed(1);
+    })
+    .join(",");
+}
+
 async function scrapeSession(): Promise<YtSession> {
   // The app language rides Accept-Language (next to PREF), so the homepage answers in it and its
   // ytcfg HL echoes the effective value back into this session.
   const hl = await pulledAppLanguage();
   console.info("DBG scrape hl pulled");
-  const acceptLanguage = hl != null ? hl + ",en;q=0.8" : "en-US,en;q=0.9";
+  const acceptLanguage = chromeAcceptLanguage(hl);
   const res = await executeWithCookies(
     ORIGIN + "/",
     HttpRequest.get(ORIGIN + "/")
