@@ -565,6 +565,7 @@
     <string name="error_network">Can’t reach YouTube. Check your connection and try again.</string>
     <string name="error_captcha">YouTube wants to confirm you’re not a robot</string>
     <string name="error_disk_full">Not enough storage space. Free up some space and try again.</string>
+    <string name="error_still_processing">This stream just ended and is still processing, try again later</string>
     <string name="captcha_verify">Verify</string>
     <string name="captcha_verify_hint">Solve any captcha you see on the screen, then tap Done</string>
     <string name="settings_player_cache">Player cache</string>
