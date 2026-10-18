@@ -83,8 +83,11 @@ import io.ymusic.ui.resources.settings_stats_hint
 import io.ymusic.ui.resources.settings_theme
 import io.ymusic.ui.resources.settings_theme_amoled
 import io.ymusic.ui.resources.settings_theme_dark
+import io.ymusic.ui.resources.settings_theme_kitsune
 import io.ymusic.ui.resources.settings_theme_light
+import io.ymusic.ui.resources.settings_theme_sunset
 import io.ymusic.ui.resources.settings_theme_system
+import io.ymusic.ui.resources.settings_theme_torii
 import io.ymusic.ui.resources.settings_versions
 import io.ymusic.ui.resources.settings_versions_app
 import io.ymusic.ui.resources.settings_versions_engine
@@ -556,6 +559,9 @@ private val ThemeOptions: List<Pair<String, StringResource>> = listOf(
     "light" to Res.string.settings_theme_light,
     "dark" to Res.string.settings_theme_dark,
     "amoled" to Res.string.settings_theme_amoled,
+    "kitsune" to Res.string.settings_theme_kitsune,
+    "torii" to Res.string.settings_theme_torii,
+    "sunset" to Res.string.settings_theme_sunset,
 )
 
 @Composable

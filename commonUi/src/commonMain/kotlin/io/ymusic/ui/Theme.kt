@@ -144,10 +144,91 @@ val AmoledDesignColors = DarkDesignColors.copy(
     SettingsCard = Color.Black,
 )
 
+/** Dark skin: near-black with a red cast, crimson accent, warm gold-white text. */
+val KitsuneDesignColors = DarkDesignColors.copy(
+    Accent = Color(0xFFC4161C),
+    InkStrong = Color(0xFFF3E9DC),
+    Ink = Color(0xFFE8DCCB),
+    InkMuted = Color(0xFFCDBFAA),
+    InkSoft = Color(0xFFB8A992),
+    InkSecondary = Color(0xFFA0907A),
+    InkFaint = Color(0xFF84755F),
+    IconDots = Color(0xFF9A8870),
+    Placeholder = Color(0xFF3A1D1D),
+    PlaceholderDim = Color(0xFF331A1A),
+    PlaceholderIcon = Color(0xFF7A4A4A),
+    StackNear = Color(0xFF3A1D1D),
+    StackFar = Color(0xFF2E1717),
+    StackTab = Color(0xFF341A1A),
+    Outline = Color(0xFF5A2E2E),
+    OutlineSoft = Color(0xFF4A2626),
+    Divider = Color(0xFF220F0F),
+    DividerMini = Color(0xFF261212),
+    Surface = Color(0xFF0D0808),
+    SurfaceDim = Color(0xFF140A0A),
+    SurfaceElevated = Color(0xFF160C0C),
+    SettingsCard = Color(0xFF1E1010),
+    FieldPill = Color(0xFF2A1515),
+)
+
+/** Dark skin: deep plum grounds with a rose-magenta accent, like dusk behind a torii gate. */
+val ToriiDesignColors = DarkDesignColors.copy(
+    Accent = Color(0xFFD6336C),
+    InkStrong = Color(0xFFF6EAF4),
+    Ink = Color(0xFFEADCEB),
+    InkMuted = Color(0xFFD0BFD3),
+    InkSoft = Color(0xFFBCA9C2),
+    InkSecondary = Color(0xFFA392AD),
+    InkFaint = Color(0xFF8776A0),
+    IconDots = Color(0xFF9884B0),
+    Placeholder = Color(0xFF3F2C5C),
+    PlaceholderDim = Color(0xFF392755),
+    PlaceholderIcon = Color(0xFF8470A8),
+    StackNear = Color(0xFF3F2C5C),
+    StackFar = Color(0xFF33234D),
+    StackTab = Color(0xFF392855),
+    Outline = Color(0xFF5E4688),
+    OutlineSoft = Color(0xFF4F3A75),
+    Divider = Color(0xFF1F1533),
+    DividerMini = Color(0xFF231838),
+    Surface = Color(0xFF160F24),
+    SurfaceDim = Color(0xFF1D1430),
+    SurfaceElevated = Color(0xFF1A1229),
+    SettingsCard = Color(0xFF261A3A),
+    FieldPill = Color(0xFF30224A),
+)
+
+/** Dark skin: warm brown grounds with a sunset-orange accent. */
+val SunsetDesignColors = DarkDesignColors.copy(
+    Accent = Color(0xFFE07018),
+    InkStrong = Color(0xFFF7EBD9),
+    Ink = Color(0xFFEBDDC6),
+    InkMuted = Color(0xFFD0BFA3),
+    InkSoft = Color(0xFFBBA98B),
+    InkSecondary = Color(0xFFA29073),
+    InkFaint = Color(0xFF86755B),
+    IconDots = Color(0xFF9A876A),
+    Placeholder = Color(0xFF463620),
+    PlaceholderDim = Color(0xFF40311D),
+    PlaceholderIcon = Color(0xFF8A7352),
+    StackNear = Color(0xFF463620),
+    StackFar = Color(0xFF392C1B),
+    StackTab = Color(0xFF3F301D),
+    Outline = Color(0xFF665038),
+    OutlineSoft = Color(0xFF564330),
+    Divider = Color(0xFF241B11),
+    DividerMini = Color(0xFF281E13),
+    Surface = Color(0xFF17120C),
+    SurfaceDim = Color(0xFF1F1810),
+    SurfaceElevated = Color(0xFF1B150E),
+    SettingsCard = Color(0xFF2A2016),
+    FieldPill = Color(0xFF36291B),
+)
+
 /** [AppSettings.theme] value → whether the UI is dark; "" follows the system. */
 fun isDarkTheme(theme: String, systemDark: Boolean): Boolean = when (theme) {
     "light" -> false
-    "dark", "amoled" -> true
+    "dark", "amoled", "kitsune", "torii", "sunset" -> true
     else -> systemDark
 }
 
@@ -181,10 +262,13 @@ fun accentHexOf(color: Color): String {
 fun designPaletteFor(theme: String, systemDark: Boolean, accentHex: String = ""): DesignPalette {
     val base = when {
         theme == "amoled" -> AmoledDesignColors
+        theme == "kitsune" -> KitsuneDesignColors
+        theme == "torii" -> ToriiDesignColors
+        theme == "sunset" -> SunsetDesignColors
         isDarkTheme(theme, systemDark) -> DarkDesignColors
         else -> LightDesignColors
     }
-    val accent = accentColorOf(accentHex)
+    val accent = if (accentHex.isBlank()) base.Accent else accentColorOf(accentHex)
     return if (accent == base.Accent) base else base.copy(Accent = accent)
 }
 
