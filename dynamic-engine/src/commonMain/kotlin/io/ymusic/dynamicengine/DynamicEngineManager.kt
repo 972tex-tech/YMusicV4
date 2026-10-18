@@ -14,7 +14,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -47,8 +47,8 @@ class DynamicEngineManager(
     private val appVersion: Int,
     private val logger: Logger? = null,
     /** Where the engine bundle comes from: [start] boots `getCached() ?: getEmbed()` (a rejected
-     *  cache falls back to the embed) and the periodic update check swaps in anything newer that
-     *  passes the boot gate. Apps wire a [DefaultJsSourceProvider] over the asset-shipped bundle;
+     *  cache falls back to the embed); from then on every config the app receives swaps in a newer
+     *  published bundle that passes the boot gate. Apps wire a [DefaultJsSourceProvider] over the asset-shipped bundle;
      *  fixed-bundle callers (tests, probes, the iOS lab) use [StaticJsSource] /
      *  [embeddedEngineJsSource]. */
     private val jsSource: JsSourceProvider,
@@ -68,7 +68,6 @@ class DynamicEngineManager(
     /** Fired with the running bundle's self-declared revision each time one goes live ([start]
      *  and every successful [swap]) — the shells stamp it onto the Sentry scope. */
     private val onBackendVersion: ((Int) -> Unit)? = null,
-    private val updateCheckIntervalMs: Long = 6 * 60 * 60 * 1000L,
 ) {
 
     private val stintLog = logger?.fork("engine-stint")
@@ -224,21 +223,19 @@ class DynamicEngineManager(
     suspend fun backendVersion(): Int? = activeLock.withLock { active?.engine?.backendVersion }
 
     /**
-     * Boot the first engine from [jsSource]: the cached remote bundle when one exists (a boot
-     * failure is LOGGED and the embed boots instead — a bad push must never brick the engine),
-     * else the embed. An embed failure is a build defect — it throws. Returns the running
-     * bundle's backendVersion.
+     * Boot the first engine from [jsSource]: the cached remote bundle (never older than the embed)
+     * when there is one — a failure to boot it is LOGGED and the embed boots instead, a bad push must
+     * never brick the engine — else the embed. An embed failure is a build defect — it throws.
+     * Returns the running bundle's backendVersion.
      */
     suspend fun start(): Int = swapLock.withLock {
         check(activeLock.withLock { active } == null) { "already started" }
         val slot = bootFromSource(jsSource)
         activeLock.withLock { active = slot }
-        startUpdateLoop()
+        followPublished()
         checkNotNull(slot.engine.backendVersion).also { onBackendVersion?.invoke(it) } // health-checked
     }
 
-    /** Boot the provider's best bundle: the cached remote copy behind the deadline (untrusted),
-     *  falling back to the always-present embed (trusted, no deadline) when absent or rejected. */
     private suspend fun bootFromSource(source: JsSourceProvider): Slot {
         val cached = try {
             source.getCached()
@@ -262,35 +259,58 @@ class DynamicEngineManager(
         return createEngine(source.getEmbed().first)
     }
 
-    /** The periodic remote-update check, armed once per manager on the first successful [start]. */
-    private var updateLoopStarted = false
+    /** Published bundles that failed their signature or the boot gate — not tried again by this
+     *  manager; a newly published one is. Touched only by the one [followPublished] collector. */
+    private val rejected = mutableSetOf<SignedBundleRef>()
 
-    private fun startUpdateLoop() {
-        if (updateCheckIntervalMs <= 0 || updateLoopStarted) return
-        updateLoopStarted = true
+    private var following = false
+
+    /** From [start] on, every config the app receives swaps in the bundle it names when newer. */
+    private fun followPublished() {
+        if (following) return
+        following = true
         bootScope.launch {
-            while (isActive) {
-                delay(updateCheckIntervalMs)
+            jsSource.published.conflate().collect { remote ->
                 try {
-                    checkForUpdates()
+                    updateTo(remote)
                 } catch (c: CancellationException) {
                     throw c
+                } catch (e: BundleSignatureException) {
+                    mgrLog?.captureError(e, "engine.js update rejected")
                 } catch (e: Exception) {
-                    mgrLog?.log(Logger.Level.WARN, "bundle update check failed", e)
+                    mgrLog?.log(Logger.Level.WARN, "engine.js update failed", e)
                 }
             }
         }
     }
 
-    /**
-     * One remote-update check, callable eagerly (app foreground, network regained) on top of the
-     * periodic loop: anything newer than the running bundle downloads, boots through the full
-     * swap gate (rejection = nothing cached), and goes live. Returns the new version, or null
-     * when nothing newer exists.
-     */
-    suspend fun checkForUpdates(): Int? {
+    /** Download, verify and swap to [remote] when it is newer than the running bundle, then cache
+     *  it. Returns the new version, else null. */
+    internal suspend fun updateTo(remote: SignedBundleRef?): Int? {
+        if (remote == null || remote in rejected) return null
         val current = backendVersion()?.toLong() ?: return null
-        return jsSource.fetchIfAny(current) { js, _ -> swap(js) }
+        if (remote.version <= current) return null
+        val fetched = try {
+            jsSource.download(remote)
+        } catch (e: BundleSignatureException) {
+            rejected += remote
+            throw e
+        }
+        val version = try {
+            swap(fetched.source)
+        } catch (e: EngineError) {
+            rejected += remote
+            throw e
+        }
+        try {
+            jsSource.store(fetched)
+        } catch (c: CancellationException) {
+            throw c
+        } catch (e: Exception) {
+            // Running regardless; the next launch boots the previous bundle and swaps again.
+            mgrLog?.log(Logger.Level.WARN, "engine.js v${fetched.version} is live but could not be cached", e)
+        }
+        return version
     }
 
     /**
@@ -318,6 +338,7 @@ class DynamicEngineManager(
     /** Run a task on the engine that is current NOW — pinned for the whole block, so a concurrent
      *  [swap] neither reroutes nor aborts it (the old engine drains until this exits). */
     internal suspend fun <T> use(block: suspend (DynamicEngine) -> T): T {
+        jsSource.checkUpdate()
         // enter() under the lock: entered-or-not-visible. Pinned outside it, a just-retired slot
         // could count us after its drain already completed and close under the running block.
         val slot = activeLock.withLock { (active ?: error("manager not started")).also { it.enter() } }

@@ -4,6 +4,8 @@ import io.ymusic.dynamicengine.BundleSignatureException
 import io.ymusic.dynamicengine.CacheStore
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.JsSourceProvider
+import io.ymusic.dynamicengine.SignedBundleRef
+import io.ymusic.dynamicengine.VerifiedBundle
 import io.ymusic.dynamicengine.embeddedPlayerJsSource
 import io.ymusic.dynamicengine.player.DynamicEnginePlayer
 import io.ymusic.mse.MseVideoSurface
@@ -54,7 +56,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -78,9 +82,10 @@ import kotlin.time.TimeSource
  * [DynamicEnginePlayer] built on it, `player/init`, then a FIFO command queue. Control is
  * main-thread; commands run in call order.
  *
- * player.js upgrades only between sessions: each session boots the newest verified bundle of
- * [playerJs] (cached remote, else embedded), and a newer published one is downloaded in the
- * background for the NEXT session — a running player is never swapped under playback.
+ * player.js upgrades only between sessions — a running player is never swapped under playback.
+ * Every config the app receives downloads and verifies a newer published bundle and holds it for
+ * the next session, which boots it as its gate: it is cached once it boots, and dropped for this
+ * process when it does not. Otherwise a session boots the cached bundle, else the embedded one.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class MsePlayer internal constructor(
@@ -161,6 +166,16 @@ class MsePlayer internal constructor(
     private var viewportW: Int = 640
     private var viewportH: Int = 360
     private var freshConfigNext = false
+
+    /** A newer published player.js, downloaded and verified, waiting for the next session to boot it. */
+    private val pendingPlayerJs = MutableStateFlow<VerifiedBundle?>(null)
+
+    /** Published player.js that failed its signature or its boot — not tried again by this player. */
+    private val rejectedPlayerJs = MutableStateFlow<Set<SignedBundleRef>>(emptySet())
+
+    private val bundleWatch: Job = cleanupScope.launch {
+        playerJs.published.conflate().collect { remote -> if (remote != null) download(remote) }
+    }
 
     /** The next session takes its player config from a new homepage scrape ([PlayerImpl] resets). */
     override fun refreshOnNext() {
@@ -380,6 +395,7 @@ class MsePlayer internal constructor(
         requireMainThread()
         if (released) return
         released = true
+        bundleWatch.cancel()
         tearDownSession("release")
         val lastClose = closing
         mainScope.launch {
@@ -389,19 +405,30 @@ class MsePlayer internal constructor(
         _status.update { it.copy(state = PlaybackState.Uninitialized(isInitializing = false)) }
     }
 
-    /** Downloads a newer signed player.js for the next session; at most one check per interval. */
-    private suspend fun prefetchPlayerJs(runningVersion: Long) {
+    private suspend fun download(remote: SignedBundleRef) {
         try {
-            if (now() - playerJs.lastFetch() < PLAYER_JS_CHECK_INTERVAL_MS) return
-            val fetched = playerJs.fetchIfAny(runningVersion) { _, version -> version }
-            if (fetched != null) log?.log(Logger.Level.INFO, "player.js v$fetched staged for the next session")
+            if (remote in rejectedPlayerJs.value || pendingPlayerJs.value?.remote == remote) return
+            if (remote.version <= (playerJs.getCached()?.second ?: playerJs.getEmbed().second)) return
+            pendingPlayerJs.value = playerJs.download(remote)
+            log?.log(Logger.Level.INFO, "player.js v${remote.version} downloaded for the next session")
         } catch (error: CancellationException) {
             throw error
         } catch (error: BundleSignatureException) {
+            rejectedPlayerJs.update { it + remote }
             log?.captureError(error, "player.js update rejected")
         } catch (error: Throwable) {
-            log?.log(Logger.Level.WARN, "player.js update check failed", error)
+            log?.log(Logger.Level.WARN, "player.js update failed", error)
         }
+    }
+
+    /** Boot is a blocking eval on the engine thread; null (reported) when [source] will not boot. */
+    private suspend fun bootOrNull(engineThread: CoroutineDispatcher, source: String, failure: String): DynamicEnginePlayer? = try {
+        withContext(engineThread + NonCancellable) { buildPlayer(engineThread, source) }
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        log?.captureError(error, failure)
+        null
     }
 
     private fun startSession(reason: String) {
@@ -418,18 +445,20 @@ class MsePlayer internal constructor(
             val engineThread = newEngineThread()
             var enginePlayer: DynamicEnginePlayer? = null
             try {
-                val bundle = playerJs.getCached()
-                val (source, version) = bundle ?: playerJs.getEmbed()
-                // Boot is a blocking eval on the engine thread; a built engine must reach the finally.
-                enginePlayer = try {
-                    withContext(engineThread + NonCancellable) { buildPlayer(engineThread, source) }
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Throwable) {
-                    if (bundle == null) throw error
-                    // A signed remote bundle that will not boot must not take playback down with it.
-                    log?.captureError(error, "player.js v$version failed to boot, using the embedded one")
-                    withContext(engineThread + NonCancellable) { buildPlayer(engineThread, playerJs.getEmbed().first) }
+                // A remote bundle that will not boot must not take playback down with it: the next
+                // one down boots. Each built player is assigned at once so it reaches the finally.
+                val fresh = pendingPlayerJs.getAndUpdate { null }
+                if (fresh != null) {
+                    enginePlayer = bootOrNull(engineThread, fresh.source, "player.js v${fresh.version} failed to boot, discarded")
+                    if (enginePlayer == null) rejectedPlayerJs.update { it + fresh.remote } else keep(fresh)
+                }
+                if (enginePlayer == null) {
+                    enginePlayer = playerJs.getCached()?.let { (source, version) ->
+                        bootOrNull(engineThread, source, "player.js v$version failed to boot, using the embedded one")
+                    }
+                }
+                if (enginePlayer == null) {
+                    enginePlayer = withContext(engineThread + NonCancellable) { buildPlayer(engineThread, playerJs.getEmbed().first) }
                 }
                 newSession.player = enginePlayer
                 if (hasPendingVideoSurface) enginePlayer.setVideoSurface(pendingVideoSurface)
@@ -440,7 +469,6 @@ class MsePlayer internal constructor(
                 _status.update {
                     if (it.state is PlaybackState.Uninitialized) it.copy(state = PlaybackState.Idle) else it
                 }
-                cleanupScope.launch { prefetchPlayerJs(version) }
                 for (command in newSession.commands) {
                     newSession.queued--
                     newSession.runningSince = TimeSource.Monotonic.markNow()
@@ -521,7 +549,19 @@ class MsePlayer internal constructor(
         closing = oldSession.job
     }
 
+    /** Caches a downloaded bundle that booted; failing to only costs the next launch a download. */
+    private suspend fun keep(bundle: VerifiedBundle) {
+        try {
+            playerJs.store(bundle)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            log?.log(Logger.Level.WARN, "player.js v${bundle.version} booted but could not be cached", error)
+        }
+    }
+
     private fun send(command: suspend (DynamicEnginePlayer) -> Unit) {
+        playerJs.checkUpdate()
         val activeSession = session ?: return
         if (activeSession.commands.trySend(command).isSuccess) activeSession.queued++
     }
@@ -779,10 +819,6 @@ class MsePlayer internal constructor(
 
     companion object {
         private const val LOAD_TIMEOUT_MS = 5_000L
-        private const val PLAYER_JS_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
-
-        @OptIn(kotlin.time.ExperimentalTime::class)
-        private fun now(): Long = kotlin.time.Clock.System.now().toEpochMilliseconds()
         private const val ENGINE_CLOSE_TIMEOUT_MS = 3_000L
 
         fun create(

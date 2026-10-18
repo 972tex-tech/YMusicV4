@@ -28,7 +28,6 @@ import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.EMBEDDED_PLAYER_JS_VERSION
 import io.ymusic.dynamicengine.ENGINE_BUNDLE
 import io.ymusic.dynamicengine.JsSourceProvider
-import io.ymusic.dynamicengine.SignedBundleRef
 import io.ymusic.dynamicengine.androidEngineCacheStore
 import io.ymusic.dynamicengine.player.bindMseNativeLogs
 import io.ymusic.dynamicengine.playerJsSource
@@ -78,6 +77,7 @@ import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.ScanResult
 import io.ymusic.ui.YtEngineSabrSpecResolver
+import io.ymusic.ui.bundleConfig
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.loaderYoutubeArt
@@ -282,8 +282,7 @@ class YMusicApplication : Application() {
             )
         }
         // Flags, the newest JS bundle revisions, and update availability. Started here so the first
-        // fetch overlaps the rest of startup; nothing below waits on it, and both JS seams read
-        // whatever it holds when they are asked (the cached body on a cold start offline).
+        // fetch overlaps the rest of startup; nothing waits on it, the JS bundles follow what it publishes.
         val remoteConfig = RemoteConfig(
             api = api,
             cacheFile = File(filesDir, "remote-config.json").toOkioPath(),
@@ -308,11 +307,10 @@ class YMusicApplication : Application() {
         // it — BEFORE the engine starts: the engine pulls the same key as its content-language.
         ensureAppLanguage(settings)
         // The engine bundle: asset embed (no compiled-in constant) + file cache + the revision the
-        // config service publishes. The manager boots cached-or-embed and runs the periodic update
-        // check itself.
+        // config service publishes, which the manager follows from start.
         val engineSource = DefaultJsSourceProvider(
             client = http.engine,
-            config = { remoteConfig.getConfig().engineJs?.let { SignedBundleRef(it.version, it.url, it.signature) } },
+            config = remoteConfig.bundleConfig { it.engineJs },
             name = ENGINE_BUNDLE,
             publicKey = BuildConfig.BUNDLE_PUBLIC_KEY,
             embedVersion = BuildConfig.ENGINE_JS_VERSION,
@@ -381,7 +379,7 @@ class YMusicApplication : Application() {
 
         val playerJs = playerJsSource(
             client = http.engine,
-            config = { remoteConfig.getConfig().playerJs?.let { SignedBundleRef(it.version, it.url, it.signature) } },
+            config = remoteConfig.bundleConfig { it.playerJs },
             publicKey = BuildConfig.BUNDLE_PUBLIC_KEY,
             fileSystem = FileSystem.SYSTEM,
             directory = File(filesDir, "player-js").toOkioPath(),
@@ -399,9 +397,8 @@ class YMusicApplication : Application() {
             autoDownload = { settings.flow(AppSettings.autoDownloadUpdates).value },
             autoDownloadFailed = { settings.flow(AppSettings.updateAutoDownloadFailed).value },
             rememberAutoDownloadFailed = { settings.put(AppSettings.updateAutoDownloadFailed, it) },
-            refreshConfig = { remoteConfig.refreshNow() },
-            latestUpdate = { remoteConfig.getConfig().appUpdate },
-            downloadSite = { remoteConfig.config.replayCache.lastOrNull()?.downloadPageUrl },
+            freshConfig = { remoteConfig.awaitFresh(timeoutMs = 3_000L) },
+            downloadSite = { remoteConfig.config.value.downloadPageUrl },
             configUpdates = remoteConfig.config.map { it.appUpdate },
         )
         updates.pruneDownloads()

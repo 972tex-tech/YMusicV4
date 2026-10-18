@@ -11,13 +11,14 @@ import kmphttp.json.JsonWriter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import okio.FileSystem
 import okio.IOException
 import okio.Path
@@ -35,13 +36,13 @@ const val REMOTE_CONFIG_MIN_INTERVAL_MS: Long = 5 * 60 * 1000L
  * newer build exists. How the service is reached is [ApiService]'s business; this class owns only
  * the policy — the throttle, the on-disk cache, and what counts as fresh.
  *
- * [config] holds the last answer the app managed to read — the body cached by the previous run until
- * the first fetch lands, then whatever the service said. A fetch that fails leaves the previous value
- * in place: a service outage must not change how the app behaves.
+ * [config] is the one way to read it: DEFAULTS until the cache of the previous run loads, then every
+ * config fetched since. A fetch that fails publishes nothing, so the previous value stays: a service
+ * outage must not change how the app behaves.
  *
- * Nothing polls. [checkUpdate] is called from the places a person actually arrives at — the menu,
- * discover, search, play — and throttles itself to one fetch per [REMOTE_CONFIG_MIN_INTERVAL_MS], so
- * an idle app in the background makes no requests and keeps no timer alive to wake the device for.
+ * Nothing polls. [checkUpdate] is called wherever the config is used — app open, every engine and
+ * player operation — and fetches only when what is held is older than the caller accepts, so an idle
+ * app in the background makes no requests and keeps no timer alive to wake the device for.
  *
  * What gets cached for the next cold start is the parsed [RemoteConfigData], re-encoded. A field
  * this build does not know is therefore not preserved across a restart; it arrives again on the
@@ -57,26 +58,15 @@ class RemoteConfig(
     private val now: () -> Long,
     private val log: Logger? = null,
 ) {
-    private var latest: RemoteConfigData? = null
-    private val _config = MutableSharedFlow<RemoteConfigData>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    val config: SharedFlow<RemoteConfigData> = _config.asSharedFlow()
+    private val _config = MutableStateFlow(RemoteConfigData.DEFAULTS)
+    val config: StateFlow<RemoteConfigData> = _config.asStateFlow()
 
     private val mutex = Mutex()
     private var initialized = false
     private var inFlight: Job? = null
 
     init {
-        scope.launch {
-            initIfNotYet()
-            // Guarded: fetch() requires a service, and a build without one is a valid state (it
-            // runs on the cache, or on DEFAULTS) rather than a crash on every start.
-            if (api != null) fetch().forget()
-        }
-    }
-
-    private fun publish(data: RemoteConfigData) {
-        latest = data
-        _config.tryEmit(data) // always success
+        scope.launch { initIfNotYet() }
     }
 
     private suspend fun initIfNotYet() {
@@ -107,64 +97,41 @@ class RemoteConfig(
                 RemoteConfigData.DEFAULTS
             }
             initialized = true
-            publish(latestValue)
+            _config.value = latestValue
             return
         }
     }
 
     /**
-     * Bring the config up to date in the background if it is stale, otherwise do nothing.
+     * Fetch in the background when the config is older than [acceptMaxAgeMs]; otherwise do nothing.
      *
-     * Returns immediately and never fails: call it freely from anywhere a person lands and let the
-     * throttle decide. Only a SUCCESSFUL fetch moves [RemoteConfigData.updatedAt], so an outage does
-     * not buy the service a quiet window.
+     * Returns immediately and reports nothing — a fetched config arrives through [config], a failed
+     * one is logged and leaves [config] as it was. Only a SUCCESSFUL fetch moves
+     * [RemoteConfigData.updatedAt], so an outage does not buy the service a quiet window.
      */
-    fun checkUpdate(minIntervalMs: Long = REMOTE_CONFIG_MIN_INTERVAL_MS) {
-        // Fast path, off the caller's thread budget: no service, one already running, or still fresh.
+    fun checkUpdate(acceptMaxAgeMs: Long = REMOTE_CONFIG_MIN_INTERVAL_MS) {
         if (api == null || inFlight?.isActive == true) return
-        if (isFresh(latest, minIntervalMs)) return
+        if (isFresh(_config.value, acceptMaxAgeMs)) return
 
         scope.launch {
             initIfNotYet()
             // Re-checked inside: initIfNotYet may have just loaded a cache newer than the window.
-            if (isFresh(latest, minIntervalMs)) return@launch
+            if (isFresh(_config.value, acceptMaxAgeMs)) return@launch
             fetch().forget()
         }
     }
 
-    /** Null is never fresh — nothing has been loaded yet, so anything is an improvement. */
-    private fun isFresh(data: RemoteConfigData?, maxAgeMs: Long): Boolean =
-        data != null && now() - data.updatedAt < maxAgeMs
+    private fun isFresh(data: RemoteConfigData, maxAgeMs: Long): Boolean = now() - data.updatedAt < maxAgeMs
 
     /**
-     * The config, fetching and waiting when what we hold is older than
-     * [REMOTE_CONFIG_MIN_INTERVAL_MS].
-     *
-     * No max-age parameter: the freshness policy is this class's, not the caller's. A screen asking
-     * for config has no basis for deciding how stale is acceptable, and letting each one pick would
-     * make the request rate a function of which screens happen to be open.
-     *
-     * Never DEFAULTS-by-accident: a caller that waits gets the cache when there is one, and only the
-     * defaults when neither cache nor fetch produced anything.
+     * For a person waiting on an answer ("Check for update"): fetch now and wait up to [timeoutMs]
+     * for the result. Null when none arrives in time — failed, or no service.
      */
-    suspend fun getConfig(): RemoteConfigData {
+    suspend fun awaitFresh(timeoutMs: Long): RemoteConfigData? {
         initIfNotYet()
-        if (api == null || isFresh(latest, REMOTE_CONFIG_MIN_INTERVAL_MS)) return checkNotNull(latest)
-        fetch().join()
-        return checkNotNull(latest)
-    }
-
-    /**
-     * Fetch now, ignoring the throttle, and wait — for an explicit user request ("Check for
-     * update"), never for background refreshes. False when there is no service or the fetch
-     * failed; the last good value stays published either way.
-     */
-    suspend fun refreshNow(): Boolean {
-        initIfNotYet()
-        if (api == null) return false
-        val before = latest?.updatedAt
-        fetch().join()
-        return latest?.updatedAt != before
+        val held = _config.value
+        checkUpdate(acceptMaxAgeMs = 0L)
+        return withTimeoutOrNull(timeoutMs) { config.first { it != held } }
     }
 
     private suspend fun fetch(): Job {
@@ -183,7 +150,7 @@ class RemoteConfig(
                     } catch (error: Throwable) {
                         log?.captureError(error, "Write config cache failure")
                     }
-                    publish(data)
+                    _config.value = data
                 } catch (cancel: CancellationException) {
                     // Rethrown, not logged: cancelling the scope is not a fetch failure, and
                     // swallowing it here would leave the coroutine reported as completed normally.

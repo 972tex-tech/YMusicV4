@@ -1,6 +1,7 @@
 package io.ymusic.dynamicengine
 
 import io.ymusic.dynamicengine.internal.ENGINE_TEST_JS
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import kotlin.test.Test
@@ -15,8 +16,10 @@ class DynamicEngineManagerTest {
     private class CachedSource(private val cached: String?) : JsSourceProvider {
         override suspend fun getCached() = cached?.let { it to 99L }
         override suspend fun getEmbed() = ENGINE_TEST_JS to 20L
-        override suspend fun lastFetch() = 0L
-        override suspend fun <T> fetchIfAny(currentVersion: Long, consume: suspend (String, Long) -> T): T? = null
+        override fun checkUpdate() = Unit
+        override val published = emptyFlow<SignedBundleRef?>()
+        override suspend fun download(remote: SignedBundleRef): VerifiedBundle = error("no remote")
+        override suspend fun store(bundle: VerifiedBundle) = error("no remote")
     }
 
     private fun manager(
