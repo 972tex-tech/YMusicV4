@@ -79,7 +79,7 @@ private fun sessionCacheDirs(root: File) = listOf(File(root, HTTP_CACHE_DIR), Fi
  */
 internal suspend fun openCookieStore(store: AppStore, dataDir: File, log: Logger?): CookieStoreOpen = withContext(Dispatchers.IO) {
     val userKey = try {
-        userScopeCookieKey(dataDir, log)
+        userScopeCookieKey(store, log)
     } catch (error: Throwable) {
         log?.log(Logger.Level.WARN, "OS cookie key unavailable, this launch runs as a guest", error)
         null

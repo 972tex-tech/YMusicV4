@@ -104,8 +104,8 @@ internal class AppStore private constructor(private val driver: SqlDriver) {
         private const val LEGACY_SETTINGS = "settings.properties"
 
         /** Each imported as the secret of its own name. */
-        private val LEGACY_SECRETS = listOf(COOKIE_JAR)
-        private val LEGACY_LEFTOVERS = listOf("$COOKIE_JAR.tmp", "$COOKIE_JAR.reseal")
+        private val LEGACY_SECRETS = listOf(COOKIE_JAR, DPAPI_KEY_SECRET, FALLBACK_KEY_SECRET)
+        private val LEGACY_LEFTOVERS = listOf("$COOKIE_JAR.tmp", "$COOKIE_JAR.reseal", "$DPAPI_KEY_SECRET.tmp")
 
         fun open(dataDir: File, log: Logger?): AppStore {
             val file = File(dataDir.apply { mkdirs() }, DB_FILE)
