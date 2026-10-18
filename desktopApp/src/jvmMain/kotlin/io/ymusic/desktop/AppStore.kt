@@ -75,8 +75,9 @@ internal class AppStore private constructor(private val driver: SqlDriver) {
      *  once its rows commit. Rows already here win: a crash between commit and delete re-imports. */
     private fun importLegacyFiles(dataDir: File, log: Logger?) {
         val settingsFile = File(dataDir, LEGACY_SETTINGS)
-        if (!settingsFile.exists()) return
-        val settings = try {
+        val secretFiles = LEGACY_SECRETS.map { File(dataDir, it) }
+        if (!settingsFile.exists() && secretFiles.none { it.exists() }) return
+        val settings = if (!settingsFile.exists()) emptyMap() else try {
             Properties().apply { settingsFile.inputStream().use(::load) }.entries.associate { (key, value) -> key.toString() to value.toString() }
         } catch (error: Exception) {
             log?.log(Logger.Level.WARN, "legacy $LEGACY_SETTINGS unreadable, starting on defaults", error)
@@ -89,14 +90,22 @@ internal class AppStore private constructor(private val driver: SqlDriver) {
                     bindString(1, value)
                 }
             }
+            // An empty file is what a power loss left behind: nothing to keep.
+            for (file in secretFiles) {
+                if (file.length() > 0) secretOrPut(file.name, file.readBytes())
+            }
         }
-        settingsFile.delete()
-        log?.log(Logger.Level.INFO, "imported legacy $LEGACY_SETTINGS into $DB_FILE")
+        (listOf(settingsFile) + secretFiles + LEGACY_LEFTOVERS.map { File(dataDir, it) }).forEach { it.delete() }
+        log?.log(Logger.Level.INFO, "imported legacy settings and cookie files into $DB_FILE")
     }
 
     companion object {
         private const val DB_FILE = "app.db"
         private const val LEGACY_SETTINGS = "settings.properties"
+
+        /** Each imported as the secret of its own name. */
+        private val LEGACY_SECRETS = listOf(COOKIE_JAR)
+        private val LEGACY_LEFTOVERS = listOf("$COOKIE_JAR.tmp", "$COOKIE_JAR.reseal")
 
         fun open(dataDir: File, log: Logger?): AppStore {
             val file = File(dataDir.apply { mkdirs() }, DB_FILE)

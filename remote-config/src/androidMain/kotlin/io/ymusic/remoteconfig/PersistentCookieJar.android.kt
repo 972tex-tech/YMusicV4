@@ -3,12 +3,10 @@ package io.ymusic.remoteconfig
 import kmphttp.Cookie
 import kmphttp.CookieJar
 import kmphttp.HttpUrl
-import okio.FileSystem
-import okio.Path
 
 // Android rides kmpHttp's JVM variant, so CookieJar == okhttp3.CookieJar here too (blocking).
-actual class PersistentCookieJar actual constructor(file: Path, fileSystem: FileSystem) : CookieJar {
-    private val store = PersistentCookieStore(file, fileSystem)
+actual class PersistentCookieJar actual constructor(document: CookieDocument) : CookieJar {
+    private val store = PersistentCookieStore(document)
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) = store.saveFromResponse(cookies)
 

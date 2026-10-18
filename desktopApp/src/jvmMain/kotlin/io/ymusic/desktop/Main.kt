@@ -477,7 +477,7 @@ fun main() {
                     }
                     LaunchedEffect(Unit) {
                         boot {
-                            when (val opened = openCookieStore(ymusicDataDir().apply { mkdirs() }, rootLogger.fork("cookies"))) {
+                            when (val opened = openCookieStore(appStore, ymusicDataDir().apply { mkdirs() }, rootLogger.fork("cookies"))) {
                                 is CookieStoreOpen.Ready -> opened.session
                                 is CookieStoreOpen.Locked -> {
                                     lockedCookies = opened
