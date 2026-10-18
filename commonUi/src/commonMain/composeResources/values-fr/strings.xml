@@ -398,6 +398,7 @@
     <string name="update_download">Télécharger</string>
     <string name="update_downloading">Téléchargement… %1$s sur %2$s</string>
     <string name="update_ready">Prête à installer</string>
+    <string name="update_installing">Installation…</string>
     <string name="update_manual_hint">Cette copie ne peut pas se mettre à jour elle-même (%1$s). Téléchargez plutôt la nouvelle version.</string>
     <string name="update_failed">Échec de la mise à jour : %1$s</string>
     <string name="update_official_site">Télécharger depuis le site officiel</string>

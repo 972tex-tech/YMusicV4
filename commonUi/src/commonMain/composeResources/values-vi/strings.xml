@@ -449,6 +449,7 @@
     <string name="update_full_changelog">Xem toàn bộ thay đổi</string>
     <string name="update_downloading">Đang tải… %1$s / %2$s</string>
     <string name="update_ready">Sẵn sàng cài đặt</string>
+    <string name="update_installing">Đang cài đặt…</string>
     <string name="update_manual_hint">Bản này không thể tự cập nhật (%1$s). Hãy tải bản mới theo cách thủ công.</string>
     <string name="update_blocked_not_installed">ứng dụng không chạy từ bản đã cài đặt</string>
     <string name="update_blocked_mac_swap">phiên bản macOS này không thể thay thế ứng dụng tại chỗ</string>

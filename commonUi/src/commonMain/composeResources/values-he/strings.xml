@@ -398,6 +398,7 @@
     <string name="update_download">הורדה</string>
     <string name="update_downloading">מוריד… %1$s מתוך %2$s</string>
     <string name="update_ready">מוכן להתקנה</string>
+    <string name="update_installing">מתקין…</string>
     <string name="update_manual_hint">העותק הזה לא יכול לעדכן את עצמו (%1$s). הורד את הגרסה החדשה במקום.</string>
     <string name="update_failed">העדכון נכשל: %1$s</string>
     <string name="update_official_site">הורדה מהאתר הרשמי</string>

@@ -397,6 +397,7 @@
     <string name="update_download">Daji</string>
     <string name="update_downloading">Dajinaya… %1$s ee %2$s</string>
     <string name="update_ready">Diyaar u ah in lagu shubo</string>
+    <string name="update_installing">Waa la shubayaa…</string>
     <string name="update_manual_hint">Nuskhadani iskeed isuma cusboonaysiin karto (%1$s). Taa beddelkeeda soo daji nooca cusub.</string>
     <string name="update_failed">Cusboonaysiintu way guuldaraysatay: %1$s</string>
     <string name="update_official_site">Ka soo deji websaydhka rasmiga ah</string>

@@ -396,6 +396,7 @@
     <string name="update_download">下載</string>
     <string name="update_downloading">下載中… %1$s / %2$s</string>
     <string name="update_ready">可以安裝了</string>
+    <string name="update_installing">正在安裝…</string>
     <string name="update_manual_hint">這個版本無法自行更新（%1$s）。請改為下載新版本。</string>
     <string name="update_failed">更新失敗：%1$s</string>
     <string name="update_official_site">從官方網站下載</string>

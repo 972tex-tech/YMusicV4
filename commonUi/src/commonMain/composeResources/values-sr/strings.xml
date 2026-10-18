@@ -398,6 +398,7 @@
     <string name="update_download">Преузми</string>
     <string name="update_downloading">Преузимање… %1$s од %2$s</string>
     <string name="update_ready">Спремно за инсталирање</string>
+    <string name="update_installing">Инсталирање…</string>
     <string name="update_manual_hint">Ова копија не може сама да се ажурира (%1$s). Уместо тога преузмите нову верзију.</string>
     <string name="update_failed">Ажурирање није успело: %1$s</string>
     <string name="update_official_site">Преузмите са званичног сајта</string>

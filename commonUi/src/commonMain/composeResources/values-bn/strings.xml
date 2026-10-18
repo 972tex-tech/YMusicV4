@@ -397,6 +397,7 @@
     <string name="update_download">ডাউনলোড</string>
     <string name="update_downloading">ডাউনলোড হচ্ছে… %2$s-এর মধ্যে %1$s</string>
     <string name="update_ready">ইনস্টলের জন্য প্রস্তুত</string>
+    <string name="update_installing">ইনস্টল হচ্ছে…</string>
     <string name="update_manual_hint">এই কপিটি নিজে আপডেট হতে পারে না (%1$s)। এর বদলে নতুন সংস্করণটি ডাউনলোড করুন।</string>
     <string name="update_failed">আপডেট ব্যর্থ: %1$s</string>
     <string name="update_official_site">অফিসিয়াল ওয়েবসাইট থেকে ডাউনলোড করুন</string>

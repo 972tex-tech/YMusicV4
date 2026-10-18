@@ -399,6 +399,7 @@
     <string name="update_download">Скачать</string>
     <string name="update_downloading">Загрузка… %1$s из %2$s</string>
     <string name="update_ready">Готово к установке</string>
+    <string name="update_installing">Установка…</string>
     <string name="update_manual_hint">Эта копия не может обновиться сама (%1$s). Скачайте новую версию вручную.</string>
     <string name="update_failed">Ошибка обновления: %1$s</string>
     <string name="update_official_site">Скачать с официального сайта</string>

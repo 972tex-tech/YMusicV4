@@ -397,6 +397,7 @@
     <string name="update_download">डाउनलोड करा</string>
     <string name="update_downloading">डाउनलोड करत आहे… %2$s पैकी %1$s</string>
     <string name="update_ready">इंस्टॉल करण्यास तयार</string>
+    <string name="update_installing">इंस्टॉल होत आहे…</string>
     <string name="update_manual_hint">ही प्रत स्वतः अपडेट होऊ शकत नाही (%1$s). त्याऐवजी नवीन आवृत्ती डाउनलोड करा.</string>
     <string name="update_failed">अपडेट अयशस्वी: %1$s</string>
     <string name="update_official_site">अधिकृत वेबसाइटवरून डाउनलोड करा</string>

@@ -396,6 +396,7 @@
     <string name="update_download">ダウンロード</string>
     <string name="update_downloading">ダウンロード中… %1$s / %2$s</string>
     <string name="update_ready">インストールの準備ができました</string>
+    <string name="update_installing">インストール中…</string>
     <string name="update_manual_hint">このコピーは自動更新できません（%1$s）。新しいバージョンをダウンロードしてください。</string>
     <string name="update_failed">アップデートに失敗しました：%1$s</string>
     <string name="update_official_site">公式サイトからダウンロード</string>

@@ -398,6 +398,7 @@
     <string name="update_download">Scarica</string>
     <string name="update_downloading">Download in corso… %1$s di %2$s</string>
     <string name="update_ready">Pronto per l'installazione</string>
+    <string name="update_installing">Installazione in corso…</string>
     <string name="update_manual_hint">Questa copia non può aggiornarsi da sola (%1$s). Scarica invece la nuova versione.</string>
     <string name="update_failed">Aggiornamento non riuscito: %1$s</string>
     <string name="update_official_site">Scaricala dal sito ufficiale</string>

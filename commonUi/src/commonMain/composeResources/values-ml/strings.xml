@@ -397,6 +397,7 @@
     <string name="update_download">ഡൗൺലോഡ് ചെയ്യുക</string>
     <string name="update_downloading">ഡൗൺലോഡ് ചെയ്യുന്നു… %2$s-ൽ %1$s</string>
     <string name="update_ready">ഇൻസ്റ്റാൾ ചെയ്യാൻ തയ്യാർ</string>
+    <string name="update_installing">ഇൻസ്റ്റാൾ ചെയ്യുന്നു…</string>
     <string name="update_manual_hint">ഈ പകർപ്പിന് സ്വയം അപ്‌ഡേറ്റ് ചെയ്യാനാകില്ല (%1$s). പകരം പുതിയ പതിപ്പ് ഡൗൺലോഡ് ചെയ്യുക.</string>
     <string name="update_failed">അപ്‌ഡേറ്റ് പരാജയപ്പെട്ടു: %1$s</string>
     <string name="update_official_site">ഔദ്യോഗിക വെബ്സൈറ്റിൽ നിന്ന് ഡൗൺലോഡ് ചെയ്യുക</string>

@@ -397,6 +397,7 @@
     <string name="update_download">İndir</string>
     <string name="update_downloading">İndiriliyor… %1$s / %2$s</string>
     <string name="update_ready">Yüklemeye hazır</string>
+    <string name="update_installing">Yükleniyor…</string>
     <string name="update_manual_hint">Bu kopya kendini güncelleyemiyor (%1$s). Bunun yerine yeni sürümü indirin.</string>
     <string name="update_failed">Güncelleme başarısız: %1$s</string>
     <string name="update_official_site">Resmi web sitesinden indirin</string>

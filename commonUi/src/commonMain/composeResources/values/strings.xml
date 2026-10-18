@@ -471,6 +471,7 @@
     <string name="update_full_changelog">Full changelog</string>
     <string name="update_downloading">Downloading… %1$s of %2$s</string>
     <string name="update_ready">Ready to install</string>
+    <string name="update_installing">Installing…</string>
     <string name="update_manual_hint">This copy cannot update itself (%1$s). Download the new version instead.</string>
     <!-- Why this desktop copy cannot update itself; each fills update_manual_hint's %1$s. -->
     <string name="update_blocked_not_installed">the app is not running from an installed copy</string>

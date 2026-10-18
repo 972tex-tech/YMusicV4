@@ -454,6 +454,7 @@
     <string name="update_full_changelog">سجل التغييرات الكامل</string>
     <string name="update_downloading">جارٍ التنزيل… %1$s من %2$s</string>
     <string name="update_ready">جاهز للتثبيت</string>
+    <string name="update_installing">جارٍ التثبيت…</string>
     <string name="update_manual_hint">هذه النسخة لا يمكنها تحديث نفسها (%1$s). نزّل الإصدار الجديد يدويًا.</string>
     <string name="update_blocked_not_installed">التطبيق لا يعمل من نسخة مثبّتة</string>
     <string name="update_blocked_mac_swap">إصدار macOS هذا لا يمكنه استبدال التطبيق في مكانه</string>

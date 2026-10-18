@@ -397,6 +397,7 @@
     <string name="update_download">Downloaden</string>
     <string name="update_downloading">Downloaden… %1$s van %2$s</string>
     <string name="update_ready">Klaar om te installeren</string>
+    <string name="update_installing">Installeren…</string>
     <string name="update_manual_hint">Deze kopie kan zichzelf niet updaten (%1$s). Download in plaats daarvan de nieuwe versie.</string>
     <string name="update_failed">Update mislukt: %1$s</string>
     <string name="update_official_site">Download via de officiële website</string>

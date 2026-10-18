@@ -397,6 +397,7 @@
     <string name="update_download">බාගන්න</string>
     <string name="update_downloading">බාගත වෙමින්… %2$s න් %1$s</string>
     <string name="update_ready">ස්ථාපනයට සූදානම්</string>
+    <string name="update_installing">ස්ථාපනය වෙමින්…</string>
     <string name="update_manual_hint">මෙම පිටපතට තමන්ම යාවත්කාලීන විය නොහැක (%1$s). ඒ වෙනුවට නව අනුවාදය බාගන්න.</string>
     <string name="update_failed">යාවත්කාලීනය අසාර්ථකයි: %1$s</string>
     <string name="update_official_site">නිල වෙබ් අඩවියෙන් බාගන්න</string>

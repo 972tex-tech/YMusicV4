@@ -396,6 +396,7 @@
     <string name="update_download">Muat turun</string>
     <string name="update_downloading">Memuat turun… %1$s daripada %2$s</string>
     <string name="update_ready">Sedia untuk dipasang</string>
+    <string name="update_installing">Memasang…</string>
     <string name="update_manual_hint">Salinan ini tidak dapat mengemas kini dirinya sendiri (%1$s). Muat turun versi baharu sebaliknya.</string>
     <string name="update_failed">Kemas kini gagal: %1$s</string>
     <string name="update_official_site">Muat turun dari laman web rasmi</string>

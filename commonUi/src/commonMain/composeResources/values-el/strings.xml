@@ -397,6 +397,7 @@
     <string name="update_download">Λήψη</string>
     <string name="update_downloading">Λήψη… %1$s από %2$s</string>
     <string name="update_ready">Έτοιμο για εγκατάσταση</string>
+    <string name="update_installing">Εγκατάσταση…</string>
     <string name="update_manual_hint">Αυτό το αντίγραφο δεν μπορεί να ενημερωθεί μόνο του (%1$s). Κατεβάστε τη νέα έκδοση.</string>
     <string name="update_failed">Η ενημέρωση απέτυχε: %1$s</string>
     <string name="update_official_site">Λήψη από τον επίσημο ιστότοπο</string>

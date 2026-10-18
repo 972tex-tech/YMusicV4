@@ -397,6 +397,7 @@
     <string name="update_download">Pakua</string>
     <string name="update_downloading">Inapakua… %1$s kati ya %2$s</string>
     <string name="update_ready">Iko tayari kusakinishwa</string>
+    <string name="update_installing">Inasakinisha…</string>
     <string name="update_manual_hint">Nakala hii haiwezi kujisasisha yenyewe (%1$s). Badala yake pakua toleo jipya.</string>
     <string name="update_failed">Imeshindwa kusasisha: %1$s</string>
     <string name="update_official_site">Ipakue kutoka tovuti rasmi</string>

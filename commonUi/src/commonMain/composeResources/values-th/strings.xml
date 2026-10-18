@@ -396,6 +396,7 @@
     <string name="update_download">ดาวน์โหลด</string>
     <string name="update_downloading">กำลังดาวน์โหลด… %1$s จาก %2$s</string>
     <string name="update_ready">พร้อมติดตั้ง</string>
+    <string name="update_installing">กำลังติดตั้ง…</string>
     <string name="update_manual_hint">สำเนานี้อัปเดตตัวเองไม่ได้ (%1$s) โปรดดาวน์โหลดเวอร์ชันใหม่แทน</string>
     <string name="update_failed">อัปเดตไม่สำเร็จ: %1$s</string>
     <string name="update_official_site">ดาวน์โหลดจากเว็บไซต์ทางการ</string>

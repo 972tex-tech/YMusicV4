@@ -397,6 +397,7 @@
     <string name="update_download">Изтегли</string>
     <string name="update_downloading">Изтегляне… %1$s от %2$s</string>
     <string name="update_ready">Готово за инсталиране</string>
+    <string name="update_installing">Инсталиране…</string>
     <string name="update_manual_hint">Това копие не може да се актуализира само (%1$s). Изтеглете новата версия ръчно.</string>
     <string name="update_failed">Неуспешна актуализация: %1$s</string>
     <string name="update_official_site">Изтеглете от официалния сайт</string>

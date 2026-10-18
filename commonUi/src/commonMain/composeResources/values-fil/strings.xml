@@ -397,6 +397,7 @@
     <string name="update_download">I-download</string>
     <string name="update_downloading">Nagda-download… %1$s ng %2$s</string>
     <string name="update_ready">Handa nang i-install</string>
+    <string name="update_installing">Ini-install…</string>
     <string name="update_manual_hint">Hindi kayang i-update ng kopyang ito ang sarili nito (%1$s). I-download na lang ang bagong bersyon.</string>
     <string name="update_failed">Nabigo ang update: %1$s</string>
     <string name="update_official_site">Kunin ito sa opisyal na website</string>
