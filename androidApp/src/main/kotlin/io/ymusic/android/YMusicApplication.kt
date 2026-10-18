@@ -631,17 +631,19 @@ class YMusicApplication : Application() {
             deleteFromDisk = { item ->
                 withContext(Dispatchers.IO) {
                     val uri = android.net.Uri.parse(item.uri.toString())
-                    // Rides the persisted tree permission from the folder pick. An already-gone
-                    // document still clears its library row (matching the desktop shell).
+                    // Rides the persisted tree permission from the folder pick. A file that is already gone
+                    // (or whose folder is) needs no delete: the caller still clears its library row.
+                    if (!documentExists(uri)) return@withContext
                     val deleted = try {
                         android.provider.DocumentsContract.deleteDocument(contentResolver, uri)
                     } catch (e: java.io.FileNotFoundException) {
                         true
                     } catch (e: IllegalArgumentException) {
-                        if (!isConfirmedMissing(uri, e)) throw e
+                        if (documentExists(uri)) throw e
                         true
                     }
-                    check(deleted) { "Android refused to delete this document" }
+                    // Before Android 10 deleteDocument swallows the provider's exception into false.
+                    check(deleted || !documentExists(uri)) { "Android refused to delete this document" }
                 }
             },
             appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
@@ -712,20 +714,18 @@ class YMusicApplication : Application() {
         }
     }
 
-    /** Whether [error] from deleting [uri] proves the file is gone. ExternalStorageProvider's tree
-     *  check carries the cause only as message text; just "Missing file for <this docId>" means absent
-     *  ("No root for" is an unmounted volume). Any other provider must answer a query with zero rows. */
-    private fun isConfirmedMissing(uri: android.net.Uri, error: IllegalArgumentException): Boolean {
-        val documentId = android.provider.DocumentsContract.getDocumentId(uri)
-        if (error.message?.contains("FileNotFoundException: Missing file for $documentId at ") == true) return true
-        val cursor = try {
-            contentResolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
-        } catch (probe: Exception) {
-            error.addSuppressed(probe)
-            return false
-        }
-        // A null cursor is no evidence: the resolver also returns null when the provider is unavailable.
-        return cursor?.use { it.count == 0 } == true
+    /** Whether the document at [uri] is still there. A vanished file, or one under a vanished folder, comes
+     *  back as FileNotFoundException / IllegalArgumentException("Missing file for …"), zero rows, or a null
+     *  cursor (DocumentsProvider.query swallows its FileNotFoundException) — but null also means the provider
+     *  is unreachable, which proves nothing. Any other failure counts as present, so the delete is attempted. */
+    private fun documentExists(uri: android.net.Uri): Boolean = try {
+        contentResolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
+            ?.use { it.count > 0 }
+            ?: (contentResolver.acquireUnstableContentProviderClient(uri)?.also { it.close() } == null)
+    } catch (e: java.io.FileNotFoundException) {
+        false
+    } catch (e: IllegalArgumentException) {
+        false
     }
 
     /** SAF folder pick + full scan into [store]; returns how it ended, or null when canceled. */
