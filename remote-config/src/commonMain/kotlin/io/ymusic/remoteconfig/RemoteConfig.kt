@@ -190,7 +190,13 @@ class RemoteConfig(
         writer.value(data)
         // The document is a few hundred bytes, so it is written whole and drained once. okio's
         // writeAll moves segments rather than copying them.
-        fileSystem.sink(tmp).use { it.buffer().use { out -> out.writeAll(writer.buffer) } }
+        fileSystem.openReadWrite(tmp).use { handle ->
+            handle.resize(0)
+            handle.sink().buffer().use { out -> out.writeAll(writer.buffer) }
+            // fsync before the rename: otherwise a power loss can persist the rename but not the
+            // data, leaving an empty cache file (YMUSIC-KMP-8F).
+            handle.flush()
+        }
         fileSystem.atomicMove(tmp, cacheFile)
     }
 
