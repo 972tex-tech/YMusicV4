@@ -301,7 +301,12 @@ async function scrapeSession(): Promise<YtSession> {
   const host = hostOf(res.url);
   if (host !== WWW_HOST) {
     res.close();
-    throw JsEngineErrorImpl.parse("yt session: homepage redirected to " + host);
+    const message = "yt session: homepage redirected to " + host;
+    // The signed-in session is dead: the playability code every host already offers sign-in for.
+    if (host === "accounts.google.com") throw new JsEngineErrorImpl(message, "LOGIN_REQUIRED");
+    // A Family Link (supervised) account: YouTube sends it to the parent-setup site instead.
+    if (host === "families.youtube.com") throw new JsEngineErrorImpl(message, "supervised_account");
+    throw JsEngineErrorImpl.parse(message);
   }
   const html = await res.text();
   if (RE_CHALLENGE_BODY.test(html))
