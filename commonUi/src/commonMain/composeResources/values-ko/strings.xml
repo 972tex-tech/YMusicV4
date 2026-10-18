@@ -474,6 +474,10 @@
     <string name="error_network">YouTube에 연결할 수 없습니다. 네트워크 연결을 확인하고 다시 시도하세요.</string>
     <string name="error_disk_full">저장 공간이 부족합니다. 공간을 확보한 후 다시 시도하세요.</string>
     <string name="error_live_still_processing">방금 종료된 라이브 스트림으로 아직 처리 중입니다. 나중에 다시 시도하세요</string>
+    <string name="dialog_ok">확인</string>
+    <string name="folder_picker_disabled">시스템 파일 앱이 꺼져 있습니다. 폴더를 선택하려면 켜 주세요.</string>
+    <string name="folder_picker_open_settings">설정 열기</string>
+    <string name="folder_picker_missing">이 기기에는 폴더 선택 도구가 없어 폴더를 선택할 수 없습니다.</string>
     <string name="settings_player_cache">플레이어 캐시</string>
     <string name="settings_player_cache_summary">최대 %1$s · 사용 %2$s · 절약 %3$s</string>
     <string name="settings_player_cache_off">캐시 없음</string>

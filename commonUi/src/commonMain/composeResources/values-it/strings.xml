@@ -484,6 +484,10 @@
     <string name="error_network">Impossibile raggiungere YouTube. Controlla la connessione e riprova.</string>
     <string name="error_disk_full">Spazio di archiviazione insufficiente. Libera spazio e riprova.</string>
     <string name="error_live_still_processing">Questa diretta è appena terminata ed è ancora in elaborazione. Riprova più tardi</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">L'app File di sistema è disattivata. Attivala per scegliere una cartella.</string>
+    <string name="folder_picker_open_settings">Apri impostazioni</string>
+    <string name="folder_picker_missing">Questo dispositivo non ha un selettore di cartelle, quindi non è possibile sceglierne una.</string>
     <string name="settings_player_cache">Cache del player</string>
     <string name="settings_player_cache_summary">Max %1$s · Usata %2$s · Risparmiata %3$s</string>
     <string name="settings_player_cache_off">Nessuna cache</string>

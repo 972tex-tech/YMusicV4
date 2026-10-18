@@ -479,6 +479,10 @@
     <string name="error_network">YouTube ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.</string>
     <string name="error_disk_full">Nicht genügend Speicherplatz. Gib etwas Speicher frei und versuche es erneut.</string>
     <string name="error_live_still_processing">Dieser Stream ist gerade zu Ende und wird noch verarbeitet. Versuche es später erneut</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Die System-App „Dateien“ ist deaktiviert. Aktiviere sie, um einen Ordner auszuwählen.</string>
+    <string name="folder_picker_open_settings">Einstellungen öffnen</string>
+    <string name="folder_picker_missing">Dieses Gerät hat keine Ordnerauswahl, daher kann kein Ordner ausgewählt werden.</string>
     <string name="settings_player_cache">Player-Cache</string>
     <string name="settings_player_cache_summary">Max. %1$s · Belegt %2$s · Gespart %3$s</string>
     <string name="settings_player_cache_off">Kein Cache</string>

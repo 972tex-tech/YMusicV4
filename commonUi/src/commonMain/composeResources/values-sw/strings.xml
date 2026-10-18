@@ -479,6 +479,10 @@
     <string name="error_network">Imeshindwa kufikia YouTube. Angalia muunganisho wako na ujaribu tena.</string>
     <string name="error_disk_full">Hakuna nafasi ya kutosha ya hifadhi. Futa baadhi ya vitu kupata nafasi kisha ujaribu tena.</string>
     <string name="error_live_still_processing">Mtiririko huu umeisha hivi punde na bado unachakatwa. Jaribu tena baadaye</string>
+    <string name="dialog_ok">Sawa</string>
+    <string name="folder_picker_disabled">Programu ya Faili ya mfumo imezimwa. Iwashe ili uchague folda.</string>
+    <string name="folder_picker_open_settings">Fungua mipangilio</string>
+    <string name="folder_picker_missing">Kifaa hiki hakina kichagua folda, kwa hivyo folda haiwezi kuchaguliwa.</string>
     <string name="settings_player_cache">Akiba ya kicheza</string>
     <string name="settings_player_cache_summary">Kikomo %1$s · Imetumika %2$s · Imeokolewa %3$s</string>
     <string name="settings_player_cache_off">Hakuna akiba</string>

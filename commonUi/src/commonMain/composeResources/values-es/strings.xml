@@ -484,6 +484,10 @@
     <string name="error_network">No se puede conectar con YouTube. Comprueba tu conexión e inténtalo de nuevo.</string>
     <string name="error_disk_full">No hay suficiente espacio de almacenamiento. Libera espacio e inténtalo de nuevo.</string>
     <string name="error_live_still_processing">Esta emisión acaba de terminar y aún se está procesando. Inténtalo de nuevo más tarde</string>
+    <string name="dialog_ok">Aceptar</string>
+    <string name="folder_picker_disabled">La app Archivos del sistema está desactivada. Actívala para elegir una carpeta.</string>
+    <string name="folder_picker_open_settings">Abrir ajustes</string>
+    <string name="folder_picker_missing">Este dispositivo no tiene selector de carpetas, así que no se puede elegir una carpeta.</string>
     <string name="settings_player_cache">Caché del reproductor</string>
     <string name="settings_player_cache_summary">Máx. %1$s · Usado %2$s · Ahorrado %3$s</string>
     <string name="settings_player_cache_off">Sin caché</string>

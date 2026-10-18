@@ -479,6 +479,10 @@
     <string name="error_network">YouTube मा पुग्न सकिएन। आफ्नो जडान जाँच गरेर फेरि प्रयास गर्नुहोस्।</string>
     <string name="error_disk_full">पर्याप्त भण्डारण ठाउँ छैन। केही ठाउँ खाली गरेर फेरि प्रयास गर्नुहोस्।</string>
     <string name="error_live_still_processing">यो स्ट्रिम भर्खरै सकियो र अझै प्रशोधन हुँदैछ। पछि फेरि प्रयास गर्नुहोस्</string>
+    <string name="dialog_ok">ठिक छ</string>
+    <string name="folder_picker_disabled">सिस्टमको Files एप बन्द छ। फोल्डर छान्न यसलाई सक्रिय गर्नुहोस्।</string>
+    <string name="folder_picker_open_settings">सेटिङ खोल्नुहोस्</string>
+    <string name="folder_picker_missing">यो डिभाइसमा फोल्डर पिकर छैन, त्यसैले फोल्डर छान्न सकिँदैन।</string>
     <string name="settings_player_cache">प्लेयर क्यास</string>
     <string name="settings_player_cache_summary">अधिकतम %1$s · प्रयोग %2$s · बचत %3$s</string>
     <string name="settings_player_cache_off">क्यास छैन</string>

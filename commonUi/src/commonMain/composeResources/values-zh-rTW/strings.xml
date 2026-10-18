@@ -474,6 +474,10 @@
     <string name="error_network">無法連上 YouTube。請檢查網路連線，然後再試一次。</string>
     <string name="error_disk_full">儲存空間不足。請釋出一些空間，然後再試一次。</string>
     <string name="error_live_still_processing">這場直播剛結束，仍在處理中。請稍後再試</string>
+    <string name="dialog_ok">確定</string>
+    <string name="folder_picker_disabled">系統「檔案」應用程式已停用。請啟用後再選擇資料夾。</string>
+    <string name="folder_picker_open_settings">開啟設定</string>
+    <string name="folder_picker_missing">這部裝置沒有資料夾選擇器，因此無法選擇資料夾。</string>
     <string name="settings_player_cache">播放器快取</string>
     <string name="settings_player_cache_summary">上限 %1$s · 已使用 %2$s · 已節省 %3$s</string>
     <string name="settings_player_cache_off">不使用快取</string>

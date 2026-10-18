@@ -479,6 +479,10 @@
     <string name="error_network">A YouTube nem érhető el. Ellenőrizd a kapcsolatot, és próbáld újra.</string>
     <string name="error_disk_full">Nincs elég tárhely. Szabadíts fel helyet, és próbáld újra.</string>
     <string name="error_live_still_processing">Ez az élő adás most ért véget, és még feldolgozás alatt áll. Próbáld újra később</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">A rendszer Fájlok alkalmazása ki van kapcsolva. Kapcsolja be mappa kiválasztásához.</string>
+    <string name="folder_picker_open_settings">Beállítások megnyitása</string>
+    <string name="folder_picker_missing">Ezen az eszközön nincs mappaválasztó, ezért nem lehet mappát választani.</string>
     <string name="settings_player_cache">Lejátszó gyorsítótára</string>
     <string name="settings_player_cache_summary">Max. %1$s · Használt %2$s · Megtakarított %3$s</string>
     <string name="settings_player_cache_off">Nincs gyorsítótár</string>

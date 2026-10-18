@@ -479,6 +479,10 @@
     <string name="error_network">Kan YouTube niet bereiken. Controleer je verbinding en probeer het opnieuw.</string>
     <string name="error_disk_full">Niet genoeg opslagruimte. Maak wat ruimte vrij en probeer het opnieuw.</string>
     <string name="error_live_still_processing">Deze stream is net afgelopen en wordt nog verwerkt. Probeer het later opnieuw</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">De systeem-app Bestanden staat uit. Zet deze aan om een map te kiezen.</string>
+    <string name="folder_picker_open_settings">Instellingen openen</string>
+    <string name="folder_picker_missing">Dit apparaat heeft geen mapkiezer, dus er kan geen map worden gekozen.</string>
     <string name="settings_player_cache">Spelercache</string>
     <string name="settings_player_cache_summary">Max. %1$s · Gebruikt %2$s · Bespaard %3$s</string>
     <string name="settings_player_cache_off">Geen cache</string>

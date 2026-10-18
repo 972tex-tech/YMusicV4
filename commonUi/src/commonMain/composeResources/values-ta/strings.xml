@@ -479,6 +479,10 @@
     <string name="error_network">YouTube-ஐ அடைய முடியவில்லை. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயலவும்.</string>
     <string name="error_disk_full">போதுமான சேமிப்பிடம் இல்லை. சிறிது இடத்தைக் காலியாக்கி மீண்டும் முயலவும்.</string>
     <string name="error_live_still_processing">இந்த நேரலை இப்போதுதான் முடிந்தது, இன்னும் செயலாக்கப்படுகிறது. பிறகு மீண்டும் முயலவும்</string>
+    <string name="dialog_ok">சரி</string>
+    <string name="folder_picker_disabled">சிஸ்டத்தின் Files ஆப்ஸ் முடக்கப்பட்டுள்ளது. கோப்புறையைத் தேர்வுசெய்ய அதை இயக்கவும்.</string>
+    <string name="folder_picker_open_settings">அமைப்புகளைத் திற</string>
+    <string name="folder_picker_missing">இந்தச் சாதனத்தில் கோப்புறைத் தேர்வி இல்லை, எனவே கோப்புறையைத் தேர்வுசெய்ய முடியாது.</string>
     <string name="settings_player_cache">பிளேயர் தற்காலிகச் சேமிப்பு</string>
     <string name="settings_player_cache_summary">அதிகபட்சம் %1$s · பயன்படுத்தியது %2$s · சேமித்தது %3$s</string>
     <string name="settings_player_cache_off">தற்காலிகச் சேமிப்பு இல்லை</string>

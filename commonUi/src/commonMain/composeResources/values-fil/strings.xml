@@ -479,6 +479,10 @@
     <string name="error_network">Hindi maabot ang YouTube. Tingnan ang iyong koneksyon at subukang muli.</string>
     <string name="error_disk_full">Kulang ang storage space. Magbakante ng espasyo at subukang muli.</string>
     <string name="error_live_still_processing">Kakatapos lang ng stream na ito at pinoproseso pa. Subukang muli mamaya</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Naka-off ang Files app ng system. I-on ito para pumili ng folder.</string>
+    <string name="folder_picker_open_settings">Buksan ang settings</string>
+    <string name="folder_picker_missing">Walang folder picker ang device na ito, kaya hindi makakapili ng folder.</string>
     <string name="settings_player_cache">Cache ng player</string>
     <string name="settings_player_cache_summary">Max %1$s · Nagamit %2$s · Natipid %3$s</string>
     <string name="settings_player_cache_off">Walang cache</string>

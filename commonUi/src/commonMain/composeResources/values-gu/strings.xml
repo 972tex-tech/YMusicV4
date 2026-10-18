@@ -479,6 +479,10 @@
     <string name="error_network">YouTube સુધી પહોંચી શકાતું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.</string>
     <string name="error_disk_full">પૂરતી સ્ટોરેજ જગ્યા નથી. થોડી જગ્યા ખાલી કરો અને ફરી પ્રયાસ કરો.</string>
     <string name="error_live_still_processing">આ સ્ટ્રીમ હમણાં જ સમાપ્ત થઈ છે અને હજી પ્રક્રિયા થઈ રહી છે. પછીથી ફરી પ્રયાસ કરો</string>
+    <string name="dialog_ok">ઓકે</string>
+    <string name="folder_picker_disabled">સિસ્ટમની Files ઍપ બંધ છે. ફોલ્ડર પસંદ કરવા માટે તેને ચાલુ કરો.</string>
+    <string name="folder_picker_open_settings">સેટિંગ્સ ખોલો</string>
+    <string name="folder_picker_missing">આ ડિવાઇસમાં ફોલ્ડર પિકર નથી, તેથી ફોલ્ડર પસંદ કરી શકાતું નથી.</string>
     <string name="settings_player_cache">પ્લેયર કૅશ</string>
     <string name="settings_player_cache_summary">મહત્તમ %1$s · વપરાયેલ %2$s · બચાવેલ %3$s</string>
     <string name="settings_player_cache_off">કોઈ કૅશ નહીં</string>

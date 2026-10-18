@@ -479,6 +479,10 @@
     <string name="error_network">Не може да се пристапи до YouTube. Проверете ја врската и обидете се повторно.</string>
     <string name="error_disk_full">Нема доволно простор за складирање. Ослободете простор и обидете се повторно.</string>
     <string name="error_live_still_processing">Овој пренос штотуку заврши и сè уште се обработува. Обидете се повторно подоцна</string>
+    <string name="dialog_ok">Во ред</string>
+    <string name="folder_picker_disabled">Системската апликација „Датотеки“ е исклучена. Вклучете ја за да изберете папка.</string>
+    <string name="folder_picker_open_settings">Отвори поставки</string>
+    <string name="folder_picker_missing">Овој уред нема алатка за избор на папка, па не може да се избере папка.</string>
     <string name="settings_player_cache">Кеш на плеерот</string>
     <string name="settings_player_cache_summary">Макс. %1$s · Искористено %2$s · Заштедено %3$s</string>
     <string name="settings_player_cache_off">Без кеш</string>

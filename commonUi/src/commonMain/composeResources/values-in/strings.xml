@@ -474,6 +474,10 @@
     <string name="error_network">Tidak dapat terhubung ke YouTube. Periksa koneksi Anda dan coba lagi.</string>
     <string name="error_disk_full">Ruang penyimpanan tidak cukup. Kosongkan sebagian ruang dan coba lagi.</string>
     <string name="error_live_still_processing">Siaran ini baru saja berakhir dan masih diproses. Coba lagi nanti</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Aplikasi File sistem dinonaktifkan. Aktifkan untuk memilih folder.</string>
+    <string name="folder_picker_open_settings">Buka setelan</string>
+    <string name="folder_picker_missing">Perangkat ini tidak memiliki pemilih folder, jadi folder tidak dapat dipilih.</string>
     <string name="settings_player_cache">Cache pemutar</string>
     <string name="settings_player_cache_summary">Maks %1$s · Terpakai %2$s · Hemat %3$s</string>
     <string name="settings_player_cache_off">Tanpa cache</string>

@@ -479,6 +479,10 @@
     <string name="error_network">YouTube तक नहीं पहुंच सके। अपना कनेक्शन जांचें और फिर से कोशिश करें।</string>
     <string name="error_disk_full">पर्याप्त स्टोरेज नहीं है। थोड़ी जगह खाली करें और फिर से कोशिश करें।</string>
     <string name="error_live_still_processing">यह स्ट्रीम अभी-अभी खत्म हुई है और अभी प्रोसेस हो रही है। बाद में फिर से कोशिश करें</string>
+    <string name="dialog_ok">ठीक है</string>
+    <string name="folder_picker_disabled">सिस्टम का Files ऐप बंद है। फ़ोल्डर चुनने के लिए इसे चालू करें।</string>
+    <string name="folder_picker_open_settings">सेटिंग खोलें</string>
+    <string name="folder_picker_missing">इस डिवाइस में फ़ोल्डर पिकर नहीं है, इसलिए फ़ोल्डर नहीं चुना जा सकता।</string>
     <string name="settings_player_cache">प्लेयर कैश</string>
     <string name="settings_player_cache_summary">अधिकतम %1$s · इस्तेमाल %2$s · बचत %3$s</string>
     <string name="settings_player_cache_off">कोई कैश नहीं</string>

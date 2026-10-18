@@ -484,6 +484,10 @@
     <string name="error_network">No es pot connectar amb YouTube. Comprova la connexió i torna-ho a provar.</string>
     <string name="error_disk_full">No hi ha prou espai d'emmagatzematge. Allibera espai i torna-ho a provar.</string>
     <string name="error_live_still_processing">Aquesta emissió acaba de finalitzar i encara s'està processant. Torna-ho a provar més tard</string>
+    <string name="dialog_ok">D'acord</string>
+    <string name="folder_picker_disabled">L'aplicació Fitxers del sistema està desactivada. Activa-la per triar una carpeta.</string>
+    <string name="folder_picker_open_settings">Obre la configuració</string>
+    <string name="folder_picker_missing">Aquest dispositiu no té selector de carpetes, així que no es pot triar cap carpeta.</string>
     <string name="settings_player_cache">Memòria cau del reproductor</string>
     <string name="settings_player_cache_summary">Màx. %1$s · Usat %2$s · Estalviat %3$s</string>
     <string name="settings_player_cache_off">Sense memòria cau</string>

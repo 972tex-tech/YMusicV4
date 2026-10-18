@@ -489,6 +489,10 @@
     <string name="error_network">Nelze se spojit s YouTube. Zkontrolujte připojení a zkuste to znovu.</string>
     <string name="error_disk_full">Nedostatek místa v úložišti. Uvolněte místo a zkuste to znovu.</string>
     <string name="error_live_still_processing">Tento stream právě skončil a ještě se zpracovává. Zkuste to později</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Systémová aplikace Soubory je vypnutá. Zapněte ji, abyste mohli vybrat složku.</string>
+    <string name="folder_picker_open_settings">Otevřít nastavení</string>
+    <string name="folder_picker_missing">Toto zařízení nemá výběr složek, takže složku nelze vybrat.</string>
     <string name="settings_player_cache">Mezipaměť přehrávače</string>
     <string name="settings_player_cache_summary">Max. %1$s · Využito %2$s · Ušetřeno %3$s</string>
     <string name="settings_player_cache_off">Bez mezipaměti</string>

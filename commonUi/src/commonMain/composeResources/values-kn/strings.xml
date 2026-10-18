@@ -479,6 +479,10 @@
     <string name="error_network">YouTube ತಲುಪಲಾಗುತ್ತಿಲ್ಲ. ನಿಮ್ಮ ಸಂಪರ್ಕ ಪರಿಶೀಲಿಸಿ ಮತ್ತು ಮರುಪ್ರಯತ್ನಿಸಿ.</string>
     <string name="error_disk_full">ಸಾಕಷ್ಟು ಸಂಗ್ರಹಣೆ ಸ್ಥಳವಿಲ್ಲ. ಸ್ವಲ್ಪ ಸ್ಥಳ ಖಾಲಿ ಮಾಡಿ ಮತ್ತು ಮರುಪ್ರಯತ್ನಿಸಿ.</string>
     <string name="error_live_still_processing">ಈ ಸ್ಟ್ರೀಮ್ ಈಗಷ್ಟೇ ಮುಗಿದಿದೆ ಮತ್ತು ಇನ್ನೂ ಪ್ರಕ್ರಿಯೆಗೊಳ್ಳುತ್ತಿದೆ. ನಂತರ ಮರುಪ್ರಯತ್ನಿಸಿ</string>
+    <string name="dialog_ok">ಸರಿ</string>
+    <string name="folder_picker_disabled">ಸಿಸ್ಟಂನ Files ಆ್ಯಪ್ ಆಫ್ ಆಗಿದೆ. ಫೋಲ್ಡರ್ ಆಯ್ಕೆ ಮಾಡಲು ಅದನ್ನು ಆನ್ ಮಾಡಿ.</string>
+    <string name="folder_picker_open_settings">ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ತೆರೆಯಿರಿ</string>
+    <string name="folder_picker_missing">ಈ ಸಾಧನದಲ್ಲಿ ಫೋಲ್ಡರ್ ಪಿಕ್ಕರ್ ಇಲ್ಲ, ಆದ್ದರಿಂದ ಫೋಲ್ಡರ್ ಆಯ್ಕೆ ಮಾಡಲು ಸಾಧ್ಯವಿಲ್ಲ.</string>
     <string name="settings_player_cache">ಪ್ಲೇಯರ್ ಕ್ಯಾಶ್</string>
     <string name="settings_player_cache_summary">ಗರಿಷ್ಠ %1$s · ಬಳಸಲಾಗಿದೆ %2$s · ಉಳಿತಾಯ %3$s</string>
     <string name="settings_player_cache_off">ಕ್ಯಾಶ್ ಇಲ್ಲ</string>

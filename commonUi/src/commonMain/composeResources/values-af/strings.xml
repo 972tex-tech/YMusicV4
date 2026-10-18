@@ -479,6 +479,10 @@
     <string name="error_network">Kan nie YouTube bereik nie. Gaan jou verbinding na en probeer weer.</string>
     <string name="error_disk_full">Nie genoeg bergingspasie nie. Maak 'n bietjie spasie vry en probeer weer.</string>
     <string name="error_live_still_processing">Hierdie stroom het pas geëindig en word nog verwerk. Probeer later weer</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Die stelsel se Lêers-app is afgeskakel. Skakel dit aan om ’n vouer te kies.</string>
+    <string name="folder_picker_open_settings">Maak instellings oop</string>
+    <string name="folder_picker_missing">Hierdie toestel het nie ’n vouerkieser nie, so ’n vouer kan nie gekies word nie.</string>
     <string name="settings_player_cache">Spelerkas</string>
     <string name="settings_player_cache_summary">Maks. %1$s · Gebruik %2$s · Bespaar %3$s</string>
     <string name="settings_player_cache_off">Geen kas nie</string>

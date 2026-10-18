@@ -489,6 +489,10 @@
     <string name="error_network">Немає зв’язку з YouTube. Перевірте з’єднання й спробуйте знову.</string>
     <string name="error_disk_full">Недостатньо місця в сховищі. Звільніть місце й спробуйте знову.</string>
     <string name="error_live_still_processing">Ця трансляція щойно завершилася й ще обробляється. Спробуйте пізніше</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Системний додаток «Файли» вимкнено. Увімкніть його, щоб вибрати папку.</string>
+    <string name="folder_picker_open_settings">Відкрити налаштування</string>
+    <string name="folder_picker_missing">На цьому пристрої немає засобу вибору папок, тому вибрати папку неможливо.</string>
     <string name="settings_player_cache">Кеш плеєра</string>
     <string name="settings_player_cache_summary">Макс. %1$s · Зайнято %2$s · Заощаджено %3$s</string>
     <string name="settings_player_cache_off">Без кешу</string>

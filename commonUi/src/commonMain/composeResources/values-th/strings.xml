@@ -474,6 +474,10 @@
     <string name="error_network">เชื่อมต่อ YouTube ไม่ได้ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</string>
     <string name="error_disk_full">พื้นที่เก็บข้อมูลไม่เพียงพอ เพิ่มพื้นที่ว่างแล้วลองอีกครั้ง</string>
     <string name="error_live_still_processing">สตรีมนี้เพิ่งจบและยังอยู่ระหว่างประมวลผล ลองอีกครั้งภายหลัง</string>
+    <string name="dialog_ok">ตกลง</string>
+    <string name="folder_picker_disabled">แอปไฟล์ของระบบถูกปิดอยู่ เปิดแอปนี้เพื่อเลือกโฟลเดอร์</string>
+    <string name="folder_picker_open_settings">เปิดการตั้งค่า</string>
+    <string name="folder_picker_missing">อุปกรณ์นี้ไม่มีตัวเลือกโฟลเดอร์ จึงเลือกโฟลเดอร์ไม่ได้</string>
     <string name="settings_player_cache">แคชของเพลเยอร์</string>
     <string name="settings_player_cache_summary">สูงสุด %1$s · ใช้ไป %2$s · ประหยัด %3$s</string>
     <string name="settings_player_cache_off">ไม่ใช้แคช</string>

@@ -474,6 +474,10 @@
     <string name="error_network">YouTube に接続できません。接続を確認してもう一度お試しください。</string>
     <string name="error_disk_full">ストレージの空き容量が不足しています。空き容量を増やしてもう一度お試しください。</string>
     <string name="error_live_still_processing">このライブ配信は終了したばかりで、まだ処理中です。しばらくしてからもう一度お試しください</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">システムの「ファイル」アプリがオフになっています。フォルダを選択するにはオンにしてください。</string>
+    <string name="folder_picker_open_settings">設定を開く</string>
+    <string name="folder_picker_missing">このデバイスにはフォルダ選択機能がないため、フォルダを選択できません。</string>
     <string name="settings_player_cache">プレーヤーキャッシュ</string>
     <string name="settings_player_cache_summary">最大 %1$s · 使用 %2$s · 節約 %3$s</string>
     <string name="settings_player_cache_off">キャッシュなし</string>
