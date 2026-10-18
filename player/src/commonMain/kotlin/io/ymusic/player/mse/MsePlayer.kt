@@ -18,6 +18,7 @@ import io.ymusic.player.PlaybackConfig
 import io.ymusic.player.PlaybackState
 import io.ymusic.player.PlaybackStatus
 import io.ymusic.player.PlayerError
+import io.ymusic.player.PlayerErrorException
 import io.ymusic.player.Progress
 import io.ymusic.player.VideoQualityOption
 import io.ymusic.player.VideoQualityState
@@ -537,7 +538,11 @@ class MsePlayer internal constructor(
         // An error the last playback left behind (no reset needed) doesn't stop a request for another video.
         val usable = state.readyToLoad || (state is PlaybackState.Error && !state.error.needReset)
         if (!usable || enginePlayer == null) {
-            throw TechnicalException("E60034", "mse engine not ready: $state")
+            throw TechnicalException(
+                "E60034",
+                "mse engine not ready: $state",
+                cause = (state as? PlaybackState.Error)?.error?.let(::PlayerErrorException),
+            )
         }
         enginePlayer
     }

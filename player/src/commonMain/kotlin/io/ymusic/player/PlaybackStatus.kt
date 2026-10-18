@@ -113,6 +113,11 @@ data class PlayerError(
     }
 }
 
+/** [error] as a cause, so a caller's own coded wrapper keeps the engine's code (`network`, `captcha`, …). */
+class PlayerErrorException(val error: PlayerError) :
+    Exception("[${error.code}] ${error.message}", error.cause),
+    CodedError by error
+
 /** A YouTube video's owner channel, as its player response reports it. [channelUrl] is an
  *  engine-composed app link. */
 data class MediaDetails(
