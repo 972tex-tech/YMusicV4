@@ -198,37 +198,38 @@ val ToriiDesignColors = DarkDesignColors.copy(
     FieldPill = Color(0xFF30224A),
 )
 
-/** Dark skin: warm brown grounds with a sunset-orange accent. */
-val SunsetDesignColors = DarkDesignColors.copy(
-    Accent = Color(0xFFE07018),
-    InkStrong = Color(0xFFF7EBD9),
-    Ink = Color(0xFFEBDDC6),
-    InkMuted = Color(0xFFD0BFA3),
-    InkSoft = Color(0xFFBBA98B),
-    InkSecondary = Color(0xFFA29073),
-    InkFaint = Color(0xFF86755B),
-    IconDots = Color(0xFF9A876A),
-    Placeholder = Color(0xFF463620),
-    PlaceholderDim = Color(0xFF40311D),
-    PlaceholderIcon = Color(0xFF8A7352),
-    StackNear = Color(0xFF463620),
-    StackFar = Color(0xFF392C1B),
-    StackTab = Color(0xFF3F301D),
-    Outline = Color(0xFF665038),
-    OutlineSoft = Color(0xFF564330),
-    Divider = Color(0xFF241B11),
-    DividerMini = Color(0xFF281E13),
-    Surface = Color(0xFF17120C),
-    SurfaceDim = Color(0xFF1F1810),
-    SurfaceElevated = Color(0xFF1B150E),
-    SettingsCard = Color(0xFF2A2016),
-    FieldPill = Color(0xFF36291B),
+/** Dark skin: black grounds with warm gold accent and cream text; dark text on gold controls. */
+val DeltaGoldDesignColors = DarkDesignColors.copy(
+    Accent = Color(0xFFD4A017),
+    OnAccent = Color(0xFF141414),
+    InkStrong = Color(0xFFF5ECD0),
+    Ink = Color(0xFFE9DFC2),
+    InkMuted = Color(0xFFCFC4A5),
+    InkSoft = Color(0xFFBAAE8E),
+    InkSecondary = Color(0xFFA3976F),
+    InkFaint = Color(0xFF877B58),
+    IconDots = Color(0xFF9A8D66),
+    Placeholder = Color(0xFF2E2A20),
+    PlaceholderDim = Color(0xFF292519),
+    PlaceholderIcon = Color(0xFF776A45),
+    StackNear = Color(0xFF2E2A20),
+    StackFar = Color(0xFF25221A),
+    StackTab = Color(0xFF2A261D),
+    Outline = Color(0xFF4A4126),
+    OutlineSoft = Color(0xFF3C351F),
+    Divider = Color(0xFF1C1912),
+    DividerMini = Color(0xFF201C14),
+    Surface = Color(0xFF0A0A0A),
+    SurfaceDim = Color(0xFF111111),
+    SurfaceElevated = Color(0xFF121212),
+    SettingsCard = Color(0xFF1A1A1A),
+    FieldPill = Color(0xFF262626),
 )
 
 /** [AppSettings.theme] value → whether the UI is dark; "" follows the system. */
 fun isDarkTheme(theme: String, systemDark: Boolean): Boolean = when (theme) {
     "light" -> false
-    "dark", "amoled", "kitsune", "torii", "sunset" -> true
+    "dark", "amoled", "kitsune", "torii", "gold" -> true
     else -> systemDark
 }
 
@@ -264,7 +265,7 @@ fun designPaletteFor(theme: String, systemDark: Boolean, accentHex: String = "")
         theme == "amoled" -> AmoledDesignColors
         theme == "kitsune" -> KitsuneDesignColors
         theme == "torii" -> ToriiDesignColors
-        theme == "sunset" -> SunsetDesignColors
+        theme == "gold" -> DeltaGoldDesignColors
         isDarkTheme(theme, systemDark) -> DarkDesignColors
         else -> LightDesignColors
     }

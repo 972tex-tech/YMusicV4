@@ -284,7 +284,7 @@
     <string name="settings_theme_amoled">Black (AMOLED)</string>
     <string name="settings_theme_kitsune">Kitsune (black and crimson)</string>
     <string name="settings_theme_torii">Torii Dusk (plum and rose)</string>
-    <string name="settings_theme_sunset">Delta Sunset (brown and amber)</string>
+    <string name="settings_theme_gold">Delta Gold (black and gold)</string>
     <string name="settings_accent_color">Accent color</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_show_fps">Show FPS</string>
