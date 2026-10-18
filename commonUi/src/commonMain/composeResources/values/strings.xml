@@ -635,6 +635,7 @@
     <string name="cookie_unlock_sign_out_title">Sign out?</string>
     <string name="cookie_unlock_sign_out_body">This removes the saved sign-in from this computer. To sign in again, scan the QR code with the YMusic app.</string>
     <string name="link_unsupported">YMusic can't open this link</string>
+    <string name="link_open_failed">Can't open: %1$s</string>
     <string name="link_queued_next">Will play next</string>
     <string name="link_queued_last">Added to the end of the queue</string>
     <string name="menu_details_comments">Details &amp; comments</string>

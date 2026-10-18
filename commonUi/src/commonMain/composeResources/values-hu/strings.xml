@@ -531,4 +531,5 @@
     <string name="video_details_deleted">Hozzászólás törölve</string>
     <string name="menu_details_comments">Részletek és hozzászólások</string>
     <string name="menu_speed_pitch">Sebesség és hangmagasság</string>
+    <string name="link_open_failed">Nem nyitható meg: %1$s</string>
 </resources>

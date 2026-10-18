@@ -531,4 +531,5 @@
     <string name="video_details_deleted">ટિપ્પણી કાઢી નાખી</string>
     <string name="menu_details_comments">વિગતો અને ટિપ્પણીઓ</string>
     <string name="menu_speed_pitch">ઝડપ અને પિચ</string>
+    <string name="link_open_failed">ખોલી શકાતું નથી: %1$s</string>
 </resources>

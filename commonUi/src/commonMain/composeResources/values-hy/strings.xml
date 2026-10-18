@@ -531,4 +531,5 @@
     <string name="video_details_deleted">Մեկնաբանությունը ջնջվեց</string>
     <string name="menu_details_comments">Մանրամասներ և մեկնաբանություններ</string>
     <string name="menu_speed_pitch">Արագություն և տոն</string>
+    <string name="link_open_failed">Հնարավոր չէ բացել՝ %1$s</string>
 </resources>

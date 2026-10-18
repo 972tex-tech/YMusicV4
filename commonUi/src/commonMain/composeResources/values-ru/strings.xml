@@ -541,4 +541,5 @@
     <string name="video_details_deleted">Комментарий удалён</string>
     <string name="menu_details_comments">Описание и комментарии</string>
     <string name="menu_speed_pitch">Скорость и тон</string>
+    <string name="link_open_failed">Не удаётся открыть: %1$s</string>
 </resources>

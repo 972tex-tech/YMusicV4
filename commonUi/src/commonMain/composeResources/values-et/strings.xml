@@ -531,4 +531,5 @@
     <string name="video_details_deleted">Kommentaar kustutatud</string>
     <string name="menu_details_comments">Üksikasjad ja kommentaarid</string>
     <string name="menu_speed_pitch">Kiirus ja helikõrgus</string>
+    <string name="link_open_failed">Ei saa avada: %1$s</string>
 </resources>

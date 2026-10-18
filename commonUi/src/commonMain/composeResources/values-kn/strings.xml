@@ -531,4 +531,5 @@
     <string name="video_details_deleted">ಕಾಮೆಂಟ್ ಅಳಿಸಲಾಗಿದೆ</string>
     <string name="menu_details_comments">ವಿವರಗಳು ಮತ್ತು ಕಾಮೆಂಟ್‌ಗಳು</string>
     <string name="menu_speed_pitch">ವೇಗ ಮತ್ತು ಪಿಚ್</string>
+    <string name="link_open_failed">ತೆರೆಯಲು ಸಾಧ್ಯವಿಲ್ಲ: %1$s</string>
 </resources>

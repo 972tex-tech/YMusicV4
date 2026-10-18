@@ -541,4 +541,5 @@
     <string name="video_details_deleted">Коментар видалено</string>
     <string name="menu_details_comments">Опис і коментарі</string>
     <string name="menu_speed_pitch">Швидкість і тон</string>
+    <string name="link_open_failed">Не вдається відкрити: %1$s</string>
 </resources>

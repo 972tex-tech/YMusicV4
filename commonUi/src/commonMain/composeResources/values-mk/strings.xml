@@ -531,4 +531,5 @@
     <string name="video_details_deleted">Коментарот е избришан</string>
     <string name="menu_details_comments">Детали и коментари</string>
     <string name="menu_speed_pitch">Брзина и висина</string>
+    <string name="link_open_failed">Не може да се отвори: %1$s</string>
 </resources>

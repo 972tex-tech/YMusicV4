@@ -536,4 +536,5 @@
     <string name="video_details_deleted">התגובה נמחקה</string>
     <string name="menu_details_comments">פרטים ותגובות</string>
     <string name="menu_speed_pitch">מהירות וגובה צליל</string>
+    <string name="link_open_failed">לא ניתן לפתוח: %1$s</string>
 </resources>

@@ -536,4 +536,5 @@
     <string name="video_details_deleted">Comentário excluído</string>
     <string name="menu_details_comments">Detalhes e comentários</string>
     <string name="menu_speed_pitch">Velocidade e tom</string>
+    <string name="link_open_failed">Não foi possível abrir: %1$s</string>
 </resources>

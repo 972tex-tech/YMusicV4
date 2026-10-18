@@ -536,4 +536,5 @@
     <string name="video_details_deleted">Komentar izbrisan</string>
     <string name="menu_details_comments">Detalji i komentari</string>
     <string name="menu_speed_pitch">Brzina i visina tona</string>
+    <string name="link_open_failed">Nije moguće otvoriti: %1$s</string>
 </resources>

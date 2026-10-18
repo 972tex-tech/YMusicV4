@@ -608,6 +608,7 @@
     <string name="cookie_unlock_sign_out_title">Đăng xuất?</string>
     <string name="cookie_unlock_sign_out_body">Thao tác này xoá thông tin đăng nhập đã lưu trên máy tính này. Để đăng nhập lại, hãy quét mã QR bằng ứng dụng YMusic.</string>
     <string name="link_unsupported">YMusic không mở được liên kết này</string>
+    <string name="link_open_failed">Không mở được: %1$s</string>
     <string name="link_queued_next">Sẽ phát tiếp theo</string>
     <string name="link_queued_last">Đã thêm vào cuối danh sách phát</string>
     <string name="menu_details_comments">Chi tiết &amp; bình luận</string>

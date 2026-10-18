@@ -601,6 +601,7 @@
     <string name="video_details_delete_message">هل تريد حذف تعليقك وجميع الردود عليه نهائيًا؟</string>
     <string name="video_details_deleted">تم حذف التعليق</string>
     <string name="link_unsupported">لا يمكن لـ YMusic فتح هذا الرابط</string>
+    <string name="link_open_failed">تعذّر فتح: %1$s</string>
     <string name="link_queued_next">سيتم تشغيله تاليًا</string>
     <string name="link_queued_last">تمت الإضافة إلى نهاية قائمة الانتظار</string>
     <string name="menu_details_comments">التفاصيل والتعليقات</string>

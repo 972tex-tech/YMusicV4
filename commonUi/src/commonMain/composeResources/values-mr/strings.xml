@@ -531,4 +531,5 @@
     <string name="video_details_deleted">टिप्पणी हटवली</string>
     <string name="menu_details_comments">तपशील आणि टिप्पण्या</string>
     <string name="menu_speed_pitch">वेग आणि पिच</string>
+    <string name="link_open_failed">उघडता येत नाही: %1$s</string>
 </resources>
