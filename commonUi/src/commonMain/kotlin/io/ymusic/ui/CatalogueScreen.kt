@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -52,6 +51,9 @@ import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtSectionHeader
 import io.ymusic.dynamicengine.yt.YtThumb
+import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.ic_sleep_timer
+import org.jetbrains.compose.resources.painterResource
 
 /**
  * Development-only component catalogue (a Storybook, not a product screen): every shared UI
@@ -233,7 +235,7 @@ private fun CatalogueList() {
             ) {
                 ActionIcon(Icons.Default.MoreVert, "more") {}
                 ActionIcon(Icons.Default.PlayArrow, "play", iconSize = 26.dp, hitSize = 36.dp) {}
-                ActionIcon(Icons.Default.Bedtime, "sleep", tint = DesignColors.Accent) {}
+                ActionIcon(painterResource(Res.drawable.ic_sleep_timer), "sleep", tint = DesignColors.Accent) {}
                 ActionIcon(Icons.Default.SkipNext, "next", enabled = false, tint = DesignColors.InkFaint) {}
             }
         }
