@@ -377,7 +377,9 @@ void mse_vt_order_window_below(void *envp, void *below, void *above)
     hi = mse_awt_nswindow(env, above);
     if (!lo || !hi || lo == hi)
         return;
-    [lo orderWindow:NSWindowBelow relativeTo:hi.windowNumber];
+    mse_on_main(^{
+        [lo orderWindow:NSWindowBelow relativeTo:hi.windowNumber];
+    });
 }
 
 static NSWindow *mse_named_window(NSString *title)
