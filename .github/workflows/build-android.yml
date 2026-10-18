@@ -31,10 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { slug: android-armeabi-v7a, runner: ubuntu-24.04 }
           - { slug: android-arm64-v8a, runner: ubuntu-24.04 }
-          - { slug: android-x86, runner: ubuntu-24.04 }
-          - { slug: android-x86_64, runner: ubuntu-24.04 }
     steps:
       - id: cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -89,29 +86,11 @@ jobs:
         with:
           path: YMusicV4
 
-      - name: Restore ffmpeg android-armeabi-v7a
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ffmpeg-build/out/android-armeabi-v7a
-          key: ffmpeg-android-armeabi-v7a-${{ env.FFMPEG_BUILD_REF }}-ndk${{ env.NDK_VERSION }}
-          fail-on-cache-miss: true
       - name: Restore ffmpeg android-arm64-v8a
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ffmpeg-build/out/android-arm64-v8a
           key: ffmpeg-android-arm64-v8a-${{ env.FFMPEG_BUILD_REF }}-ndk${{ env.NDK_VERSION }}
-          fail-on-cache-miss: true
-      - name: Restore ffmpeg android-x86
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ffmpeg-build/out/android-x86
-          key: ffmpeg-android-x86-${{ env.FFMPEG_BUILD_REF }}-ndk${{ env.NDK_VERSION }}
-          fail-on-cache-miss: true
-      - name: Restore ffmpeg android-x86_64
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ffmpeg-build/out/android-x86_64
-          key: ffmpeg-android-x86_64-${{ env.FFMPEG_BUILD_REF }}-ndk${{ env.NDK_VERSION }}
           fail-on-cache-miss: true
 
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
