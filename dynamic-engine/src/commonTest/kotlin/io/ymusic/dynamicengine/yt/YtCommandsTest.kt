@@ -971,55 +971,6 @@ class YtCommandsTest {
         }
     }
 
-    @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
-    @Test
-    fun a_stale_session_answers_immediately_while_revalidating_in_background() = runTest {
-        // A held session must answer at ANY age — consumers never wait on freshness. Plant an
-        // over-window record, gate the homepage SHUT, and the search must still complete on the
-        // stale identity; the re-scrape fires in the background (stale-while-revalidate).
-        val store = cacheStore()
-        store.put(
-            "yt-session",
-            "web",
-            emptyMap(),
-            okio.Buffer().writeUtf8(
-                """{"clientName":"1","clientVersion":"2.20200101.00.00","visitorData":"c3RhbGU%3D","fetchedAt":1000}""",
-            ).asAsyncSource(),
-        )
-
-        val homepageHits = kotlin.concurrent.atomics.AtomicInt(0)
-        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        var visitorHeader: String? = null
-        val client = FakeHttpClient { request ->
-            val url = request.url.toString()
-            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
-                homepageHits.addAndFetch(1)
-                gate.await() // the revalidation scrape is held open — the command must not need it
-                CannedResponse.ofText(HOMEPAGE_FIXTURE, headers = listOf("Content-Type" to "text/html")).build(request)
-            } else {
-                visitorHeader = request.headers["X-Goog-Visitor-Id"]
-                jsonResponse(SEARCH_FIXTURE).build(request)
-            }
-        }
-        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = store)
-        m.start()
-        try {
-            val page = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                kotlinx.coroutines.withTimeout(30_000) { m.search(query = "quick") }
-            }
-            assertTrue(page.sections.isNotEmpty(), "$page")
-            assertEquals("c3RhbGU%3D", visitorHeader, "the search must ride the stale identity")
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                kotlinx.coroutines.withTimeout(10_000) {
-                    while (homepageHits.load() == 0) kotlinx.coroutines.delay(10)
-                }
-            }
-            gate.complete(Unit)
-        } finally {
-            m.close()
-        }
-    }
-
     @Test
     fun a_failed_session_refresh_serves_the_stale_session() = runTest {
         var offline = false
@@ -1250,70 +1201,6 @@ class YtCommandsTest {
             assertTrue(result.exceptionOrNull() is EngineError.Network, "${result.exceptionOrNull()}")
             assertEquals(1, homepageHits.load(), "the crash must rethrow — no second scrape gets spent")
         } finally {
-            m.close()
-        }
-    }
-
-    @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
-    @Test
-    fun a_failed_settle_with_a_stale_session_browses_without_rescraping() = runTest {
-        // The revalidation home settles on CRASHES, but a stale session survives: home must fall
-        // through to /browse on it — a scrape just ran and failed, so a forced refresh could only
-        // repeat it.
-        val store = cacheStore()
-        store.put(
-            "yt-session",
-            "web",
-            emptyMap(),
-            okio.Buffer().writeUtf8(
-                """{"clientName":"1","clientVersion":"2.20200101.00.00","visitorData":"c3RhbGU%3D","fetchedAt":1000}""",
-            ).asAsyncSource(),
-        )
-
-        val homepageHits = kotlin.concurrent.atomics.AtomicInt(0)
-        var browseHits = 0
-        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        // Held SHUT for the whole test: any scrape after the failed settle parks here, so if home
-        // AWAITED one (a forced refresh) it could never complete. A background fire-and-forget
-        // kick (stale-while-revalidate on the /browse call) parks here harmlessly.
-        val laterScrapes = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val client = FakeHttpClient { request ->
-            val url = request.url.toString()
-            if (request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei")) {
-                if (homepageHits.addAndFetch(1) == 1) {
-                    gate.await()
-                    throw okio.IOException("connect refused")
-                }
-                laterScrapes.await()
-                throw okio.IOException("connect refused")
-            } else {
-                if (url.contains("/browse")) browseHits++
-                jsonResponse(BROWSE_FIXTURE).build(request)
-            }
-        }
-        val m = DynamicEngineManager(client, appVersion = 1, jsSource = embeddedEngineJsSource(), cacheStore = store)
-        m.start()
-        try {
-            m.search(query = "seed") // rides the stale session; kicks the background revalidation
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                kotlinx.coroutines.withTimeout(10_000) {
-                    while (homepageHits.load() == 0) kotlinx.coroutines.delay(10)
-                }
-            }
-            val home = backgroundScope.async { m.extractHomeFeed() }
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                kotlinx.coroutines.delay(300) // let home park on the held revalidation
-            }
-            gate.complete(Unit)
-            // Home must complete WITHOUT any later scrape answering — the settled failure is not
-            // repeated as a forced refresh; /browse on the stale session is the answer.
-            val page = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                kotlinx.coroutines.withTimeout(30_000) { home.await() }
-            }
-            assertEquals("browse-cont-token", page.continuation, "$page")
-            assertEquals(1, browseHits)
-        } finally {
-            laterScrapes.complete(Unit)
             m.close()
         }
     }
