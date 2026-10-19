@@ -311,6 +311,20 @@ static double dac_handover(MseHost *h, double dac)
 }
 #endif
 
+#ifdef __ANDROID__
+/* h->mu held. Wall seconds played since the sink's last position report, up to DAC_EXTRAPOLATE_S. */
+static double sink_tick_extra_s(MseHost *h)
+{
+    double extra;
+    if (!h->playing || h->dac_tick_ns <= 0)
+        return 0;
+    extra = (now_ns() - h->dac_tick_ns) / 1e9;
+    if (extra > DAC_EXTRAPOLATE_S)
+        extra = DAC_EXTRAPOLATE_S;
+    return extra > 0 ? extra : 0;
+}
+#endif
+
 /* h->mu held. Do not take MseAv locks: the DAC callback/poll needs h->mu, and
    MediaCodec configure holds a->mu for tens of ms (audio-only → Auto). */
 /* Caller holds mu. */
@@ -326,8 +340,8 @@ static void rebase_hold(MseHost *h, double t)
        from t instead of losing a queue (or banking the extrapolation) per rebase. */
     dac_rebase(h, aq_latency_frames(h) - (int64_t)(aq_tick_extra_s(h) * h->rate));
 #else
-    dac_rebase(h, 0);
-    h->dac_tick_ns = 0;
+    /* t already carries the extrapolation past the sink's last report: count it as played. */
+    dac_rebase(h, -(int64_t)(sink_tick_extra_s(h) * h->rate));
 #endif
 #endif
 }
@@ -383,13 +397,7 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
                from the held position instead of a second ahead of it. */
             if (!h->dac_live && h->playing)
                 h->origin_ns = now_ns();
-            if (h->playing && h->dac_tick_ns > 0) {
-                double extra = (now_ns() - h->dac_tick_ns) / 1e9;
-                if (extra > DAC_EXTRAPOLATE_S)
-                    extra = DAC_EXTRAPOLATE_S;
-                if (extra > 0)
-                    dac += extra * sp;
-            }
+            dac += sink_tick_extra_s(h) * sp;
             t = dac_handover(h, dac);
         } else {
             h->clk_dac = 0;
