@@ -243,6 +243,7 @@
     <string name="playback_unavailable">Video này không khả dụng</string>
     <string name="playback_retry_later">Hiện không thể phát video này. Hãy thử lại sau</string>
     <string name="playback_file_missing">Tệp này không còn trên thiết bị của bạn</string>
+    <string name="playback_video_unsupported">Thiết bị của bạn không phát được định dạng video này. Hãy chọn chất lượng khác.</string>
     <string name="menu_reload_player">Tải lại trình phát</string>
 
 
@@ -448,6 +449,7 @@
     <string name="update_full_changelog">Xem toàn bộ thay đổi</string>
     <string name="update_downloading">Đang tải… %1$s / %2$s</string>
     <string name="update_ready">Sẵn sàng cài đặt</string>
+    <string name="update_installing">Đang cài đặt…</string>
     <string name="update_manual_hint">Bản này không thể tự cập nhật (%1$s). Hãy tải bản mới theo cách thủ công.</string>
     <string name="update_blocked_not_installed">ứng dụng không chạy từ bản đã cài đặt</string>
     <string name="update_blocked_mac_swap">phiên bản macOS này không thể thay thế ứng dụng tại chỗ</string>
@@ -537,6 +539,12 @@
     <string name="error_network">Không kết nối được YouTube. Hãy kiểm tra mạng và thử lại.</string>
     <string name="error_captcha">YouTube muốn xác nhận bạn không phải là robot</string>
     <string name="error_disk_full">Không đủ dung lượng lưu trữ. Hãy giải phóng bớt dung lượng rồi thử lại.</string>
+    <string name="error_live_still_processing">Buổi phát trực tiếp này vừa kết thúc và đang được xử lý, hãy thử lại sau</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Ứng dụng Tệp của hệ thống đang bị tắt. Hãy bật nó lên để chọn thư mục.</string>
+    <string name="folder_picker_open_settings">Mở cài đặt</string>
+    <string name="folder_picker_missing">Thiết bị này không có trình chọn thư mục nên không thể chọn thư mục.</string>
+    <string name="error_supervised_account">Tài khoản Google này đang được giám sát nên không thể dùng YouTube ở đây. Hãy đăng xuất hoặc chuyển sang tài khoản khác.</string>
     <string name="captcha_verify">Xác minh</string>
     <string name="captcha_verify_hint">Giải captcha nếu bạn thấy trên màn hình, rồi nhấn Xong</string>
     <string name="settings_player_cache">Bộ nhớ đệm trình phát</string>
@@ -600,6 +608,7 @@
     <string name="cookie_unlock_sign_out_title">Đăng xuất?</string>
     <string name="cookie_unlock_sign_out_body">Thao tác này xoá thông tin đăng nhập đã lưu trên máy tính này. Để đăng nhập lại, hãy quét mã QR bằng ứng dụng YMusic.</string>
     <string name="link_unsupported">YMusic không mở được liên kết này</string>
+    <string name="link_open_failed">Không mở được: %1$s</string>
     <string name="link_queued_next">Sẽ phát tiếp theo</string>
     <string name="link_queued_last">Đã thêm vào cuối danh sách phát</string>
     <string name="menu_details_comments">Chi tiết &amp; bình luận</string>

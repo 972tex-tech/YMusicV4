@@ -107,8 +107,16 @@ data class PlayerError(
     companion object {
         /** A local item's file is gone from storage (deleted/moved since the scan) — never retryable. */
         const val FILE_MISSING = "file_missing"
+
+        /** The platform video decoder refused the stream (size or profile beyond the device). */
+        const val VIDEO_DECODER_FAILED = "E60064"
     }
 }
+
+/** [error] as a cause, so a caller's own coded wrapper keeps the engine's code (`network`, `captcha`, …). */
+class PlayerErrorException(val error: PlayerError) :
+    Exception("[${error.code}] ${error.message}", error.cause),
+    CodedError by error
 
 /** A YouTube video's owner channel, as its player response reports it. [channelUrl] is an
  *  engine-composed app link. */

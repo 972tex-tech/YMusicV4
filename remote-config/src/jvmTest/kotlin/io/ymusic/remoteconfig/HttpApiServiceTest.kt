@@ -201,7 +201,8 @@ class HttpApiServiceTest {
             service(FakeHttp().apply { failWith = boom }).getConfig()
         }
 
-        assertEquals(boom, thrown, "not wrapped: IOException already says what happened")
+        // Equal message, not identity: crossing withContext, debug-mode stack recovery may hand back a copy.
+        assertEquals(boom.message, thrown.message, "not wrapped: IOException already says what happened")
     }
 
     @Test

@@ -397,6 +397,7 @@
     <string name="update_download">Laai af</string>
     <string name="update_downloading">Laai tans af… %1$s van %2$s</string>
     <string name="update_ready">Gereed om te installeer</string>
+    <string name="update_installing">Installeer tans…</string>
     <string name="update_manual_hint">Hierdie kopie kan homself nie opdateer nie (%1$s). Laai eerder die nuwe weergawe af.</string>
     <string name="update_failed">Opdatering het misluk: %1$s</string>
     <string name="update_official_site">Kry dit van die amptelike webwerf</string>
@@ -477,6 +478,13 @@
         <item quantity="other">%1$d van die gekose video's is reeds in jou Biblioteek.</item>
     </plurals>
     <string name="error_network">Kan nie YouTube bereik nie. Gaan jou verbinding na en probeer weer.</string>
+    <string name="error_disk_full">Nie genoeg bergingspasie nie. Maak 'n bietjie spasie vry en probeer weer.</string>
+    <string name="error_live_still_processing">Hierdie stroom het pas geëindig en word nog verwerk. Probeer later weer</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Die stelsel se Lêers-app is afgeskakel. Skakel dit aan om ’n vouer te kies.</string>
+    <string name="folder_picker_open_settings">Maak instellings oop</string>
+    <string name="folder_picker_missing">Hierdie toestel het nie ’n vouerkieser nie, so ’n vouer kan nie gekies word nie.</string>
+    <string name="error_supervised_account">Hierdie Google-rekening word onder toesig gebruik, so YouTube kan nie hier gebruik word nie. Meld af of skakel oor na 'n ander rekening.</string>
     <string name="settings_player_cache">Spelerkas</string>
     <string name="settings_player_cache_summary">Maks. %1$s · Gebruik %2$s · Bespaar %3$s</string>
     <string name="settings_player_cache_off">Geen kas nie</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">Kommentaar geskrap</string>
     <string name="menu_details_comments">Besonderhede en kommentaar</string>
     <string name="menu_speed_pitch">Spoed en toonhoogte</string>
+    <string name="link_open_failed">Kan nie oopmaak nie: %1$s</string>
 </resources>

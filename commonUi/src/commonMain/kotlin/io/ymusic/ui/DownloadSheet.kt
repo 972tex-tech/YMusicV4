@@ -76,6 +76,7 @@ import io.ymusic.download.DownloadFileNames
 import io.ymusic.download.DownloadFormat
 import io.ymusic.download.DownloadKind
 import io.ymusic.download.Mp3Encoding
+import io.ymusic.download.StillProcessingException
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.download_action
@@ -109,6 +110,7 @@ import io.ymusic.ui.resources.download_save_quick
 import io.ymusic.ui.resources.download_save_to
 import io.ymusic.ui.resources.download_video
 import io.ymusic.ui.resources.download_webm_detail
+import io.ymusic.ui.resources.error_live_still_processing
 import io.ymusic.ui.resources.playback_retry_later
 import io.ymusic.ui.resources.playback_sign_in_required
 import io.ymusic.ui.resources.playback_unavailable
@@ -257,7 +259,11 @@ internal fun ProbeFailed(code: String, onRetry: () -> Unit, onSignIn: (() -> Uni
             Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
             Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
             Playability.RetryLater -> stringResource(Res.string.playback_retry_later)
-            null -> stringResource(Res.string.download_failed, code)
+            null -> if (code == StillProcessingException.CODE) {
+                stringResource(Res.string.error_live_still_processing)
+            } else {
+                stringResource(Res.string.download_failed, code)
+            }
         }
         Text(message, style = TextStyle(fontSize = 14.sp, color = DesignColors.InkSecondary))
         when {

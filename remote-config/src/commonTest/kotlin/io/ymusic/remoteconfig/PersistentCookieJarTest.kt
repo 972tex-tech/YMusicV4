@@ -3,6 +3,9 @@ package io.ymusic.remoteconfig
 import kmphttp.Cookie
 import kmphttp.CookieBuilder
 import kmphttp.toHttpUrlOrNull
+import okio.ByteString
+import okio.FileSystem
+import okio.Path
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import kotlin.test.Test
@@ -20,7 +23,19 @@ class PersistentCookieJarTest {
     private val url = requireNotNull("https://cfg.example/v1/config".toHttpUrlOrNull())
     private val future = Clock.System.now().toEpochMilliseconds() + 24 * 60 * 60 * 1000L
 
-    private fun store() = PersistentCookieStore(file, fs)
+    private fun store() = PersistentCookieStore(FileDocument(fs, file))
+
+    /** A plain file document, so the tests can look at what is stored. */
+    private class FileDocument(private val fs: FileSystem, private val file: Path) : CookieDocument {
+        override fun read(): ByteString? = if (fs.exists(file)) fs.read(file) { readByteString() } else null
+
+        override fun write(document: ByteString) {
+            fs.createDirectories(file.parent!!)
+            fs.write(file) { write(document) }
+        }
+
+        override fun delete() = fs.delete(file, mustExist = false)
+    }
 
     private fun cookie(
         name: String = "act",

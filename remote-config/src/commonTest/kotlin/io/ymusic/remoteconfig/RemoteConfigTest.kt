@@ -2,6 +2,8 @@ package io.ymusic.remoteconfig
 
 import kmphttp.HttpStatusException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import okio.FileSystem
 import okio.IOException
@@ -68,11 +70,18 @@ class RemoteConfigTest {
         now = { clock },
     )
 
+    /** What [RemoteConfig.config] holds once a [RemoteConfig.checkUpdate] has run its course. */
+    private fun TestScope.settle(rc: RemoteConfig): RemoteConfigData {
+        rc.checkUpdate()
+        advanceUntilIdle()
+        return rc.config.value
+    }
+
     @Test
     fun a_fetch_replaces_the_defaults() = runTest {
         val rc = config(api(), this)
 
-        val data = rc.getConfig()
+        val data = settle(rc)
 
         assertEquals(7, data.variableA)
         assertEquals(true, data.featureX)
@@ -86,9 +95,9 @@ class RemoteConfigTest {
     fun a_fresh_value_is_served_without_another_request() = runTest {
         val api = api()
         val rc = config(api, this)
-        rc.getConfig()
+        settle(rc)
 
-        rc.getConfig()
+        settle(rc)
 
         assertEquals(1, api.calls, "still inside the window")
     }
@@ -97,10 +106,10 @@ class RemoteConfigTest {
     fun a_stale_value_is_refetched() = runTest {
         val api = api()
         val rc = config(api, this)
-        rc.getConfig()
+        settle(rc)
 
         clock += REMOTE_CONFIG_MIN_INTERVAL_MS + 1
-        rc.getConfig()
+        settle(rc)
 
         assertEquals(2, api.calls)
     }
@@ -109,12 +118,12 @@ class RemoteConfigTest {
     fun the_cache_round_trips_through_the_file_including_its_age() = runTest {
         val fs = FakeFileSystem()
         val cachePath = "/cache/remote-config.json".toPath()
-        config(api(), this, fs, cachePath).getConfig()
+        settle(config(api(), this, fs, cachePath))
         assertEquals(true, fs.exists(cachePath))
 
         // A second instance over the same file is the next launch of the app.
         val nextApi = api()
-        val data = config(nextApi, this, fs, cachePath).getConfig()
+        val data = settle(config(nextApi, this, fs, cachePath))
 
         assertEquals(7, data.variableA)
         assertEquals(123L, data.playerJs?.version)
@@ -131,7 +140,7 @@ class RemoteConfigTest {
         fs.write(cachePath) { writeUtf8("{not json") }
 
         val api = api()
-        val data = config(api, this, fs, cachePath).getConfig()
+        val data = settle(config(api, this, fs, cachePath))
 
         assertEquals(7, data.variableA)
         assertEquals(1, api.calls)
@@ -141,21 +150,21 @@ class RemoteConfigTest {
     fun a_failed_fetch_with_no_cache_falls_back_to_the_defaults() = runTest {
         val api = api().apply { failWith = IOException("offline") }
 
-        assertEquals(RemoteConfigData.DEFAULTS, config(api, this).getConfig())
+        assertEquals(RemoteConfigData.DEFAULTS, settle(config(api, this)))
     }
 
     @Test
     fun a_failed_fetch_keeps_the_last_good_values() = runTest {
         val api = api()
         val rc = config(api, this)
-        rc.getConfig()
+        settle(rc)
 
         api.failWith = IOException("network down")
         clock += REMOTE_CONFIG_MIN_INTERVAL_MS + 1
 
         assertEquals(
             7,
-            rc.getConfig().variableA,
+            settle(rc).variableA,
             "an outage must not change how the app behaves",
         )
     }
@@ -164,12 +173,12 @@ class RemoteConfigTest {
     fun an_http_refusal_keeps_the_last_good_values() = runTest {
         val api = api()
         val rc = config(api, this)
-        rc.getConfig()
+        settle(rc)
 
         api.failWith = HttpStatusException(500)
         clock += REMOTE_CONFIG_MIN_INTERVAL_MS + 1
 
-        assertEquals(7, rc.getConfig().variableA)
+        assertEquals(7, settle(rc).variableA)
     }
 
     @Test
@@ -178,19 +187,19 @@ class RemoteConfigTest {
         // not fall over if an implementation leaks something else.
         val api = api().apply { failWith = IllegalStateException("bug in the impl") }
 
-        assertEquals(RemoteConfigData.DEFAULTS, config(api, this).getConfig())
+        assertEquals(RemoteConfigData.DEFAULTS, settle(config(api, this)))
     }
 
     @Test
     fun no_service_means_defaults_and_no_request() = runTest {
-        assertEquals(RemoteConfigData.DEFAULTS, config(api = null, scope = this).getConfig())
+        assertEquals(RemoteConfigData.DEFAULTS, settle(config(api = null, scope = this)))
     }
 
     @Test
     fun checkUpdate_does_nothing_while_the_value_is_fresh() = runTest {
         val api = api()
         val rc = config(api, this)
-        rc.getConfig()
+        settle(rc)
 
         rc.checkUpdate()
         rc.checkUpdate()

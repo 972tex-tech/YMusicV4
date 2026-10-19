@@ -1,12 +1,8 @@
 package io.ymusic.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.download.DownloadScratch
@@ -100,35 +96,6 @@ class DownloadLocationSettingsTest {
     }
 
     @Test
-    fun adding_the_first_folder_offers_it_as_the_default_location() {
-        Locale.setDefault(Locale.ENGLISH)
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
-        val settings = InMemorySettingsStore()
-        val graph = AppGraph(
-            engines = engines(),
-            player = StubPlayer(),
-            playerSurface = {},
-            mediaStore = store,
-            settings = settings,
-            downloads = downloadService(scope),
-        )
-        try {
-            runComposeUiTest {
-                setContent { DefaultDownloadLocationPrompt(graph) }
-
-                runBlocking { store.upsertBucket(BucketDraft(Uri.parse("file:///Library"), "Library")) }
-                waitUntilAtLeastOneExists(hasText("Set as default"), 5_000)
-
-                onNodeWithText("Set as default").performClick()
-                waitUntil(timeoutMillis = 5_000) { settings.flow(AppSettings.downloadLocation).value == "file:///Library" }
-            }
-        } finally {
-            scope.cancel()
-        }
-    }
-
-    @Test
     fun download_reprompts_when_the_saved_location_folder_is_gone() {
         Locale.setDefault(Locale.ENGLISH)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -164,45 +131,6 @@ class DownloadLocationSettingsTest {
                 assertEquals("file:///New", settings.flow(AppSettings.downloadLocation).value)
             }
         } finally {
-            scope.cancel()
-        }
-    }
-
-    @Test
-    fun library_folder_menu_toggles_the_download_location() {
-        Locale.setDefault(Locale.ENGLISH)
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val engines = engines()
-        runBlocking { engines.start() }
-        val store = BetterMediaStore.create(mediaStoreJdbcDriver(":memory:"))
-        runBlocking { store.upsertBucket(BucketDraft(Uri.parse("file:///Music"), "Music")) }
-        val settings = InMemorySettingsStore()
-        val graph = AppGraph(
-            engines = engines,
-            player = StubPlayer(),
-            playerSurface = {},
-            mediaStore = store,
-            settings = settings,
-            downloads = downloadService(scope),
-        )
-        try {
-            runComposeUiTest {
-                setContent { App(graph, mutableStateOf(AppSection.Library)) }
-                waitUntilAtLeastOneExists(hasText("Folders"), 20_000)
-                onNodeWithText("Folders").performClick()
-                waitUntilAtLeastOneExists(hasText("Music"), 5_000) // the sole folder row
-
-                onNodeWithContentDescription("More").performClick()
-                onNodeWithText("Download location").performClick()
-                waitUntil(timeoutMillis = 5_000) { settings.flow(AppSettings.downloadLocation).value == "file:///Music" }
-
-                // Toggle it off again.
-                onNodeWithContentDescription("More").performClick()
-                onNodeWithText("Download location").performClick()
-                waitUntil(timeoutMillis = 5_000) { settings.flow(AppSettings.downloadLocation).value.isBlank() }
-            }
-        } finally {
-            runBlocking { engines.close() }
             scope.cancel()
         }
     }

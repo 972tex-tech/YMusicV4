@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -34,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_sleep_timer
 import io.ymusic.ui.resources.dialog_cancel
+import io.ymusic.ui.resources.ic_sleep_timer
 import io.ymusic.ui.resources.sleep_add_minutes
 import io.ymusic.ui.resources.sleep_end_of_track
 import io.ymusic.ui.resources.sleep_hours
@@ -45,6 +44,7 @@ import io.ymusic.ui.resources.sleep_start
 import io.ymusic.ui.resources.sleep_stops_at
 import io.ymusic.ui.resources.sleep_turn_off
 import kotlinx.coroutines.delay
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 import kotlin.time.Clock
@@ -76,7 +76,7 @@ internal fun SleepTimerButton(
     var open by remember { mutableStateOf(false) }
     HoldVideoOverlay(open)
     ActionIcon(
-        Icons.Default.Bedtime,
+        painterResource(Res.drawable.ic_sleep_timer),
         stringResource(Res.string.cd_sleep_timer),
         tint = if (sleepMs != null || afterCurrent) DesignColors.Accent else DesignColors.InkMuted,
         onClick = { open = true },
@@ -206,7 +206,7 @@ private fun ArmedCard(sleepMs: Long?, nowMs: Long, onExtend: (() -> Unit)?, onTu
             .padding(start = DesignSpacing.Space16, end = DesignSpacing.Space4, top = DesignSpacing.Space16),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Bedtime, null, Modifier.size(ArmedIconSize), tint = DesignColors.Accent)
+            Icon(painterResource(Res.drawable.ic_sleep_timer), null, Modifier.size(ArmedIconSize), tint = DesignColors.Accent)
             Text(
                 if (sleepMs != null) {
                     stringResource(Res.string.sleep_pausing_in, formatMillis(sleepMs))

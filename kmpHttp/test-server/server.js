@@ -91,6 +91,26 @@ function build(https) {
     reply.redirect(n > 1 ? `${base}/absolute-redirect/${n - 1}` : `${base}/anything`, 302);
   });
 
+  // `size` deterministic bytes (byte i = i % 251); honors `Range: bytes=N-` with a 206 and echoes the
+  // Range it received in X-Received-Range, so a test can see whether a redirect kept the header.
+  app.get("/range/:size", (req, reply) => {
+    const size = Number(req.params.size);
+    const range = req.headers["range"];
+    reply.header("X-Received-Range", range ?? "none");
+    reply.header("Content-Type", "application/octet-stream");
+    const match = /^bytes=(\d+)-$/.exec(range ?? "");
+    const from = match ? Number(match[1]) : 0;
+    const body = Buffer.alloc(size - from);
+    for (let i = from; i < size; i++) body[i - from] = i % 251;
+    if (match) {
+      reply.code(206).header("Content-Range", `bytes ${from}-${size - 1}/${size}`);
+    }
+    reply.send(body);
+  });
+  app.get("/range-redirect/:size", (req, reply) => {
+    reply.redirect(`${req.protocol}://${req.host}/range/${req.params.size}`, 302);
+  });
+
   app.get("/delay/:s", async (req, reply) => {
     await sleep(Number(req.params.s) * 1000);
     reply.send(baseInfo(req, ""));

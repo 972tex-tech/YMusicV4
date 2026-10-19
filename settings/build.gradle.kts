@@ -31,18 +31,9 @@ kotlin {
             api(Libs.Kotlinx.coroutinesCore)
         }
 
-        jvmMain.dependencies {
-            // api: okio Path/FileSystem are FileSettingsStore.open parameters.
-            api(Libs.Okio.core)
-        }
-
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(Libs.Kotlinx.coroutinesTest)
-        }
-
-        jvmTest.dependencies {
-            implementation(Libs.Okio.fakeFileSystem)
         }
     }
 }

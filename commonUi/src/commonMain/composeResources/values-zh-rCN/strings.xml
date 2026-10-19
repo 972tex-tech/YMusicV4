@@ -396,6 +396,7 @@
     <string name="update_download">下载</string>
     <string name="update_downloading">正在下载… %1$s / %2$s</string>
     <string name="update_ready">可以安装</string>
+    <string name="update_installing">正在安装…</string>
     <string name="update_manual_hint">此版本无法自行更新（%1$s）。请改为下载新版本。</string>
     <string name="update_failed">更新失败：%1$s</string>
     <string name="update_official_site">从官方网站下载</string>
@@ -472,6 +473,13 @@
         <item quantity="other">所选视频中有 %1$d 个已在你的音乐库中。</item>
     </plurals>
     <string name="error_network">无法连接到 YouTube。请检查网络连接后重试。</string>
+    <string name="error_disk_full">存储空间不足。请释放一些空间后重试。</string>
+    <string name="error_live_still_processing">此直播刚刚结束，仍在处理中。请稍后再试</string>
+    <string name="dialog_ok">确定</string>
+    <string name="folder_picker_disabled">系统“文件”应用已停用。请启用它以选择文件夹。</string>
+    <string name="folder_picker_open_settings">打开设置</string>
+    <string name="folder_picker_missing">此设备没有文件夹选择器，无法选择文件夹。</string>
+    <string name="error_supervised_account">此 Google 帐号受监管，因此无法在此使用 YouTube。请退出登录或切换到其他帐号。</string>
     <string name="settings_player_cache">播放器缓存</string>
     <string name="settings_player_cache_summary">上限 %1$s · 已用 %2$s · 已节省 %3$s</string>
     <string name="settings_player_cache_off">不缓存</string>
@@ -518,4 +526,5 @@
     <string name="video_details_deleted">评论已删除</string>
     <string name="menu_details_comments">详情和评论</string>
     <string name="menu_speed_pitch">速度和音调</string>
+    <string name="link_open_failed">无法打开：%1$s</string>
 </resources>

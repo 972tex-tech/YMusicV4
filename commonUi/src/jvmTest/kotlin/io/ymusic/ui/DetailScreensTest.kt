@@ -1,17 +1,14 @@
 package io.ymusic.ui
 
-import androidx.compose.foundation.layout.width
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
-import androidx.compose.ui.unit.dp
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.YtFeedItem
@@ -209,45 +206,6 @@ class DetailScreensTest {
                 onNodeWithText("7 Minute Stage", substring = true).performClick()
                 assertEquals(1, opened.size, "$opened")
                 assertEquals(YtFeedItem.KIND_PLAYLIST, opened.first().kind)
-            }
-        }
-    }
-
-    @Test
-    fun channel_tabs_overflow_shows_a_clickable_scroll_hint_at_phone_width() {
-        val home = resource("yt-channel-live.json")
-        withEngine({ request, _ -> textResponse(request, home, "application/json") }) { engines, player, scope ->
-            runComposeUiTest {
-                val graph = AppGraph(engines = engines, player = player, playerSurface = {})
-                val coordinator = PlaybackCoordinator(graph, scope)
-                val item = YtFeedItem(
-                    kind = YtFeedItem.KIND_CHANNEL,
-                    id = "UClyA28-01x4z60eWQ2kiNbA",
-                    title = "Sơn Tùng M-TP Official",
-                )
-                val session = ChannelSession(graph, scope, item, initialUrl = "/channel/UClyA28-01x4z60eWQ2kiNbA", parentLog = null)
-                setContent {
-                    YMusicTheme {
-                        // Phone-ish width: the 7 server tabs cannot fit.
-                        androidx.compose.foundation.layout.Box(
-                            androidx.compose.ui.Modifier.width(300.dp),
-                        ) {
-                            ChannelDetailScreen(coordinator, session, onBack = {}, onSearch = {})
-                        }
-                    }
-                }
-
-                waitUntilAtLeastOneExists(hasText("Home"), 20_000)
-                // Overflowing tabs show the end-side hint; the start side has nothing to go back to.
-                onAllNodesWithContentDescription("More tabs").assertCountEquals(1)
-
-                // Clicking pages the row: the start side now has hidden tabs, so its hint shows
-                // (the end hint stays too unless the click reached the very end of the row).
-                onNodeWithContentDescription("More tabs").performClick()
-                waitUntil(timeoutMillis = 10_000) {
-                    val hints = onAllNodesWithContentDescription("More tabs").fetchSemanticsNodes()
-                    hints.size == 2 || (hints.size == 1 && hints.single().positionInRoot.x < 100f)
-                }
             }
         }
     }

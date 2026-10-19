@@ -52,7 +52,7 @@ abstract class CrumbLogger protected constructor(
     final override fun forkAll(crumbs: List<Crumb>): Logger =
         if (crumbs.isEmpty()) this else fork(this.crumbs + crumbs)
 
-    protected val path: String by lazy(LazyThreadSafetyMode.NONE) { crumbs.joinToString("/") { it.tag } }
+    protected val path: String by lazy { crumbs.joinToString("/") { it.tag } }
 }
 
 /**

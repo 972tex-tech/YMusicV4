@@ -397,6 +397,7 @@
     <string name="update_download">பதிவிறக்கு</string>
     <string name="update_downloading">பதிவிறக்குகிறது… %2$s இல் %1$s</string>
     <string name="update_ready">நிறுவத் தயார்</string>
+    <string name="update_installing">நிறுவுகிறது…</string>
     <string name="update_manual_hint">இந்த நகல் தன்னைத்தானே புதுப்பிக்க முடியாது (%1$s). அதற்குப் பதிலாகப் புதிய பதிப்பைப் பதிவிறக்கவும்.</string>
     <string name="update_failed">புதுப்பிப்பு தோல்வியடைந்தது: %1$s</string>
     <string name="update_official_site">அதிகாரப்பூர்வ இணையதளத்திலிருந்து பதிவிறக்கவும்</string>
@@ -477,6 +478,13 @@
         <item quantity="other">தேர்ந்தெடுத்த வீடியோக்களில் %1$d ஏற்கனவே உங்கள் லைப்ரரியில் உள்ளன.</item>
     </plurals>
     <string name="error_network">YouTube-ஐ அடைய முடியவில்லை. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயலவும்.</string>
+    <string name="error_disk_full">போதுமான சேமிப்பிடம் இல்லை. சிறிது இடத்தைக் காலியாக்கி மீண்டும் முயலவும்.</string>
+    <string name="error_live_still_processing">இந்த நேரலை இப்போதுதான் முடிந்தது, இன்னும் செயலாக்கப்படுகிறது. பிறகு மீண்டும் முயலவும்</string>
+    <string name="dialog_ok">சரி</string>
+    <string name="folder_picker_disabled">சிஸ்டத்தின் Files ஆப்ஸ் முடக்கப்பட்டுள்ளது. கோப்புறையைத் தேர்வுசெய்ய அதை இயக்கவும்.</string>
+    <string name="folder_picker_open_settings">அமைப்புகளைத் திற</string>
+    <string name="folder_picker_missing">இந்தச் சாதனத்தில் கோப்புறைத் தேர்வி இல்லை, எனவே கோப்புறையைத் தேர்வுசெய்ய முடியாது.</string>
+    <string name="error_supervised_account">இந்த Google கணக்கு மேற்பார்வையில் உள்ளதால் இங்கே YouTube-ஐப் பயன்படுத்த முடியாது. வெளியேறவும் அல்லது வேறு கணக்கிற்கு மாறவும்.</string>
     <string name="settings_player_cache">பிளேயர் தற்காலிகச் சேமிப்பு</string>
     <string name="settings_player_cache_summary">அதிகபட்சம் %1$s · பயன்படுத்தியது %2$s · சேமித்தது %3$s</string>
     <string name="settings_player_cache_off">தற்காலிகச் சேமிப்பு இல்லை</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">கருத்து நீக்கப்பட்டது</string>
     <string name="menu_details_comments">விவரங்களும் கருத்துகளும்</string>
     <string name="menu_speed_pitch">வேகமும் சுருதியும்</string>
+    <string name="link_open_failed">திறக்க முடியவில்லை: %1$s</string>
 </resources>

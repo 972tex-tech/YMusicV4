@@ -79,7 +79,6 @@ import io.ymusic.dynamicengine.DefaultJsSourceProvider
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.EMBEDDED_PLAYER_JS_VERSION
 import io.ymusic.dynamicengine.ENGINE_BUNDLE
-import io.ymusic.dynamicengine.SignedBundleRef
 import io.ymusic.dynamicengine.desktopEngineCacheStore
 import io.ymusic.dynamicengine.player.bindMseNativeLogs
 import io.ymusic.dynamicengine.playerJsSource
@@ -110,7 +109,6 @@ import io.ymusic.remoteconfig.RemoteConfig
 import io.ymusic.remoteconfig.RunningBundles
 import io.ymusic.remoteconfig.StatUsage
 import io.ymusic.settings.AppSettings
-import io.ymusic.settings.FileSettingsStore
 import io.ymusic.settings.anonymousDeviceId
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
@@ -130,6 +128,7 @@ import io.ymusic.ui.IncomingLinks
 import io.ymusic.ui.ScanResult
 import io.ymusic.ui.VideoOverlayNative
 import io.ymusic.ui.YtEngineSabrSpecResolver
+import io.ymusic.ui.bundleConfig
 import io.ymusic.ui.designPaletteFor
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
@@ -174,7 +173,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -235,9 +233,9 @@ fun main() {
         }
     }
     // Opened before anything else: crash-reporting consent lives here.
+    val appStore = AppStore.open(ymusicDataDir(), rootLogger.fork("app-store"))
     val settings = kotlinx.coroutines.runBlocking {
-        val dir = ymusicDataDir().apply { mkdirs() }
-        FileSettingsStore.open(File(dir, "settings.properties").absolutePath.toPath()).also {
+        AppStoreSettings.open(appStore).also {
             // First launch decides the app language (device if supported, else English) and persists it.
             ensureAppLanguage(it)
         }
@@ -479,7 +477,7 @@ fun main() {
                     }
                     LaunchedEffect(Unit) {
                         boot {
-                            when (val opened = openCookieStore(ymusicDataDir().apply { mkdirs() }, rootLogger.fork("cookies"))) {
+                            when (val opened = openCookieStore(appStore, ymusicDataDir().apply { mkdirs() }, rootLogger.fork("cookies"))) {
                                 is CookieStoreOpen.Ready -> opened.session
                                 is CookieStoreOpen.Locked -> {
                                     lockedCookies = opened
@@ -555,7 +553,7 @@ fun main() {
     }
 }
 
-private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSession): AppGraph {
+private suspend fun buildGraph(settings: AppStoreSettings, session: CookieSession): AppGraph {
     val dataDir = ymusicDataDir().apply { mkdirs() }
     // File-backed jar for YouTube (engine cookie/get|set + player + proxy) and the YMusic API.
     // Desktop has no WebView cookie store: sign-in imports cookies from a phone QR or a browser paste.
@@ -588,9 +586,8 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         )
     }
     // Flags, the newest JS bundle revisions, and update availability. Started here so the first
-    // fetch overlaps the rest of startup; nothing below waits on it, and both JS seams read
-    // whatever it holds at the moment they are asked (cached body on a cold start offline).
-    remoteConfig = RemoteConfig(
+    // fetch overlaps the rest of startup; nothing waits on it, the JS bundles follow what it publishes.
+    val remoteConfig = RemoteConfig(
         api = api,
         cacheFile = File(dataDir, "remote-config.json").absolutePath.toPath(),
         fileSystem = FileSystem.SYSTEM,
@@ -611,12 +608,11 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         log = rootLogger.fork("stats"),
     ).also { it.onAppStart() }
 
-    // The engine bundle: jar-resource embed (no compiled-in constant) + file cache + remote
-    // config (fetchConfig answers null until a config service exists). The manager boots
-    // cached-or-embed and runs the periodic update check itself.
+    // The engine bundle: jar-resource embed (no compiled-in constant) + file cache + the revision
+    // the config service publishes, which the manager follows from start.
     val engineSource = DefaultJsSourceProvider(
         client = http.engine,
-        config = { remoteConfig?.getConfig()?.engineJs?.let { SignedBundleRef(it.version, it.url, it.signature) } },
+        config = remoteConfig.bundleConfig { it.engineJs },
         name = ENGINE_BUNDLE,
         publicKey = BUNDLE_PUBLIC_KEY,
         embedVersion = ENGINE_JS_VERSION,
@@ -737,7 +733,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
                         mediaProxy = mediaProxy,
                         playerJs = playerJsSource(
                             client = http.engine,
-                            config = { remoteConfig?.getConfig()?.playerJs?.let { SignedBundleRef(it.version, it.url, it.signature) } },
+                            config = remoteConfig.bundleConfig { it.playerJs },
                             publicKey = BUNDLE_PUBLIC_KEY,
                             fileSystem = FileSystem.SYSTEM,
                             directory = File(dataDir, "player-js").absolutePath.toPath(),
@@ -828,7 +824,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         downloadDir = File(dataDir, "update"),
         installer = installerFor(desktopOsKey()),
         scope = updateScope,
-        configUpdates = remoteConfig?.config?.map { it.appUpdate } ?: emptyFlow(),
+        configUpdates = remoteConfig.config.map { it.appUpdate },
         logger = rootLogger,
         autoDownload = { settings.flow(AppSettings.autoDownloadUpdates).value },
         autoDownloadFailed = { settings.flow(AppSettings.updateAutoDownloadFailed).value },
@@ -839,9 +835,8 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         DesktopAppUpdates(
             updateService,
             updateScope,
-            refreshConfig = { remoteConfig?.refreshNow() ?: false },
-            latestUpdate = { remoteConfig?.getConfig()?.appUpdate },
-            downloadSite = { remoteConfig?.config?.replayCache?.lastOrNull()?.downloadPageUrl },
+            freshConfig = { remoteConfig.awaitFresh(timeoutMs = 3_000L) },
+            downloadSite = { remoteConfig.config.value.downloadPageUrl },
         )
     } else {
         null
@@ -900,7 +895,7 @@ private suspend fun buildGraph(settings: FileSettingsStore, session: CookieSessi
         updates = desktopUpdates,
         stats = stats,
         api = api,
-        remoteConfig = remoteConfig?.config,
+        remoteConfig = remoteConfig.config,
         sendFeedback = sendFeedbackAction.takeIf { SENTRY_DSN.isNotEmpty() },
         pickFeedbackFiles = ::pickFeedbackFiles,
         windowResizing = windowResizing,
@@ -1419,16 +1414,6 @@ private suspend fun pickFolder(): File? {
         }
     }
 }
-
-/**
- * The live remote config, once [buildGraph] has built it.
- *
- * Held at file scope because the two JS source providers are constructed with a lambda that must
- * read whatever the CURRENT config says at the moment it is asked, not a snapshot taken while the
- * graph was still being assembled.
- */
-internal var remoteConfig: RemoteConfig? = null
-    private set
 
 /** The coarse platform name the config service keys releases by. */
 internal fun desktopOsKey(): String {

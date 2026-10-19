@@ -396,6 +396,7 @@
     <string name="update_download">ดาวน์โหลด</string>
     <string name="update_downloading">กำลังดาวน์โหลด… %1$s จาก %2$s</string>
     <string name="update_ready">พร้อมติดตั้ง</string>
+    <string name="update_installing">กำลังติดตั้ง…</string>
     <string name="update_manual_hint">สำเนานี้อัปเดตตัวเองไม่ได้ (%1$s) โปรดดาวน์โหลดเวอร์ชันใหม่แทน</string>
     <string name="update_failed">อัปเดตไม่สำเร็จ: %1$s</string>
     <string name="update_official_site">ดาวน์โหลดจากเว็บไซต์ทางการ</string>
@@ -472,6 +473,13 @@
         <item quantity="other">วิดีโอที่เลือก %1$d รายการอยู่ในคลังเพลงของคุณแล้ว</item>
     </plurals>
     <string name="error_network">เชื่อมต่อ YouTube ไม่ได้ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</string>
+    <string name="error_disk_full">พื้นที่เก็บข้อมูลไม่เพียงพอ เพิ่มพื้นที่ว่างแล้วลองอีกครั้ง</string>
+    <string name="error_live_still_processing">สตรีมนี้เพิ่งจบและยังอยู่ระหว่างประมวลผล ลองอีกครั้งภายหลัง</string>
+    <string name="dialog_ok">ตกลง</string>
+    <string name="folder_picker_disabled">แอปไฟล์ของระบบถูกปิดอยู่ เปิดแอปนี้เพื่อเลือกโฟลเดอร์</string>
+    <string name="folder_picker_open_settings">เปิดการตั้งค่า</string>
+    <string name="folder_picker_missing">อุปกรณ์นี้ไม่มีตัวเลือกโฟลเดอร์ จึงเลือกโฟลเดอร์ไม่ได้</string>
+    <string name="error_supervised_account">บัญชี Google นี้อยู่ภายใต้การดูแล จึงใช้ YouTube ที่นี่ไม่ได้ ออกจากระบบหรือเปลี่ยนไปใช้บัญชีอื่น</string>
     <string name="settings_player_cache">แคชของเพลเยอร์</string>
     <string name="settings_player_cache_summary">สูงสุด %1$s · ใช้ไป %2$s · ประหยัด %3$s</string>
     <string name="settings_player_cache_off">ไม่ใช้แคช</string>
@@ -518,4 +526,5 @@
     <string name="video_details_deleted">ลบความคิดเห็นแล้ว</string>
     <string name="menu_details_comments">รายละเอียดและความคิดเห็น</string>
     <string name="menu_speed_pitch">ความเร็วและระดับเสียง</string>
+    <string name="link_open_failed">เปิดไม่ได้: %1$s</string>
 </resources>

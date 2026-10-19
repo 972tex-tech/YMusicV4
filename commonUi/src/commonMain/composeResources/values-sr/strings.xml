@@ -398,6 +398,7 @@
     <string name="update_download">Преузми</string>
     <string name="update_downloading">Преузимање… %1$s од %2$s</string>
     <string name="update_ready">Спремно за инсталирање</string>
+    <string name="update_installing">Инсталирање…</string>
     <string name="update_manual_hint">Ова копија не може сама да се ажурира (%1$s). Уместо тога преузмите нову верзију.</string>
     <string name="update_failed">Ажурирање није успело: %1$s</string>
     <string name="update_official_site">Преузмите са званичног сајта</string>
@@ -482,6 +483,13 @@
         <item quantity="other">%1$d од изабраних видеа је већ у вашој библиотеци.</item>
     </plurals>
     <string name="error_network">YouTube није доступан. Проверите везу и покушајте поново.</string>
+    <string name="error_disk_full">Нема довољно простора за складиштење. Ослободите простор и покушајте поново.</string>
+    <string name="error_live_still_processing">Овај пренос се управо завршио и још се обрађује. Покушајте поново касније</string>
+    <string name="dialog_ok">Потврди</string>
+    <string name="folder_picker_disabled">Системска апликација „Датотеке“ је искључена. Укључите је да бисте изабрали фолдер.</string>
+    <string name="folder_picker_open_settings">Отвори подешавања</string>
+    <string name="folder_picker_missing">Овај уређај нема алатку за избор фолдера, па фолдер не може да се изабере.</string>
+    <string name="error_supervised_account">Овај Google налог је под надзором, па се YouTube овде не може користити. Одјавите се или пређите на други налог.</string>
     <string name="settings_player_cache">Кеш плејера</string>
     <string name="settings_player_cache_summary">Макс. %1$s · Заузето %2$s · Уштеђено %3$s</string>
     <string name="settings_player_cache_off">Без кеша</string>
@@ -528,4 +536,5 @@
     <string name="video_details_deleted">Коментар је избрисан</string>
     <string name="menu_details_comments">Детаљи и коментари</string>
     <string name="menu_speed_pitch">Брзина и висина тона</string>
+    <string name="link_open_failed">Није могуће отворити: %1$s</string>
 </resources>

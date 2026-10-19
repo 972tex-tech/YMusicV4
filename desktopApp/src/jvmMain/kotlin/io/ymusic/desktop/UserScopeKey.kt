@@ -6,12 +6,7 @@ import com.sun.jna.Pointer
 import com.sun.jna.Structure
 import com.sun.jna.ptr.PointerByReference
 import kmpcommon.log.Logger
-import java.io.File
 import java.io.IOException
-import java.nio.file.FileAlreadyExistsException
-import java.nio.file.Files
-import java.nio.file.StandardOpenOption
-import java.nio.file.attribute.PosixFilePermissions
 import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.SecretKey
@@ -21,16 +16,20 @@ private const val KEY_BYTES = 32
 private const val KEY_NAME = "cookie-key"
 private const val APP_ID = "io.ymusic.desktop"
 
+/** [AppStore] secrets, named as the files they were before (the legacy import keeps the names). */
+internal const val DPAPI_KEY_SECRET = "$KEY_NAME.dpapi"
+internal const val FALLBACK_KEY_SECRET = "$KEY_NAME.bin"
+
 /**
  * The key the cookie jar is sealed under by default: one only this OS user can recover, so a copied
  * file or disk is unreadable — though any app running as that user can still ask for it.
  * Blocking (keychain / DPAPI / D-Bus): call it off the main thread.
  */
-internal fun userScopeCookieKey(dataDir: File, log: Logger?): SecretKey {
+internal fun userScopeCookieKey(store: AppStore, log: Logger?): SecretKey {
     val bytes = when (desktopOsKey()) {
         "macos" -> MacKeychain.getOrCreateSecret(APP_ID, KEY_NAME, KEY_BYTES)
-        "windows" -> WindowsDpapi.getOrCreateSecret(File(dataDir, "$KEY_NAME.dpapi"), KEY_BYTES)
-        else -> linuxSecret(dataDir, log)
+        "windows" -> WindowsDpapi.getOrCreateSecret(store, KEY_BYTES)
+        else -> linuxSecret(store, log)
     }
     return SecretKeySpec(bytes, "AES")
 }
@@ -38,47 +37,33 @@ internal fun userScopeCookieKey(dataDir: File, log: Logger?): SecretKey {
 private fun randomSecret(size: Int) = ByteArray(size).also { SecureRandom().nextBytes(it) }
 
 /**
- * The desktop keyring (Secret Service: GNOME Keyring, KWallet) when one answers; otherwise a 0600
- * key file, which only keeps out other OS users. A key file, once made, stays the source — a
- * keyring that turns up later must not orphan the jar sealed under it.
+ * The desktop keyring (Secret Service: GNOME Keyring, KWallet) when one answers; otherwise a plain
+ * key in the owner-only [AppStore], which only keeps out other OS users. A fallback key, once made,
+ * stays the source — a keyring that turns up later must not orphan the jar sealed under it.
  */
-private fun linuxSecret(dataDir: File, log: Logger?): ByteArray {
-    val keyFile = File(dataDir, "$KEY_NAME.bin")
-    if (keyFile.exists()) return keyFile.readBytes()
+private fun linuxSecret(store: AppStore, log: Logger?): ByteArray {
+    store.secret(FALLBACK_KEY_SECRET)?.let { return it }
     try {
         return LinuxSecretService.getOrCreateSecret(APP_ID, KEY_NAME, KEY_BYTES)
     } catch (error: Throwable) {
-        log?.log(Logger.Level.WARN, "no Secret Service, cookie key falls back to a key file", error)
+        log?.log(Logger.Level.WARN, "no Secret Service, cookie key falls back to the app store", error)
     }
-    val secret = randomSecret(KEY_BYTES)
-    try {
-        Files.write(
-            keyFile.toPath(),
-            secret,
-            StandardOpenOption.CREATE_NEW,
-            StandardOpenOption.WRITE,
-        ).also { Files.setPosixFilePermissions(it, PosixFilePermissions.fromString("rw-------")) }
-    } catch (_: FileAlreadyExistsException) {
-        return keyFile.readBytes()
-    }
-    return secret
+    return store.secretOrPut(FALLBACK_KEY_SECRET, randomSecret(KEY_BYTES))
 }
 
-/** DPAPI (`CryptProtectData`, user scope): the blob on disk opens only for this Windows user. */
+/** DPAPI (`CryptProtectData`, user scope): the stored blob opens only for this Windows user. */
 private object WindowsDpapi {
     private const val CRYPTPROTECT_UI_FORBIDDEN = 0x1
     private val crypt32 by lazy { NativeLibrary.getInstance("Crypt32") }
     private val kernel32 by lazy { NativeLibrary.getInstance("Kernel32") }
     private val entropy = "$APP_ID/$KEY_NAME".toByteArray()
 
-    fun getOrCreateSecret(blobFile: File, size: Int): ByteArray {
-        if (blobFile.exists()) return transform("CryptUnprotectData", blobFile.readBytes())
+    fun getOrCreateSecret(store: AppStore, size: Int): ByteArray {
+        store.secret(DPAPI_KEY_SECRET)?.let { return transform("CryptUnprotectData", it) }
         val secret = randomSecret(size)
         val blob = transform("CryptProtectData", secret)
-        val tmp = File(blobFile.parentFile, blobFile.name + ".tmp")
-        tmp.writeBytes(blob)
-        Files.move(tmp.toPath(), blobFile.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
-        return secret
+        val kept = store.secretOrPut(DPAPI_KEY_SECRET, blob)
+        return if (kept.contentEquals(blob)) secret else transform("CryptUnprotectData", kept)
     }
 
     private fun transform(function: String, input: ByteArray): ByteArray {

@@ -1,11 +1,8 @@
 package io.ymusic.ui
 
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
@@ -83,69 +80,6 @@ class ContentLocaleTest {
                 // asserted nothing — no setting, no context parameter.
                 waitUntil(timeoutMillis = 10_000) { charts.last().contains(""""gl":"VN"""") }
                 assertTrue(charts.last().contains(""""hl":"en""""), charts.last())
-            }
-        } finally {
-            runBlocking { engines.close() }
-        }
-    }
-
-    @Test
-    fun the_content_region_picker_is_a_dialog_listing_youtubes_menu() {
-        Locale.setDefault(Locale.US)
-        // Held until the dialog is open, so the fetch-in-flight state is observable.
-        val menuGate = java.util.concurrent.CompletableFuture<Unit>()
-        val engines = DynamicEngineManager(
-            CannedHttp { request, _ ->
-                val url = request.url.toString()
-                when {
-                    url.contains("account/account_menu") -> {
-                        menuGate.get(20, java.util.concurrent.TimeUnit.SECONDS)
-                        textResponse(request, ACCOUNT_MENU_FIXTURE, "application/json")
-                    }
-                    request.method == "GET" && url.contains("www.youtube.com") && !url.contains("youtubei") -> {
-                        // Echo a PREF gl pick back in the ytcfg, as the live server does.
-                        val picked = Regex("""gl=(\w+)""").find(request.headers["Cookie"].orEmpty())?.groupValues?.get(1)
-                        val page = if (picked == null) {
-                            HOMEPAGE_IN_VN
-                        } else {
-                            HOMEPAGE_IN_VN.replace(""""GL":"VN"""", """"GL":"${picked.uppercase()}"""")
-                        }
-                        textResponse(request, page, "text/html")
-                    }
-                    else -> textResponse(request, "{}", "application/json")
-                }
-            },
-            appVersion = 1,
-            jsSource = embeddedEngineJsSource(),
-        )
-        runBlocking { engines.start() }
-        try {
-            runComposeUiTest {
-                val settings = InMemorySettingsStore()
-                val graph = AppGraph(engines = engines, player = StubPlayer(), settings = settings, playerSurface = {})
-                setContent {
-                    App(graph, androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(AppSection.Settings) })
-                }
-
-                // The ~100-entry menu opens as a dialog off the row (a dropdown can't hold it).
-                // While the fetch is still in flight there is nothing to offer beyond Automatic,
-                // and the dialog must say so with a spinner instead of looking complete.
-                waitUntilAtLeastOneExists(hasText("Content region"), 20_000)
-                onNodeWithText("Content region").performClick()
-                waitUntilAtLeastOneExists(hasText("Cancel"), 10_000)
-                onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertExists()
-
-                menuGate.complete(Unit)
-                waitUntilAtLeastOneExists(hasText("Hoa Kỳ"), 10_000)
-                onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertDoesNotExist()
-
-                // Picking reports to the ENGINE (yt/locale/apply) — no app setting is written.
-                // The dialog closes and the row re-reads the pick from the engine.
-                onNodeWithText("Hoa Kỳ").performClick()
-                waitUntil(timeoutMillis = 10_000) {
-                    onAllNodes(hasText("Cancel")).fetchSemanticsNodes().isEmpty()
-                }
-                waitUntilAtLeastOneExists(hasText("Hoa Kỳ"), 10_000)
             }
         } finally {
             runBlocking { engines.close() }

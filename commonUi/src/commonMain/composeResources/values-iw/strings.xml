@@ -398,6 +398,7 @@
     <string name="update_download">הורדה</string>
     <string name="update_downloading">מוריד… %1$s מתוך %2$s</string>
     <string name="update_ready">מוכן להתקנה</string>
+    <string name="update_installing">מתקין…</string>
     <string name="update_manual_hint">העותק הזה לא יכול לעדכן את עצמו (%1$s). הורד את הגרסה החדשה במקום.</string>
     <string name="update_failed">העדכון נכשל: %1$s</string>
     <string name="update_official_site">הורדה מהאתר הרשמי</string>
@@ -482,6 +483,13 @@
         <item quantity="other">%1$d מהסרטונים שנבחרו כבר נמצאים בספרייה שלך.</item>
     </plurals>
     <string name="error_network">לא ניתן להתחבר ל-YouTube. בדוק את החיבור ונסה שוב.</string>
+    <string name="error_disk_full">אין מספיק שטח אחסון. פנה מקום ונסה שוב.</string>
+    <string name="error_live_still_processing">השידור הזה הסתיים זה עתה ועדיין מעובד. נסה שוב מאוחר יותר</string>
+    <string name="dialog_ok">אישור</string>
+    <string name="folder_picker_disabled">אפליקציית הקבצים של המערכת כבויה. יש להפעיל אותה כדי לבחור תיקייה.</string>
+    <string name="folder_picker_open_settings">פתיחת ההגדרות</string>
+    <string name="folder_picker_missing">אין במכשיר הזה בורר תיקיות, ולכן אי אפשר לבחור תיקייה.</string>
+    <string name="error_supervised_account">חשבון Google זה נמצא בפיקוח, ולכן לא ניתן להשתמש כאן ב-YouTube. צא מהחשבון או עבור לחשבון אחר.</string>
     <string name="settings_player_cache">מטמון הנגן</string>
     <string name="settings_player_cache_summary">מקסימום %1$s · בשימוש %2$s · נחסך %3$s</string>
     <string name="settings_player_cache_off">ללא מטמון</string>
@@ -528,4 +536,5 @@
     <string name="video_details_deleted">התגובה נמחקה</string>
     <string name="menu_details_comments">פרטים ותגובות</string>
     <string name="menu_speed_pitch">מהירות וגובה צליל</string>
+    <string name="link_open_failed">לא ניתן לפתוח: %1$s</string>
 </resources>

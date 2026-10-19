@@ -111,6 +111,7 @@ E60066 - local unsubscribe failed to save (commonUi SubscriptionsScreen)
 E60067 - local subscribe/unsubscribe failed to save (commonUi ChannelSession)
 E60068 - local subscriptions import failed: empty clipboard, unreadable text or save error (commonUi SubscriptionsScreen)
 E60064 D MSE video stream has no working MediaCodec decoder; playback fails instead of a CPU fallback (player MsePlayer, Android)
+E60065 D googlevideo rejected the MSE session's PO token (StreamProtectionStatus=3); fails with needReset (player MsePlayer)
 
 E70001 D unclassified download failure (download DownloadService.execute fallback)
 E70010 D no SABR stream; progressive download not yet supported (download YtStreamDownloader)

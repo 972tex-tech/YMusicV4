@@ -399,6 +399,7 @@
     <string name="update_download">Pobierz</string>
     <string name="update_downloading">Pobieranie… %1$s z %2$s</string>
     <string name="update_ready">Gotowe do instalacji</string>
+    <string name="update_installing">Instalowanie…</string>
     <string name="update_manual_hint">Ta kopia nie może się sama zaktualizować (%1$s). Pobierz nową wersję ręcznie.</string>
     <string name="update_failed">Aktualizacja nie powiodła się: %1$s</string>
     <string name="update_official_site">Pobierz z oficjalnej strony</string>
@@ -487,6 +488,13 @@
         <item quantity="other">%1$d z wybranych filmów jest już w Twojej Bibliotece.</item>
     </plurals>
     <string name="error_network">Nie można połączyć się z YouTube. Sprawdź połączenie i spróbuj ponownie.</string>
+    <string name="error_disk_full">Za mało miejsca w pamięci. Zwolnij trochę miejsca i spróbuj ponownie.</string>
+    <string name="error_live_still_processing">Ta transmisja właśnie się zakończyła i jest jeszcze przetwarzana. Spróbuj ponownie później</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Systemowa aplikacja Pliki jest wyłączona. Włącz ją, aby wybrać folder.</string>
+    <string name="folder_picker_open_settings">Otwórz ustawienia</string>
+    <string name="folder_picker_missing">To urządzenie nie ma narzędzia do wyboru folderu, więc nie można wybrać folderu.</string>
+    <string name="error_supervised_account">To konto Google jest nadzorowane, więc nie można tu korzystać z YouTube. Wyloguj się lub przełącz na inne konto.</string>
     <string name="settings_player_cache">Pamięć podręczna odtwarzacza</string>
     <string name="settings_player_cache_summary">Maks. %1$s · Użyto %2$s · Zaoszczędzono %3$s</string>
     <string name="settings_player_cache_off">Bez pamięci podręcznej</string>
@@ -533,4 +541,5 @@
     <string name="video_details_deleted">Usunięto komentarz</string>
     <string name="menu_details_comments">Szczegóły i komentarze</string>
     <string name="menu_speed_pitch">Prędkość i wysokość</string>
+    <string name="link_open_failed">Nie można otworzyć: %1$s</string>
 </resources>

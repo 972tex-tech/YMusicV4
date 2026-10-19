@@ -120,7 +120,13 @@ class PlaybackService : MediaLibraryService() {
             applyMediaItems = { _, items, startIndex, _ -> applyBrowseItems(items, startIndex) },
             insertMediaItems = { target, index, items -> insertBrowseItems(target, index, items) },
         )
+        sessionOwner?.takeIf { it !== this }?.let { stale ->
+            log?.log(Logger.Level.WARN, "a previous PlaybackService still holds a live session; releasing it")
+            stale.releaseSession()
+        }
+        sessionOwner = this
         session = MediaLibrarySession.Builder(this, adapter, LibraryCallback(tree))
+            .setId("playback-${++sessionCount}")
             .setSessionActivity(sessionActivityIntent())
             .apply {
                 // Artwork through the shared app ImageLoader (https + art://, UI-shared caches)
@@ -371,7 +377,7 @@ class PlaybackService : MediaLibraryService() {
         if (intent?.action == ACTION_DISMISS) {
             super.onStartCommand(intent, flags, startId) // LifecycleService dispatches on super
             player?.stop()
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_REMOVE, log)
             NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
             foreground = false
             stopSelf()
@@ -396,6 +402,13 @@ class PlaybackService : MediaLibraryService() {
         // or an unreleased session outliving the service is the real leak).
         runCatching { serviceScope.cancel() }
         releaseLocks()
+        releaseSession()
+        if (sessionOwner === this) sessionOwner = null
+        art = null
+        super.onDestroy()
+    }
+
+    private fun releaseSession() {
         session?.let { mediaSession ->
             val adapter = mediaSession.player
             runCatching { mediaSession.release() }
@@ -404,15 +417,13 @@ class PlaybackService : MediaLibraryService() {
                 .onFailure { log?.log(Logger.Level.WARN, "player adapter release failed", it) }
         }
         session = null
-        art = null
-        super.onDestroy()
     }
 
     /** Playing → foreground (undismissable). Paused → demoted, notification stays and is swipeable. */
     private fun updateNotification() {
         val player = this.player ?: return
         if (player.queue.value.currentItem == null) {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_REMOVE, log)
             NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
             foreground = false
             return
@@ -425,7 +436,7 @@ class PlaybackService : MediaLibraryService() {
             foreground = promote(notification)
         } else {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
+            stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_DETACH, log)
             foreground = false
         }
     }
@@ -619,6 +630,14 @@ class PlaybackService : MediaLibraryService() {
         const val DISMISS_REQUEST_CODE = 100
         const val LOCK_RELEASE_GRACE_MS = 60_000L
         const val HEADSET_CLICK_WINDOW_MS = 300L
+
+        // media3 keeps every session id in a process-wide registry until release(), and a constructor
+        // that fails after registering leaks its id: each instance gets a fresh one. Main thread only.
+        var sessionCount = 0
+
+        // The instance whose session is live. Android can start a new instance while an old one never
+        // got onDestroy; the new one releases the old session so the process never holds two.
+        var sessionOwner: PlaybackService? = null
     }
 }
 

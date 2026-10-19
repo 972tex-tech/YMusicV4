@@ -52,6 +52,8 @@ void mse_host_set_js_event(void (*fn)(const char *name))
 struct MseHost {
     pthread_mutex_t mu;
     pthread_mutex_t frame_mu;
+    /* Guards the av pointer for callers off the JS thread: reset frees and replaces it. */
+    pthread_mutex_t av_mu;
     pthread_cond_t cv;
     pthread_t dec;
     pthread_t vdec;
@@ -254,14 +256,14 @@ static void dac_cp_fold(MseHost *h, int64_t audible)
     h->samples_played = h->dac_pos > h->dac_base ? h->dac_pos - h->dac_base : 0;
 }
 
-/* h->mu held. The caller moved seek_base to the current media time: count from dac_pos. */
-static void dac_rebase(MseHost *h)
+/* h->mu held. The caller moved seek_base to the media time `keep` frames before dac_pos. */
+static void dac_rebase(MseHost *h, int64_t keep)
 {
     int i, w = 0;
-    h->dac_base = h->dac_pos;
-    h->samples_played = 0;
+    h->dac_base = h->dac_pos - keep;
+    h->samples_played = keep;
     for (i = 0; i < h->dac_cp_n; i++) {
-        if (h->dac_cp_edge[i] > h->dac_pos) {
+        if (h->dac_cp_edge[i] > h->dac_base) {
             h->dac_cp_edge[w] = h->dac_cp_edge[i];
             h->dac_cp_speed[w] = h->dac_cp_speed[i];
             w++;
@@ -277,6 +279,20 @@ static int64_t aq_latency_frames(MseHost *h)
     int fb = h->ch > 0 ? h->ch * 2 : 4;
     int one = h->aq_buf_bytes > 0 ? h->aq_buf_bytes / fb : (int)(0.02 * h->rate);
     return (int64_t)one * 4;
+}
+
+/* Wall seconds the device has played since the last callback handed it a buffer, up to one buffer. */
+static double aq_tick_extra_s(MseHost *h)
+{
+    double one = 0.02, extra;
+    if (h->dac_tick_ns <= 0)
+        return 0;
+    if (h->aq_buf_bytes > 0 && h->ch > 0 && h->rate > 0)
+        one = (double)h->aq_buf_bytes / (double)(h->rate * h->ch * 2);
+    extra = (now_ns() - h->dac_tick_ns) / 1e9;
+    if (extra > one)
+        extra = one;
+    return extra > 0 ? extra : 0;
 }
 #endif
 #endif
@@ -295,6 +311,20 @@ static double dac_handover(MseHost *h, double dac)
 }
 #endif
 
+#ifdef __ANDROID__
+/* h->mu held. Wall seconds played since the sink's last position report, up to DAC_EXTRAPOLATE_S. */
+static double sink_tick_extra_s(MseHost *h)
+{
+    double extra;
+    if (!h->playing || h->dac_tick_ns <= 0)
+        return 0;
+    extra = (now_ns() - h->dac_tick_ns) / 1e9;
+    if (extra > DAC_EXTRAPOLATE_S)
+        extra = DAC_EXTRAPOLATE_S;
+    return extra > 0 ? extra : 0;
+}
+#endif
+
 /* h->mu held. Do not take MseAv locks: the DAC callback/poll needs h->mu, and
    MediaCodec configure holds a->mu for tens of ms (audio-only → Auto). */
 /* Caller holds mu. */
@@ -304,8 +334,15 @@ static void rebase_hold(MseHost *h, double t)
     h->origin_ns = now_ns();
 #ifdef MSE_DAC
     h->seek_base = t;
-    dac_rebase(h);
-    h->dac_tick_ns = 0;
+#ifdef MSE_AQ
+    /* t is the audible position: behind it sit the frames the queue still holds, ahead of the last
+       tick the extrapolated ones. Both stay counted and the tick stays, so the clock carries on
+       from t instead of losing a queue (or banking the extrapolation) per rebase. */
+    dac_rebase(h, aq_latency_frames(h) - (int64_t)(aq_tick_extra_s(h) * h->rate));
+#else
+    /* t already carries the extrapolation past the sink's last report: count it as played. */
+    dac_rebase(h, -(int64_t)(sink_tick_extra_s(h) * h->rate));
+#endif
 #endif
 }
 
@@ -360,13 +397,7 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
                from the held position instead of a second ahead of it. */
             if (!h->dac_live && h->playing)
                 h->origin_ns = now_ns();
-            if (h->playing && h->dac_tick_ns > 0) {
-                double extra = (now_ns() - h->dac_tick_ns) / 1e9;
-                if (extra > DAC_EXTRAPOLATE_S)
-                    extra = DAC_EXTRAPOLATE_S;
-                if (extra > 0)
-                    dac += extra * sp;
-            }
+            dac += sink_tick_extra_s(h) * sp;
             t = dac_handover(h, dac);
         } else {
             h->clk_dac = 0;
@@ -376,17 +407,7 @@ static double clock_with_span(MseHost *h, int have, double first, double last, i
             double sp = play_speed(h);
             double dac = h->seek_base +
                          dac_media_s(h, (double)(h->samples_played - aq_latency_frames(h)), sp);
-            double one = 0.02;
-            if (h->aq_buf_bytes > 0 && h->ch > 0)
-                one = (double)h->aq_buf_bytes /
-                      (double)(h->rate * (h->ch > 0 ? h->ch * 2 : 4));
-            if (h->dac_tick_ns > 0) {
-                double extra = (now_ns() - h->dac_tick_ns) / 1e9;
-                if (extra > one)
-                    extra = one;
-                if (extra > 0)
-                    dac += extra * sp;
-            }
+            dac += aq_tick_extra_s(h) * sp;
             t = dac_handover(h, dac);
         } else {
             h->clk_dac = 0;
@@ -1041,7 +1062,7 @@ static void *dec_loop(void *arg)
                 }
                 if (dac && !h->aq_started && ring_ms(h) >= 160) {
                     h->aq_started = 1;
-                    dac_rebase(h);
+                    dac_rebase(h, 0);
                     h->dac_tick_ns = 0;
 #ifdef MSE_AQ
                     start_q = h->aq;
@@ -1114,6 +1135,7 @@ MseHost *mse_host_create(void)
         return NULL;
     pthread_mutex_init(&h->mu, NULL);
     pthread_mutex_init(&h->frame_mu, NULL);
+    pthread_mutex_init(&h->av_mu, NULL);
     pthread_cond_init(&h->cv, NULL);
     h->av = mse_av_create();
     h->fx = audio_fx_create();
@@ -1254,10 +1276,14 @@ void mse_host_destroy(MseHost *h)
     h->last_w = 0;
     h->last_h = 0;
     pthread_mutex_unlock(&h->frame_mu);
+    pthread_mutex_lock(&h->av_mu);
     mse_av_destroy(h->av);
+    h->av = NULL;
+    pthread_mutex_unlock(&h->av_mu);
     audio_fx_destroy(h->fx);
     free(h->fx_pcm);
     pthread_mutex_destroy(&h->frame_mu);
+    pthread_mutex_destroy(&h->av_mu);
     pthread_mutex_destroy(&h->mu);
     pthread_cond_destroy(&h->cv);
     free(h);
@@ -1273,11 +1299,15 @@ void mse_host_set_video_surface(MseHost *h, void *window)
     h->window = window;
     pthread_mutex_unlock(&h->mu);
 #ifdef __ANDROID__
+    pthread_mutex_lock(&h->av_mu);
     mse_av_set_window(h->av, window);
+    pthread_mutex_unlock(&h->av_mu);
     if (old)
         ANativeWindow_release((ANativeWindow *)old);
 #elif defined(__APPLE__)
+    pthread_mutex_lock(&h->av_mu);
     mse_av_set_window(h->av, window);
+    pthread_mutex_unlock(&h->av_mu);
     if (old && old != window)
         mse_vt_detach(old);
 #else
@@ -1347,7 +1377,7 @@ void mse_host_play(MseHost *h)
         h->ended_sent = 0;
 #ifdef MSE_DAC
         h->audio_out = 0;
-        dac_rebase(h);
+        dac_rebase(h, 0);
         h->dac_cp_n = 0;
         h->aq_started = 0;
         h->dac_tick_ns = 0;
@@ -1516,6 +1546,7 @@ void mse_host_reset(MseHost *h)
     h->last_w = 0;
     h->last_h = 0;
     pthread_mutex_unlock(&h->frame_mu);
+    pthread_mutex_lock(&h->av_mu);
     mse_av_destroy(h->av);
     h->av = mse_av_create();
     /* MediaSource reset drops MseAv (and mc_win / VT layer / blit size).
@@ -1523,6 +1554,7 @@ void mse_host_reset(MseHost *h)
        Keep the hole so 4K does not sws 3840×2160 (log28 hole=0x0, ~1 fps). */
     mse_av_set_window(h->av, h->window);
     mse_av_set_blit_size(h->av, h->blit_w, h->blit_h);
+    pthread_mutex_unlock(&h->av_mu);
     pthread_cond_broadcast(&h->cv);
     pthread_mutex_unlock(&h->mu);
 }
@@ -1693,7 +1725,13 @@ int mse_host_copy_frame(MseHost *h, uint8_t *dst, int cap, int *w, int *ht, int 
 
 int mse_host_video_failure(MseHost *h, char *out, int cap)
 {
-    return h ? mse_av_video_failure(h->av, out, cap) : 0;
+    int failed;
+    if (!h)
+        return 0;
+    pthread_mutex_lock(&h->av_mu);
+    failed = mse_av_video_failure(h->av, out, cap);
+    pthread_mutex_unlock(&h->av_mu);
+    return failed;
 }
 
 int mse_host_frames(MseHost *h)

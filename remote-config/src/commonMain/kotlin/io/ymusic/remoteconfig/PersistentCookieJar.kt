@@ -10,10 +10,7 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
-import okio.FileSystem
-import okio.Path
-import okio.buffer
-import okio.use
+import okio.ByteString
 import projectcommon.json.boolOrNull
 import projectcommon.json.longOrNull
 import projectcommon.json.objects
@@ -22,27 +19,34 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 /**
- * A [CookieJar] whose persistent cookies survive restarts in a small JSON file (its first
- * customer: the API service's state cookies). Session (non-persistent) cookies stay memory-only,
- * per spec.
+ * Where a [PersistentCookieJar] keeps its JSON document. Blocking — the JVM's [CookieJar] is.
+ * A [write] must be atomic and durable: a crash leaves the previous document, never a torn one.
+ */
+interface CookieDocument {
+    /** The stored document, or null when there is none. Throws when it cannot be read. */
+    fun read(): ByteString?
+
+    fun write(document: ByteString)
+
+    fun delete()
+}
+
+/**
+ * A [CookieJar] whose persistent cookies survive restarts as one small JSON [CookieDocument].
+ * Session (non-persistent) cookies stay memory-only, per spec.
  *
- * The file is rewritten whole on change — it holds a handful of cookies and changes rarely, and
- * the whole-file tmp + atomicMove is what makes a crash leave the previous complete document
- * rather than a torn one. A corrupt file is discarded and the jar starts empty. One instance per
- * file, ever.
+ * The document is rewritten whole on change — it holds a handful of cookies and changes rarely. One
+ * that cannot be read is discarded and the jar starts empty. One instance per document, ever.
  *
  * expect/actual only because [CookieJar] itself differs per platform (okhttp's blocking interface
  * on the JVM, a suspend interface elsewhere); both actuals are unlocked one-liners — the store
  * below synchronizes itself with one common lock.
  */
-expect class PersistentCookieJar(file: Path, fileSystem: FileSystem) : CookieJar
+expect class PersistentCookieJar(document: CookieDocument) : CookieJar
 
 /** The common implementation both thin actuals delegate to. */
 @OptIn(ExperimentalTime::class)
-internal class PersistentCookieStore(
-    private val file: Path,
-    private val fileSystem: FileSystem,
-) : SynchronizedObject() {
+internal class PersistentCookieStore(private val document: CookieDocument) : SynchronizedObject() {
 
     /** Keyed by (name, domain, path) — the cookie identity — so replacement is O(1), not a scan. */
     private val cookies = LinkedHashMap<CookieKey, Cookie>()
@@ -56,7 +60,7 @@ internal class PersistentCookieStore(
             val key = CookieKey(cookie.name, cookie.domain, cookie.path)
             val keep = !cookie.persistent || cookie.expiresAt > now
             val previous = if (keep) cookies.put(key, cookie) else cookies.remove(key)
-            // Only a change to what the FILE holds is worth a write: a persistent cookie came in,
+            // Only a change to what the DOCUMENT holds is worth a write: a persistent cookie came in,
             // or one already on disk was replaced or removed.
             dirty = dirty || (keep && cookie.persistent) || previous?.persistent == true
         }
@@ -79,18 +83,18 @@ internal class PersistentCookieStore(
         cookies.values.filter { it.matches(url) }
     }
 
-    // The file is read whole as a string, so the DOM parser applies (the house split: streams go
-    // through JsonReader, strings through kotlinx Json) — and nothing here suspends, which is
+    // The document is read whole as a string, so the DOM parser applies (the house split: streams
+    // go through JsonReader, strings through kotlinx Json) — and nothing here suspends, which is
     // what the JVM's blocking CookieJar interface requires.
     private fun loadIfNeeded() {
         if (loaded) return
         loaded = true
         val root = try {
-            if (!fileSystem.exists(file)) return
-            Json.parseToJsonElement(fileSystem.read(file) { readUtf8() }).jsonObject
+            val stored = document.read() ?: return
+            Json.parseToJsonElement(stored.utf8()).jsonObject
         } catch (_: Throwable) {
             // Unreadable is worse than empty; failing to delete must not become a second failure.
-            runCatching { fileSystem.delete(file) }
+            runCatching { document.delete() }
             return
         }
         root.objects(KEY_COOKIES)
@@ -99,8 +103,6 @@ internal class PersistentCookieStore(
     }
 
     private fun persist() {
-        val tmp = file.parent?.resolve(file.name + ".tmp") ?: return
-        file.parent?.let { fileSystem.createDirectories(it) }
         val writer = JsonWriter.Sync()
         with(writer) {
             beginObject()
@@ -121,8 +123,7 @@ internal class PersistentCookieStore(
             endArray()
             endObject()
         }
-        fileSystem.sink(tmp).use { it.buffer().use { out -> out.writeAll(writer.buffer) } }
-        fileSystem.atomicMove(tmp, file)
+        document.write(writer.buffer.readByteString())
     }
 
     /** Null for a malformed entry: one bad record must not take the readable ones with it. */

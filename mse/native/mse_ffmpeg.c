@@ -975,10 +975,8 @@ static int demux_packets(const uint8_t *init, size_t init_n, const uint8_t *seg,
     fmt->pb = avio;
     fmt->flags |= AVFMT_FLAG_CUSTOM_IO;
     fmt->probesize = (int64_t)(bn + 2048);
-    fmt->max_analyze_duration = AV_TIME_BASE / 2;
     if (avformat_open_input(&fmt, NULL, NULL, NULL) < 0)
         goto fail;
-    avformat_find_stream_info(fmt, NULL);
     st_idx = av_find_best_stream(fmt, want, -1, -1, NULL, 0);
     if (st_idx < 0)
         goto done;

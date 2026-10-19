@@ -320,7 +320,8 @@ runProbe("test/rt/interval-ticks", async () => {
   const t = setInterval(() => {
     n++;
   }, 20);
-  await sleep(110); // ~5 ticks
+  // Wait for ticks, not for a fixed time: a loaded CI runner may fire only one in 110 ms.
+  for (let waited = 0; n < 3 && waited < 5000; waited += 20) await sleep(20);
   clearInterval(t);
   const after = n;
   await sleep(70); // a cleared timer never fires again — not even an in-flight tick

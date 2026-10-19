@@ -397,6 +397,7 @@
     <string name="update_download">Letöltés</string>
     <string name="update_downloading">Letöltés… %1$s / %2$s</string>
     <string name="update_ready">Telepítésre kész</string>
+    <string name="update_installing">Telepítés…</string>
     <string name="update_manual_hint">Ez a példány nem tudja frissíteni magát (%1$s). Töltsd le inkább az új verziót.</string>
     <string name="update_failed">A frissítés sikertelen: %1$s</string>
     <string name="update_official_site">Letöltés a hivatalos webhelyről</string>
@@ -477,6 +478,13 @@
         <item quantity="other">A kiválasztott videók közül %1$d már a Könyvtáradban van.</item>
     </plurals>
     <string name="error_network">A YouTube nem érhető el. Ellenőrizd a kapcsolatot, és próbáld újra.</string>
+    <string name="error_disk_full">Nincs elég tárhely. Szabadíts fel helyet, és próbáld újra.</string>
+    <string name="error_live_still_processing">Ez az élő adás most ért véget, és még feldolgozás alatt áll. Próbáld újra később</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">A rendszer Fájlok alkalmazása ki van kapcsolva. Kapcsolja be mappa kiválasztásához.</string>
+    <string name="folder_picker_open_settings">Beállítások megnyitása</string>
+    <string name="folder_picker_missing">Ezen az eszközön nincs mappaválasztó, ezért nem lehet mappát választani.</string>
+    <string name="error_supervised_account">Ez a Google-fiók felügyelt, ezért a YouTube itt nem használható. Jelentkezz ki, vagy válts másik fiókra.</string>
     <string name="settings_player_cache">Lejátszó gyorsítótára</string>
     <string name="settings_player_cache_summary">Max. %1$s · Használt %2$s · Megtakarított %3$s</string>
     <string name="settings_player_cache_off">Nincs gyorsítótár</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">Hozzászólás törölve</string>
     <string name="menu_details_comments">Részletek és hozzászólások</string>
     <string name="menu_speed_pitch">Sebesség és hangmagasság</string>
+    <string name="link_open_failed">Nem nyitható meg: %1$s</string>
 </resources>

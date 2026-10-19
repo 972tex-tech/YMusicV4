@@ -398,6 +398,7 @@
     <string name="update_download">Preuzmi</string>
     <string name="update_downloading">Preuzimanje… %1$s od %2$s</string>
     <string name="update_ready">Spremno za instalaciju</string>
+    <string name="update_installing">Instaliranje…</string>
     <string name="update_manual_hint">Ova se kopija ne može sama ažurirati (%1$s). Umjesto toga preuzmite novu verziju.</string>
     <string name="update_failed">Ažuriranje nije uspjelo: %1$s</string>
     <string name="update_official_site">Preuzmite s službene web-stranice</string>
@@ -482,6 +483,13 @@
         <item quantity="other">%1$d od odabranih videozapisa već je u vašoj Zbirci.</item>
     </plurals>
     <string name="error_network">YouTube nije dostupan. Provjerite vezu i pokušajte ponovno.</string>
+    <string name="error_disk_full">Nema dovoljno prostora za pohranu. Oslobodite prostor i pokušajte ponovno.</string>
+    <string name="error_live_still_processing">Ovaj prijenos upravo je završio i još se obrađuje. Pokušajte ponovno kasnije</string>
+    <string name="dialog_ok">U redu</string>
+    <string name="folder_picker_disabled">Sustavna aplikacija Datoteke je isključena. Uključite je da biste odabrali mapu.</string>
+    <string name="folder_picker_open_settings">Otvori postavke</string>
+    <string name="folder_picker_missing">Ovaj uređaj nema alat za odabir mape, pa se mapa ne može odabrati.</string>
+    <string name="error_supervised_account">Ovaj Google račun je pod nadzorom pa se YouTube ovdje ne može koristiti. Odjavite se ili prijeđite na drugi račun.</string>
     <string name="settings_player_cache">Predmemorija playera</string>
     <string name="settings_player_cache_summary">Maks. %1$s · Iskorišteno %2$s · Ušteđeno %3$s</string>
     <string name="settings_player_cache_off">Bez predmemorije</string>
@@ -528,4 +536,5 @@
     <string name="video_details_deleted">Komentar izbrisan</string>
     <string name="menu_details_comments">Detalji i komentari</string>
     <string name="menu_speed_pitch">Brzina i visina tona</string>
+    <string name="link_open_failed">Nije moguće otvoriti: %1$s</string>
 </resources>

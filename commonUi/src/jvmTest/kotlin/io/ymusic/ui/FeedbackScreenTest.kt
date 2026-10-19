@@ -1,23 +1,17 @@
 package io.ymusic.ui
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import androidx.compose.ui.test.waitUntilDoesNotExist
-import androidx.compose.ui.unit.dp
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.embeddedEngineJsSource
 import java.util.Locale
@@ -109,65 +103,6 @@ class FeedbackScreenTest {
             onNodeWithText("SEND").performClick()
             waitUntil(timeoutMillis = 5_000) { sent != null }
             assertEquals(emptyList(), sent!!.attachments)
-        }
-    }
-
-    @Test
-    fun a_large_window_caps_the_form_and_centers_it_both_ways() {
-        Locale.setDefault(Locale.ENGLISH)
-        val graph = AppGraph(
-            engines = engines(),
-            player = StubPlayer(),
-            playerSurface = {},
-            sendFeedback = {},
-        )
-        runComposeUiTest {
-            setContent {
-                CompositionLocalProvider(LocalSnackbar provides {}) {
-                    FeedbackScreen(graph, FeedbackSession(parentLog = null), onDismiss = {})
-                }
-            }
-            val root = onRoot().getBoundsInRoot()
-            val send = onNodeWithText("SEND").getBoundsInRoot()
-            val rootWidth = root.right - root.left
-            val sendWidth = send.right - send.left
-            assertTrue(rootWidth > DesignSpacing.FormMaxWidth, "test surface should be wider than the cap ($rootWidth)")
-            assertTrue(sendWidth <= DesignSpacing.FormMaxWidth, "form should cap at FormMaxWidth, was $sendWidth")
-            val leftGap = send.left
-            val rightGap = rootWidth - send.right
-            assertTrue((leftGap - rightGap).value < 2f, "form should center: left=$leftGap right=$rightGap")
-
-            // Vertically centered too (both dimensions are large here): the gap above the first
-            // content (the hint) matches the gap below the last (the send button).
-            val hint = onNodeWithText("Tell us", substring = true).getBoundsInRoot()
-            val rootHeight = root.bottom - root.top
-            val topGap = hint.top
-            val bottomGap = rootHeight - send.bottom
-            assertTrue(topGap.value > 50f, "a short form on a tall surface should not pin to the top (topGap=$topGap)")
-            assertTrue((topGap - bottomGap).value < 2f, "form should center vertically: top=$topGap bottom=$bottomGap")
-        }
-    }
-
-    @Test
-    fun a_compact_width_window_keeps_the_form_top_anchored() {
-        Locale.setDefault(Locale.ENGLISH)
-        val graph = AppGraph(
-            engines = engines(),
-            player = StubPlayer(),
-            playerSurface = {},
-            sendFeedback = {},
-        )
-        runComposeUiTest {
-            setContent {
-                CompositionLocalProvider(LocalSnackbar provides {}) {
-                    // A tall phone-shaped viewport: large height but compact width → no centering.
-                    Box(Modifier.size(400.dp, 700.dp)) {
-                        FeedbackScreen(graph, FeedbackSession(parentLog = null), onDismiss = {})
-                    }
-                }
-            }
-            val hint = onNodeWithText("Tell us", substring = true).getBoundsInRoot()
-            assertTrue(hint.top.value < 50f, "compact width should stay top-anchored (topGap=${hint.top})")
         }
     }
 

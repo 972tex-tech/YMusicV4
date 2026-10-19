@@ -56,7 +56,7 @@ android {
         applicationId = "io.ymusic.android.hybrid"
         minSdk = Versions.minSdk
         targetSdk = Versions.targetSdk
-        versionCode = 6
+        versionCode = 9
         versionName = appVersionName
         buildConfigField("String", "SENTRY_DSN", "\"${sentryDsn()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${gitCommit()}\"")

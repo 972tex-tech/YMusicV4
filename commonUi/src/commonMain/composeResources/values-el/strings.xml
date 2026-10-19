@@ -397,6 +397,7 @@
     <string name="update_download">Λήψη</string>
     <string name="update_downloading">Λήψη… %1$s από %2$s</string>
     <string name="update_ready">Έτοιμο για εγκατάσταση</string>
+    <string name="update_installing">Εγκατάσταση…</string>
     <string name="update_manual_hint">Αυτό το αντίγραφο δεν μπορεί να ενημερωθεί μόνο του (%1$s). Κατεβάστε τη νέα έκδοση.</string>
     <string name="update_failed">Η ενημέρωση απέτυχε: %1$s</string>
     <string name="update_official_site">Λήψη από τον επίσημο ιστότοπο</string>
@@ -477,6 +478,13 @@
         <item quantity="other">%1$d από τα επιλεγμένα βίντεο βρίσκονται ήδη στη Βιβλιοθήκη σας.</item>
     </plurals>
     <string name="error_network">Δεν υπάρχει πρόσβαση στο YouTube. Ελέγξτε τη σύνδεσή σας και δοκιμάστε ξανά.</string>
+    <string name="error_disk_full">Δεν υπάρχει αρκετός αποθηκευτικός χώρος. Ελευθερώστε λίγο χώρο και δοκιμάστε ξανά.</string>
+    <string name="error_live_still_processing">Αυτή η ροή μόλις ολοκληρώθηκε και βρίσκεται ακόμη σε επεξεργασία. Δοκιμάστε ξανά αργότερα</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Η εφαρμογή Αρχεία του συστήματος είναι απενεργοποιημένη. Ενεργοποιήστε την για να επιλέξετε φάκελο.</string>
+    <string name="folder_picker_open_settings">Άνοιγμα ρυθμίσεων</string>
+    <string name="folder_picker_missing">Αυτή η συσκευή δεν διαθέτει επιλογέα φακέλων, οπότε δεν μπορεί να επιλεγεί φάκελος.</string>
+    <string name="error_supervised_account">Αυτός ο λογαριασμός Google είναι υπό επίβλεψη, επομένως το YouTube δεν μπορεί να χρησιμοποιηθεί εδώ. Αποσυνδεθείτε ή μεταβείτε σε άλλον λογαριασμό.</string>
     <string name="settings_player_cache">Κρυφή μνήμη αναπαραγωγής</string>
     <string name="settings_player_cache_summary">Μέγ. %1$s · Σε χρήση %2$s · Εξοικονόμηση %3$s</string>
     <string name="settings_player_cache_off">Χωρίς κρυφή μνήμη</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">Το σχόλιο διαγράφηκε</string>
     <string name="menu_details_comments">Λεπτομέρειες και σχόλια</string>
     <string name="menu_speed_pitch">Ταχύτητα και τονικότητα</string>
+    <string name="link_open_failed">Δεν είναι δυνατό το άνοιγμα: %1$s</string>
 </resources>

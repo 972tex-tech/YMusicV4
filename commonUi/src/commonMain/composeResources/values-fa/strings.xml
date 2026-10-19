@@ -397,6 +397,7 @@
     <string name="update_download">دانلود</string>
     <string name="update_downloading">در حال دانلود… %1$s از %2$s</string>
     <string name="update_ready">آماده نصب</string>
+    <string name="update_installing">در حال نصب…</string>
     <string name="update_manual_hint">این نسخه نمی‌تواند خودش را به‌روز کند (%1$s). به‌جای آن نسخه جدید را دانلود کنید.</string>
     <string name="update_failed">به‌روزرسانی ناموفق بود: %1$s</string>
     <string name="update_official_site">از وب‌سایت رسمی دانلود کنید</string>
@@ -477,6 +478,13 @@
         <item quantity="other">%1$d مورد از ویدیوهای انتخاب‌شده از قبل در کتابخانه شما هستند.</item>
     </plurals>
     <string name="error_network">دسترسی به YouTube ممکن نیست. اتصال اینترنت را بررسی کرده و دوباره تلاش کنید.</string>
+    <string name="error_disk_full">فضای ذخیره‌سازی کافی نیست. کمی فضا آزاد کنید و دوباره تلاش کنید.</string>
+    <string name="error_live_still_processing">این پخش زنده همین حالا تمام شده و هنوز در حال پردازش است. بعداً دوباره تلاش کنید</string>
+    <string name="dialog_ok">تأیید</string>
+    <string name="folder_picker_disabled">برنامه «فایل‌ها»ی سیستم خاموش است. برای انتخاب پوشه آن را روشن کنید.</string>
+    <string name="folder_picker_open_settings">باز کردن تنظیمات</string>
+    <string name="folder_picker_missing">این دستگاه انتخابگر پوشه ندارد، بنابراین نمی‌توان پوشه‌ای انتخاب کرد.</string>
+    <string name="error_supervised_account">این حساب Google تحت نظارت است، بنابراین YouTube در اینجا قابل استفاده نیست. از سیستم خارج شوید یا به حساب دیگری بروید.</string>
     <string name="settings_player_cache">حافظه پنهان پخش‌کننده</string>
     <string name="settings_player_cache_summary">حداکثر %1$s · استفاده‌شده %2$s · صرفه‌جویی %3$s</string>
     <string name="settings_player_cache_off">بدون حافظه پنهان</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">نظر حذف شد</string>
     <string name="menu_details_comments">جزئیات و نظرات</string>
     <string name="menu_speed_pitch">سرعت و زیر و بمی</string>
+    <string name="link_open_failed">باز نمی‌شود: %1$s</string>
 </resources>

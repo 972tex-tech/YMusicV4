@@ -269,6 +269,7 @@
     <string name="playback_unavailable">This video is unavailable</string>
     <string name="playback_retry_later">This video can’t be played right now. Try again later</string>
     <string name="playback_file_missing">This file is no longer on your device</string>
+    <string name="playback_video_unsupported">Your device can't play this video format. Pick another quality.</string>
     <string name="menu_reload_player">Reload player</string>
 
 
@@ -483,6 +484,7 @@
     <string name="update_full_changelog">Full changelog</string>
     <string name="update_downloading">Downloading… %1$s of %2$s</string>
     <string name="update_ready">Ready to install</string>
+    <string name="update_installing">Installing…</string>
     <string name="update_manual_hint">This copy cannot update itself (%1$s). Download the new version instead.</string>
     <!-- Why this desktop copy cannot update itself; each fills update_manual_hint's %1$s. -->
     <string name="update_blocked_not_installed">the app is not running from an installed copy</string>
@@ -577,6 +579,12 @@
     <string name="error_network">Can’t reach YouTube. Check your connection and try again.</string>
     <string name="error_captcha">YouTube wants to confirm you’re not a robot</string>
     <string name="error_disk_full">Not enough storage space. Free up some space and try again.</string>
+    <string name="error_live_still_processing">This stream just ended and is still processing, try again later</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">The system Files app is turned off. Turn it on to choose a folder.</string>
+    <string name="folder_picker_open_settings">Open settings</string>
+    <string name="folder_picker_missing">This device doesn't have a folder picker, so a folder can't be chosen.</string>
+    <string name="error_supervised_account">This Google account is supervised, so YouTube can't be used here. Sign out or switch to another account.</string>
     <string name="captcha_verify">Verify</string>
     <string name="captcha_verify_hint">Solve any captcha you see on the screen, then tap Done</string>
     <string name="settings_player_cache">Player cache</string>
@@ -640,6 +648,7 @@
     <string name="cookie_unlock_sign_out_title">Sign out?</string>
     <string name="cookie_unlock_sign_out_body">This removes the saved sign-in from this computer. To sign in again, scan the QR code with the YMusic app.</string>
     <string name="link_unsupported">YMusic can't open this link</string>
+    <string name="link_open_failed">Can't open: %1$s</string>
     <string name="link_queued_next">Will play next</string>
     <string name="link_queued_last">Added to the end of the queue</string>
     <string name="menu_details_comments">Details &amp; comments</string>

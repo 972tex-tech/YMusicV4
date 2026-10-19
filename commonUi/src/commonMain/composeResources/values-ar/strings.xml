@@ -248,6 +248,7 @@
     <string name="playback_unavailable">هذا الفيديو غير متاح</string>
     <string name="playback_retry_later">يتعذّر تشغيل هذا الفيديو الآن. حاول مرة أخرى لاحقًا</string>
     <string name="playback_file_missing">لم يعد هذا الملف موجودًا على جهازك</string>
+    <string name="playback_video_unsupported">لا يستطيع جهازك تشغيل تنسيق الفيديو هذا. اختر جودة أخرى.</string>
     <string name="menu_reload_player">إعادة تحميل المشغّل</string>
 
 
@@ -453,6 +454,7 @@
     <string name="update_full_changelog">سجل التغييرات الكامل</string>
     <string name="update_downloading">جارٍ التنزيل… %1$s من %2$s</string>
     <string name="update_ready">جاهز للتثبيت</string>
+    <string name="update_installing">جارٍ التثبيت…</string>
     <string name="update_manual_hint">هذه النسخة لا يمكنها تحديث نفسها (%1$s). نزّل الإصدار الجديد يدويًا.</string>
     <string name="update_blocked_not_installed">التطبيق لا يعمل من نسخة مثبّتة</string>
     <string name="update_blocked_mac_swap">إصدار macOS هذا لا يمكنه استبدال التطبيق في مكانه</string>
@@ -546,6 +548,12 @@
     <string name="error_network">تعذّر الوصول إلى YouTube. تحقق من اتصالك وحاول مرة أخرى.</string>
     <string name="error_captcha">يريد YouTube التأكد من أنك لست روبوتًا</string>
     <string name="error_disk_full">لا توجد مساحة تخزين كافية. أفرغ بعض المساحة ثم أعد المحاولة.</string>
+    <string name="error_live_still_processing">انتهى هذا البث للتو ولا يزال قيد المعالجة، حاول مرة أخرى لاحقًا</string>
+    <string name="dialog_ok">حسنًا</string>
+    <string name="folder_picker_disabled">تطبيق الملفات الخاص بالنظام متوقف. فعّله لاختيار مجلد.</string>
+    <string name="folder_picker_open_settings">فتح الإعدادات</string>
+    <string name="folder_picker_missing">لا يحتوي هذا الجهاز على أداة لاختيار المجلدات، لذا لا يمكن اختيار مجلد.</string>
+    <string name="error_supervised_account">حساب Google هذا خاضع للإشراف، لذا لا يمكن استخدام YouTube هنا. سجّل الخروج أو بدّل إلى حساب آخر.</string>
     <string name="captcha_verify">تحقّق</string>
     <string name="captcha_verify_hint">حُلّ أي اختبار captcha تراه على الشاشة، ثم انقر على تم</string>
     <string name="settings_player_cache">ذاكرة التخزين المؤقت للمشغّل</string>
@@ -593,6 +601,7 @@
     <string name="video_details_delete_message">هل تريد حذف تعليقك وجميع الردود عليه نهائيًا؟</string>
     <string name="video_details_deleted">تم حذف التعليق</string>
     <string name="link_unsupported">لا يمكن لـ YMusic فتح هذا الرابط</string>
+    <string name="link_open_failed">تعذّر فتح: %1$s</string>
     <string name="link_queued_next">سيتم تشغيله تاليًا</string>
     <string name="link_queued_last">تمت الإضافة إلى نهاية قائمة الانتظار</string>
     <string name="menu_details_comments">التفاصيل والتعليقات</string>

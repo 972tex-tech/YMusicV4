@@ -8,16 +8,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** All values live in one string map; typed views decode per key, unparsable = default. */
 abstract class StringBackedSettingsStore : SettingsStore {
     private val data = MutableStateFlow<Map<String, String>>(emptyMap())
+    private val writeMutex = Mutex()
 
     protected fun seed(values: Map<String, String>) {
         data.value = values
     }
-
-    protected fun snapshot(): Map<String, String> = data.value
 
     override fun string(key: String, default: String): StateFlow<String> = MappedStateFlow(data) { it[key] ?: default }
 
@@ -35,11 +36,12 @@ abstract class StringBackedSettingsStore : SettingsStore {
 
     private suspend fun put(key: String, value: String) {
         data.update { it + (key to value) }
-        persist()
+        // The value is read under the lock, so whichever write commits last commits the latest value.
+        writeMutex.withLock { persist(key, data.value.getValue(key)) }
     }
 
-    /** Called after every write, on the writer's coroutine. In-memory stores keep the no-op. */
-    protected open suspend fun persist() {}
+    /** Stores the one [key] a write changed, on the writer's coroutine. In-memory stores keep the no-op. */
+    protected open suspend fun persist(key: String, value: String) {}
 }
 
 class InMemorySettingsStore : StringBackedSettingsStore()

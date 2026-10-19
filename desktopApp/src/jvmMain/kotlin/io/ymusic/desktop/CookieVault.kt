@@ -1,19 +1,11 @@
 package io.ymusic.desktop
 
+import io.ymusic.remoteconfig.CookieDocument
 import okio.Buffer
-import okio.BufferedSource
 import okio.ByteString
 import okio.ByteString.Companion.encodeUtf8
-import okio.FileSystem
-import okio.ForwardingFileSystem
+import okio.ByteString.Companion.toByteString
 import okio.IOException
-import okio.Path
-import okio.Sink
-import okio.Source
-import okio.blackholeSink
-import okio.buffer
-import okio.cipherSink
-import okio.cipherSource
 import java.security.SecureRandom
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
@@ -24,15 +16,16 @@ import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * The cookie jar's file system: every file written through it is AES-256-GCM sealed as
- * `header | nonce | ciphertext+tag`, the header bound in as AAD. The header names the key: `YMC1U`
- * for [userKey] (the OS user's key — see [userScopeCookieKey]), or `YMC1P` + iterations + salt for
- * a key derived from the user's password. A file that does not authenticate fails its read.
+ * The cookie jar's [CookieDocument]: the document is AES-256-GCM sealed as
+ * `header | nonce | ciphertext+tag`, the header bound in as AAD, and kept as the [COOKIE_JAR] row of
+ * [store]. The header names the key: `YMC1U` for [userKey] (the OS user's key — see
+ * [userScopeCookieKey]), or `YMC1P` + iterations + salt for a key derived from the user's password.
+ * A document that does not authenticate fails its read.
  *
- * Every file moved into place is re-sealed under the current key first, so a write that raced a
- * [protect] can never leave the jar under the weaker key.
+ * Writes and [protect] share one lock, so a write that raced a [protect] can never leave the jar
+ * under the weaker key.
  */
-internal class CookieVault(delegate: FileSystem, private val userKey: SecretKey) : ForwardingFileSystem(delegate) {
+internal class CookieVault(private val store: AppStore, private val userKey: SecretKey) : CookieDocument {
 
     class PasswordSeal internal constructor(val iterations: Int, val salt: ByteString, internal val key: SecretKey) {
         val header: ByteString = Buffer().write(MAGIC).writeByte(MODE_PASSWORD.toInt()).writeInt(iterations).write(salt).readByteString()
@@ -44,51 +37,42 @@ internal class CookieVault(delegate: FileSystem, private val userKey: SecretKey)
 
     val isPasswordProtected: Boolean get() = password != null
 
-    override fun sink(file: Path, mustCreate: Boolean): Sink {
+    override fun read(): ByteString? {
+        val sealed = store.secret(COOKIE_JAR) ?: return null
         val seal = password
-        val header = seal?.header ?: USER_HEADER
-        val nonce = ByteArray(NONCE_BYTES).also { random.nextBytes(it) }
-        val cipher = Cipher.getInstance(TRANSFORMATION).apply {
-            init(Cipher.ENCRYPT_MODE, seal?.key ?: userKey, GCMParameterSpec(TAG_BITS, nonce))
-            updateAAD(header.toByteArray())
-        }
-        val out = super.sink(file, mustCreate).buffer()
-        out.write(header).write(nonce)
-        return out.cipherSink(cipher)
-    }
-
-    override fun source(file: Path): Source = open(file) { header ->
-        val seal = password
-        when (header) {
-            USER_HEADER -> userKey
-            seal?.header -> seal?.key
-            else -> null
+        return open(sealed) { header ->
+            when (header) {
+                USER_HEADER -> userKey
+                seal?.header -> seal?.key
+                else -> null
+            }
         }
     }
 
-    override fun appendingSink(file: Path, mustExist: Boolean): Sink =
-        throw UnsupportedOperationException("append to an AES-GCM file")
-
-    override fun atomicMove(source: Path, target: Path) = synchronized(lock) {
-        resealLocked(source)
-        super.atomicMove(source, target)
+    override fun write(document: ByteString) = synchronized(lock) {
+        store.putSecret(COOKIE_JAR, seal(document))
     }
 
-    /** Every later write, and the sealed file at [path] now, goes under [seal]. */
-    fun protect(path: Path, seal: PasswordSeal) = synchronized(lock) {
+    override fun delete() = synchronized(lock) {
+        store.deleteSecret(COOKIE_JAR)
+    }
+
+    /** Every later write, and the stored jar now, goes under [seal]. */
+    fun protect(seal: PasswordSeal) = synchronized(lock) {
+        val document = read()
         password = seal
-        if (exists(path)) resealLocked(path)
+        if (document != null) store.putSecret(COOKIE_JAR, seal(document))
     }
 
     /**
-     * Opens the password-sealed [path] with [password] and keeps that key for every later read and
-     * write. False when the password does not authenticate the file.
+     * Opens the password-sealed jar with [password] and keeps that key for every later read and
+     * write. False when the password does not authenticate it.
      */
-    fun unlock(path: Path, password: CharArray): Boolean {
-        val header = delegate.source(path).buffer().use(::readHeader)
-        val seal = passwordSealOf(header, password)
+    fun unlock(password: CharArray): Boolean {
+        val sealed = store.secret(COOKIE_JAR) ?: throw IOException("no cookie store to unlock")
+        val seal = passwordSealOf(readHeader(Buffer().write(sealed)), password)
         try {
-            open(path) { if (it == seal.header) seal.key else null }.buffer().use { it.readAll(blackholeSink()) }
+            open(sealed) { if (it == seal.header) seal.key else null }
         } catch (error: Throwable) {
             if (error.isAuthFailure()) return false
             throw error
@@ -97,29 +81,27 @@ internal class CookieVault(delegate: FileSystem, private val userKey: SecretKey)
         return true
     }
 
-    private fun open(file: Path, keyFor: (ByteString) -> SecretKey?): Source {
-        val input = super.source(file).buffer()
-        try {
-            val header = readHeader(input)
-            val key = keyFor(header) ?: throw IOException("cookie store is sealed under another key")
-            val nonce = input.readByteArray(NONCE_BYTES.toLong())
-            val cipher = Cipher.getInstance(TRANSFORMATION).apply {
-                init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, nonce))
-                updateAAD(header.toByteArray())
-            }
-            return input.cipherSource(cipher)
-        } catch (error: Throwable) {
-            input.close()
-            throw error
+    private fun seal(document: ByteString): ByteArray {
+        val seal = password
+        val header = seal?.header ?: USER_HEADER
+        val nonce = ByteArray(NONCE_BYTES).also { random.nextBytes(it) }
+        val cipher = Cipher.getInstance(TRANSFORMATION).apply {
+            init(Cipher.ENCRYPT_MODE, seal?.key ?: userKey, GCMParameterSpec(TAG_BITS, nonce))
+            updateAAD(header.toByteArray())
         }
+        return Buffer().write(header).write(nonce).write(cipher.doFinal(document.toByteArray())).readByteArray()
     }
 
-    private fun resealLocked(path: Path) {
-        val current = password?.header ?: USER_HEADER
-        if (delegate.source(path).buffer().use(::readHeader) == current) return
-        val tmp = requireNotNull(path.parent) { "no parent: $path" } / (path.name + ".reseal")
-        sink(tmp).buffer().use { out -> source(path).use { out.writeAll(it) } }
-        super.atomicMove(tmp, path)
+    private fun open(sealed: ByteArray, keyFor: (ByteString) -> SecretKey?): ByteString {
+        val input = Buffer().write(sealed)
+        val header = readHeader(input)
+        val key = keyFor(header) ?: throw IOException("cookie store is sealed under another key")
+        val nonce = input.readByteArray(NONCE_BYTES.toLong())
+        val cipher = Cipher.getInstance(TRANSFORMATION).apply {
+            init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, nonce))
+            updateAAD(header.toByteArray())
+        }
+        return cipher.doFinal(input.readByteArray()).toByteString()
     }
 
     companion object {
@@ -136,14 +118,10 @@ internal class CookieVault(delegate: FileSystem, private val userKey: SecretKey)
         private const val ITERATIONS = 600_000
         private val random = SecureRandom()
 
-        /** True when [path] holds a password-sealed jar — readable without any key. */
-        fun isPasswordSealed(fileSystem: FileSystem, path: Path): Boolean {
-            if (!fileSystem.exists(path)) return false
-            return fileSystem.source(path).buffer().use { input ->
-                input.request(MAGIC.size + 1L) &&
-                    input.buffer.rangeEquals(0, MAGIC) &&
-                    input.buffer[MAGIC.size.toLong()] == MODE_PASSWORD
-            }
+        /** True when [store] holds a password-sealed jar — readable without any key. */
+        fun isPasswordSealed(store: AppStore): Boolean {
+            val sealed = store.secret(COOKIE_JAR)?.toByteString() ?: return false
+            return sealed.size > MAGIC.size && sealed.startsWith(MAGIC) && sealed[MAGIC.size] == MODE_PASSWORD
         }
 
         /** A fresh seal for [password]. Deliberately slow (PBKDF2): call it off the main thread. */
@@ -170,7 +148,7 @@ internal class CookieVault(delegate: FileSystem, private val userKey: SecretKey)
             }
         }
 
-        private fun readHeader(input: BufferedSource): ByteString {
+        private fun readHeader(input: Buffer): ByteString {
             val head = input.readByteString(MAGIC.size + 1L)
             if (!head.startsWith(MAGIC)) throw IOException("not a sealed cookie file")
             return when (head[MAGIC.size]) {

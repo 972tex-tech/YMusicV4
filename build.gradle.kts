@@ -14,8 +14,28 @@ plugins {
     id("com.diffplug.spotless") version "8.8.0"
 }
 
+val ciSkippedTests: List<String> =
+    if (providers.gradleProperty("ci").orNull == "true") {
+        rootDir.resolve(".github/ci-skip-tests.txt").readLines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+    } else {
+        emptyList()
+    }
+
 subprojects {
     installDebugBuildFlag()
+    // No test runs longer than 30 s: JUnit Platform aborts it (runTest's own clock agrees).
+    tasks.withType<org.jetbrains.kotlin.gradle.targets.jvm.tasks.KotlinJvmTest>().configureEach {
+        useJUnitPlatform()
+        systemProperty("junit.jupiter.execution.timeout.default", "30 s")
+        systemProperty("junit.jupiter.execution.timeout.thread.mode.default", "SEPARATE_THREAD")
+        systemProperty("kotlinx.coroutines.test.default_timeout", "30s")
+        filter {
+            isFailOnNoMatchingTests = false
+            ciSkippedTests.forEach { excludeTestsMatching("*.$it") }
+        }
+    }
 }
 
 spotless {

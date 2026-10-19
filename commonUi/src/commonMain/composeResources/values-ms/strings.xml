@@ -396,6 +396,7 @@
     <string name="update_download">Muat turun</string>
     <string name="update_downloading">Memuat turun… %1$s daripada %2$s</string>
     <string name="update_ready">Sedia untuk dipasang</string>
+    <string name="update_installing">Memasang…</string>
     <string name="update_manual_hint">Salinan ini tidak dapat mengemas kini dirinya sendiri (%1$s). Muat turun versi baharu sebaliknya.</string>
     <string name="update_failed">Kemas kini gagal: %1$s</string>
     <string name="update_official_site">Muat turun dari laman web rasmi</string>
@@ -472,6 +473,13 @@
         <item quantity="other">%1$d daripada video yang dipilih sudah ada dalam Pustaka anda.</item>
     </plurals>
     <string name="error_network">Tidak dapat menghubungi YouTube. Semak sambungan anda dan cuba lagi.</string>
+    <string name="error_disk_full">Ruang storan tidak mencukupi. Kosongkan sedikit ruang dan cuba lagi.</string>
+    <string name="error_live_still_processing">Strim ini baru sahaja tamat dan masih diproses. Cuba lagi kemudian</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Apl Fail sistem dimatikan. Hidupkannya untuk memilih folder.</string>
+    <string name="folder_picker_open_settings">Buka tetapan</string>
+    <string name="folder_picker_missing">Peranti ini tiada pemilih folder, jadi folder tidak boleh dipilih.</string>
+    <string name="error_supervised_account">Akaun Google ini diselia, jadi YouTube tidak boleh digunakan di sini. Log keluar atau tukar kepada akaun lain.</string>
     <string name="settings_player_cache">Cache pemain</string>
     <string name="settings_player_cache_summary">Maks %1$s · Digunakan %2$s · Dijimatkan %3$s</string>
     <string name="settings_player_cache_off">Tiada cache</string>
@@ -518,4 +526,5 @@
     <string name="video_details_deleted">Ulasan dipadamkan</string>
     <string name="menu_details_comments">Butiran dan ulasan</string>
     <string name="menu_speed_pitch">Kelajuan dan pic</string>
+    <string name="link_open_failed">Tidak dapat membuka: %1$s</string>
 </resources>

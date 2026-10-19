@@ -41,7 +41,6 @@ val generateFfmpegTestConfig = tasks.register("generateFfmpegTestConfig") {
             |// suites: each binds the absolute path of a host-runnable ffmpeg binary (null when this host
             |// has none → the inherited checks skip) + the committed media fixtures dir under
             |// kmpFfmpeg/testdata. JUnit/kotlin.test runs the @Test methods inherited from each base.
-            |// (The Android device builds its own concrete subclasses at runtime — see AndroidSmokeTest.)
             |private val hostConfig = FfmpegTestConfig(binaryPath = $binLiteral, testDataDir = ${lit(dataDir)})
             |
             |internal class KmpProcessTest : KmpProcessSmokeTest() {
@@ -228,13 +227,10 @@ kotlin {
         }
 
         // The shared smoke suite — the abstract FfmpegSmokeTest (its @Test methods), the check bodies,
-        // and the FfmpegTestConfig — lives here, run by EVERY target that can spawn a process: desktop
-        // JVM, desktop-native, AND the Android device. NOT in commonTest (iOS inherits that and can't
-        // exec). The host concrete subclass (KmpProcessTest) is generated into jvmTest/posixTest; the
-        // Android one (AndroidSmokeTest) is in androidDeviceTest, which shares these files by srcDir
-        // (below) because its source-set tree can't dependsOn processTest under the AGP KMP plugin.
+        // and the FfmpegTestConfig — lives here, run by every desktop target that can spawn a process
+        // (JVM and desktop-native). NOT in commonTest (iOS inherits that and can't exec). The concrete
+        // subclass (KmpProcessTest) is generated into jvmTest/posixTest.
         val processTest by creating { dependsOn(commonTest) }
-        val processTestDir = "src/processTest/kotlin"
 
         // Host `actual` of FfmpegTestConfig = the build-time generated paths. Added straight to each
         // host leaf (jvm + the shared native set) rather than a shared intermediate, since one source
@@ -253,18 +249,13 @@ kotlin {
             findByName(name)?.dependsOn(posixTest)
         }
 
-        // Instrumented (on-device) tests. Inherits processTest, so the shared [KmpProcessTest] smoke
-        // class runs on the emulator too (against the on-device ffmpeg + materialized fixtures, via the
-        // Android FfmpegTestConfig actual below). Plus the Android-only ymix server tests
-        // (FfYmixProtocolServerTest, FfmpegRealBinaryTest).
+        // Instrumented (on-device) tests: the packaged binary per ABI and the ymix server
+        // (FfmpegRealBinaryTest, FfYmixProtocolServerTest).
         val androidDeviceTest by getting {
-            // Share the smoke suite by physical source (can't dependsOn processTest across trees); the
-            // concrete AndroidSmokeTest + the ymix server tests live in this set's own dir.
-            kotlin.srcDir(processTestDir)
             kotlin.srcDir(generateAndroidFixtures) // embedded base64 media fixtures
             dependencies {
-                implementation(kotlin("test"))            // FfmpegSmokeTest uses kotlin.test.Test
-                implementation(Libs.Kotlinx.coroutinesTest) // …and runTest
+                implementation(kotlin("test"))
+                implementation(Libs.Kotlinx.coroutinesTest)
                 implementation(Libs.Testing.junitExt)
                 implementation(Libs.Testing.runner)
             }

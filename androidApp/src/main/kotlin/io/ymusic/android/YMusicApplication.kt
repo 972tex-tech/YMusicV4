@@ -28,7 +28,6 @@ import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.EMBEDDED_PLAYER_JS_VERSION
 import io.ymusic.dynamicengine.ENGINE_BUNDLE
 import io.ymusic.dynamicengine.JsSourceProvider
-import io.ymusic.dynamicengine.SignedBundleRef
 import io.ymusic.dynamicengine.androidEngineCacheStore
 import io.ymusic.dynamicengine.player.bindMseNativeLogs
 import io.ymusic.dynamicengine.playerJsSource
@@ -78,6 +77,7 @@ import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.ScanResult
 import io.ymusic.ui.YtEngineSabrSpecResolver
+import io.ymusic.ui.bundleConfig
 import io.ymusic.ui.downloadLocationFolder
 import io.ymusic.ui.ensureAppLanguage
 import io.ymusic.ui.loaderYoutubeArt
@@ -284,8 +284,7 @@ class YMusicApplication : Application() {
             )
         }
         // Flags, the newest JS bundle revisions, and update availability. Started here so the first
-        // fetch overlaps the rest of startup; nothing below waits on it, and both JS seams read
-        // whatever it holds when they are asked (the cached body on a cold start offline).
+        // fetch overlaps the rest of startup; nothing waits on it, the JS bundles follow what it publishes.
         val remoteConfig = RemoteConfig(
             api = api,
             cacheFile = File(filesDir, "remote-config.json").toOkioPath(),
@@ -310,11 +309,10 @@ class YMusicApplication : Application() {
         // it — BEFORE the engine starts: the engine pulls the same key as its content-language.
         ensureAppLanguage(settings)
         // The engine bundle: asset embed (no compiled-in constant) + file cache + the revision the
-        // config service publishes. The manager boots cached-or-embed and runs the periodic update
-        // check itself.
+        // config service publishes, which the manager follows from start.
         val engineSource = DefaultJsSourceProvider(
             client = http.engine,
-            config = { remoteConfig.getConfig().engineJs?.let { SignedBundleRef(it.version, it.url, it.signature) } },
+            config = remoteConfig.bundleConfig { it.engineJs },
             name = ENGINE_BUNDLE,
             publicKey = BuildConfig.BUNDLE_PUBLIC_KEY,
             embedVersion = BuildConfig.ENGINE_JS_VERSION,
@@ -383,7 +381,7 @@ class YMusicApplication : Application() {
 
         val playerJs = playerJsSource(
             client = http.engine,
-            config = { remoteConfig.getConfig().playerJs?.let { SignedBundleRef(it.version, it.url, it.signature) } },
+            config = remoteConfig.bundleConfig { it.playerJs },
             publicKey = BuildConfig.BUNDLE_PUBLIC_KEY,
             fileSystem = FileSystem.SYSTEM,
             directory = File(filesDir, "player-js").toOkioPath(),
@@ -401,9 +399,8 @@ class YMusicApplication : Application() {
             autoDownload = { settings.flow(AppSettings.autoDownloadUpdates).value },
             autoDownloadFailed = { settings.flow(AppSettings.updateAutoDownloadFailed).value },
             rememberAutoDownloadFailed = { settings.put(AppSettings.updateAutoDownloadFailed, it) },
-            refreshConfig = { remoteConfig.refreshNow() },
-            latestUpdate = { remoteConfig.getConfig().appUpdate },
-            downloadSite = { remoteConfig.config.replayCache.lastOrNull()?.downloadPageUrl },
+            freshConfig = { remoteConfig.awaitFresh(timeoutMs = 3_000L) },
+            downloadSite = { remoteConfig.config.value.downloadPageUrl },
             configUpdates = remoteConfig.config.map { it.appUpdate },
         )
         updates.pruneDownloads()
@@ -643,17 +640,19 @@ class YMusicApplication : Application() {
             deleteFromDisk = { item ->
                 withContext(Dispatchers.IO) {
                     val uri = android.net.Uri.parse(item.uri.toString())
-                    // Rides the persisted tree permission from the folder pick. An already-gone
-                    // document still clears its library row (matching the desktop shell).
+                    // Rides the persisted tree permission from the folder pick. A file that is already gone
+                    // (or whose folder is) needs no delete: the caller still clears its library row.
+                    if (!documentExists(uri)) return@withContext
                     val deleted = try {
                         android.provider.DocumentsContract.deleteDocument(contentResolver, uri)
                     } catch (e: java.io.FileNotFoundException) {
                         true
                     } catch (e: IllegalArgumentException) {
-                        if (!isConfirmedMissing(uri, e)) throw e
+                        if (documentExists(uri)) throw e
                         true
                     }
-                    check(deleted) { "Android refused to delete this document" }
+                    // Before Android 10 deleteDocument swallows the provider's exception into false.
+                    check(deleted || !documentExists(uri)) { "Android refused to delete this document" }
                 }
             },
             appVersion = listOfNotNull(versionName, android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
@@ -724,20 +723,18 @@ class YMusicApplication : Application() {
         }
     }
 
-    /** Whether [error] from deleting [uri] proves the file is gone. ExternalStorageProvider's tree
-     *  check carries the cause only as message text; just "Missing file for <this docId>" means absent
-     *  ("No root for" is an unmounted volume). Any other provider must answer a query with zero rows. */
-    private fun isConfirmedMissing(uri: android.net.Uri, error: IllegalArgumentException): Boolean {
-        val documentId = android.provider.DocumentsContract.getDocumentId(uri)
-        if (error.message?.contains("FileNotFoundException: Missing file for $documentId at ") == true) return true
-        val cursor = try {
-            contentResolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
-        } catch (probe: Exception) {
-            error.addSuppressed(probe)
-            return false
-        }
-        // A null cursor is no evidence: the resolver also returns null when the provider is unavailable.
-        return cursor?.use { it.count == 0 } == true
+    /** Whether the document at [uri] is still there. A vanished file, or one under a vanished folder, comes
+     *  back as FileNotFoundException / IllegalArgumentException("Missing file for …"), zero rows, or a null
+     *  cursor (DocumentsProvider.query swallows its FileNotFoundException) — but null also means the provider
+     *  is unreachable, which proves nothing. Any other failure counts as present, so the delete is attempted. */
+    private fun documentExists(uri: android.net.Uri): Boolean = try {
+        contentResolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
+            ?.use { it.count > 0 }
+            ?: (contentResolver.acquireUnstableContentProviderClient(uri)?.also { it.close() } == null)
+    } catch (e: java.io.FileNotFoundException) {
+        false
+    } catch (e: IllegalArgumentException) {
+        false
     }
 
     /** SAF folder pick + full scan into [store]; returns how it ended, or null when canceled. */

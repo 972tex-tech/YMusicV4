@@ -3,6 +3,7 @@
 
 import origEnvJs from "./orig/env.raw.js";
 import origIdlStubsJs from "./orig/idl_stubs.raw.js";
+import chromeGlobalsJs from "./orig/chrome_globals.raw.js";
 
 function native(nameOrFn: string | Function, impl?: Function): Function {
   const name = typeof nameOrFn === "string" ? nameOrFn : nameOrFn.name || "";
@@ -21,6 +22,7 @@ export function installOrigEnv(): void {
   origEnvInstalled = true;
   origEnvHandle = (0, eval)(origEnvJs) as Record<string, unknown> | null;
   (0, eval)(origIdlStubsJs);
+  (0, eval)(chromeGlobalsJs);
 }
 
 /** Layout getters answer 0 from now on: BotGuard only measures before its snapshot, and the player

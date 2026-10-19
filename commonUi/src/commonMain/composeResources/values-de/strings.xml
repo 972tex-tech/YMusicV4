@@ -397,6 +397,7 @@
     <string name="update_download">Herunterladen</string>
     <string name="update_downloading">Wird heruntergeladen… %1$s von %2$s</string>
     <string name="update_ready">Bereit zur Installation</string>
+    <string name="update_installing">Wird installiert…</string>
     <string name="update_manual_hint">Diese Installation kann sich nicht selbst aktualisieren (%1$s). Lade stattdessen die neue Version herunter.</string>
     <string name="update_failed">Update fehlgeschlagen: %1$s</string>
     <string name="update_official_site">Von der offiziellen Website herunterladen</string>
@@ -477,6 +478,13 @@
         <item quantity="other">%1$d der ausgewählten Videos sind bereits in deiner Mediathek.</item>
     </plurals>
     <string name="error_network">YouTube ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.</string>
+    <string name="error_disk_full">Nicht genügend Speicherplatz. Gib etwas Speicher frei und versuche es erneut.</string>
+    <string name="error_live_still_processing">Dieser Stream ist gerade zu Ende und wird noch verarbeitet. Versuche es später erneut</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Die System-App „Dateien“ ist deaktiviert. Aktiviere sie, um einen Ordner auszuwählen.</string>
+    <string name="folder_picker_open_settings">Einstellungen öffnen</string>
+    <string name="folder_picker_missing">Dieses Gerät hat keine Ordnerauswahl, daher kann kein Ordner ausgewählt werden.</string>
+    <string name="error_supervised_account">Dieses Google-Konto wird beaufsichtigt, daher kann YouTube hier nicht verwendet werden. Melde dich ab oder wechsle zu einem anderen Konto.</string>
     <string name="settings_player_cache">Player-Cache</string>
     <string name="settings_player_cache_summary">Max. %1$s · Belegt %2$s · Gespart %3$s</string>
     <string name="settings_player_cache_off">Kein Cache</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">Kommentar gelöscht</string>
     <string name="menu_details_comments">Details &amp; Kommentare</string>
     <string name="menu_speed_pitch">Tempo &amp; Tonhöhe</string>
+    <string name="link_open_failed">Kann nicht geöffnet werden: %1$s</string>
 </resources>

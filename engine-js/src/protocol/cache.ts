@@ -230,7 +230,18 @@ export async function scopedCache(scope: string, evictor: CacheEvictor) {
   return {
     get: <T>(key: string, read: (source: PipeSource, meta: CacheMeta) => T | Promise<T>) =>
       tracked(key, read),
-    getJson: (key: string) => tracked(key, (source) => source.readJsonObject()),
+    getJson: async (key: string) => {
+      try {
+        return await tracked(key, (source) => source.readJsonObject());
+      } catch (e) {
+        // A blob torn by a crash before it reached the disk never parses again: drop it, a miss heals.
+        if (!(e instanceof SyntaxError)) throw e;
+        console.warn("cache " + scope + "/" + key + " unreadable, dropped: " + e.message);
+        await Cache.delete(scope, key);
+        evictor.onDeleted(key);
+        return null;
+      }
+    },
     getText: (key: string) => tracked(key, (source) => source.readUtf8()),
     list: () => Cache.list(scope),
     delete: async (key: string) => {

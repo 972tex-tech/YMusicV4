@@ -148,7 +148,7 @@ data class RemoteConfigData(
 
         /**
          * [KEY_UPDATED_AT] is when the app last heard from the service, and it is what the throttle
-         * and [RemoteConfig.getConfig]'s max-age compare against.
+         * and [RemoteConfig.checkUpdate]'s max-age compare against.
          *
          * The cache carries it, so a restart knows how old its copy is. A server response does not,
          * so [now] stamps it. If a server ever DOES send it, it wins — which is worth knowing, since

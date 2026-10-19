@@ -398,6 +398,7 @@
     <string name="update_download">Baixar</string>
     <string name="update_downloading">Baixando… %1$s de %2$s</string>
     <string name="update_ready">Pronta para instalar</string>
+    <string name="update_installing">Instalando…</string>
     <string name="update_manual_hint">Esta cópia não pode se atualizar sozinha (%1$s). Baixe a nova versão.</string>
     <string name="update_failed">Falha na atualização: %1$s</string>
     <string name="update_official_site">Baixe no site oficial</string>
@@ -482,6 +483,13 @@
         <item quantity="other">%1$d dos vídeos selecionados já estão na sua Biblioteca.</item>
     </plurals>
     <string name="error_network">Não foi possível acessar o YouTube. Verifique sua conexão e tente novamente.</string>
+    <string name="error_disk_full">Não há espaço de armazenamento suficiente. Libere espaço e tente novamente.</string>
+    <string name="error_live_still_processing">Esta transmissão acabou de terminar e ainda está sendo processada. Tente novamente mais tarde</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">O app Arquivos do sistema está desativado. Ative-o para escolher uma pasta.</string>
+    <string name="folder_picker_open_settings">Abrir configurações</string>
+    <string name="folder_picker_missing">Este dispositivo não tem seletor de pastas, então não é possível escolher uma pasta.</string>
+    <string name="error_supervised_account">Esta conta Google é supervisionada, por isso o YouTube não pode ser usado aqui. Saia ou mude para outra conta.</string>
     <string name="settings_player_cache">Cache do player</string>
     <string name="settings_player_cache_summary">Máx. %1$s · Usado %2$s · Economizado %3$s</string>
     <string name="settings_player_cache_off">Sem cache</string>
@@ -528,4 +536,5 @@
     <string name="video_details_deleted">Comentário excluído</string>
     <string name="menu_details_comments">Detalhes e comentários</string>
     <string name="menu_speed_pitch">Velocidade e tom</string>
+    <string name="link_open_failed">Não foi possível abrir: %1$s</string>
 </resources>
