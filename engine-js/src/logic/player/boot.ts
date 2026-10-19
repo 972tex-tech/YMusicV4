@@ -14,7 +14,9 @@ import {
 } from "../../protocol/mse";
 import { applyNavigatorLanguages, endLayoutProbes, installOrigEnv } from "./env";
 import { installXhr } from "../yt/xhr";
-import { fetchCacheState, installFetch } from "../yt/fetch";
+import { installFetch } from "../yt/fetch";
+import { executeWithCookies } from "../yt/cookies";
+import { HttpRequest } from "../../protocol/http";
 import { utf8Encode } from "../../transport";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
@@ -647,17 +649,16 @@ export function requireFreshPlayerConfig(fresh: boolean): void {
 
 /** The base.js response head for diagnostics. Content-Length/-Encoding are as the host relayed
  *  them: a transport that transparently gunzips (OkHttp) drops both. */
-function baseJsHead(res: FetchResponse): string {
-  const headers = res["headers"];
+function baseJsHead(res: HttpResponse): string {
   return (
     "status=" +
-    res["status"] +
+    res.status +
     " contentLength=" +
-    (headers["get"]("content-length") ?? "-") +
+    (res.headers.get("content-length") ?? "-") +
     " encoding=" +
-    (headers["get"]("content-encoding") ?? "-") +
+    (res.headers.get("content-encoding") ?? "-") +
     " cache=" +
-    fetchCacheState(res)
+    (res.cache ?? "network")
   );
 }
 
@@ -669,6 +670,59 @@ async function fetchPlayerConfig(): Promise<Record<string, unknown>> {
     if (c) await c;
     return await pipe.source.readJsonObject();
   });
+}
+
+const SESSION_STEP_MS = 15000;
+const BOTGUARD_STEP_MS = 15000;
+const BASEJS_STEP_MS = 15000;
+
+/** Rejects with [code] when [task] has not settled within [ms]; the task itself keeps running. */
+function withinStep<T>(task: Promise<T>, ms: number, code: string, step: string): Promise<T> {
+  return new Promise<T>(function (resolve, reject) {
+    const timer = setTimeout(function () {
+      console.warn("player/init " + step + " timed out after " + ms + "ms");
+      reject(new JsEngineErrorImpl(step + " timed out after " + ms + "ms", code));
+    }, ms);
+    task.then(
+      function (value) {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      function (e: unknown) {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+interface BaseJsDownload {
+  text: string;
+  head: string;
+}
+
+async function downloadBaseJs(jsUrl: string): Promise<BaseJsDownload> {
+  let head = "status=none";
+  try {
+    const res = await executeWithCookies(
+      jsUrl,
+      HttpRequest.get(jsUrl)
+        .setHeader("Referer", ORIGIN + "/")
+        .setHeader("Origin", ORIGIN),
+    );
+    head = baseJsHead(res);
+    if (!res.ok) {
+      res.close();
+      throw new Error("GET " + jsUrl + " status=" + res.status);
+    }
+    return { text: await res.text(), head: head };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("base.js fetch failed " + head + " err=" + msg + " jsUrl=" + jsUrl);
+    throw new JsEngineErrorImpl("base.js fetch: " + msg + " (" + head + ")", "E20075", {
+      cause: e instanceof Error ? e : undefined,
+    });
+  }
 }
 
 /** Everything `player/load` applies before the first frame, so the host needs one round-trip. */
@@ -688,7 +742,7 @@ class Player {
   private tempo = 1;
   private pitch = 1;
   private mintFn: ((id: Uint8Array) => unknown) | null = null;
-  private config: Record<string, unknown> | null = null;
+  private configP: Promise<Record<string, unknown>> | null = null;
   private minterP: Promise<Record<string, unknown>> | null = null;
   private initP: Promise<Record<string, unknown>> | null = null;
   private createFn: ((r: unknown, a: unknown, b: unknown) => unknown) | null = null;
@@ -707,6 +761,19 @@ class Player {
     return this.initP;
   }
 
+  private ensureConfig(): Promise<Record<string, unknown>> {
+    if (this.configP == null) {
+      this.configP = this.doConfig().then(
+        (v) => v,
+        (e: unknown) => {
+          this.configP = null;
+          throw e;
+        },
+      );
+    }
+    return this.configP;
+  }
+
   private ensureMinter(): Promise<Record<string, unknown>> {
     if (this.minterP == null) {
       this.minterP = this.doMinter().then(
@@ -720,19 +787,25 @@ class Player {
     return this.minterP;
   }
 
-  private async doMinter(): Promise<Record<string, unknown>> {
-    const out: Record<string, unknown> = { "step": "env" };
+  private async doConfig(): Promise<Record<string, unknown>> {
     await playerStorageReady();
     installOrigEnv();
     installNativeUrl();
     setLocation(ORIGIN + "/", "/", "");
-    out["step"] = "config";
-    const cfg = await fetchPlayerConfig();
-    this.config = cfg;
+    const cfg = await withinStep(fetchPlayerConfig(), SESSION_STEP_MS, "E20155", "session scrape");
     applyNavigatorLanguages(cfg["acceptLanguage"]);
+    return cfg;
+  }
 
-    out["step"] = "minter";
-    this.mintFn = await minterFromConfig(cfg, out);
+  private async doMinter(): Promise<Record<string, unknown>> {
+    const cfg = await this.ensureConfig();
+    const out: Record<string, unknown> = { "step": "minter" };
+    this.mintFn = await withinStep(
+      minterFromConfig(cfg, out),
+      BOTGUARD_STEP_MS,
+      "E20156",
+      "botguard",
+    );
     endLayoutProbes();
     const self = this;
     installCaptionMinter(function (id: string) {
@@ -746,12 +819,22 @@ class Player {
     return out;
   }
 
+  /** Session scrape, then BotGuard with base.js downloading alongside; base.js is evaluated only
+   *  after the BotGuard snapshot. */
   private async doInit(): Promise<Record<string, unknown>> {
-    const out = await this.ensureMinter();
-    const cfg = this.config;
-    if (!cfg) throw new JsEngineErrorImpl("player config missing", "E20150");
+    const cfg = await this.ensureConfig();
     const jsUrlRaw = typeof cfg["jsUrl"] === "string" ? (cfg["jsUrl"] as string) : "";
     if (!jsUrlRaw) throw new JsEngineErrorImpl("player config has no jsUrl", "E20151");
+    const jsUrl = absUrl(jsUrlRaw);
+    cfg["jsUrl"] = jsUrl;
+    const download = withinStep(
+      downloadBaseJs(jsUrl),
+      BASEJS_STEP_MS,
+      "E20157",
+      "base.js download",
+    );
+    download.catch(function () {});
+    const out = await this.ensureMinter();
 
     installPlayerTree();
     installPlayerAdStrip();
@@ -759,25 +842,11 @@ class Player {
     installAdaptiveFormatsHeader();
     installWatchNextHarvest();
 
-    const jsUrl = absUrl(jsUrlRaw);
-    if (typeof cfg["jsUrl"] === "string") cfg["jsUrl"] = jsUrl;
     out["jsUrl"] = jsUrl;
     out["step"] = "basejs";
-    let baseJs: string;
-    let head = "status=none";
-    try {
-      const res = await fetch(jsUrl);
-      if (res) head = baseJsHead(res);
-      if (!res || !res["ok"])
-        throw new Error("GET " + jsUrl + " status=" + (res ? res["status"] : "no response"));
-      baseJs = await (res as { text(): Promise<string> })["text"]();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn("base.js fetch failed " + head + " err=" + msg + " jsUrl=" + jsUrl);
-      throw new JsEngineErrorImpl("base.js fetch: " + msg + " (" + head + ")", "E20075", {
-        cause: e instanceof Error ? e : undefined,
-      });
-    }
+    const downloaded = await download;
+    const baseJs = downloaded.text;
+    const head = downloaded.head;
     out["baseJsSrc"] = "cdn";
     out["baseJsLen"] = baseJs.length;
     console.info("base.js source=cdn " + head + " len=" + baseJs.length + " jsUrl=" + jsUrl);
