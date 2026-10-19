@@ -12,11 +12,8 @@ class PrefsSettingsStore(private val prefs: SharedPreferences) : StringBackedSet
         seed(prefs.all.mapValues { (_, v) -> v.toString() })
     }
 
-    override suspend fun persist() {
-        val values = snapshot()
-        withContext(Dispatchers.IO) {
-            prefs.edit().apply { values.forEach { (k, v) -> putString(k, v) } }.commit()
-        }
+    override suspend fun persist(key: String, value: String) {
+        withContext(Dispatchers.IO) { prefs.edit().putString(key, value).commit() }
     }
 
     companion object {

@@ -22,8 +22,8 @@ internal class AppStore private constructor(private val database: AppDatabase) {
 
     fun settings(): Map<String, String> = settingQueries.selectAll().executeAsList().associate { it.key to it.value_ }
 
-    fun putSettings(values: Map<String, String>) = database.transaction {
-        for ((key, value) in values) settingQueries.put(key, value)
+    fun putSetting(key: String, value: String) {
+        settingQueries.put(key, value)
     }
 
     fun secret(name: String): ByteArray? = secretQueries.select(name).executeAsOneOrNull()
