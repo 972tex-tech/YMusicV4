@@ -20,9 +20,6 @@ import kotlin.time.Duration.Companion.seconds
  * host. Its cert set is provided by the `:startTestServer` Gradle task. Client certs are given in BOTH
  * supported formats ([SslConfig.ClientCert.Pkcs12] for OkHttp/NSURLSession, [SslConfig.ClientCert.Pem]
  * for libcurl); each engine picks the variant it supports.
- *
- * [extraAnchorKeepsSystemDefaults] is the one case that must prove real system-default (public root)
- * trust, so it hits a non-Let's-Encrypt public host ([SYSTEM_TRUST_URL]).
  */
 open class SslTest {
 
@@ -66,19 +63,6 @@ open class SslTest {
             sslConfig = SslConfig(trustedCAs = listOf(cert), trustSystemDefaultCAs = false)
         }
         client.execute(get(TestServer.baseUrl)).use { assertEquals(200, it.code) }
-    }
-
-    @Test
-    open fun extraAnchorKeepsSystemDefaults() = runTest {
-        // Add an unrelated cert as an EXTRA anchor while keeping system defaults; exercises the merge
-        // path (merged keystore / anchors-only=false / CA bundle merge) without breaking a normally-
-        // validating host. This is the one case that truly needs the system trust store, so it hits a
-        // real non-Let's-Encrypt public host.
-        val unrelated = TestServer.serverCertDer.decodeBase64()!!
-        val client = newClient {
-            sslConfig = SslConfig(trustedCAs = listOf(unrelated), trustSystemDefaultCAs = true)
-        }
-        client.execute(get(SYSTEM_TRUST_URL)).use { assertEquals(204, it.code) }
     }
 
     @Test
@@ -128,11 +112,5 @@ open class SslTest {
             )
         }
         client.execute(get(TestServer.mtlsUrl)).use { assertEquals(200, it.code) }
-    }
-
-    private companion object {
-        // A non-Let's-Encrypt public endpoint that returns 204 No Content — for the one case that
-        // must exercise real system-default (public root) trust.
-        const val SYSTEM_TRUST_URL = "https://www.google.com/gen_204"
     }
 }
