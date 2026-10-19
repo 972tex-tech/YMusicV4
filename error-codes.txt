@@ -126,6 +126,11 @@ E70040 D download options requested but the shell wired no player-response sourc
 E70041 D download options: player response has no streamingData (download DownloadOptions.parse)
 E70042 D download options: no audio format this platform can save (download DownloadOptions.parse)
 E70043 D download options probe failed with an uncoded error (commonUi DownloadOptionsState.load)
+E70050 - googlevideo rejected the download's PO token again after a re-attest (download YtStreamDownloader.sabrFailure)
+E70051 - SABR withheld media while attestation stayed pending (StreamProtectionStatus=2) (download YtStreamDownloader.sabrFailure)
+E70052 - googlevideo answered a SABR error part (UMP 44) to a download (download YtStreamDownloader.sabrFailure)
+E70053 - a SABR download failed with an otherwise uncoded error (download YtStreamDownloader.sabrFailure)
+E70060 - could not create the download scratch directory, volume not full (download DefaultDownloadScratch)
 
 E80070 D MSE not available on this platform (mse apple)
 E80071 D MSE mime type not supported (mse)

@@ -5,8 +5,10 @@ import io.ymusic.ytmedia.cache.SegmentIndex
 import io.ymusic.ytmedia.sabr.AdaptiveFormat
 import io.ymusic.ytmedia.sabr.CaptionTrack
 import io.ymusic.ytmedia.sabr.DownloadFile
+import io.ymusic.ytmedia.sabr.SabrAttestationPending
 import io.ymusic.ytmedia.sabr.SabrPoTokenInvalid
 import io.ymusic.ytmedia.sabr.SabrProgress
+import io.ymusic.ytmedia.sabr.SabrServerError
 import io.ymusic.ytmedia.sabr.SabrSession
 import io.ymusic.ytmedia.sabr.SabrStreamSpec
 import io.ymusic.ytmedia.sabr.SabrTrack
@@ -18,6 +20,7 @@ import kotlinx.coroutines.CancellationException
 import okio.IOException
 import okio.use
 import projectcommon.error.TechnicalException
+import projectcommon.error.codedError
 
 /** Caption tracks to fetch: the ones a per-task [choice] names (MP3 takes them as lyrics); else the
  *  track in [preferredLanguage] or, lacking it, the video's default; else none. */
@@ -219,7 +222,7 @@ class YtStreamDownloader(
             } catch (e: SabrPoTokenInvalid) {
                 invalid?.let {
                     e.addSuppressed(it)
-                    throw e
+                    throw sabrFailure(e)
                 }
                 invalid = e
                 log?.log(Logger.Level.WARN, "PO token invalid, re-attesting: ${e.message}")
@@ -229,7 +232,20 @@ class YtStreamDownloader(
                     error.addSuppressed(e)
                     throw error
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                throw sabrFailure(e)
             }
         }
     }
+}
+
+/** An uncoded SABR session failure as its site code; coded, network and disk-full failures pass through. */
+private fun sabrFailure(error: Throwable): Throwable = when {
+    error.codedError() != null -> error
+    error is SabrPoTokenInvalid -> TechnicalException("E70050", "PO token rejected after a re-attest: ${error.message}", cause = error)
+    error is SabrAttestationPending -> TechnicalException("E70051", error.message ?: "attestation pending", cause = error)
+    error is SabrServerError -> TechnicalException("E70052", error.message ?: "SABR server error", cause = error)
+    else -> TechnicalException("E70053", "SABR download failed: ${error.message}", cause = error)
 }
