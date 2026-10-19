@@ -561,7 +561,7 @@ function rewriteAbr(
     console.info(playable);
   }
   let state: SabrRequestState | null = null;
-  const fake = videoId ? pickFake144(videoId, selItags.length ? selItags : playVid) : null;
+  const fake = videoId ? pickFake144(videoId, selItags, playVid) : null;
   if (has144Buffered) {
     debug(function () {
       return "sabr skip fake-ump 144p already buffered";
