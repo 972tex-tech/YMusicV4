@@ -1,4 +1,4 @@
-# Tests kept in the tree but not worth CI time: trivial getters/roundtrips and checks a stronger
+# Tests kept in the tree but not worth the release build's time: trivial getters/roundtrips and checks a stronger
 # test already covers. They still run locally (`./gradlew jvmTest`). One per line, Class or
 # Class.method (simple names); applied to every JVM test task when built with -Pci=true.
 

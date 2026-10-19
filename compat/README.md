@@ -13,7 +13,8 @@ yesterday's host (its Kotlin decoders, QuickJS/`:mse` natives, host protocols). 
 - `run.sh [tag…]` — local: builds `-Pproduction` bundles from the working tree (uncommitted edits included),
   then runs every tag (or the named ones) in a reused worktree under `$COMPAT_DIR`
   (default `$TMPDIR/ymusic-compat`).
-- `.github/workflows/bundle-compat.yml` — CI: one bundle build, then one concurrent job per tag.
+- CI: the release build (`.github/workflows/release.yml`, on a `release-*` tag) builds the bundles once, then
+  runs one concurrent job per tag; the draft release waits for all of them.
 
 **The test must compile at every tag from the floor on.** It only uses API that every one of those tags
 has. When a newer host changes that API, keep the test on the old shape until the floor passes it.
