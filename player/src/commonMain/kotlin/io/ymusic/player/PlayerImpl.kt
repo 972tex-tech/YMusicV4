@@ -731,7 +731,7 @@ internal class PlayerImpl(
             }
             else -> return null
         }
-        val next = withTimeoutOrNull(PREPARE_TIMEOUT_MS) {
+        val settled = suspend {
             engine.status.first { snap ->
                 when (val s = snap.state) {
                     is PlaybackState.Error -> true
@@ -740,6 +740,8 @@ internal class PlayerImpl(
                 }
             }.state
         }
+        // The YouTube engine bounds its own init and always settles in ready or Error.
+        val next = if (engine is YtEngine) settled() else withTimeoutOrNull(PREPARE_TIMEOUT_MS) { settled() }
         if (next == null) {
             val err = PlayerError("E60052", "engine prepare timeout", canRetry = true, needReset = true)
             publishStatus(PlaybackStatus(state = PlaybackState.Error(err)))
@@ -961,7 +963,7 @@ internal class PlayerImpl(
         /** Cue the next item this close to the end — legacy UniPlayer. */
         const val PRELOAD_LEAD_MS = 10_000L
 
-        /** UniPlayer `tryMakePlayerReady` timeout. */
+        /** UniPlayer `tryMakePlayerReady` timeout, for the engines that do not bound their own init. */
         const val PREPARE_TIMEOUT_MS = 10_000L
 
         /** A listen tick within this of the seek target counts as landed. */

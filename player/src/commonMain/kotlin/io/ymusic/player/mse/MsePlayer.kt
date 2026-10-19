@@ -464,7 +464,8 @@ class MsePlayer internal constructor(
                 if (hasPendingVideoSurface) enginePlayer.setVideoSurface(pendingVideoSurface)
                 val freshConfig = freshConfigNext
                 freshConfigNext = false
-                enginePlayer.init(log, viewportW, viewportH, freshConfig)
+                withTimeoutOrNull(INIT_TIMEOUT_MS) { enginePlayer.init(log, viewportW, viewportH, freshConfig) }
+                    ?: throw TechnicalException("E60066", "mse player/init not done within $INIT_TIMEOUT_MS ms")
                 listen(newSession, enginePlayer)
                 _status.update {
                     if (it.state is PlaybackState.Uninitialized) it.copy(state = PlaybackState.Idle) else it
@@ -702,7 +703,11 @@ class MsePlayer internal constructor(
     private fun applyDetails(json: JsonObject) {
         val videoId = json.stringOrNull("videoId") ?: return
         if (videoId != (loadingVideoId ?: loadedVideoId)) return
-        if (videoId == loadingVideoId) loadTrace?.details(hasPlayerResponse = json.stringOrNull("channelTitle") != null)
+        if (videoId == loadingVideoId) {
+            loadTrace?.details(hasPlayerResponse = json.stringOrNull("channelTitle") != null)
+            loadTimeoutJob?.cancel()
+            loadTimeoutJob = null
+        }
         val details = MediaDetails(videoId, json.stringOrNull("channelTitle"), json.stringOrNull("channelUrl"))
         _status.update { it.copy(details = details) }
     }
@@ -818,6 +823,7 @@ class MsePlayer internal constructor(
     }
 
     companion object {
+        private const val INIT_TIMEOUT_MS = 30_000L
         private const val LOAD_TIMEOUT_MS = 5_000L
         private const val ENGINE_CLOSE_TIMEOUT_MS = 3_000L
 
