@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 4.0.7
 
 ### FIXED
 - Android: a few seconds of fast-forwarded audio during long video playback ([83e79c9d5](https://github.com/ymusic-io/YMusicV4/commit/83e79c9d5e5b18accddd320bb7eaf60dd69db289))
