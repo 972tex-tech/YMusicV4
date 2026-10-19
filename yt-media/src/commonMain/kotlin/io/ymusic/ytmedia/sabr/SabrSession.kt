@@ -42,6 +42,9 @@ class SabrTrack(val format: AdaptiveFormat, val file: DownloadFile)
 /** The session stalled after googlevideo answered STREAM_PROTECTION_STATUS 3 (invalid PO token). Caller re-attests. */
 class SabrPoTokenInvalid(message: String) : IOException(message)
 
+/** Every empty round answered STREAM_PROTECTION_STATUS 2: the PO token's attestation never resolved. */
+class SabrAttestationPending(message: String) : IOException(message)
+
 /** Thrown on UMP part 44. */
 class SabrServerError(message: String) : IOException(message)
 
@@ -130,12 +133,16 @@ class SabrSession(
 
         var retryCount = 0
         var lastError: String? = null
+        var lastProtectionStatus: Int? = null
         var cacheUsable = mediaCache != null
 
         try {
             while (true) {
                 if (retryCount > maxConsecutiveEmptyRounds) {
                     if (!poTokenValid) throw SabrPoTokenInvalid("PO token invalid (StreamProtectionStatus=3); re-attest and retry")
+                    if (lastProtectionStatus == 2) {
+                        throw SabrAttestationPending("SABR withheld media while attestation stayed pending (StreamProtectionStatus=2)")
+                    }
                     throw IOException("SABR exceeded max retries, last: $lastError")
                 }
 
@@ -219,6 +226,7 @@ class SabrSession(
                 if (outcome.completedSegments == 0) {
                     retryCount++
                     lastError = "received zero segments"
+                    lastProtectionStatus = outcome.protectionStatus
                     delay(maxOf(outcome.backoffMs.milliseconds, MIN_EMPTY_ROUND_BACKOFF))
                 } else {
                     retryCount = 0
