@@ -80,6 +80,7 @@ import io.ymusic.ui.resources.settings_sponsor_block
 import io.ymusic.ui.resources.settings_sponsor_block_hint
 import io.ymusic.ui.resources.settings_stats
 import io.ymusic.ui.resources.settings_stats_hint
+import io.ymusic.ui.resources.settings_terms
 import io.ymusic.ui.resources.settings_theme
 import io.ymusic.ui.resources.settings_theme_amoled
 import io.ymusic.ui.resources.settings_theme_dark
@@ -213,6 +214,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
             val config by remember(graph) { graph.remoteConfig ?: emptyFlow() }.collectAsState(initial = null)
             config?.changelogUrl?.let { LinkRow(Res.string.settings_changelog, it) }
             LinkRow(Res.string.settings_source_code, SourceCodeUrl)
+            LinkRow(Res.string.settings_terms, TermsUrl)
             LicensesRow()
         }
         SettingsSection(Res.string.settings_debug) {
@@ -320,6 +322,7 @@ private fun AudioFocusRow(graph: AppGraph) {
 }
 
 private const val SourceCodeUrl = "https://github.com/ymusic-io/YMusicV4"
+private const val TermsUrl = "https://github.com/ymusic-io/YMusicV4/blob/master/TERMS.md"
 
 @Composable
 private fun LinkRow(label: StringResource, url: String) {

@@ -264,6 +264,7 @@
     <string name="settings_changelog">Nhật ký thay đổi</string>
     <string name="settings_source_code">Mã nguồn</string>
     <string name="settings_licenses">Giấy phép mã nguồn mở</string>
+    <string name="settings_terms">Điều khoản &amp; quyền riêng tư</string>
     <string name="settings_versions">Phiên bản</string>
     <string name="settings_versions_app">Ứng dụng v%1$s/%2$s</string>
     <string name="settings_versions_engine">EngineJs %1$s</string>

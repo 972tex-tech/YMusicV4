@@ -269,6 +269,7 @@
     <string name="settings_changelog">سجل التغييرات</string>
     <string name="settings_source_code">الشيفرة المصدرية</string>
     <string name="settings_licenses">تراخيص المصادر المفتوحة</string>
+    <string name="settings_terms">الشروط والخصوصية</string>
     <string name="settings_versions">الإصدارات</string>
     <string name="settings_versions_app">التطبيق v%1$s/%2$s</string>
     <string name="settings_versions_engine">EngineJs %1$s</string>

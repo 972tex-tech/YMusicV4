@@ -281,6 +281,7 @@
     <string name="settings_changelog">Changelog</string>
     <string name="settings_source_code">Source code</string>
     <string name="settings_licenses">Open source licenses</string>
+    <string name="settings_terms">Terms &amp; privacy</string>
     <string name="settings_versions">Versions</string>
     <string name="settings_versions_app">App v%1$s/%2$s</string>
     <string name="settings_versions_engine">EngineJs %1$s</string>
