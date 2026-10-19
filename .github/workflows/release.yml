@@ -358,7 +358,7 @@ jobs:
           :settings:jvmTest
           :telemetry:jvmTest
           :yt-media:jvmTest
-      - if: failure()
+      - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: test-reports
@@ -426,7 +426,7 @@ jobs:
       - run: head/compat/overlay.sh host bundles
       - working-directory: host
         run: ./gradlew :dynamic-engine:jvmTest --tests 'io.ymusic.dynamicengine.compat.*' --rerun
-      - if: failure()
+      - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: report-${{ matrix.tag }}
