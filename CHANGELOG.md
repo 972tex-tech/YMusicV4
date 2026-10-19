@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### FIXED
+- Android: a few seconds of fast-forwarded audio during long video playback ([83e79c9d5](https://github.com/ymusic-io/YMusicV4/commit/83e79c9d5e5b18accddd320bb7eaf60dd69db289))
+- macOS: long video sessions could turn choppy, with gaps of silence ([26fba8326](https://github.com/ymusic-io/YMusicV4/commit/26fba8326319d6b5d362038fe0394cda83a7285a))
+- Crash when tapping a link on a device with no web browser ([50d656afa](https://github.com/ymusic-io/YMusicV4/commit/50d656afa65097ecd4b891ed9b9cf62d550c9e36))
+- A rare crash while the app writes its logs ([268b7c23d](https://github.com/ymusic-io/YMusicV4/commit/268b7c23debff19d13462524e6005be3b31a8192))
+- A download finished just before a power loss could be left as an empty file ([bf3039893](https://github.com/ymusic-io/YMusicV4/commit/bf303989389e995239dbeec54be1a79f620883f4))
+- Cached video could play corrupted after a power loss ([5a2daaf94](https://github.com/ymusic-io/YMusicV4/commit/5a2daaf94c0efaf8b46f92c1f439475b267efaf2))
+
+### IMPROVED
+- Fewer YouTube playback failures ("po token rejected") ([8f618579b..bfcda13c1](https://github.com/ymusic-io/YMusicV4/compare/344d8996f5879c8837fea4432d2bc28681eef3f5...bfcda13c1df0f79b2e5202545c1decca38f545f8))
+- Playback fixes published between app updates reach the app right after launch ([fb2d01464](https://github.com/ymusic-io/YMusicV4/commit/fb2d0146487e096a75d8ec2902400d4010c4b3b0))
+
 ## 4.0.6
 
 ### IMPROVED
