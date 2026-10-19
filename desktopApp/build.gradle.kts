@@ -10,6 +10,16 @@ plugins {
     kotlin("multiplatform")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("app.cash.sqldelight")
+}
+
+sqldelight {
+    databases {
+        create("AppDatabase") {
+            packageName.set("io.ymusic.desktop.db")
+            srcDirs.setFrom("src/jvmMain/sqldelight")
+        }
+    }
 }
 
 compose.resources {

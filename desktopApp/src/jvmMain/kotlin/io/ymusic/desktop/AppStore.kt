@@ -1,11 +1,7 @@
 package io.ymusic.desktop
 
-import app.cash.sqldelight.TransacterImpl
-import app.cash.sqldelight.db.AfterVersion
-import app.cash.sqldelight.db.QueryResult
-import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import io.ymusic.desktop.db.AppDatabase
 import kmpcommon.log.Logger
 import java.io.File
 import java.nio.file.FileAlreadyExistsException
@@ -20,55 +16,30 @@ import java.util.Properties
  *
  * Blocking: call it off the main thread.
  */
-internal class AppStore private constructor(private val driver: SqlDriver) {
+internal class AppStore private constructor(private val database: AppDatabase) {
+    private val settingQueries = database.settingQueries
+    private val secretQueries = database.secretQueries
 
-    private val transacter = object : TransacterImpl(driver) {}
+    fun settings(): Map<String, String> = settingQueries.selectAll().executeAsList().associate { it.key to it.value_ }
 
-    fun settings(): Map<String, String> = driver.executeQuery(
-        null,
-        "SELECT key, value FROM setting",
-        { cursor ->
-            val values = LinkedHashMap<String, String>()
-            while (cursor.next().value) values[cursor.getString(0)!!] = cursor.getString(1)!!
-            QueryResult.Value(values)
-        },
-        0,
-    ).value
-
-    fun putSettings(values: Map<String, String>) = transacter.transaction {
-        for ((key, value) in values) {
-            driver.execute(null, "INSERT OR REPLACE INTO setting(key, value) VALUES (?, ?)", 2) {
-                bindString(0, key)
-                bindString(1, value)
-            }
-        }
+    fun putSettings(values: Map<String, String>) = database.transaction {
+        for ((key, value) in values) settingQueries.put(key, value)
     }
 
-    fun secret(name: String): ByteArray? = driver.executeQuery(
-        null,
-        "SELECT value FROM secret WHERE name = ?",
-        { cursor -> QueryResult.Value(if (cursor.next().value) cursor.getBytes(0) else null) },
-        1,
-    ) { bindString(0, name) }.value
+    fun secret(name: String): ByteArray? = secretQueries.select(name).executeAsOneOrNull()
 
     fun putSecret(name: String, value: ByteArray) {
-        driver.execute(null, "INSERT OR REPLACE INTO secret(name, value) VALUES (?, ?)", 2) {
-            bindString(0, name)
-            bindBytes(1, value)
-        }
+        secretQueries.put(name, value)
     }
 
     /** [value] unless [name] already holds one — then that one. Two first launches agree on one key. */
     fun secretOrPut(name: String, value: ByteArray): ByteArray {
-        driver.execute(null, "INSERT OR IGNORE INTO secret(name, value) VALUES (?, ?)", 2) {
-            bindString(0, name)
-            bindBytes(1, value)
-        }
+        secretQueries.putIfAbsent(name, value)
         return checkNotNull(secret(name))
     }
 
     fun deleteSecret(name: String) {
-        driver.execute(null, "DELETE FROM secret WHERE name = ?", 1) { bindString(0, name) }
+        secretQueries.delete(name)
     }
 
     /** One-time import of what 4.0.6 and earlier kept as loose files in [dataDir]; each file goes
@@ -83,13 +54,8 @@ internal class AppStore private constructor(private val driver: SqlDriver) {
             log?.log(Logger.Level.WARN, "legacy $LEGACY_SETTINGS unreadable, starting on defaults", error)
             emptyMap()
         }
-        transacter.transaction {
-            for ((key, value) in settings) {
-                driver.execute(null, "INSERT OR IGNORE INTO setting(key, value) VALUES (?, ?)", 2) {
-                    bindString(0, key)
-                    bindString(1, value)
-                }
-            }
+        database.transaction {
+            for ((key, value) in settings) settingQueries.putIfAbsent(key, value)
             // An empty file is what a power loss left behind: nothing to keep.
             for (file in secretFiles) {
                 if (file.length() > 0) secretOrPut(file.name, file.readBytes())
@@ -115,7 +81,7 @@ internal class AppStore private constructor(private val driver: SqlDriver) {
                 setProperty("synchronous", "FULL")
                 setProperty("busy_timeout", "5000")
             }
-            return AppStore(JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}", properties, Schema)).also {
+            return AppStore(AppDatabase(JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}", properties, AppDatabase.Schema))).also {
                 it.importLegacyFiles(dataDir, log)
             }
         }
@@ -131,22 +97,5 @@ internal class AppStore private constructor(private val driver: SqlDriver) {
                 // Another launch made it first: same file, same mode.
             }
         }
-    }
-
-    private object Schema : SqlSchema<QueryResult.Value<Unit>> {
-        override val version: Long get() = 1
-
-        override fun create(driver: SqlDriver): QueryResult.Value<Unit> {
-            driver.execute(null, "CREATE TABLE setting (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)", 0)
-            driver.execute(null, "CREATE TABLE secret (name TEXT NOT NULL PRIMARY KEY, value BLOB NOT NULL)", 0)
-            return QueryResult.Unit
-        }
-
-        override fun migrate(
-            driver: SqlDriver,
-            oldVersion: Long,
-            newVersion: Long,
-            vararg callbacks: AfterVersion,
-        ): QueryResult.Value<Unit> = QueryResult.Unit
     }
 }
