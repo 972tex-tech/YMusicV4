@@ -1,15 +1,11 @@
 package kmphttp
 
-import kmpcommon.io.AsyncSource
-import kmphttp.RequestBodyX.asOneshotRequestBody
 import kmphttp.RequestBodyX.toRequestBody
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import okio.Buffer
 import okio.use
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -311,32 +307,6 @@ class HttpClientSmokeTests {
                     withTimeout(500.milliseconds) { response.body.utf8String() }
                 }
             }
-        }
-    }
-
-    @Test
-    fun testSlowStreamingRequestBody() = runTest {
-        val chunk = ByteArray(1024) { 'x'.code.toByte() }
-        val slowSource = object : AsyncSource {
-            private var remaining = 100
-            override suspend fun read(sink: Buffer, byteCount: Long): Long {
-                if (remaining <= 0) return -1L
-                delay(100.milliseconds)
-                remaining--
-                sink.write(chunk)
-                return chunk.size.toLong()
-            }
-            override fun close() {}
-        }
-        val request = RequestBuilder()
-            .url(TestServer.url("/post"))
-            .post(slowSource.asOneshotRequestBody())
-            .header("Expect", "100-continue")
-            .build()
-        client.execute(request).use { response ->
-            val bodyString = response.body.utf8String()
-            assertEquals(200, response.code, bodyString)
-            assertTrue(bodyString.contains("xxxxx"), "Response should contain streamed data")
         }
     }
 

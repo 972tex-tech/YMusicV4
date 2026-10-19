@@ -398,6 +398,7 @@
     <string name="update_download">Descarcă</string>
     <string name="update_downloading">Se descarcă… %1$s din %2$s</string>
     <string name="update_ready">Gata de instalare</string>
+    <string name="update_installing">Se instalează…</string>
     <string name="update_manual_hint">Această copie nu se poate actualiza singură (%1$s). Descarcă în schimb noua versiune.</string>
     <string name="update_failed">Actualizarea a eșuat: %1$s</string>
     <string name="update_official_site">Descarc-o de pe site-ul oficial</string>
@@ -482,6 +483,13 @@
         <item quantity="other">%1$d dintre videoclipurile selectate sunt deja în Bibliotecă.</item>
     </plurals>
     <string name="error_network">YouTube nu poate fi accesat. Verifică conexiunea și încearcă din nou.</string>
+    <string name="error_disk_full">Spațiu de stocare insuficient. Eliberează spațiu și încearcă din nou.</string>
+    <string name="error_live_still_processing">Această transmisiune tocmai s-a încheiat și încă se procesează. Încearcă din nou mai târziu</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Aplicația Fișiere a sistemului este dezactivată. Activează-o pentru a alege un dosar.</string>
+    <string name="folder_picker_open_settings">Deschide setările</string>
+    <string name="folder_picker_missing">Acest dispozitiv nu are selector de dosare, deci nu se poate alege un dosar.</string>
+    <string name="error_supervised_account">Acest cont Google este supravegheat, așa că YouTube nu poate fi folosit aici. Deconectează-te sau comută la alt cont.</string>
     <string name="settings_player_cache">Cache player</string>
     <string name="settings_player_cache_summary">Max. %1$s · Folosit %2$s · Economisit %3$s</string>
     <string name="settings_player_cache_off">Fără cache</string>
@@ -528,4 +536,5 @@
     <string name="video_details_deleted">Comentariu șters</string>
     <string name="menu_details_comments">Detalii și comentarii</string>
     <string name="menu_speed_pitch">Viteză și tonalitate</string>
+    <string name="link_open_failed">Nu se poate deschide: %1$s</string>
 </resources>

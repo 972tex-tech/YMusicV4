@@ -1,5 +1,46 @@
 # Changelog
 
+## 4.0.8
+
+### FIXED
+- Android: a few seconds of fast-forwarded audio during long video playback ([83e79c9d5](https://github.com/ymusic-io/YMusicV4/commit/83e79c9d5e5b18accddd320bb7eaf60dd69db289))
+- macOS: long video sessions could turn choppy, with gaps of silence ([26fba8326](https://github.com/ymusic-io/YMusicV4/commit/26fba8326319d6b5d362038fe0394cda83a7285a))
+- Crash when tapping a link on a device with no web browser ([50d656afa](https://github.com/ymusic-io/YMusicV4/commit/50d656afa65097ecd4b891ed9b9cf62d550c9e36))
+- A rare crash while the app writes its logs ([268b7c23d](https://github.com/ymusic-io/YMusicV4/commit/268b7c23debff19d13462524e6005be3b31a8192))
+- A download finished just before a power loss could be left as an empty file ([bf3039893](https://github.com/ymusic-io/YMusicV4/commit/bf303989389e995239dbeec54be1a79f620883f4))
+- Cached video could play corrupted after a power loss ([5a2daaf94](https://github.com/ymusic-io/YMusicV4/commit/5a2daaf94c0efaf8b46f92c1f439475b267efaf2))
+
+### IMPROVED
+- Fewer YouTube playback failures ("po token rejected") ([8f618579b..bfcda13c1](https://github.com/ymusic-io/YMusicV4/compare/344d8996f5879c8837fea4432d2bc28681eef3f5...bfcda13c1df0f79b2e5202545c1decca38f545f8))
+- Playback fixes published between app updates reach the app right after launch ([fb2d01464](https://github.com/ymusic-io/YMusicV4/commit/fb2d0146487e096a75d8ec2902400d4010c4b3b0))
+
+## 4.0.6
+
+### IMPROVED
+- Tapping Install now in the update dialog shows an installing progress bar until the app restarts ([852fd740d..d7e09a867](https://github.com/ymusic-io/YMusicV4/compare/84c97c82f...d7e09a867))
+- Playback errors show on the video, also in fullscreen ([117519b4c](https://github.com/ymusic-io/YMusicV4/commit/117519b4c3b9fe6759e54cf7b1d7564e0439aa44))
+- Less CPU use while YouTube video plays ([e4195937c](https://github.com/ymusic-io/YMusicV4/commit/e4195937c5062e78f5e46548baec11187c88ba5e))
+
+### FIXED
+- Android: a video quality the device can't play says so, and Retry plays it as audio only ([77ddfcbd3..117519b4c](https://github.com/ymusic-io/YMusicV4/compare/321ff5092375dc77782511e1cdbc6434007b797e...117519b4c3b9fe6759e54cf7b1d7564e0439aa44))
+- Android: crash on some phones that don't support picture-in-picture ([03fb185f3](https://github.com/ymusic-io/YMusicV4/commit/03fb185f3c4abd32a0469951934e929cf3a56d5a))
+- Quick and playlist downloads of a video with no Opus audio save M4A instead of failing ([38965304c](https://github.com/ymusic-io/YMusicV4/commit/38965304c2ebf298f4fa3a36ca6c4b29fc9f828c))
+- Downloading a live stream that just ended says it is still processing instead of failing with an error ([8d2d22b6f..3e64ac498](https://github.com/ymusic-io/YMusicV4/compare/38965304c2ebf298f4fa3a36ca6c4b29fc9f828c...3e64ac498102750d51057b31d1102a30b066d9b1))
+- Android: choosing a folder no longer crashes when the system Files app is disabled or missing; it says how to fix it ([54a5ea36d](https://github.com/ymusic-io/YMusicV4/commit/54a5ea36dc91a49bb026b326b886cdfd8089e3c4))
+- Android: the app could freeze when the next video started loading ([886e02739](https://github.com/ymusic-io/YMusicV4/commit/886e02739cc82f986a90ecea474f0c4e8b29020d))
+- Starting, resuming or pausing a download with full storage shows the disk-full error instead of silently doing nothing ([6e65f9253](https://github.com/ymusic-io/YMusicV4/commit/6e65f925347e43b4733259d5f4ce978c9860e482))
+- Downloads of videos with long or emoji-heavy titles no longer fail to save ([35550ca51](https://github.com/ymusic-io/YMusicV4/commit/35550ca51d7ebc505dfbc75351d6b45ea1893c1a))
+- Crash when tapping back or close twice quickly ([7a8c7b8b5](https://github.com/ymusic-io/YMusicV4/commit/7a8c7b8b543dc745358294d160bcf24250b76288))
+- Android: playback notification and media controls could go missing after the player service restarted ([9d579be97](https://github.com/ymusic-io/YMusicV4/commit/9d579be97f6fb21c3e337b9839380c255f3882db))
+- Downloads could fail partway when YouTube moved them to another server ([1b754af64](https://github.com/ymusic-io/YMusicV4/commit/1b754af6487341c82df226d1493bdd83794998cd))
+- Android: crash on some Android 13 phones when pausing or swiping the app away ([a78022498](https://github.com/ymusic-io/YMusicV4/commit/a78022498550354537b8e5e03b5b1b0212b44e9f))
+- A download that fails on a bad connection says "Network error" instead of "Something went wrong (E60034)" ([e46ac38ac](https://github.com/ymusic-io/YMusicV4/commit/e46ac38ace5643272beec49204a855453673d4ea))
+- Android: removing a song whose file or folder was already deleted no longer shows an error ([fb150bcdd](https://github.com/ymusic-io/YMusicV4/commit/fb150bcdd6138f3b35214e538bd6ec702be12bd6))
+- The Recommended tab no longer gets stuck on an error after the phone restarts unexpectedly ([cb0db20d6](https://github.com/ymusic-io/YMusicV4/commit/cb0db20d68fa0f97c5c17c7acd5da98f4fff4dcf))
+- When the YouTube sign-in has expired, the app asks you to sign in again instead of failing everything with an error ([6fad90cc5](https://github.com/ymusic-io/YMusicV4/commit/6fad90cc50d76d92a39b87fedc13b26b9f8c4fd6))
+- A supervised (Family Link) Google account gets a message explaining it can't be used ([6fad90cc5..89e92af16](https://github.com/ymusic-io/YMusicV4/compare/6fad90cc50d76d92a39b87fedc13b26b9f8c4fd6~1...89e92af164814abfdbb1546fa03a7f2498dcc1e4))
+- Android: the app could freeze while downloads were updating their notifications ([9211de43b](https://github.com/ymusic-io/YMusicV4/commit/9211de43bcc3c6703962f8f7bea5bcc94d7cd9db))
+
 ## 4.0.5
 
 ### IMPROVED

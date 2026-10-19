@@ -398,6 +398,7 @@
     <string name="update_download">Descarrega</string>
     <string name="update_downloading">S'està descarregant… %1$s de %2$s</string>
     <string name="update_ready">A punt per instal·lar</string>
+    <string name="update_installing">S’està instal·lant…</string>
     <string name="update_manual_hint">Aquesta còpia no es pot actualitzar sola (%1$s). Descarrega la versió nova.</string>
     <string name="update_failed">L'actualització ha fallat: %1$s</string>
     <string name="update_official_site">Baixa-la del lloc web oficial</string>
@@ -482,6 +483,13 @@
         <item quantity="other">%1$d dels vídeos seleccionats ja són a la teva Biblioteca.</item>
     </plurals>
     <string name="error_network">No es pot connectar amb YouTube. Comprova la connexió i torna-ho a provar.</string>
+    <string name="error_disk_full">No hi ha prou espai d'emmagatzematge. Allibera espai i torna-ho a provar.</string>
+    <string name="error_live_still_processing">Aquesta emissió acaba de finalitzar i encara s'està processant. Torna-ho a provar més tard</string>
+    <string name="dialog_ok">D'acord</string>
+    <string name="folder_picker_disabled">L'aplicació Fitxers del sistema està desactivada. Activa-la per triar una carpeta.</string>
+    <string name="folder_picker_open_settings">Obre la configuració</string>
+    <string name="folder_picker_missing">Aquest dispositiu no té selector de carpetes, així que no es pot triar cap carpeta.</string>
+    <string name="error_supervised_account">Aquest compte de Google està supervisat, de manera que YouTube no es pot fer servir aquí. Tanca la sessió o canvia a un altre compte.</string>
     <string name="settings_player_cache">Memòria cau del reproductor</string>
     <string name="settings_player_cache_summary">Màx. %1$s · Usat %2$s · Estalviat %3$s</string>
     <string name="settings_player_cache_off">Sense memòria cau</string>
@@ -528,4 +536,5 @@
     <string name="video_details_deleted">Comentari suprimit</string>
     <string name="menu_details_comments">Detalls i comentaris</string>
     <string name="menu_speed_pitch">Velocitat i to</string>
+    <string name="link_open_failed">No es pot obrir: %1$s</string>
 </resources>

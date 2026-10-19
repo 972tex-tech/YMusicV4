@@ -10,7 +10,8 @@ object DownloadFileNames {
     /** The characters a file name may never contain, as shown to the user. */
     const val FORBIDDEN_DISPLAY = "\\ / : * ? \" < > |"
 
-    private const val MAX_LENGTH = 150
+    /** A stem's UTF-8 budget: file systems cap a name at 255 bytes, minus room for `_N` and the extension. */
+    const val MAX_STEM_BYTES = 200
 
     private val FORBIDDEN_RUN = Regex("\\s*[\\x00-\\x1F\\x7F\\\\/:*?\"<>|]+\\s*")
     private val REPEATED_SEPARATOR = Regex("( - )+")
@@ -41,12 +42,46 @@ object DownloadFileNames {
     }
 
     /** The stem actually written: forbidden characters dropped, spaces collapsed, no leading/trailing
-     *  spaces, dashes or dots (Windows rejects a trailing dot or space), capped at [MAX_LENGTH]. May be
+     *  spaces, dashes or dots (Windows rejects a trailing dot or space), capped at [MAX_STEM_BYTES]. May be
      *  empty — the caller falls back to something non-empty. */
     fun finalize(input: String): String =
-        stripForbidden(input)
-            .replace(Regex("\\s+"), " ")
-            .trim(' ', '.', '-')
-            .take(MAX_LENGTH)
-            .trimEnd(' ', '.')
+        capBytes(
+            stripForbidden(input)
+                .replace(Regex("\\s+"), " ")
+                .trim(' ', '.', '-'),
+            MAX_STEM_BYTES,
+        ).trimEnd(' ', '.')
+
+    /** The longest prefix of [input] within [maxBytes] of UTF-8, cut between code points, with unpaired
+     *  surrogates dropped — SAF rejects a name that doesn't encode ("Malformed input"). */
+    fun capBytes(input: String, maxBytes: Int): String {
+        val out = StringBuilder()
+        var bytes = 0
+        var index = 0
+        while (index < input.length) {
+            val char = input[index]
+            if (char.isSurrogate()) {
+                val paired = char.isHighSurrogate() && index + 1 < input.length && input[index + 1].isLowSurrogate()
+                if (paired) {
+                    if (bytes + 4 > maxBytes) break
+                    out.append(input, index, index + 2)
+                    bytes += 4
+                    index += 2
+                } else {
+                    index++
+                }
+                continue
+            }
+            val size = when {
+                char.code < 0x80 -> 1
+                char.code < 0x800 -> 2
+                else -> 3
+            }
+            if (bytes + size > maxBytes) break
+            out.append(char)
+            bytes += size
+            index++
+        }
+        return out.toString()
+    }
 }

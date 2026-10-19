@@ -397,6 +397,7 @@
     <string name="update_download">डाउनलोड करा</string>
     <string name="update_downloading">डाउनलोड करत आहे… %2$s पैकी %1$s</string>
     <string name="update_ready">इंस्टॉल करण्यास तयार</string>
+    <string name="update_installing">इंस्टॉल होत आहे…</string>
     <string name="update_manual_hint">ही प्रत स्वतः अपडेट होऊ शकत नाही (%1$s). त्याऐवजी नवीन आवृत्ती डाउनलोड करा.</string>
     <string name="update_failed">अपडेट अयशस्वी: %1$s</string>
     <string name="update_official_site">अधिकृत वेबसाइटवरून डाउनलोड करा</string>
@@ -477,6 +478,13 @@
         <item quantity="other">निवडलेल्या व्हिडिओपैकी %1$d आधीच तुमच्या लायब्ररीत आहेत.</item>
     </plurals>
     <string name="error_network">YouTube शी संपर्क होऊ शकत नाही. तुमचे कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.</string>
+    <string name="error_disk_full">पुरेशी स्टोरेज जागा नाही. थोडी जागा मोकळी करा आणि पुन्हा प्रयत्न करा.</string>
+    <string name="error_live_still_processing">हे स्ट्रीम नुकतेच संपले आहे आणि अजून प्रक्रिया सुरू आहे. नंतर पुन्हा प्रयत्न करा</string>
+    <string name="dialog_ok">ठीक आहे</string>
+    <string name="folder_picker_disabled">सिस्टमचे Files ॲप बंद आहे. फोल्डर निवडण्यासाठी ते सुरू करा.</string>
+    <string name="folder_picker_open_settings">सेटिंग्ज उघडा</string>
+    <string name="folder_picker_missing">या डिव्हाइसमध्ये फोल्डर पिकर नाही, त्यामुळे फोल्डर निवडता येत नाही.</string>
+    <string name="error_supervised_account">हे Google खाते देखरेखीखाली आहे, त्यामुळे येथे YouTube वापरता येत नाही. साइन आउट करा किंवा दुसऱ्या खात्यावर जा.</string>
     <string name="settings_player_cache">प्लेअर कॅशे</string>
     <string name="settings_player_cache_summary">कमाल %1$s · वापरलेले %2$s · वाचवलेले %3$s</string>
     <string name="settings_player_cache_off">कॅशे नाही</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">टिप्पणी हटवली</string>
     <string name="menu_details_comments">तपशील आणि टिप्पण्या</string>
     <string name="menu_speed_pitch">वेग आणि पिच</string>
+    <string name="link_open_failed">उघडता येत नाही: %1$s</string>
 </resources>

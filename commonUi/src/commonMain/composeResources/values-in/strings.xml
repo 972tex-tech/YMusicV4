@@ -396,6 +396,7 @@
     <string name="update_download">Unduh</string>
     <string name="update_downloading">Mengunduh… %1$s dari %2$s</string>
     <string name="update_ready">Siap dipasang</string>
+    <string name="update_installing">Memasang…</string>
     <string name="update_manual_hint">Salinan ini tidak dapat memperbarui dirinya sendiri (%1$s). Unduh versi baru secara manual.</string>
     <string name="update_failed">Pembaruan gagal: %1$s</string>
     <string name="update_official_site">Unduh dari situs web resmi</string>
@@ -472,6 +473,13 @@
         <item quantity="other">%1$d video yang dipilih sudah ada di Perpustakaan Anda.</item>
     </plurals>
     <string name="error_network">Tidak dapat terhubung ke YouTube. Periksa koneksi Anda dan coba lagi.</string>
+    <string name="error_disk_full">Ruang penyimpanan tidak cukup. Kosongkan sebagian ruang dan coba lagi.</string>
+    <string name="error_live_still_processing">Siaran ini baru saja berakhir dan masih diproses. Coba lagi nanti</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Aplikasi File sistem dinonaktifkan. Aktifkan untuk memilih folder.</string>
+    <string name="folder_picker_open_settings">Buka setelan</string>
+    <string name="folder_picker_missing">Perangkat ini tidak memiliki pemilih folder, jadi folder tidak dapat dipilih.</string>
+    <string name="error_supervised_account">Akun Google ini diawasi, jadi YouTube tidak dapat digunakan di sini. Logout atau beralih ke akun lain.</string>
     <string name="settings_player_cache">Cache pemutar</string>
     <string name="settings_player_cache_summary">Maks %1$s · Terpakai %2$s · Hemat %3$s</string>
     <string name="settings_player_cache_off">Tanpa cache</string>
@@ -518,4 +526,5 @@
     <string name="video_details_deleted">Komentar dihapus</string>
     <string name="menu_details_comments">Detail dan komentar</string>
     <string name="menu_speed_pitch">Kecepatan dan nada</string>
+    <string name="link_open_failed">Tidak dapat membuka: %1$s</string>
 </resources>

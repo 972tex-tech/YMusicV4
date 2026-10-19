@@ -270,6 +270,7 @@ private fun playTrail(status: PlaybackStatus, item: PlayableItem?, config: Playb
         append(if (config.audioOnly) "1" else "0")
         append(" q=")
         append(config.preferVideoQuality.first)
+        append(" speed=${config.speed} pitch=${config.pitchFactor}")
         append(' ')
         append(size)
     }

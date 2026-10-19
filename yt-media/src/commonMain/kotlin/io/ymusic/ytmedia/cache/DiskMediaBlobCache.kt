@@ -186,17 +186,24 @@ class DiskMediaBlobCache(
     // --- hot span-list cache -------------------------------------------------------------------------
 
     /** The key's committed spans (sorted by start), from an in-memory LRU of ~[SPAN_CACHE_MAX_KEYS] keys.
-     *  A miss loads from [index] and validates each span's file exists, dropping any phantom row (file
-     *  gone) as it loads. Kept in sync by [addSpanToCache]/[removeSpanFromCache] at every mutation, so it
+     *  A miss loads from [index] and validates each span's file holds exactly its length, dropping a
+     *  phantom row (file gone) or a torn span (a power loss can persist the commit's rename without its
+     *  bytes) as it loads. Kept in sync by [addSpanToCache]/[removeSpanFromCache] at every mutation, so it
      *  never diverges from [index]. Call under [lock]. */
     private fun cachedSpans(key: String): MutableList<BlobSpan> {
         spanCache.remove(key)?.let { spanCache[key] = it; return it } // hit → move to most-recent
         val loaded = ArrayList<BlobSpan>()
         for (span in index.spansForKey(key)) {
-            if (fileSystem.exists(pathOf(span.key, span.start, span.len))) {
+            val path = pathOf(span.key, span.start, span.len)
+            val size = fileSystem.metadataOrNull(path)?.let { it.size ?: span.len }
+            if (size == span.len) {
                 loaded += span
             } else {
-                index.delete(span.key, span.start, span.len) // phantom row (file gone) — drop it
+                index.delete(span.key, span.start, span.len)
+                if (size != null) {
+                    logger?.log(Logger.Level.WARN, "span ${span.start}_${span.len} holds $size bytes, dropped")
+                    fileSystem.delete(path, mustExist = false)
+                }
             }
         }
         spanCache[key] = loaded

@@ -46,6 +46,7 @@ import io.ymusic.ui.resources.update_failed
 import io.ymusic.ui.resources.update_full_changelog
 import io.ymusic.ui.resources.update_install_now
 import io.ymusic.ui.resources.update_install_permission
+import io.ymusic.ui.resources.update_installing
 import io.ymusic.ui.resources.update_manual_hint
 import io.ymusic.ui.resources.update_official_site
 import io.ymusic.ui.resources.update_ready
@@ -153,6 +154,13 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
                     progress = { if (download.total > 0) (download.done.toFloat() / download.total) else 0f },
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+            if (download is UpdateDownload.Installing) {
+                Text(
+                    stringResource(Res.string.update_installing),
+                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+                )
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
             if (download is UpdateDownload.NeedsInstallPermission) {
                 Text(

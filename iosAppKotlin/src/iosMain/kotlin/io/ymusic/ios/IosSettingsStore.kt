@@ -19,8 +19,8 @@ internal class IosSettingsStore(
         )
     }
 
-    override suspend fun persist() {
-        snapshot().forEach { (key, value) -> defaults.setObject(value, forKey = key) }
+    override suspend fun persist(key: String, value: String) {
+        defaults.setObject(value, forKey = key)
     }
 
     private companion object {

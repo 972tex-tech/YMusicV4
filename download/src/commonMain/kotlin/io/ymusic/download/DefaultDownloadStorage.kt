@@ -57,6 +57,9 @@ open class DefaultDownloadStorage(
         try {
             fileSystem.createDirectories(dir)
             dest = freeName(dir, fileName)
+            // The task is marked complete right after this returns: its bytes must be on disk first, or a
+            // power loss can keep the rename and lose the data, leaving a "completed" empty file.
+            sync(src)
             // A same-filesystem rename is atomic and cheap; a cross-mount one can't be, and THAT is the only
             // failure a copy legitimately recovers. okio surfaces every atomicMove failure as a bare
             // IOException with no portable errno, so we can't tell "cross-device" from "no space / no
@@ -68,6 +71,7 @@ open class DefaultDownloadStorage(
             } catch (moveError: IOException) {
                 try {
                     fileSystem.source(src).use { s -> fileSystem.sink(dest).buffer().use { it.writeAll(s) } }
+                    sync(dest)
                     fileSystem.delete(src, mustExist = false)
                 } catch (copyError: Exception) {
                     copyError.addSuppressed(moveError)
@@ -94,6 +98,11 @@ open class DefaultDownloadStorage(
             "E70031",
             "destination scheme '${destinationFolder.scheme}' unsupported by ${this::class.simpleName}",
         )
+
+    /** fsync on the JVM/Android; okio's native FileHandle.flush() is only fflush. */
+    private fun sync(file: Path) {
+        fileSystem.openReadWrite(file, mustCreate = false, mustExist = true).use { it.flush() }
+    }
 
     /** [fileName] in [dir], or the next free `stem_N.ext` ([DownloadFileNames.freeName]). */
     private fun freeName(dir: Path, fileName: String): Path =

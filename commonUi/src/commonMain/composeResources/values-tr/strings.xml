@@ -397,6 +397,7 @@
     <string name="update_download">İndir</string>
     <string name="update_downloading">İndiriliyor… %1$s / %2$s</string>
     <string name="update_ready">Yüklemeye hazır</string>
+    <string name="update_installing">Yükleniyor…</string>
     <string name="update_manual_hint">Bu kopya kendini güncelleyemiyor (%1$s). Bunun yerine yeni sürümü indirin.</string>
     <string name="update_failed">Güncelleme başarısız: %1$s</string>
     <string name="update_official_site">Resmi web sitesinden indirin</string>
@@ -477,6 +478,13 @@
         <item quantity="other">Seçilen videolardan %1$d tanesi zaten Kitaplığınızda.</item>
     </plurals>
     <string name="error_network">YouTube'a ulaşılamıyor. Bağlantınızı kontrol edip tekrar deneyin.</string>
+    <string name="error_disk_full">Yeterli depolama alanı yok. Biraz yer açıp tekrar deneyin.</string>
+    <string name="error_live_still_processing">Bu yayın az önce sona erdi ve hâlâ işleniyor. Daha sonra tekrar deneyin</string>
+    <string name="dialog_ok">Tamam</string>
+    <string name="folder_picker_disabled">Sistemin Dosyalar uygulaması kapalı. Klasör seçmek için açın.</string>
+    <string name="folder_picker_open_settings">Ayarları aç</string>
+    <string name="folder_picker_missing">Bu cihazda klasör seçici yok, bu nedenle klasör seçilemiyor.</string>
+    <string name="error_supervised_account">Bu Google hesabı denetimli olduğu için YouTube burada kullanılamaz. Oturumu kapatın veya başka bir hesaba geçin.</string>
     <string name="settings_player_cache">Oynatıcı önbelleği</string>
     <string name="settings_player_cache_summary">En fazla %1$s · Kullanılan %2$s · Tasarruf %3$s</string>
     <string name="settings_player_cache_off">Önbellek yok</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">Yorum silindi</string>
     <string name="menu_details_comments">Ayrıntılar ve yorumlar</string>
     <string name="menu_speed_pitch">Hız ve perde</string>
+    <string name="link_open_failed">Açılamıyor: %1$s</string>
 </resources>

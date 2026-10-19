@@ -397,6 +397,7 @@
     <string name="update_download">डाउनलोड करें</string>
     <string name="update_downloading">डाउनलोड हो रहा है… %2$s में से %1$s</string>
     <string name="update_ready">इंस्टॉल के लिए तैयार</string>
+    <string name="update_installing">इंस्टॉल हो रहा है…</string>
     <string name="update_manual_hint">यह कॉपी खुद अपडेट नहीं हो सकती (%1$s)। इसकी जगह नया वर्शन डाउनलोड करें।</string>
     <string name="update_failed">अपडेट विफल: %1$s</string>
     <string name="update_official_site">आधिकारिक वेबसाइट से डाउनलोड करें</string>
@@ -477,6 +478,13 @@
         <item quantity="other">चुने गए वीडियो में से %1$d पहले से आपकी लाइब्रेरी में हैं।</item>
     </plurals>
     <string name="error_network">YouTube तक नहीं पहुंच सके। अपना कनेक्शन जांचें और फिर से कोशिश करें।</string>
+    <string name="error_disk_full">पर्याप्त स्टोरेज नहीं है। थोड़ी जगह खाली करें और फिर से कोशिश करें।</string>
+    <string name="error_live_still_processing">यह स्ट्रीम अभी-अभी खत्म हुई है और अभी प्रोसेस हो रही है। बाद में फिर से कोशिश करें</string>
+    <string name="dialog_ok">ठीक है</string>
+    <string name="folder_picker_disabled">सिस्टम का Files ऐप बंद है। फ़ोल्डर चुनने के लिए इसे चालू करें।</string>
+    <string name="folder_picker_open_settings">सेटिंग खोलें</string>
+    <string name="folder_picker_missing">इस डिवाइस में फ़ोल्डर पिकर नहीं है, इसलिए फ़ोल्डर नहीं चुना जा सकता।</string>
+    <string name="error_supervised_account">यह Google खाता निगरानी में है, इसलिए यहाँ YouTube का उपयोग नहीं किया जा सकता। साइन आउट करें या किसी दूसरे खाते पर जाएँ।</string>
     <string name="settings_player_cache">प्लेयर कैश</string>
     <string name="settings_player_cache_summary">अधिकतम %1$s · इस्तेमाल %2$s · बचत %3$s</string>
     <string name="settings_player_cache_off">कोई कैश नहीं</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">टिप्पणी मिटा दी गई</string>
     <string name="menu_details_comments">जानकारी और टिप्पणियां</string>
     <string name="menu_speed_pitch">स्पीड और पिच</string>
+    <string name="link_open_failed">खोला नहीं जा सका: %1$s</string>
 </resources>

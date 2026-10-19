@@ -2,6 +2,20 @@
   function native(name, impl) {
     return __nativeFn(name, impl, 0);
   }
+  /* Listener lists live here, never as a property BotGuard can see on window/document/elements. */
+  var listenerMaps = new WeakMap();
+  function listenersOf(target, type, create) {
+    if (target === null || (typeof target !== "object" && typeof target !== "function"))
+      return create ? [] : null;
+    var map = listenerMaps.get(target);
+    if (!map) {
+      if (!create) return null;
+      map = Object.create(null);
+      listenerMaps.set(target, map);
+    }
+    if (!map[type] && create) map[type] = [];
+    return map[type] || null;
+  }
   function hrtime() {
     var p = globalThis.performance;
     if (p && typeof p.now === "function")
@@ -34,7 +48,7 @@
         fn.call(el, ev);
       } catch (e) {}
     }
-    list = (el._bbd_ls && el._bbd_ls[type]) || [];
+    list = listenersOf(el, type, false) || [];
     for (i = 0; i < list.length; i++) {
       try {
         list[i].call(el, ev);
@@ -171,14 +185,13 @@
    * TrustedScript unwrap is C. */
 
   globalThis.addEventListener = native("addEventListener", function (type, fn) {
-    if (!this._bbd_ls) this._bbd_ls = {};
-    if (!this._bbd_ls[type]) this._bbd_ls[type] = [];
-    if (typeof fn === "function") this._bbd_ls[type].push(fn);
+    if (typeof fn === "function")
+      listenersOf(this == null ? globalThis : this, type, true).push(fn);
   });
   globalThis.removeEventListener = native("removeEventListener", function (type, fn) {
     var list, i;
-    if (!this._bbd_ls || !this._bbd_ls[type]) return;
-    list = this._bbd_ls[type];
+    list = listenersOf(this == null ? globalThis : this, type, false);
+    if (!list) return;
     i = list.indexOf(fn);
     if (i >= 0) list.splice(i, 1);
   });
@@ -195,7 +208,7 @@
         fn.call(target, ev);
       } catch (e) {}
     }
-    list = (target._bbd_ls && target._bbd_ls[type]) || [];
+    list = listenersOf(target, type, false) || [];
     for (i = 0; i < list.length; i++) {
       try {
         list[i].call(target, ev);

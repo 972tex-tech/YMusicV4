@@ -5,6 +5,7 @@
 //   picture  — onVideoDataChange: videoWidth, videoHeight
 //   details  — onVideoDataChange: videoId, channelTitle, channelUrl
 //   watchNext — a music video's related items: videoId, contents (JSON text; see watch_next.ts)
+//   poRejected — true: googlevideo rejected the session's PO token (StreamProtectionStatus 3)
 
 import { JsEngineErrorImpl } from "../../protocol/command";
 import {
@@ -18,6 +19,7 @@ import {
   setCatalogHook,
   setListenHook,
 } from "./boot";
+import { setPoRejectedHook } from "./bg_dump";
 import { setWatchNextHook } from "./watch_next";
 
 let progressPipe: Pipe | null = null;
@@ -181,8 +183,12 @@ export async function listenPlayerStatus(pipe: Pipe): Promise<void> {
     setWatchNextHook(function (watchNext: Record<string, unknown>) {
       enqueue({ "watchNext": watchNext });
     });
+    setPoRejectedHook(function () {
+      enqueue({ "poRejected": true });
+    });
     await waitHostClose(pipe);
   } finally {
+    setPoRejectedHook(null);
     setWatchNextHook(null);
     setListenHook(null);
     progressPipe = null;

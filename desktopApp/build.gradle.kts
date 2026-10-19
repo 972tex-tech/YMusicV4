@@ -10,6 +10,16 @@ plugins {
     kotlin("multiplatform")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("app.cash.sqldelight")
+}
+
+sqldelight {
+    databases {
+        create("AppDatabase") {
+            packageName.set("io.ymusic.desktop.db")
+            srcDirs.setFrom("src/jvmMain/sqldelight")
+        }
+    }
 }
 
 compose.resources {
@@ -20,7 +30,7 @@ compose.resources {
 val desktopVersion = appVersionName()
 // BUMP ON EVERY RELEASE. The update check compares this and nothing else — desktopVersion is a
 // display string. Desktop counts separately from androidApp's versionCode (separate cadence).
-val desktopVersionCode = 6
+val desktopVersionCode = 9
 version = desktopVersion
 
 /** The first candidate JDK that carries jpackage — the marker for "full JDK, not a JBR/JRE". */
@@ -249,6 +259,7 @@ kotlin {
                 implementation(compose.materialIconsExtended)
                 implementation(compose.components.resources)
                 implementation(Libs.Jna.core)
+                implementation(Libs.SqlDelight.sqliteDriver) // AppStore
                 implementation(project(":telemetry")) // api: sentry-kotlin-multiplatform + SentryLogger
                 implementation(project(":kmpHttp:core"))
                 implementation(project(":projectCommon"))

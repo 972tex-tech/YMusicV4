@@ -74,6 +74,8 @@ Module detail for the one-line summary in the root [`AGENTS.md`](../AGENTS.md) �
     (`:dynamic-engine` `yt/…`, `DynamicEnginePlayer`) before calling a result change safe.
   - Kotlin side, same rules mirrored: a new decoder must tolerate the oldest bundle it may still run with (the
     shell's bundled `engine.js` is the floor), and must fail a job with an E-code, never crash the host.
+  - Verify, don't just reason: `compat/run.sh` runs today's bundles against the host of every shipped tag
+    ([`../compat/README.md`](../compat/README.md)); the release build runs it per tag before drafting a release.
 
 - **Headless WEB player** — `logic/player/` (raw `orig/env.raw.js` + PO minter `pot.ts` + `boot.ts`). Homepage
   `get_player_config` (live EVENT_ID + `ytAtN` program) → minter on `HttpRequest` → OWL slot → eval `base.js`

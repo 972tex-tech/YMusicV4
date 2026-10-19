@@ -397,6 +397,7 @@
     <string name="update_download">Laadi alla</string>
     <string name="update_downloading">Allalaadimine… %1$s / %2$s</string>
     <string name="update_ready">Valmis paigaldamiseks</string>
+    <string name="update_installing">Paigaldamine…</string>
     <string name="update_manual_hint">See koopia ei saa end ise värskendada (%1$s). Laadi selle asemel alla uus versioon.</string>
     <string name="update_failed">Värskendamine ebaõnnestus: %1$s</string>
     <string name="update_official_site">Laadi alla ametlikult veebisaidilt</string>
@@ -477,6 +478,13 @@
         <item quantity="other">%1$d valitud videot on juba sinu Kogus.</item>
     </plurals>
     <string name="error_network">YouTube'iga ei saa ühendust. Kontrolli ühendust ja proovi uuesti.</string>
+    <string name="error_disk_full">Salvestusruumi pole piisavalt. Vabasta ruumi ja proovi uuesti.</string>
+    <string name="error_live_still_processing">See otseülekanne lõppes äsja ja seda alles töödeldakse. Proovi hiljem uuesti</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Süsteemi rakendus Failid on välja lülitatud. Kausta valimiseks lülitage see sisse.</string>
+    <string name="folder_picker_open_settings">Ava seaded</string>
+    <string name="folder_picker_missing">Selles seadmes pole kaustavalijat, seega ei saa kausta valida.</string>
+    <string name="error_supervised_account">See Google'i konto on järelevalve all, seega ei saa YouTube'i siin kasutada. Logi välja või vaheta teise konto vastu.</string>
     <string name="settings_player_cache">Pleieri vahemälu</string>
     <string name="settings_player_cache_summary">Max %1$s · Kasutusel %2$s · Säästetud %3$s</string>
     <string name="settings_player_cache_off">Vahemälu pole</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">Kommentaar kustutatud</string>
     <string name="menu_details_comments">Üksikasjad ja kommentaarid</string>
     <string name="menu_speed_pitch">Kiirus ja helikõrgus</string>
+    <string name="link_open_failed">Ei saa avada: %1$s</string>
 </resources>

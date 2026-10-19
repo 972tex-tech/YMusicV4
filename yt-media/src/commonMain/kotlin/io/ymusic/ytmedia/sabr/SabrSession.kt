@@ -193,7 +193,7 @@ class SabrSession(
                         if (location == null || !location.contains("/videoplayback")) {
                             throw IOException("Invalid SABR redirect: $location")
                         }
-                        url = location
+                        url = location.httpsOnly()
                     } else if (!response.isSuccessful) {
                         throw IOException("SABR response ${response.code}")
                     } else {
@@ -330,7 +330,7 @@ class SabrSession(
                     UmpPart.SABR_REDIRECT -> {
                         val r = SabrParts.parseRedirectUrl(body.readBytesFully(partSize))
                         if (r == null || !r.contains("/videoplayback")) throw IOException("Invalid SABR redirect part: $r")
-                        redirect = r
+                        redirect = r.httpsOnly()
                         break
                     }
 
@@ -581,6 +581,9 @@ class SabrSession(
  * bytes land in both in a single streaming pass. [close] closes only [primary] (the file); the cache
  * side's lifecycle is [SegmentFill.commit]/[SegmentFill.abort], so it is merely flushed here.
  */
+// googlevideo sometimes redirects to http:// on hosts that also serve https; Android forbids the cleartext.
+private fun String.httpsOnly(): String = if (startsWith("http://", ignoreCase = true)) "https://" + substring(7) else this
+
 private class TeeSink(
     private val primary: BufferedSink,
     private val secondary: BufferedSink,

@@ -74,25 +74,37 @@ function rowWithItag(rows: Fake144Row[], prefer: number[]): Fake144Row | null {
   return null;
 }
 
-/** sel= initialized itags, else playable video ladder. Match that codec's 144p (vp9→278). */
+function decodable(codec: string): boolean {
+  if (codec === "av1") return typeof __mseAv1Ok !== "function" || !!__mseAv1Ok();
+  if (codec === "vp9") return typeof __mseVp9Ok !== "function" || !!__mseVp9Ok();
+  return codec !== "";
+}
+
+function firstDecodableCodec(itags: number[]): string {
+  for (let i = 0; i < itags.length; i++) {
+    const c = codecOf(itags[i]!);
+    if (decodable(c)) return c;
+  }
+  return "";
+}
+
+/** Codec: sel= video, else playable video ladder, else best decodable. Match its 144p (vp9→278). */
 export function pickFake144(
   videoId: string,
   selItags: number[],
+  playableVideoItags: number[],
 ): { row: Fake144Row; durationMs: number; live: boolean } | null {
   const rec = byVideo[videoId];
   if (!rec || !rec.rows.length) return null;
   const rows = rec.rows;
-  let codec = "";
-  for (let i = 0; i < selItags.length; i++) {
-    const c = codecOf(selItags[i]!);
-    if (c) {
-      codec = c;
-      break;
-    }
-  }
-  if (!codec) codec = "av1";
+  const codec =
+    firstDecodableCodec(selItags) ||
+    firstDecodableCodec(playableVideoItags) ||
+    (decodable("av1") ? "av1" : decodable("vp9") ? "vp9" : "avc");
   const prefer = codec === "vp9" ? [278, 330] : codec === "avc" ? [160, 598] : [394, 694];
-  const row =
-    rowWithItag(rows, prefer) || rowWithItag(rows, [394, 160, 598, 694, 278, 330]) || rows[0]!;
+  const fallback = [394, 160, 598, 694, 278, 330].filter(function (itag) {
+    return decodable(codecOf(itag));
+  });
+  const row = rowWithItag(rows, prefer) || rowWithItag(rows, fallback) || rows[0]!;
   return { row: row, durationMs: rec.durationMs, live: rec.live };
 }

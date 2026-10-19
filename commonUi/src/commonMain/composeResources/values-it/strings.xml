@@ -398,6 +398,7 @@
     <string name="update_download">Scarica</string>
     <string name="update_downloading">Download in corso… %1$s di %2$s</string>
     <string name="update_ready">Pronto per l'installazione</string>
+    <string name="update_installing">Installazione in corso…</string>
     <string name="update_manual_hint">Questa copia non può aggiornarsi da sola (%1$s). Scarica invece la nuova versione.</string>
     <string name="update_failed">Aggiornamento non riuscito: %1$s</string>
     <string name="update_official_site">Scaricala dal sito ufficiale</string>
@@ -482,6 +483,13 @@
         <item quantity="other">%1$d dei video selezionati sono già nella tua Libreria.</item>
     </plurals>
     <string name="error_network">Impossibile raggiungere YouTube. Controlla la connessione e riprova.</string>
+    <string name="error_disk_full">Spazio di archiviazione insufficiente. Libera spazio e riprova.</string>
+    <string name="error_live_still_processing">Questa diretta è appena terminata ed è ancora in elaborazione. Riprova più tardi</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">L'app File di sistema è disattivata. Attivala per scegliere una cartella.</string>
+    <string name="folder_picker_open_settings">Apri impostazioni</string>
+    <string name="folder_picker_missing">Questo dispositivo non ha un selettore di cartelle, quindi non è possibile sceglierne una.</string>
+    <string name="error_supervised_account">Questo account Google è supervisionato, quindi YouTube non può essere usato qui. Esci o passa a un altro account.</string>
     <string name="settings_player_cache">Cache del player</string>
     <string name="settings_player_cache_summary">Max %1$s · Usata %2$s · Risparmiata %3$s</string>
     <string name="settings_player_cache_off">Nessuna cache</string>
@@ -528,4 +536,5 @@
     <string name="video_details_deleted">Commento eliminato</string>
     <string name="menu_details_comments">Dettagli e commenti</string>
     <string name="menu_speed_pitch">Velocità e intonazione</string>
+    <string name="link_open_failed">Impossibile aprire: %1$s</string>
 </resources>

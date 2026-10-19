@@ -397,6 +397,7 @@
     <string name="update_download">Pakua</string>
     <string name="update_downloading">Inapakua… %1$s kati ya %2$s</string>
     <string name="update_ready">Iko tayari kusakinishwa</string>
+    <string name="update_installing">Inasakinisha…</string>
     <string name="update_manual_hint">Nakala hii haiwezi kujisasisha yenyewe (%1$s). Badala yake pakua toleo jipya.</string>
     <string name="update_failed">Imeshindwa kusasisha: %1$s</string>
     <string name="update_official_site">Ipakue kutoka tovuti rasmi</string>
@@ -477,6 +478,13 @@
         <item quantity="other">Video %1$d kati ya zilizochaguliwa tayari ziko kwenye Maktaba yako.</item>
     </plurals>
     <string name="error_network">Imeshindwa kufikia YouTube. Angalia muunganisho wako na ujaribu tena.</string>
+    <string name="error_disk_full">Hakuna nafasi ya kutosha ya hifadhi. Futa baadhi ya vitu kupata nafasi kisha ujaribu tena.</string>
+    <string name="error_live_still_processing">Mtiririko huu umeisha hivi punde na bado unachakatwa. Jaribu tena baadaye</string>
+    <string name="dialog_ok">Sawa</string>
+    <string name="folder_picker_disabled">Programu ya Faili ya mfumo imezimwa. Iwashe ili uchague folda.</string>
+    <string name="folder_picker_open_settings">Fungua mipangilio</string>
+    <string name="folder_picker_missing">Kifaa hiki hakina kichagua folda, kwa hivyo folda haiwezi kuchaguliwa.</string>
+    <string name="error_supervised_account">Akaunti hii ya Google inasimamiwa, kwa hiyo YouTube haiwezi kutumika hapa. Toka au badilisha utumie akaunti nyingine.</string>
     <string name="settings_player_cache">Akiba ya kicheza</string>
     <string name="settings_player_cache_summary">Kikomo %1$s · Imetumika %2$s · Imeokolewa %3$s</string>
     <string name="settings_player_cache_off">Hakuna akiba</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">Maoni yamefutwa</string>
     <string name="menu_details_comments">Maelezo na maoni</string>
     <string name="menu_speed_pitch">Kasi na kiimbo</string>
+    <string name="link_open_failed">Imeshindwa kufungua: %1$s</string>
 </resources>

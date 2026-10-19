@@ -64,6 +64,13 @@ class DownloadForegroundService : Service() {
         SupervisorJob() + Dispatchers.Main.immediate +
             CoroutineExceptionHandler { _, e -> log?.fork("uncaught")?.captureError(e) },
     )
+    // notify/cancel are binder calls into the notification service, which can block for seconds on a
+    // slow system (an ANR when made from main). One lane keeps each card's updates in order; it is not
+    // cancelled with the service, so the posts queued by finish() still land after stopSelf().
+    private val notifyLane = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO.limitedParallelism(1) +
+            CoroutineExceptionHandler { _, e -> log?.fork("notify")?.captureError(e) },
+    )
     private var downloads: DownloadService? = null
     private var imageLoader: ImageLoader? = null
     private var foreground = false
@@ -121,7 +128,7 @@ class DownloadForegroundService : Service() {
 
     /** Android 15's dataSync time cap: demote, never crash — the queue survives in the store. */
     override fun onTimeout(startId: Int, fgsType: Int) {
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
+        stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_DETACH, log)
         foreground = false
         stopSelf()
     }
@@ -136,7 +143,6 @@ class DownloadForegroundService : Service() {
     }
 
     private suspend fun render(tasks: List<DownloadTask>) {
-        val nm = NotificationManagerCompat.from(this)
         val byId = tasks.associateBy { it.id }
 
         // Owned cards whose task left the active set: one dismissible morph, then forget — the
@@ -147,12 +153,12 @@ class DownloadForegroundService : Service() {
                 val task = byId[id]
                 when {
                     task == null || task.state == DownloadState.CANCELED -> {
-                        nm.cancel(childId(id))
+                        cancelCard(childId(id))
                         icons.remove(id)
                         iter.remove()
                     }
                     !task.state.isActive -> {
-                        nm.notify(childId(id), taskCard(task))
+                        post(childId(id), taskCard(task))
                         when (task.state) {
                             DownloadState.COMPLETED -> completedRun++
                             DownloadState.FAILED -> failedRun++
@@ -173,13 +179,13 @@ class DownloadForegroundService : Service() {
             ensureIcon(task)
             val signature = signature(task)
             if (owned[task.id] != signature) {
-                nm.notify(childId(task.id), taskCard(task))
+                post(childId(task.id), taskCard(task))
                 owned[task.id] = signature
             }
         }
 
         if (owned.isEmpty()) {
-            finish(nm)
+            finish()
         } else {
             holdLocks()
             // The summary is content-gated the same way as the cards.
@@ -196,16 +202,24 @@ class DownloadForegroundService : Service() {
      *  morphed cards may remain — canceling a group summary cancels its children (AOSP group
      *  semantics). Morph it into the run's roll-up instead; remove it when this run produced
      *  nothing dismissible. */
-    private fun finish(nm: NotificationManagerCompat) {
+    private fun finish() {
         releaseLocks()
         if (completedRun + failedRun + pausedRun > 0) {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
-            nm.notify(SUMMARY_NOTIFICATION_ID, idleSummary())
+            stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_DETACH, log)
+            post(SUMMARY_NOTIFICATION_ID, idleSummary())
         } else {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopForegroundSafely(ServiceCompat.STOP_FOREGROUND_REMOVE, log)
         }
         foreground = false
         stopSelf()
+    }
+
+    private fun post(id: Int, notification: Notification) {
+        notifyLane.launch { NotificationManagerCompat.from(applicationContext).notify(id, notification) }
+    }
+
+    private fun cancelCard(id: Int) {
+        notifyLane.launch { NotificationManagerCompat.from(applicationContext).cancel(id) }
     }
 
     // ---- per-task cards ----

@@ -397,6 +397,7 @@
     <string name="update_download">ડાઉનલોડ કરો</string>
     <string name="update_downloading">ડાઉનલોડ થઈ રહ્યું છે… %2$s માંથી %1$s</string>
     <string name="update_ready">ઇન્સ્ટોલ કરવા તૈયાર</string>
+    <string name="update_installing">ઇન્સ્ટોલ થઈ રહ્યું છે…</string>
     <string name="update_manual_hint">આ કૉપિ પોતાને અપડેટ કરી શકતી નથી (%1$s). તેના બદલે નવું સંસ્કરણ ડાઉનલોડ કરો.</string>
     <string name="update_failed">અપડેટ નિષ્ફળ: %1$s</string>
     <string name="update_official_site">સત્તાવાર વેબસાઇટ પરથી ડાઉનલોડ કરો</string>
@@ -477,6 +478,13 @@
         <item quantity="other">પસંદ કરેલા વીડિયોમાંથી %1$d પહેલેથી તમારી લાઇબ્રેરીમાં છે.</item>
     </plurals>
     <string name="error_network">YouTube સુધી પહોંચી શકાતું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.</string>
+    <string name="error_disk_full">પૂરતી સ્ટોરેજ જગ્યા નથી. થોડી જગ્યા ખાલી કરો અને ફરી પ્રયાસ કરો.</string>
+    <string name="error_live_still_processing">આ સ્ટ્રીમ હમણાં જ સમાપ્ત થઈ છે અને હજી પ્રક્રિયા થઈ રહી છે. પછીથી ફરી પ્રયાસ કરો</string>
+    <string name="dialog_ok">ઓકે</string>
+    <string name="folder_picker_disabled">સિસ્ટમની Files ઍપ બંધ છે. ફોલ્ડર પસંદ કરવા માટે તેને ચાલુ કરો.</string>
+    <string name="folder_picker_open_settings">સેટિંગ્સ ખોલો</string>
+    <string name="folder_picker_missing">આ ડિવાઇસમાં ફોલ્ડર પિકર નથી, તેથી ફોલ્ડર પસંદ કરી શકાતું નથી.</string>
+    <string name="error_supervised_account">આ Google એકાઉન્ટ દેખરેખ હેઠળ છે, તેથી અહીં YouTube નો ઉપયોગ કરી શકાતો નથી. સાઇન આઉટ કરો અથવા બીજા એકાઉન્ટ પર સ્વિચ કરો.</string>
     <string name="settings_player_cache">પ્લેયર કૅશ</string>
     <string name="settings_player_cache_summary">મહત્તમ %1$s · વપરાયેલ %2$s · બચાવેલ %3$s</string>
     <string name="settings_player_cache_off">કોઈ કૅશ નહીં</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">ટિપ્પણી કાઢી નાખી</string>
     <string name="menu_details_comments">વિગતો અને ટિપ્પણીઓ</string>
     <string name="menu_speed_pitch">ઝડપ અને પિચ</string>
+    <string name="link_open_failed">ખોલી શકાતું નથી: %1$s</string>
 </resources>

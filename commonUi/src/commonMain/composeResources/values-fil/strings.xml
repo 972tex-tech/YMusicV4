@@ -397,6 +397,7 @@
     <string name="update_download">I-download</string>
     <string name="update_downloading">Nagda-download… %1$s ng %2$s</string>
     <string name="update_ready">Handa nang i-install</string>
+    <string name="update_installing">Ini-install…</string>
     <string name="update_manual_hint">Hindi kayang i-update ng kopyang ito ang sarili nito (%1$s). I-download na lang ang bagong bersyon.</string>
     <string name="update_failed">Nabigo ang update: %1$s</string>
     <string name="update_official_site">Kunin ito sa opisyal na website</string>
@@ -477,6 +478,13 @@
         <item quantity="other">Nasa iyong Library na ang %1$d sa mga napiling video.</item>
     </plurals>
     <string name="error_network">Hindi maabot ang YouTube. Tingnan ang iyong koneksyon at subukang muli.</string>
+    <string name="error_disk_full">Kulang ang storage space. Magbakante ng espasyo at subukang muli.</string>
+    <string name="error_live_still_processing">Kakatapos lang ng stream na ito at pinoproseso pa. Subukang muli mamaya</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Naka-off ang Files app ng system. I-on ito para pumili ng folder.</string>
+    <string name="folder_picker_open_settings">Buksan ang settings</string>
+    <string name="folder_picker_missing">Walang folder picker ang device na ito, kaya hindi makakapili ng folder.</string>
+    <string name="error_supervised_account">Pinangangasiwaan ang Google account na ito, kaya hindi magagamit dito ang YouTube. Mag-sign out o lumipat sa ibang account.</string>
     <string name="settings_player_cache">Cache ng player</string>
     <string name="settings_player_cache_summary">Max %1$s · Nagamit %2$s · Natipid %3$s</string>
     <string name="settings_player_cache_off">Walang cache</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">Na-delete ang komento</string>
     <string name="menu_details_comments">Mga detalye at komento</string>
     <string name="menu_speed_pitch">Bilis at pitch</string>
+    <string name="link_open_failed">Hindi mabuksan: %1$s</string>
 </resources>

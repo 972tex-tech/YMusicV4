@@ -142,6 +142,11 @@ class YtStreamDownloader(
         }
 
     private fun outputFormat(task: DownloadTask, formats: List<AdaptiveFormat>): DownloadFormat {
+        if (task.format == DownloadFormat.AUDIO_WEBM) {
+            if (FormatSelection.bestAudio(formats, AudioCodec.OPUS) != null) return task.format
+            log?.log(Logger.Level.INFO, "${task.videoId} has no Opus audio stream; downloading M4A")
+            return DownloadFormat.M4A
+        }
         if (task.format != DownloadFormat.VIDEO_WEBM) return task.format
         if (FormatSelection.videoNearest(formats, task.requestedHeight, DownloadFormat.VIDEO_WEBM) != null) return task.format
         log?.log(Logger.Level.INFO, "${task.videoId} has no WebM video stream; downloading MP4")

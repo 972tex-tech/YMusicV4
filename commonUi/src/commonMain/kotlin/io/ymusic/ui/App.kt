@@ -118,6 +118,7 @@ import io.ymusic.ui.resources.discover_no_trending
 import io.ymusic.ui.resources.error_captcha
 import io.ymusic.ui.resources.error_generic
 import io.ymusic.ui.resources.error_network
+import io.ymusic.ui.resources.link_open_failed
 import io.ymusic.ui.resources.link_queued_last
 import io.ymusic.ui.resources.link_queued_next
 import io.ymusic.ui.resources.link_unsupported
@@ -142,6 +143,7 @@ import io.ymusic.ui.resources.yt_playlist_sign_in
 import io.ymusic.ui.sponsorblock.SponsorBlockCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
@@ -287,11 +289,14 @@ fun App(
         val direction = if (isRtlLanguage(Locale.current.language)) LayoutDirection.Rtl else LayoutDirection.Ltr
         CompositionLocalProvider(LocalLayoutDirection provides direction) {
             YMusicTheme(palette) {
+                val platformUriHandler = LocalUriHandler.current
+                val uriHandler = remember(platformUriHandler) { SafeUriHandler(platformUriHandler, graph.logger?.fork("uri-handler")) }
                 CompositionLocalProvider(
                     LocalImageLoader provides graph.imageLoader,
                     LocalRefreshRequests provides graph.refreshRequests,
+                    LocalUriHandler provides uriHandler,
                 ) {
-                    AppRoot(graph, section, catalogue, onSection = { section = it })
+                    AppRoot(graph, section, catalogue, uriFailures = uriHandler.failures, onSection = { section = it })
                 }
             }
         }
@@ -372,6 +377,7 @@ private fun AppRoot(
     graph: AppGraph,
     section: AppSection,
     catalogue: (@Composable () -> Unit)?,
+    uriFailures: Flow<String>,
     onSection: (AppSection) -> Unit,
 ) {
     run {
@@ -430,6 +436,9 @@ private fun AppRoot(
                 snackbarHostState.currentSnackbarData?.dismiss()
                 snackbarHostState.showSnackbar(message)
             }
+        }
+        LaunchedEffect(uriFailures) {
+            uriFailures.collect { uri -> showSnackbar(getString(Res.string.link_open_failed, uri)) }
         }
         // Download entry points (any video menu, Now Playing) set these; the hosts below show the options
         // dialog / run a Quick download. Hoisted to the root so Now Playing — drawn over the shell — has
@@ -615,8 +624,8 @@ private fun AppRoot(
         }
         // What a SignInResolver caller resumes after the sign-in browser's gate passes.
         var afterSignIn by remember { mutableStateOf<(() -> Unit)?>(null) }
-        val popLayer = {
-            val top = layers.removeAt(layers.lastIndex)
+        val popLayer: () -> Unit = popLayer@{
+            val top = layers.removeLastOrNull() ?: return@popLayer
             when (top) {
                 is AppLayer.Search -> top.session.close()
                 is AppLayer.Playlist -> top.session.close()

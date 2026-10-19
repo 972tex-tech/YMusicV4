@@ -264,12 +264,20 @@ export function recordSabrForDump(url: string, body: Uint8Array | null): void {
   lastSabrBody = body && body.length ? body : null;
 }
 
+let poRejectedHook: (() => void) | null = null;
+
+/** Called on StreamProtectionStatus 3: googlevideo rejected this session's PO token. */
+export function setPoRejectedHook(hook: (() => void) | null): void {
+  poRejectedHook = hook;
+}
+
 export function noteSps(sps: number): void {
   if (!(sps > 0)) return;
   if (loggedSps !== sps) {
     loggedSps = sps;
     console.info("bg sps=" + sps);
   }
+  if (sps === 3 && poRejectedHook) poRejectedHook();
   if (dumpFinished) return;
   if (typeof __bgEntropyStop === "function") __bgEntropyStop();
   // 2 = attestation pending, not a verdict: googlevideo follows up with 1 (ok) or 3 (rejected).

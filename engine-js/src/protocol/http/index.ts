@@ -2,7 +2,7 @@
 // protocol (consistent with :kmpHttp, which ports the OkHttp API). Start a builder with
 // HttpRequest.get(url) / .post(url) / … / .method(m, url); chain header/body/option setters; then
 // .build() -> HttpCall — call.execute() resolves the Response (once), call.cancel() aborts at ANY
-// stage. Full surface: the ambient contract in src/types.d.ts (HttpRequest, HttpRequestBuilder,
+// stage. Full surface: the ambient contract in src/types.d.ts (HttpRequestApi, HttpRequestBuilder,
 // HttpCall, HttpResponse) — the implementations here are checked against it. Wire shape: ./wire.ts
 // (server side: HttpProtocol.kt). Layout: headers.ts (validation + the header view), builder.ts,
 // call.ts (the exchange), response.ts (+ body streaming/parse). WHATWG `fetch` / `XMLHttpRequest`
@@ -19,7 +19,7 @@ function verb(method: string): (url: string) => HttpRequestBuilder {
   };
 }
 
-export const HttpRequest = {
+export const HttpRequest: HttpRequestApi = {
   get: verb("GET"),
   post: verb("POST"),
   put: verb("PUT"),
@@ -31,5 +31,3 @@ export const HttpRequest = {
   },
   "addInterceptor": addInterceptor,
 };
-// Global mirror for externally-evaled JS (dev/debug); in-bundle code imports. Mangles in Closure.
-globalThis.HttpRequest = HttpRequest;

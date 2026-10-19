@@ -397,6 +397,7 @@
     <string name="update_download">බාගන්න</string>
     <string name="update_downloading">බාගත වෙමින්… %2$s න් %1$s</string>
     <string name="update_ready">ස්ථාපනයට සූදානම්</string>
+    <string name="update_installing">ස්ථාපනය වෙමින්…</string>
     <string name="update_manual_hint">මෙම පිටපතට තමන්ම යාවත්කාලීන විය නොහැක (%1$s). ඒ වෙනුවට නව අනුවාදය බාගන්න.</string>
     <string name="update_failed">යාවත්කාලීනය අසාර්ථකයි: %1$s</string>
     <string name="update_official_site">නිල වෙබ් අඩවියෙන් බාගන්න</string>
@@ -477,6 +478,13 @@
         <item quantity="other">තෝරාගත් වීඩියෝවලින් %1$d ක් දැනටමත් ඔබගේ පුස්තකාලයේ ඇත.</item>
     </plurals>
     <string name="error_network">YouTube වෙත ළඟා විය නොහැක. ඔබගේ සම්බන්ධතාව පරීක්ෂා කර නැවත උත්සාහ කරන්න.</string>
+    <string name="error_disk_full">ප්‍රමාණවත් ගබඩා ඉඩක් නැත. ඉඩ ටිකක් නිදහස් කර නැවත උත්සාහ කරන්න.</string>
+    <string name="error_live_still_processing">මෙම ප්‍රවාහය දැන් අවසන් වූ අතර තවමත් සකසමින් පවතී. පසුව නැවත උත්සාහ කරන්න</string>
+    <string name="dialog_ok">හරි</string>
+    <string name="folder_picker_disabled">පද්ධතියේ Files යෙදුම ක්‍රියාවිරහිතයි. ෆෝල්ඩරයක් තේරීමට එය ක්‍රියාත්මක කරන්න.</string>
+    <string name="folder_picker_open_settings">සැකසීම් විවෘත කරන්න</string>
+    <string name="folder_picker_missing">මෙම උපාංගයේ ෆෝල්ඩර තෝරනයක් නැති නිසා ෆෝල්ඩරයක් තේරිය නොහැක.</string>
+    <string name="error_supervised_account">මෙම Google ගිණුම අධීක්ෂණය යටතේ ඇති බැවින් මෙහි YouTube භාවිත කළ නොහැක. වරන්න හෝ වෙනත් ගිණුමකට මාරු වන්න.</string>
     <string name="settings_player_cache">ප්ලේයර් හැඹිලිය</string>
     <string name="settings_player_cache_summary">උපරිම %1$s · භාවිත %2$s · ඉතිරි කළ %3$s</string>
     <string name="settings_player_cache_off">හැඹිලියක් නැත</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">අදහස මකන ලදී</string>
     <string name="menu_details_comments">විස්තර සහ අදහස්</string>
     <string name="menu_speed_pitch">වේගය සහ තාරතාව</string>
+    <string name="link_open_failed">විවෘත කළ නොහැක: %1$s</string>
 </resources>

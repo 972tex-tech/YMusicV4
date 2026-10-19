@@ -6,19 +6,25 @@ import kmphttp.RequestBuilder
 import kmphttp.asyncSource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okio.Buffer
+import okio.ByteString
 import okio.FileSystem
 import okio.Path
 
+/** The oldest remote config a bundle accepts: every use of one refreshes a config older than this. */
+const val BUNDLE_CONFIG_MAX_AGE_MS: Long = 10 * 60 * 1000L
+
 /**
  * Where an updatable JS bundle (engine.js, player.js) comes from: the build's EMBEDDED copy is
- * the floor everything degrades to, a CACHED remote copy (persisted by [fetchIfAny]) rides above
- * it, and remote config names newer versions. Callers boot `getCached() ?: getEmbed()` and run
- * [fetchIfAny] periodically. A remote copy is only ever used once its signature checks out
- * ([verifyBundleSignature]) — on download AND on every cached load.
+ * the floor everything degrades to, a CACHED remote copy (persisted by [store]) rides above it,
+ * and remote config names newer versions ([published]). A remote copy is only ever used once its
+ * signature checks out ([verifyBundleSignature]) — on download AND on every cached load.
  */
 interface JsSourceProvider {
     /** The cached remote bundle `(source, version)` — local reads only, never fetches. Null when
@@ -29,25 +35,40 @@ interface JsSourceProvider {
     /** The build's embedded bundle `(source, version)` — always available, the fallback. */
     suspend fun getEmbed(): Pair<String, Long>
 
-    /** Epoch millis of the last remote-config check (0 = never) — callers throttle on this. */
-    suspend fun lastFetch(): Long
+    /** The bundle is in use: refresh the remote config in the background when it is older than
+     *  [BUNDLE_CONFIG_MAX_AGE_MS]. Returns at once; a refreshed config arrives through [published]. */
+    fun checkUpdate()
 
-    /**
-     * Check remote config and, when it names a version newer than [currentVersion], download that
-     * bundle, verify its signature (a mismatch throws [BundleSignatureException]), run [consume]
-     * to validate it (a throw rejects it — nothing is cached), then persist it for [getCached].
-     * Returns [consume]'s result, or null when there was nothing newer (no remote config or no
-     * pinned key included). Stamps [lastFetch] on every check.
-     */
-    suspend fun <T> fetchIfAny(currentVersion: Long, consume: suspend (source: String, version: Long) -> T): T?
+    /** The published bundle, the held config's first, then every config the app receives. */
+    val published: Flow<SignedBundleRef?>
+
+    /** Download [remote] and verify its signature (a mismatch throws [BundleSignatureException]).
+     *  Nothing is kept: the caller boots it, and [store]s it only once it booted. */
+    suspend fun download(remote: SignedBundleRef): VerifiedBundle
+
+    /** Cache [bundle] for [getCached]. */
+    suspend fun store(bundle: VerifiedBundle)
+}
+
+/** A downloaded remote bundle whose signature checked out. */
+class VerifiedBundle internal constructor(
+    val remote: SignedBundleRef,
+    val source: String,
+    internal val bytes: ByteString,
+) {
+    val version: Long get() = remote.version
 }
 
 /** A published remote bundle, as remote config names it. [signature]: see [verifyBundleSignature]. */
 data class SignedBundleRef(val version: Long, val url: String, val signature: String)
 
-/** The remote-config seam: the latest published bundle, or null when none is published. */
-fun interface JsConfigProvider {
-    suspend fun fetchConfig(): SignedBundleRef?
+/** The remote-config seam. */
+interface JsConfigProvider {
+    /** The bundle the held config names (null: none) first, then each config's fetched since. */
+    val published: Flow<SignedBundleRef?>
+
+    /** Fetch in the background when the config is older than [acceptMaxAgeMs]; reports nothing. */
+    fun checkUpdate(acceptMaxAgeMs: Long)
 }
 
 /** A remote bundle whose bytes do not match its signature under the pinned key. */
@@ -101,8 +122,10 @@ const val PLAYER_BUNDLE = "player"
 class StaticJsSource(private val source: String, private val version: Long = 0L) : JsSourceProvider {
     override suspend fun getCached(): Pair<String, Long>? = null
     override suspend fun getEmbed(): Pair<String, Long> = source to version
-    override suspend fun lastFetch(): Long = 0L
-    override suspend fun <T> fetchIfAny(currentVersion: Long, consume: suspend (String, Long) -> T): T? = null
+    override fun checkUpdate() = Unit
+    override val published: Flow<SignedBundleRef?> = emptyFlow()
+    override suspend fun download(remote: SignedBundleRef): VerifiedBundle = error("a static bundle has no remote")
+    override suspend fun store(bundle: VerifiedBundle) = error("a static bundle has no remote")
 }
 
 /**
@@ -138,7 +161,7 @@ class DefaultJsSourceProvider(
     private val bundleFile get() = directory / "bundle.js"
     private val metaFile get() = directory / "bundle.meta"
 
-    private class Meta(val version: Long, val lastFetch: Long, val signature: String)
+    private class Meta(val version: Long, val storedAt: Long, val signature: String)
 
     private fun readMeta(): Meta? = try {
         if (!fileSystem.exists(metaFile)) {
@@ -146,8 +169,8 @@ class DefaultJsSourceProvider(
         } else {
             val lines = fileSystem.read(metaFile) { readUtf8() }.lines()
             val version = lines.getOrNull(0)?.toLongOrNull()
-            val lastFetch = lines.getOrNull(1)?.toLongOrNull()
-            if (version == null || lastFetch == null) null else Meta(version, lastFetch, lines.getOrNull(2).orEmpty())
+            val storedAt = lines.getOrNull(1)?.toLongOrNull()
+            if (version == null || storedAt == null) null else Meta(version, storedAt, lines.getOrNull(2).orEmpty())
         }
     } catch (e: okio.IOException) {
         log?.log(Logger.Level.WARN, "bundle meta unreadable — treating as no cache", e)
@@ -156,7 +179,7 @@ class DefaultJsSourceProvider(
 
     private fun writeMeta(meta: Meta) {
         fileSystem.createDirectories(directory)
-        fileSystem.write(metaFile) { writeUtf8("${meta.version}\n${meta.lastFetch}\n${meta.signature}\n") }
+        fileSystem.write(metaFile) { writeUtf8("${meta.version}\n${meta.storedAt}\n${meta.signature}\n") }
     }
 
     private fun authentic(version: Long, bytes: Buffer, signature: String): Boolean =
@@ -177,7 +200,7 @@ class DefaultJsSourceProvider(
             if (!authentic(meta.version, bytes, meta.signature)) {
                 log?.log(Logger.Level.WARN, "cached $name bundle v${meta.version} fails its signature — deleted")
                 fileSystem.delete(bundleFile, mustExist = false)
-                writeMeta(Meta(-1L, meta.lastFetch, ""))
+                writeMeta(Meta(-1L, meta.storedAt, ""))
                 return@withContext null
             }
             bytes.readUtf8() to meta.version
@@ -188,47 +211,34 @@ class DefaultJsSourceProvider(
         embed ?: (embedSource() to embedVersion).also { embed = it }
     }
 
-    override suspend fun lastFetch(): Long = lock.withLock {
-        withContext(ioDispatcher) { readMeta()?.lastFetch ?: 0L }
+    override fun checkUpdate() {
+        config.checkUpdate(BUNDLE_CONFIG_MAX_AGE_MS)
     }
 
-    override suspend fun <T> fetchIfAny(currentVersion: Long, consume: suspend (String, Long) -> T): T? {
-        // A failed/absent config check still counts as a check (throttling).
-        val remote = try {
-            config.fetchConfig()
-        } catch (e: Throwable) {
-            runCatching { stampLastFetch() }.exceptionOrNull()?.let(e::addSuppressed)
-            throw e
-        }
-        stampLastFetch()
-        if (remote == null || publicKey.isBlank()) return null
-        if (remote.version <= currentVersion) return null
-        val bytes = download(remote.url)
+    /** Blank key: no remote bundle is ever trusted, so none is ever published. */
+    override val published: Flow<SignedBundleRef?> =
+        config.published.map { it.takeIf { publicKey.isNotBlank() } }
+
+    override suspend fun download(remote: SignedBundleRef): VerifiedBundle {
+        val bytes = downloadBytes(remote.url)
         if (!authentic(remote.version, bytes, remote.signature)) {
             throw BundleSignatureException("$name bundle v${remote.version} from ${remote.url} fails its signature")
         }
-        val source = bytes.snapshot().utf8()
-        val result = consume(source, remote.version) // throw = rejected: nothing is cached
+        val snapshot = bytes.readByteString()
+        return VerifiedBundle(remote, snapshot.utf8(), snapshot)
+    }
+
+    override suspend fun store(bundle: VerifiedBundle) {
         lock.withLock {
             withContext(ioDispatcher) {
                 fileSystem.createDirectories(directory)
-                fileSystem.write(bundleFile) { writeAll(bytes) }
-                writeMeta(Meta(remote.version, now(), remote.signature))
-            }
-        }
-        return result
-    }
-
-    private suspend fun stampLastFetch() {
-        lock.withLock {
-            withContext(ioDispatcher) {
-                val meta = readMeta()
-                writeMeta(Meta(meta?.version ?: -1L, now(), meta?.signature.orEmpty()))
+                fileSystem.write(bundleFile) { write(bundle.bytes) }
+                writeMeta(Meta(bundle.version, now(), bundle.remote.signature))
             }
         }
     }
 
-    private suspend fun download(url: String): Buffer {
+    private suspend fun downloadBytes(url: String): Buffer {
         val response = client.execute(
             RequestBuilder().url(url).build(),
             client.defaultRedirectOptions,

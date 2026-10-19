@@ -397,6 +397,7 @@
     <string name="update_download">Преземи</string>
     <string name="update_downloading">Се презема… %1$s од %2$s</string>
     <string name="update_ready">Подготвено за инсталирање</string>
+    <string name="update_installing">Се инсталира…</string>
     <string name="update_manual_hint">Оваа копија не може сама да се ажурира (%1$s). Наместо тоа, преземете ја новата верзија.</string>
     <string name="update_failed">Ажурирањето не успеа: %1$s</string>
     <string name="update_official_site">Преземете од официјалната веб-страница</string>
@@ -477,6 +478,13 @@
         <item quantity="other">%1$d од избраните видеа се веќе во вашата библиотека.</item>
     </plurals>
     <string name="error_network">Не може да се пристапи до YouTube. Проверете ја врската и обидете се повторно.</string>
+    <string name="error_disk_full">Нема доволно простор за складирање. Ослободете простор и обидете се повторно.</string>
+    <string name="error_live_still_processing">Овој пренос штотуку заврши и сè уште се обработува. Обидете се повторно подоцна</string>
+    <string name="dialog_ok">Во ред</string>
+    <string name="folder_picker_disabled">Системската апликација „Датотеки“ е исклучена. Вклучете ја за да изберете папка.</string>
+    <string name="folder_picker_open_settings">Отвори поставки</string>
+    <string name="folder_picker_missing">Овој уред нема алатка за избор на папка, па не може да се избере папка.</string>
+    <string name="error_supervised_account">Оваа Google сметка е под надзор, па YouTube не може да се користи овде. Одјавете се или префрлете се на друга сметка.</string>
     <string name="settings_player_cache">Кеш на плеерот</string>
     <string name="settings_player_cache_summary">Макс. %1$s · Искористено %2$s · Заштедено %3$s</string>
     <string name="settings_player_cache_off">Без кеш</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">Коментарот е избришан</string>
     <string name="menu_details_comments">Детали и коментари</string>
     <string name="menu_speed_pitch">Брзина и висина</string>
+    <string name="link_open_failed">Не може да се отвори: %1$s</string>
 </resources>

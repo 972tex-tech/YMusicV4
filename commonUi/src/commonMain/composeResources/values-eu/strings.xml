@@ -397,6 +397,7 @@
     <string name="update_download">Deskargatu</string>
     <string name="update_downloading">Deskargatzen… %1$s / %2$s</string>
     <string name="update_ready">Instalatzeko prest</string>
+    <string name="update_installing">Instalatzen…</string>
     <string name="update_manual_hint">Kopia honek ezin du bere burua eguneratu (%1$s). Deskargatu bertsio berria.</string>
     <string name="update_failed">Eguneratzeak huts egin du: %1$s</string>
     <string name="update_official_site">Deskargatu webgune ofizialetik</string>
@@ -477,6 +478,13 @@
         <item quantity="other">Hautatutako bideoetatik %1$d zure Liburutegian daude jada.</item>
     </plurals>
     <string name="error_network">Ezin da YouTubera konektatu. Egiaztatu konexioa eta saiatu berriro.</string>
+    <string name="error_disk_full">Ez dago behar adina biltegiratze-toki. Egin tokia eta saiatu berriro.</string>
+    <string name="error_live_still_processing">Zuzeneko emanaldi hau oraintxe amaitu da eta oraindik prozesatzen ari da. Saiatu berriro geroago</string>
+    <string name="dialog_ok">Ados</string>
+    <string name="folder_picker_disabled">Sistemaren Fitxategiak aplikazioa desaktibatuta dago. Aktibatu karpeta bat aukeratzeko.</string>
+    <string name="folder_picker_open_settings">Ireki ezarpenak</string>
+    <string name="folder_picker_missing">Gailu honek ez du karpeta-hautatzailerik; beraz, ezin da karpetarik aukeratu.</string>
+    <string name="error_supervised_account">Google kontu hau gainbegiratuta dago; beraz, ezin da YouTube hemen erabili. Amaitu saioa edo aldatu beste kontu batera.</string>
     <string name="settings_player_cache">Erreproduzigailuaren cachea</string>
     <string name="settings_player_cache_summary">Gehienez %1$s · Erabilita %2$s · Aurreztuta %3$s</string>
     <string name="settings_player_cache_off">Cacherik ez</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">Iruzkina ezabatu da</string>
     <string name="menu_details_comments">Xehetasunak eta iruzkinak</string>
     <string name="menu_speed_pitch">Abiadura eta tonua</string>
+    <string name="link_open_failed">Ezin da ireki: %1$s</string>
 </resources>

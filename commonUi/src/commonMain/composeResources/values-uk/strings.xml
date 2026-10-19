@@ -399,6 +399,7 @@
     <string name="update_download">Завантажити</string>
     <string name="update_downloading">Завантаження… %1$s з %2$s</string>
     <string name="update_ready">Готово до встановлення</string>
+    <string name="update_installing">Встановлення…</string>
     <string name="update_manual_hint">Ця копія не може оновитися сама (%1$s). Завантажте нову версію вручну.</string>
     <string name="update_failed">Помилка оновлення: %1$s</string>
     <string name="update_official_site">Завантажити з офіційного сайту</string>
@@ -487,6 +488,13 @@
         <item quantity="other">%1$d з вибраних відео вже є в бібліотеці.</item>
     </plurals>
     <string name="error_network">Немає зв’язку з YouTube. Перевірте з’єднання й спробуйте знову.</string>
+    <string name="error_disk_full">Недостатньо місця в сховищі. Звільніть місце й спробуйте знову.</string>
+    <string name="error_live_still_processing">Ця трансляція щойно завершилася й ще обробляється. Спробуйте пізніше</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Системний додаток «Файли» вимкнено. Увімкніть його, щоб вибрати папку.</string>
+    <string name="folder_picker_open_settings">Відкрити налаштування</string>
+    <string name="folder_picker_missing">На цьому пристрої немає засобу вибору папок, тому вибрати папку неможливо.</string>
+    <string name="error_supervised_account">Цей обліковий запис Google перебуває під наглядом, тому YouTube тут використовувати не можна. Вийдіть або перейдіть на інший обліковий запис.</string>
     <string name="settings_player_cache">Кеш плеєра</string>
     <string name="settings_player_cache_summary">Макс. %1$s · Зайнято %2$s · Заощаджено %3$s</string>
     <string name="settings_player_cache_off">Без кешу</string>
@@ -533,4 +541,5 @@
     <string name="video_details_deleted">Коментар видалено</string>
     <string name="menu_details_comments">Опис і коментарі</string>
     <string name="menu_speed_pitch">Швидкість і тон</string>
+    <string name="link_open_failed">Не вдається відкрити: %1$s</string>
 </resources>

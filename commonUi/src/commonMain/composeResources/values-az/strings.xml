@@ -397,6 +397,7 @@
     <string name="update_download">Yüklə</string>
     <string name="update_downloading">Yüklənir… %1$s / %2$s</string>
     <string name="update_ready">Quraşdırmağa hazırdır</string>
+    <string name="update_installing">Quraşdırılır…</string>
     <string name="update_manual_hint">Bu nüsxə özünü yeniləyə bilmir (%1$s). Əvəzinə yeni versiyanı yükləyin.</string>
     <string name="update_failed">Yeniləmə uğursuz oldu: %1$s</string>
     <string name="update_official_site">Rəsmi saytdan endirin</string>
@@ -477,6 +478,13 @@
         <item quantity="other">Seçilmiş videolardan %1$d-i artıq Kitabxananızdadır.</item>
     </plurals>
     <string name="error_network">YouTube-a qoşulmaq mümkün deyil. İnternet bağlantınızı yoxlayıb yenidən cəhd edin.</string>
+    <string name="error_disk_full">Yaddaşda kifayət qədər yer yoxdur. Bir az yer boşaldıb yenidən cəhd edin.</string>
+    <string name="error_live_still_processing">Bu yayım indicə bitib və hələ emal olunur. Bir az sonra yenidən cəhd edin</string>
+    <string name="dialog_ok">OK</string>
+    <string name="folder_picker_disabled">Sistemin Fayllar tətbiqi deaktivdir. Qovluq seçmək üçün onu aktivləşdirin.</string>
+    <string name="folder_picker_open_settings">Ayarları aç</string>
+    <string name="folder_picker_missing">Bu cihazda qovluq seçicisi yoxdur, ona görə qovluq seçmək mümkün deyil.</string>
+    <string name="error_supervised_account">Bu Google hesabı nəzarət altındadır, ona görə də YouTube burada istifadə edilə bilməz. Hesabdan çıxın və ya başqa hesaba keçin.</string>
     <string name="settings_player_cache">Pleyer keşi</string>
     <string name="settings_player_cache_summary">Maks. %1$s · İstifadə olunub %2$s · Qənaət %3$s</string>
     <string name="settings_player_cache_off">Keş yoxdur</string>
@@ -523,4 +531,5 @@
     <string name="video_details_deleted">Şərh silindi</string>
     <string name="menu_details_comments">Təfərrüatlar və şərhlər</string>
     <string name="menu_speed_pitch">Sürət və ton</string>
+    <string name="link_open_failed">Açmaq mümkün olmadı: %1$s</string>
 </resources>

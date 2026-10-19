@@ -3,6 +3,7 @@ package io.ymusic.android
 import android.Manifest
 import android.app.KeyguardManager
 import android.app.PictureInPictureParams
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -49,6 +50,12 @@ import io.ymusic.ui.IncomingLinks
 import io.ymusic.ui.LinkAction
 import io.ymusic.ui.designPaletteFor
 import io.ymusic.ui.rememberStartSection
+import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.dialog_cancel
+import io.ymusic.ui.resources.dialog_ok
+import io.ymusic.ui.resources.folder_picker_disabled
+import io.ymusic.ui.resources.folder_picker_missing
+import io.ymusic.ui.resources.folder_picker_open_settings
 import io.ymusic.ui.startupFailedMessage
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CompletableDeferred
@@ -57,6 +64,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.lang.ref.WeakReference
+import org.jetbrains.compose.resources.stringResource as resString
 
 /**
  * The Android UI shell: boots the shared :commonUi [App] over the application-scoped [AppGraph]
@@ -70,6 +78,9 @@ class MainActivity : FragmentActivity() {
     private var appGraph: AppGraph? = null
     /** PiP just ended; [onResume] means expand-to-full, [onStop] means the user closed PiP. */
     private var pipExitPending = false
+
+    // Some ROMs declare FEATURE_PICTURE_IN_PICTURE yet the system rejects every PiP call; flipped off on the first rejection.
+    private var pipSupported = false
 
     // Notifications are MANDATORY: playback lives in a foreground service whose notification is
     // its lifeline. While disabled, a non-dismissible dialog sits over the app with granting as
@@ -116,8 +127,54 @@ class MainActivity : FragmentActivity() {
         pendingPick?.complete(null) // a prior pick still open → abandon it
         val deferred = CompletableDeferred<Uri?>()
         pendingPick = deferred
-        withContext(Dispatchers.Main) { openFolder.launch(null) }
+        withContext(Dispatchers.Main) {
+            val problem = folderPickerProblem()
+            if (problem == null) {
+                try {
+                    openFolder.launch(null)
+                } catch (e: ActivityNotFoundException) {
+                    (application as YMusicApplication).rootLogger.fork("folder-pick")
+                        .log(kmpcommon.log.Logger.Level.WARN, "OPEN_DOCUMENT_TREE resolved but failed to launch", e)
+                    folderPickerIssue.value = FolderPickerIssue.Missing
+                    deferred.complete(null)
+                }
+            } else {
+                (application as YMusicApplication).rootLogger.fork("folder-pick")
+                    .log(kmpcommon.log.Logger.Level.WARN, "no folder picker: $problem")
+                folderPickerIssue.value = problem
+                deferred.complete(null)
+            }
+        }
         deferred.await()
+    }
+
+    private val folderPickerIssue = mutableStateOf<FolderPickerIssue?>(null)
+
+    /** Null when the system tree picker can launch; else whether its app is disabled or absent. */
+    private fun folderPickerProblem(): FolderPickerIssue? {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+        if (intent.resolveActivity(packageManager) != null) return null
+        val disabled = packageManager.queryIntentActivities(intent, PackageManager.MATCH_DISABLED_COMPONENTS)
+            .map { it.activityInfo.packageName }
+            .plus(DOCUMENTS_UI_PACKAGES)
+            .firstOrNull { pkg ->
+                try {
+                    !packageManager.getApplicationInfo(pkg, PackageManager.MATCH_DISABLED_COMPONENTS).enabled
+                } catch (e: PackageManager.NameNotFoundException) {
+                    false
+                }
+            }
+        return if (disabled != null) FolderPickerIssue.Disabled(disabled) else FolderPickerIssue.Missing
+    }
+
+    private fun openAppDetails(pkg: String) {
+        try {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", pkg, null)))
+        } catch (e: ActivityNotFoundException) {
+            (application as YMusicApplication).rootLogger.fork("folder-pick")
+                .log(kmpcommon.log.Logger.Level.WARN, "no app details screen for $pkg", e)
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
     }
 
     // Same deferred bridge for the feedback attachment pick (any file type, multi-select).
@@ -332,6 +389,16 @@ class MainActivity : FragmentActivity() {
             if (!notificationsOk) {
                 NotificationRequiredDialog(onAllow = ::requestNotificationAccess)
             }
+            folderPickerIssue.value?.let { issue ->
+                FolderPickerIssueDialog(
+                    issue = issue,
+                    onOpenSettings = { pkg ->
+                        folderPickerIssue.value = null
+                        openAppDetails(pkg)
+                    },
+                    onDismiss = { folderPickerIssue.value = null },
+                )
+            }
         }
     }
 
@@ -361,7 +428,7 @@ class MainActivity : FragmentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         val g = appGraph ?: return
-        if (Build.VERSION.SDK_INT in 26..30 && g.pip.autoEnterEligible()) {
+        if (Build.VERSION.SDK_INT in 26..30 && pipSupported && g.pip.autoEnterEligible()) {
             enterPip()
         }
     }
@@ -398,6 +465,7 @@ class MainActivity : FragmentActivity() {
         ) {
             return
         }
+        pipSupported = true
         lifecycleScope.launch {
             combine(
                 graph.settings.flow(AppSettings.enablePip),
@@ -408,18 +476,31 @@ class MainActivity : FragmentActivity() {
             ) { _, _, _, _, _ -> }
                 .combine(graph.player.config) { _, _ -> graph.pip.autoEnterEligible() }
                 .collect { eligible ->
+                    if (!pipSupported) return@collect
                     val b = PictureInPictureParams.Builder().setAspectRatio(pipAspectRatio(graph.player.status.value.videoSize))
                     if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(eligible)
-                    setPictureInPictureParams(b.build())
+                    guardPip { setPictureInPictureParams(b.build()) }
                 }
         }
     }
 
     private fun enterPip() {
-        if (Build.VERSION.SDK_INT < 26) return
-        enterPictureInPictureMode(
-            PictureInPictureParams.Builder().setAspectRatio(pipAspectRatio(appGraph?.player?.status?.value?.videoSize)).build(),
-        )
+        if (Build.VERSION.SDK_INT < 26 || !pipSupported) return
+        guardPip {
+            enterPictureInPictureMode(
+                PictureInPictureParams.Builder().setAspectRatio(pipAspectRatio(appGraph?.player?.status?.value?.videoSize)).build(),
+            )
+        }
+    }
+
+    private inline fun guardPip(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: IllegalStateException) {
+            pipSupported = false
+            (application as YMusicApplication).rootLogger.fork("pip")
+                .log(kmpcommon.log.Logger.Level.WARN, "system rejected PiP; disabled for this activity", e)
+        }
     }
 
     // Android rejects ratios outside [1/2.39, 2.39] (config_pictureInPictureMin/MaxAspectRatio); 2.35 keeps float rounding inside.
@@ -510,6 +591,39 @@ private fun NotificationRequiredDialog(onAllow: () -> Unit) {
             TextButton(onClick = onAllow) { Text(stringResource(R.string.notifications_allow)) }
         },
     )
+}
+
+private val DOCUMENTS_UI_PACKAGES = listOf("com.google.android.documentsui", "com.android.documentsui")
+
+private sealed interface FolderPickerIssue {
+    data class Disabled(val packageName: String) : FolderPickerIssue
+
+    data object Missing : FolderPickerIssue
+}
+
+@androidx.compose.runtime.Composable
+private fun FolderPickerIssueDialog(issue: FolderPickerIssue, onOpenSettings: (String) -> Unit, onDismiss: () -> Unit) {
+    when (issue) {
+        is FolderPickerIssue.Disabled -> AlertDialog(
+            onDismissRequest = onDismiss,
+            text = { Text(resString(Res.string.folder_picker_disabled)) },
+            confirmButton = {
+                TextButton(onClick = { onOpenSettings(issue.packageName) }) {
+                    Text(resString(Res.string.folder_picker_open_settings))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text(resString(Res.string.dialog_cancel)) }
+            },
+        )
+        FolderPickerIssue.Missing -> AlertDialog(
+            onDismissRequest = onDismiss,
+            text = { Text(resString(Res.string.folder_picker_missing)) },
+            confirmButton = {
+                TextButton(onClick = onDismiss) { Text(resString(Res.string.dialog_ok)) }
+            },
+        )
+    }
 }
 
 @androidx.compose.runtime.Composable

@@ -38,9 +38,13 @@ openssl req -newkey rsa:2048 -nodes \
 openssl x509 -req -in "$DIR/client.csr" -days "$DAYS" \
   -CA "$DIR/client-ca.crt" -CAkey "$DIR/client-ca.key" -CAcreateserial \
   -out "$DIR/client.crt" >/dev/null 2>&1
-# -legacy so the p12 imports on OkHttp's KeyStore and NSURLSession's SecPKCS12Import alike.
+# Legacy p12 encryption so it imports on OkHttp's KeyStore and NSURLSession's SecPKCS12Import alike:
+# OpenSSL 3 needs -legacy for it; macOS's LibreSSL /usr/bin/openssl has no such flag and writes it by default.
+LEGACY=""
+if openssl pkcs12 -help 2>&1 | grep -q -- '-legacy'; then LEGACY="-legacy"; fi
+# shellcheck disable=SC2086 # $LEGACY is empty or one flag
 openssl pkcs12 -export -inkey "$DIR/client.key" -in "$DIR/client.crt" \
-  -out "$DIR/client.p12" -passout pass:kmphttp -legacy >/dev/null 2>&1
+  -out "$DIR/client.p12" -passout pass:kmphttp $LEGACY >/dev/null 2>&1
 
 rm -f "$DIR/client.csr" "$DIR/client-ca.srl"
 echo "Generated certs in $DIR (SAN: $IP, 127.0.0.1, localhost)"
