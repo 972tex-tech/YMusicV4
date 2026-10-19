@@ -84,22 +84,6 @@ internal val HOMEPAGE_FIXTURE = """<!DOCTYPE html><html><head><script>
 ytcfg.set({"INNERTUBE_API_KEY":"AIzaSyTESTKEY","INNERTUBE_CONTEXT_CLIENT_NAME":1,"INNERTUBE_CONTEXT_CLIENT_VERSION":"2.20260708.00.00","VISITOR_DATA":"CgtzZXNzaW9uVGVzdA%3D%3D","PAGE_CL":700000000,"PAGE_BUILD_LABEL":"youtube.desktop_20260708","INNERTUBE_CONTEXT":{"client":{"signatureTimestamp":20260708}}});
 </script></head><body></body></html>"""
 
-/** account_menu with one alternative + one check-marked entry per menu (dynamic-engine's twin). */
-internal val ACCOUNT_MENU_FIXTURE = """
-{"actions":[{"openPopupAction":{"popup":{"multiPageMenuRenderer":{"sections":[{"multiPageMenuSectionRenderer":{"items":[
-  {"compactLinkRenderer":{"icon":{"iconType":"TRANSLATE"},"title":{"runs":[{"text":"Display language:"}]},
-    "serviceEndpoint":{"signalServiceEndpoint":{"actions":[{"getMultiPageMenuAction":{"menu":{"multiPageMenuRenderer":{"sections":[{"multiPageMenuSectionRenderer":{"items":[
-      {"compactLinkRenderer":{"title":{"simpleText":"Afrikaans"},"serviceEndpoint":{"signalServiceEndpoint":{"actions":[{"selectLanguageCommand":{"hl":"af"}}]}}}},
-      {"compactLinkRenderer":{"icon":{"iconType":"CHECK"},"title":{"simpleText":"Tiếng Việt"},"serviceEndpoint":{"signalServiceEndpoint":{"actions":[{"selectLanguageCommand":{"hl":"vi"}}]}}}}
-    ]}}]}}}}]}}}},
-  {"compactLinkRenderer":{"icon":{"iconType":"LOCATION_PIN"},"title":{"runs":[{"text":"Location:"}]},
-    "serviceEndpoint":{"signalServiceEndpoint":{"actions":[{"getMultiPageMenuAction":{"menu":{"multiPageMenuRenderer":{"sections":[{"multiPageMenuSectionRenderer":{"items":[
-      {"compactLinkRenderer":{"title":{"simpleText":"Hoa Kỳ"},"serviceEndpoint":{"signalServiceEndpoint":{"actions":[{"selectCountryCommand":{"gl":"US"}}]}}}},
-      {"compactLinkRenderer":{"icon":{"iconType":"CHECK"},"title":{"simpleText":"Việt Nam"},"serviceEndpoint":{"signalServiceEndpoint":{"actions":[{"selectCountryCommand":{"gl":"VN"}}]}}}}
-    ]}}]}}}}]}}}}
-]}}]}}}}]}
-"""
-
 /** A [Player] whose state never changes; queue/shuffle calls are recorded for assertions. */
 internal class StubPlayer : Player {
     override val status: StateFlow<PlaybackStatus> = MutableStateFlow(PlaybackStatus())
