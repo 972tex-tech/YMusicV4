@@ -449,6 +449,8 @@
     <string name="download_save_quick">Αποθήκευση ως Γρήγορη λήψη</string>
     <string name="quick_download_menu">Γρήγορη λήψη · %1$s</string>
     <string name="playlist_download_title">Λήψη λίστας αναπαραγωγής</string>
+    <string name="playlist_index_prefix">Πρόθεμα αρίθμησης</string>
+    <string name="playlist_index_prefix_hint">Τα ονόματα αρχείων ξεκινούν με 1. 2. 3.</string>
     <string name="playlist_load_more">+ Φόρτωση περισσότερων</string>
     <string name="playlist_check_all">Επιλογή όλων</string>
     <string name="playlist_check_not_downloaded">Επιλογή όσων δεν έχουν ληφθεί</string>

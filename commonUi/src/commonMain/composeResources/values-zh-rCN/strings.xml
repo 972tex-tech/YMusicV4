@@ -448,6 +448,8 @@
     <string name="download_save_quick">保存为快速下载</string>
     <string name="quick_download_menu">快速下载 · %1$s</string>
     <string name="playlist_download_title">下载播放列表</string>
+    <string name="playlist_index_prefix">序号前缀</string>
+    <string name="playlist_index_prefix_hint">文件名以 1. 2. 3. 开头</string>
     <string name="playlist_load_more">+ 加载更多</string>
     <string name="playlist_check_all">全选</string>
     <string name="playlist_check_not_downloaded">选择未下载的</string>

@@ -448,6 +448,8 @@
     <string name="download_save_quick">บันทึกเป็นดาวน์โหลดด่วน</string>
     <string name="quick_download_menu">ดาวน์โหลดด่วน · %1$s</string>
     <string name="playlist_download_title">ดาวน์โหลดเพลย์ลิสต์</string>
+    <string name="playlist_index_prefix">ใส่ลำดับนำหน้า</string>
+    <string name="playlist_index_prefix_hint">ขึ้นต้นชื่อไฟล์ด้วย 1. 2. 3.</string>
     <string name="playlist_load_more">+ โหลดเพิ่ม</string>
     <string name="playlist_check_all">เลือกทั้งหมด</string>
     <string name="playlist_check_not_downloaded">เลือกรายการที่ยังไม่ได้ดาวน์โหลด</string>

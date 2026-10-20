@@ -449,6 +449,8 @@
     <string name="download_save_quick">Hifadhi kama Upakuaji wa haraka</string>
     <string name="quick_download_menu">Upakuaji wa haraka · %1$s</string>
     <string name="playlist_download_title">Pakua orodha ya kucheza</string>
+    <string name="playlist_index_prefix">Kiambishi cha namba</string>
+    <string name="playlist_index_prefix_hint">Majina ya faili yaanze na 1. 2. 3.</string>
     <string name="playlist_load_more">+ Pakia zaidi</string>
     <string name="playlist_check_all">Chagua zote</string>
     <string name="playlist_check_not_downloaded">Chagua ambazo hazijapakuliwa</string>

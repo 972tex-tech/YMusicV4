@@ -449,6 +449,8 @@
     <string name="download_save_quick">U kaydi Dajin degdeg ah</string>
     <string name="quick_download_menu">Dajin degdeg ah · %1$s</string>
     <string name="playlist_download_title">Daji xulka</string>
+    <string name="playlist_index_prefix">Horgale lambar</string>
+    <string name="playlist_index_prefix_hint">Magacyada faylasha ku bilow 1. 2. 3.</string>
     <string name="playlist_load_more">+ Soo kici wax badan</string>
     <string name="playlist_check_all">Wada calaamadi</string>
     <string name="playlist_check_not_downloaded">Calaamadi kuwa aan la dajin</string>

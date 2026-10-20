@@ -449,6 +449,8 @@
     <string name="download_save_quick">ඉක්මන් බාගැනීමක් ලෙස සුරකින්න</string>
     <string name="quick_download_menu">ඉක්මන් බාගැනීම · %1$s</string>
     <string name="playlist_download_title">ධාවන ලැයිස්තුව බාගන්න</string>
+    <string name="playlist_index_prefix">අංක උපසර්ගය</string>
+    <string name="playlist_index_prefix_hint">ගොනු නම් 1. 2. 3. ලෙස අරඹන්න</string>
     <string name="playlist_load_more">+ තව පූරණය කරන්න</string>
     <string name="playlist_check_all">සියල්ල තෝරන්න</string>
     <string name="playlist_check_not_downloaded">බාගත නොකළ ඒවා තෝරන්න</string>

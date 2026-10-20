@@ -451,6 +451,8 @@
     <string name="download_save_quick">Сохранить как быструю загрузку</string>
     <string name="quick_download_menu">Быстрая загрузка · %1$s</string>
     <string name="playlist_download_title">Скачать плейлист</string>
+    <string name="playlist_index_prefix">Номер в начале</string>
+    <string name="playlist_index_prefix_hint">Имена файлов начинаются с 1. 2. 3.</string>
     <string name="playlist_load_more">+ Загрузить ещё</string>
     <string name="playlist_check_all">Отметить все</string>
     <string name="playlist_check_not_downloaded">Отметить нескачанные</string>

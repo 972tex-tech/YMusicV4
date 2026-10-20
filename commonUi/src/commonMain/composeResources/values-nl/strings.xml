@@ -449,6 +449,8 @@
     <string name="download_save_quick">Opslaan als Snelle download</string>
     <string name="quick_download_menu">Snelle download · %1$s</string>
     <string name="playlist_download_title">Afspeellijst downloaden</string>
+    <string name="playlist_index_prefix">Nummer vooraan</string>
+    <string name="playlist_index_prefix_hint">Bestandsnamen beginnen met 1. 2. 3.</string>
     <string name="playlist_load_more">+ Meer laden</string>
     <string name="playlist_check_all">Alles aanvinken</string>
     <string name="playlist_check_not_downloaded">Niet-gedownloade aanvinken</string>

@@ -449,6 +449,8 @@
     <string name="download_save_quick">I-save bilang Quick download</string>
     <string name="quick_download_menu">Quick download · %1$s</string>
     <string name="playlist_download_title">I-download ang playlist</string>
+    <string name="playlist_index_prefix">Prefix na numero</string>
+    <string name="playlist_index_prefix_hint">Simulan ang pangalan ng file sa 1. 2. 3.</string>
     <string name="playlist_load_more">+ Mag-load pa</string>
     <string name="playlist_check_all">Piliin lahat</string>
     <string name="playlist_check_not_downloaded">Piliin ang hindi pa na-download</string>

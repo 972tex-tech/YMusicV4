@@ -451,6 +451,8 @@
     <string name="download_save_quick">Uložit jako Rychlé stažení</string>
     <string name="quick_download_menu">Rychlé stažení · %1$s</string>
     <string name="playlist_download_title">Stáhnout playlist</string>
+    <string name="playlist_index_prefix">Předpona s pořadím</string>
+    <string name="playlist_index_prefix_hint">Názvy souborů začnou 1. 2. 3.</string>
     <string name="playlist_load_more">+ Načíst další</string>
     <string name="playlist_check_all">Označit vše</string>
     <string name="playlist_check_not_downloaded">Označit nestažené</string>

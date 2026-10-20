@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -71,6 +71,8 @@ import io.ymusic.ui.resources.playlist_create_confirm
 import io.ymusic.ui.resources.playlist_create_title
 import io.ymusic.ui.resources.playlist_download_action
 import io.ymusic.ui.resources.playlist_download_title
+import io.ymusic.ui.resources.playlist_index_prefix
+import io.ymusic.ui.resources.playlist_index_prefix_hint
 import io.ymusic.ui.resources.playlist_load_more
 import io.ymusic.ui.resources.playlist_options
 import io.ymusic.ui.resources.playlist_select_library
@@ -95,6 +97,9 @@ import org.jetbrains.compose.resources.stringResource
 class PlaylistDownloadSession(val title: String, val pager: Pager, initialPreset: QuickDownloadPreset) {
     var preset by mutableStateOf(initialPreset)
     var checked by mutableStateOf<Set<String>>(emptySet())
+
+    /** File names start with the video's playlist position: "1. ", "2. ", … */
+    var indexPrefix by mutableStateOf(false)
 
     /** The Library playlist the downloads join (each song shows up there as it lands); null = none. */
     var targetPlaylist by mutableStateOf<Playlist?>(null)
@@ -127,7 +132,11 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
             val gated = graph.mediaStore != null && graph.libraryFolderPicker != null
             if (gated && !hasUsableDownloadLocation(graph) && !pickDownloadFolder(graph, snackbar)) return@launch
             val mp3SourceBitrate = graph.mp3SourceBitrate()
-            picked.forEach { downloads.enqueue(preset.request(it, mp3SourceBitrate)) }
+            val positions = videos.withIndex().associate { (index, video) -> video.id to index + 1 }
+            picked.forEach { video ->
+                val prefix = if (session.indexPrefix) positions[video.id]?.let { "$it. " }.orEmpty() else ""
+                downloads.enqueue(preset.request(video, mp3SourceBitrate, prefix))
+            }
             val target = session.targetPlaylist
             val store = graph.mediaStore
             if (target != null && store != null) store.addCodesToPlaylist(target.id, picked.map { it.id })
@@ -158,8 +167,13 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
                     libraryStore = graph.mediaStore,
                 )
             }
-            items(videos, key = { it.id }) { video ->
-                VideoCheckRow(video, checked = video.id in session.checked, downloaded = video.id in offline) { on ->
+            itemsIndexed(videos, key = { _, video -> video.id }) { index, video ->
+                VideoCheckRow(
+                    video,
+                    position = (index + 1).takeIf { session.indexPrefix },
+                    checked = video.id in session.checked,
+                    downloaded = video.id in offline,
+                ) { on ->
                     session.checked = if (on) session.checked + video.id else session.checked - video.id
                 }
             }
@@ -293,6 +307,23 @@ private fun OptionsCard(
                 )
             }
         }
+        Row(
+            Modifier.fillMaxWidth().toggleable(value = session.indexPrefix, role = Role.Switch) { session.indexPrefix = it },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16),
+        ) {
+            Text(
+                stringResource(Res.string.playlist_index_prefix),
+                Modifier.width(112.dp),
+                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            )
+            Text(
+                stringResource(Res.string.playlist_index_prefix_hint),
+                Modifier.weight(1f),
+                style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSecondary),
+            )
+            CompactSwitch(session.indexPrefix)
+        }
         val store = libraryStore
         if (store != null) {
             var reload by remember { mutableStateOf(0) }
@@ -329,7 +360,7 @@ private fun OptionsCard(
 }
 
 @Composable
-private fun VideoCheckRow(video: YtFeedItem, checked: Boolean, downloaded: Boolean, onToggle: (Boolean) -> Unit) {
+private fun VideoCheckRow(video: YtFeedItem, position: Int?, checked: Boolean, downloaded: Boolean, onToggle: (Boolean) -> Unit) {
     Row(
         Modifier
             .widthIn(max = CONTENT_MAX_WIDTH)
@@ -352,7 +383,7 @@ private fun VideoCheckRow(video: YtFeedItem, checked: Boolean, downloaded: Boole
         }
         Column(Modifier.weight(1f)) {
             Text(
-                video.title,
+                if (position != null) "$position. ${video.title}" else video.title,
                 style = TextStyle(fontSize = 14.sp, color = if (video.live) DesignColors.InkFaint else DesignColors.Ink),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

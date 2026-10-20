@@ -449,6 +449,8 @@
     <string name="download_save_quick">ദ്രുത ഡൗൺലോഡായി സേവ് ചെയ്യുക</string>
     <string name="quick_download_menu">ദ്രുത ഡൗൺലോഡ് · %1$s</string>
     <string name="playlist_download_title">പ്ലേലിസ്റ്റ് ഡൗൺലോഡ് ചെയ്യുക</string>
+    <string name="playlist_index_prefix">ക്രമനമ്പർ മുൻകുറി</string>
+    <string name="playlist_index_prefix_hint">ഫയൽ പേരുകൾ 1. 2. 3. എന്ന് തുടങ്ങും</string>
     <string name="playlist_load_more">+ കൂടുതൽ ലോഡ് ചെയ്യുക</string>
     <string name="playlist_check_all">എല്ലാം തിരഞ്ഞെടുക്കുക</string>
     <string name="playlist_check_not_downloaded">ഡൗൺലോഡ് ചെയ്യാത്തവ തിരഞ്ഞെടുക്കുക</string>

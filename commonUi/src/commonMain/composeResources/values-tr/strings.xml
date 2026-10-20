@@ -449,6 +449,8 @@
     <string name="download_save_quick">Hızlı indirme olarak kaydet</string>
     <string name="quick_download_menu">Hızlı indirme · %1$s</string>
     <string name="playlist_download_title">Oynatma listesini indir</string>
+    <string name="playlist_index_prefix">Sıra numarası öneki</string>
+    <string name="playlist_index_prefix_hint">Dosya adları 1. 2. 3. ile başlar</string>
     <string name="playlist_load_more">+ Daha fazla yükle</string>
     <string name="playlist_check_all">Tümünü seç</string>
     <string name="playlist_check_not_downloaded">İndirilmeyenleri seç</string>

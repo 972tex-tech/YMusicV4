@@ -449,6 +449,8 @@
     <string name="download_save_quick">Sürətli yükləmə kimi saxla</string>
     <string name="quick_download_menu">Sürətli yükləmə · %1$s</string>
     <string name="playlist_download_title">Pleylisti yüklə</string>
+    <string name="playlist_index_prefix">İndeks prefiksi</string>
+    <string name="playlist_index_prefix_hint">Fayl adlarını 1. 2. 3. ilə başla</string>
     <string name="playlist_load_more">+ Daha çox yüklə</string>
     <string name="playlist_check_all">Hamısını seç</string>
     <string name="playlist_check_not_downloaded">Yüklənməyənləri seç</string>

@@ -450,6 +450,8 @@
     <string name="download_save_quick">Salvează ca Descărcare rapidă</string>
     <string name="quick_download_menu">Descărcare rapidă · %1$s</string>
     <string name="playlist_download_title">Descarcă playlistul</string>
+    <string name="playlist_index_prefix">Prefix numeric</string>
+    <string name="playlist_index_prefix_hint">Numele fișierelor încep cu 1. 2. 3.</string>
     <string name="playlist_load_more">+ Încarcă mai multe</string>
     <string name="playlist_check_all">Bifează tot</string>
     <string name="playlist_check_not_downloaded">Bifează nedescărcatele</string>

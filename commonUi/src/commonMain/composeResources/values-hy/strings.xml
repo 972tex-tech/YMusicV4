@@ -449,6 +449,8 @@
     <string name="download_save_quick">Պահել որպես Արագ ներբեռնում</string>
     <string name="quick_download_menu">Արագ ներբեռնում · %1$s</string>
     <string name="playlist_download_title">Ներբեռնել երգացանկը</string>
+    <string name="playlist_index_prefix">Համարի նախածանց</string>
+    <string name="playlist_index_prefix_hint">Ֆայլերի անունները սկսել 1. 2. 3.-ով</string>
     <string name="playlist_load_more">+ Բեռնել ավելին</string>
     <string name="playlist_check_all">Նշել բոլորը</string>
     <string name="playlist_check_not_downloaded">Նշել չներբեռնվածները</string>

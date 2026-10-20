@@ -449,6 +449,8 @@
     <string name="download_save_quick">Mentés Gyors letöltésként</string>
     <string name="quick_download_menu">Gyors letöltés · %1$s</string>
     <string name="playlist_download_title">Lejátszási lista letöltése</string>
+    <string name="playlist_index_prefix">Sorszám előtag</string>
+    <string name="playlist_index_prefix_hint">A fájlnevek 1. 2. 3. kezdettel</string>
     <string name="playlist_load_more">+ Továbbiak betöltése</string>
     <string name="playlist_check_all">Összes kijelölése</string>
     <string name="playlist_check_not_downloaded">Nem letöltöttek kijelölése</string>

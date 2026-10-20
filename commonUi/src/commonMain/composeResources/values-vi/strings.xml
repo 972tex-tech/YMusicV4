@@ -513,6 +513,8 @@
     <string name="download_save_quick">Lưu làm Tải nhanh</string>
     <string name="quick_download_menu">Tải nhanh · %1$s</string>
     <string name="playlist_download_title">Tải danh sách phát</string>
+    <string name="playlist_index_prefix">Thêm số thứ tự</string>
+    <string name="playlist_index_prefix_hint">Tên tệp bắt đầu bằng 1. 2. 3.</string>
     <string name="playlist_load_more">+ Tải thêm</string>
     <string name="playlist_check_all">Chọn tất cả</string>
     <string name="playlist_check_not_downloaded">Chọn mục chưa tải</string>

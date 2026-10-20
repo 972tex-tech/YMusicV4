@@ -449,6 +449,8 @@
     <string name="download_save_quick">Als Schnell-Download speichern</string>
     <string name="quick_download_menu">Schnell-Download · %1$s</string>
     <string name="playlist_download_title">Playlist herunterladen</string>
+    <string name="playlist_index_prefix">Nummer voranstellen</string>
+    <string name="playlist_index_prefix_hint">Dateinamen beginnen mit 1. 2. 3.</string>
     <string name="playlist_load_more">+ Mehr laden</string>
     <string name="playlist_check_all">Alle auswählen</string>
     <string name="playlist_check_not_downloaded">Nicht heruntergeladene auswählen</string>

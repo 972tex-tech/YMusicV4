@@ -450,6 +450,8 @@
     <string name="download_save_quick">שמור כהורדה מהירה</string>
     <string name="quick_download_menu">הורדה מהירה · %1$s</string>
     <string name="playlist_download_title">הורדת רשימת השמעה</string>
+    <string name="playlist_index_prefix">קידומת מספור</string>
+    <string name="playlist_index_prefix_hint">שמות הקבצים יתחילו ב־1. 2. 3.</string>
     <string name="playlist_load_more">+ טען עוד</string>
     <string name="playlist_check_all">סמן הכול</string>
     <string name="playlist_check_not_downloaded">סמן את מה שלא הורד</string>

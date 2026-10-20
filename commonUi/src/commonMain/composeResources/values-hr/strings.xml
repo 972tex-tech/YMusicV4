@@ -450,6 +450,8 @@
     <string name="download_save_quick">Spremi kao Brzo preuzimanje</string>
     <string name="quick_download_menu">Brzo preuzimanje · %1$s</string>
     <string name="playlist_download_title">Preuzmi popis za reprodukciju</string>
+    <string name="playlist_index_prefix">Prefiks rednog broja</string>
+    <string name="playlist_index_prefix_hint">Nazivi datoteka počinju s 1. 2. 3.</string>
     <string name="playlist_load_more">+ Učitaj više</string>
     <string name="playlist_check_all">Označi sve</string>
     <string name="playlist_check_not_downloaded">Označi nepreuzete</string>

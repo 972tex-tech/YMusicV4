@@ -449,6 +449,8 @@
     <string name="download_save_quick">Stoor as Vinnige aflaai</string>
     <string name="quick_download_menu">Vinnige aflaai · %1$s</string>
     <string name="playlist_download_title">Laai snitlys af</string>
+    <string name="playlist_index_prefix">Indeksvoorvoegsel</string>
+    <string name="playlist_index_prefix_hint">Begin lêernaam met 1. 2. 3.</string>
     <string name="playlist_load_more">+ Laai meer</string>
     <string name="playlist_check_all">Merk alles</string>
     <string name="playlist_check_not_downloaded">Merk nie-afgelaaide</string>

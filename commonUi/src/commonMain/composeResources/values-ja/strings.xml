@@ -448,6 +448,8 @@
     <string name="download_save_quick">クイックダウンロードとして保存</string>
     <string name="quick_download_menu">クイックダウンロード · %1$s</string>
     <string name="playlist_download_title">プレイリストをダウンロード</string>
+    <string name="playlist_index_prefix">番号を先頭に付ける</string>
+    <string name="playlist_index_prefix_hint">ファイル名を 1. 2. 3. で始める</string>
     <string name="playlist_load_more">+ さらに読み込む</string>
     <string name="playlist_check_all">すべて選択</string>
     <string name="playlist_check_not_downloaded">未ダウンロードを選択</string>

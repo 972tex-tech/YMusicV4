@@ -448,6 +448,8 @@
     <string name="download_save_quick">Simpan sebagai Muat turun pantas</string>
     <string name="quick_download_menu">Muat turun pantas · %1$s</string>
     <string name="playlist_download_title">Muat turun senarai main</string>
+    <string name="playlist_index_prefix">Awalan nombor</string>
+    <string name="playlist_index_prefix_hint">Nama fail bermula dengan 1. 2. 3.</string>
     <string name="playlist_load_more">+ Muatkan lagi</string>
     <string name="playlist_check_all">Tandai semua</string>
     <string name="playlist_check_not_downloaded">Tandai yang belum dimuat turun</string>

@@ -450,6 +450,8 @@
     <string name="download_save_quick">Salva come download rapido</string>
     <string name="quick_download_menu">Download rapido · %1$s</string>
     <string name="playlist_download_title">Scarica playlist</string>
+    <string name="playlist_index_prefix">Prefisso numerico</string>
+    <string name="playlist_index_prefix_hint">I nomi dei file iniziano con 1. 2. 3.</string>
     <string name="playlist_load_more">+ Carica altro</string>
     <string name="playlist_check_all">Seleziona tutto</string>
     <string name="playlist_check_not_downloaded">Seleziona non scaricati</string>

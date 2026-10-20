@@ -449,6 +449,8 @@
     <string name="download_save_quick">দ্রুত ডাউনলোড হিসেবে সেভ করুন</string>
     <string name="quick_download_menu">দ্রুত ডাউনলোড · %1$s</string>
     <string name="playlist_download_title">প্লেলিস্ট ডাউনলোড করুন</string>
+    <string name="playlist_index_prefix">ক্রমিক উপসর্গ</string>
+    <string name="playlist_index_prefix_hint">ফাইলের নাম 1. 2. 3. দিয়ে শুরু হবে</string>
     <string name="playlist_load_more">+ আরও লোড করুন</string>
     <string name="playlist_check_all">সব চিহ্নিত করুন</string>
     <string name="playlist_check_not_downloaded">ডাউনলোড না হওয়াগুলো চিহ্নিত করুন</string>

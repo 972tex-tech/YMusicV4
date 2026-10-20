@@ -449,6 +449,8 @@
     <string name="download_save_quick">ઝડપી ડાઉનલોડ તરીકે સેવ કરો</string>
     <string name="quick_download_menu">ઝડપી ડાઉનલોડ · %1$s</string>
     <string name="playlist_download_title">પ્લેલિસ્ટ ડાઉનલોડ કરો</string>
+    <string name="playlist_index_prefix">ક્રમાંક ઉપસર્ગ</string>
+    <string name="playlist_index_prefix_hint">ફાઇલ નામ 1. 2. 3. થી શરૂ થશે</string>
     <string name="playlist_load_more">+ વધુ લોડ કરો</string>
     <string name="playlist_check_all">બધા પસંદ કરો</string>
     <string name="playlist_check_not_downloaded">ડાઉનલોડ ન થયેલા પસંદ કરો</string>

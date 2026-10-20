@@ -448,6 +448,8 @@
     <string name="download_save_quick">Simpan sebagai Unduhan cepat</string>
     <string name="quick_download_menu">Unduhan cepat · %1$s</string>
     <string name="playlist_download_title">Unduh daftar putar</string>
+    <string name="playlist_index_prefix">Awalan nomor urut</string>
+    <string name="playlist_index_prefix_hint">Nama file diawali 1. 2. 3.</string>
     <string name="playlist_load_more">+ Muat lebih banyak</string>
     <string name="playlist_check_all">Centang semua</string>
     <string name="playlist_check_not_downloaded">Centang yang belum diunduh</string>

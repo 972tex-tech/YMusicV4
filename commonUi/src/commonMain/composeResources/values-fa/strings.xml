@@ -449,6 +449,8 @@
     <string name="download_save_quick">ذخیره به‌عنوان دانلود سریع</string>
     <string name="quick_download_menu">دانلود سریع · %1$s</string>
     <string name="playlist_download_title">دانلود لیست پخش</string>
+    <string name="playlist_index_prefix">پیشوند شماره</string>
+    <string name="playlist_index_prefix_hint">نام فایل‌ها با 1. 2. 3. شروع شود</string>
     <string name="playlist_load_more">+ بارگذاری بیشتر</string>
     <string name="playlist_check_all">انتخاب همه</string>
     <string name="playlist_check_not_downloaded">انتخاب دانلودنشده‌ها</string>

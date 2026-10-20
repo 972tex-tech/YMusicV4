@@ -450,6 +450,8 @@
     <string name="download_save_quick">Desa com a Descàrrega ràpida</string>
     <string name="quick_download_menu">Descàrrega ràpida · %1$s</string>
     <string name="playlist_download_title">Descarrega la llista</string>
+    <string name="playlist_index_prefix">Prefix d'índex</string>
+    <string name="playlist_index_prefix_hint">Comença els noms de fitxer amb 1. 2. 3.</string>
     <string name="playlist_load_more">+ Carrega'n més</string>
     <string name="playlist_check_all">Marca-ho tot</string>
     <string name="playlist_check_not_downloaded">Marca els no descarregats</string>

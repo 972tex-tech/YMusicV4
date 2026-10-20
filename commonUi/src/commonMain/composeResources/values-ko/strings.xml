@@ -448,6 +448,8 @@
     <string name="download_save_quick">빠른 다운로드로 저장</string>
     <string name="quick_download_menu">빠른 다운로드 · %1$s</string>
     <string name="playlist_download_title">재생목록 다운로드</string>
+    <string name="playlist_index_prefix">번호 접두사</string>
+    <string name="playlist_index_prefix_hint">파일 이름을 1. 2. 3.으로 시작</string>
     <string name="playlist_load_more">+ 더 불러오기</string>
     <string name="playlist_check_all">모두 선택</string>
     <string name="playlist_check_not_downloaded">다운로드 안 된 항목 선택</string>

@@ -449,6 +449,8 @@
     <string name="download_save_quick">Gorde Deskarga azkar gisa</string>
     <string name="quick_download_menu">Deskarga azkarra · %1$s</string>
     <string name="playlist_download_title">Deskargatu zerrenda</string>
+    <string name="playlist_index_prefix">Indize-aurrizkia</string>
+    <string name="playlist_index_prefix_hint">Fitxategi-izenak 1. 2. 3. gisa hasi</string>
     <string name="playlist_load_more">+ Kargatu gehiago</string>
     <string name="playlist_check_all">Markatu guztiak</string>
     <string name="playlist_check_not_downloaded">Markatu deskargatu gabeak</string>

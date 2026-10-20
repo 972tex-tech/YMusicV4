@@ -449,6 +449,8 @@
     <string name="download_save_quick">Salvesta kiirallalaadimisena</string>
     <string name="quick_download_menu">Kiirallalaadimine · %1$s</string>
     <string name="playlist_download_title">Laadi esitusloend alla</string>
+    <string name="playlist_index_prefix">Järjekorranumber ette</string>
+    <string name="playlist_index_prefix_hint">Failinimed algavad 1. 2. 3.</string>
     <string name="playlist_load_more">+ Laadi rohkem</string>
     <string name="playlist_check_all">Märgi kõik</string>
     <string name="playlist_check_not_downloaded">Märgi allalaadimata</string>
