@@ -160,8 +160,9 @@ class PlaybackCoordinator(
         )
     }
 
-    /** Play local library [songs] as the queue, starting at [index]. */
-    fun playLocal(songs: List<MediaStoreItem>, index: Int) {
+    /** Play local library [songs] as the queue, starting at [index]. [shuffle] null keeps the user's shuffle mode. */
+    fun playLocal(songs: List<MediaStoreItem>, index: Int, shuffle: Boolean? = null) {
+        shuffle?.let(player::setShuffle)
         player.setQueue(songs.map { it.toLocalMedia() }, playIndex = index)
     }
 

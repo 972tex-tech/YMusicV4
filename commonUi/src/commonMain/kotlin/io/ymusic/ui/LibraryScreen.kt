@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -145,6 +146,7 @@ import io.ymusic.ui.resources.playlist_top_tracks
 import io.ymusic.ui.resources.playlist_top_tracks_desc
 import io.ymusic.ui.resources.queue_last
 import io.ymusic.ui.resources.queue_next
+import io.ymusic.ui.resources.shuffle_all
 import io.ymusic.ui.resources.sort_date_added
 import io.ymusic.ui.resources.sort_date_created
 import io.ymusic.ui.resources.sort_last_added
@@ -338,10 +340,17 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                     EmptyState(stringResource(Res.string.library_no_songs), onReload = null)
                                 } else {
                                     val sort = rememberSortState("songs", graph.settings)
+                                    val songs = sort.sort(loaded.songs, songSortOptions)
                                     SongList(
-                                        sort.sort(loaded.songs, songSortOptions),
+                                        songs,
                                         coordinator,
-                                        header = { SortBar(songSortOptions.map { it.label }, sort) },
+                                        header = {
+                                            SortBar(songSortOptions.map { it.label }, sort) {
+                                                LibraryChip(stringResource(Res.string.shuffle_all), selected = false, icon = Icons.Default.Shuffle) {
+                                                    coordinator.playLocal(songs, songs.indices.random(), shuffle = true)
+                                                }
+                                            }
+                                        },
                                     )
                                 }
                                 LibraryTab.Artists -> if (loaded.songs.isEmpty()) {
@@ -974,20 +983,6 @@ private fun PlaylistsTab(
     val open = selected
     val isUser = open != null && open.first > 0
     val sort = rememberSortState("playlists", graph.settings)
-    // The first item is always the header — the list-level toolbar, or the drill-down back-row. Both
-    // use the same row padding/height, so it stays put across the drill-in. A user playlist carries a
-    // sort control at the same end position as the list-level toolbar's (system playlists carry none).
-    val header: @Composable () -> Unit = {
-        if (open == null) {
-            PlaylistsToolbar(sort, transferMenu) { showCreate = true }
-        } else {
-            DrillDownHeader(
-                open.second,
-                onBack = { selected = null },
-                trailing = if (isUser) ({ SortControl(playlistSongSortOptions.map { it.label }, playlistSongSort) }) else null,
-            )
-        }
-    }
     // Level content: system playlists (shown at once) + user playlists at the list level; the opened
     // playlist's songs at the detail level (user playlists sorted by the detail sort control).
     val entries: List<PlaylistEntry> =
@@ -1000,6 +995,23 @@ private fun PlaylistsTab(
         open == null -> emptyList()
         isUser -> playlistSongSort.sort(userItems.orEmpty(), playlistSongSortOptions).map { it.mediaItem }
         else -> systemSongs.orEmpty()
+    }
+    // The first item is always the header — the list-level toolbar, or the drill-down back-row. Both
+    // use the same row padding/height, so it stays put across the drill-in. A user playlist carries a
+    // sort control at the same end position as the list-level toolbar's (system playlists carry none).
+    val header: @Composable () -> Unit = {
+        if (open == null) {
+            PlaylistsToolbar(sort, transferMenu) { showCreate = true }
+        } else {
+            DrillDownHeader(
+                open.second,
+                onBack = { selected = null },
+                trailing = {
+                    if (songs.isNotEmpty()) ShuffleAllButton(songs, coordinator)
+                    if (isUser) SortControl(playlistSongSortOptions.map { it.label }, playlistSongSort)
+                },
+            )
+        }
     }
     // A user playlist offers "Remove from playlist" on each song row; Top tracks offers "Remove"
     // (drops the watch-time row). Other system lists and the playlist index have neither.
@@ -1321,21 +1333,21 @@ private val OpenPlaylistSaver = listSaver<Pair<Long, String>?, Any>(
 
 /** The outlined chip from the mockup's quick-action row (`.qa .q`). */
 @Composable
-internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        label,
-        style = TextStyle(
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (selected) Color.White else DesignColors.Ink,
-        ),
-        modifier = Modifier
+internal fun LibraryChip(label: String, selected: Boolean, icon: ImageVector? = null, onClick: () -> Unit) {
+    val content = if (selected) Color.White else DesignColors.Ink
+    Row(
+        Modifier
             .clip(RoundedCornerShape(999.dp))
             .background(if (selected) DesignColors.Accent else Color.Transparent)
             .border(1.dp, if (selected) DesignColors.Accent else DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 7.dp),
-    )
+            .padding(start = if (icon != null) 10.dp else 13.dp, end = 13.dp, top = 7.dp, bottom = 7.dp),
+        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) Icon(icon, null, Modifier.size(16.dp), tint = content)
+        Text(label, style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = content))
+    }
 }
 
 /** The Library's tab row — the shared [UnderlineTabRow] (2dp sliding underline) with text labels. */
@@ -1546,6 +1558,9 @@ private fun GroupedList(
     val selected = group
     // Both levels sort: the group list by [groupSortOptions], a group's songs by [songSortOptions] —
     // the detail's control sits at the same end position as the list-level one, so it doesn't jump.
+    val entries: List<Pair<String, List<MediaStoreItem>>> = if (selected == null) sort.sort(grouped, groupSortOptions) else emptyList()
+    val groupSongs: List<MediaStoreItem> =
+        if (selected != null) songSort.sort(grouped.firstOrNull { it.first == selected }?.second.orEmpty(), songSortOptions) else emptyList()
     val header: @Composable () -> Unit = {
         if (selected == null) {
             SortBar(groupSortOptions.map { it.label }, sort)
@@ -1553,13 +1568,13 @@ private fun GroupedList(
             DrillDownHeader(
                 selected,
                 onBack = { group = null },
-                trailing = { SortControl(songSortOptions.map { it.label }, songSort) },
+                trailing = {
+                    if (groupSongs.isNotEmpty()) ShuffleAllButton(groupSongs, coordinator)
+                    SortControl(songSortOptions.map { it.label }, songSort)
+                },
             )
         }
     }
-    val entries: List<Pair<String, List<MediaStoreItem>>> = if (selected == null) sort.sort(grouped, groupSortOptions) else emptyList()
-    val groupSongs: List<MediaStoreItem> =
-        if (selected != null) songSort.sort(grouped.firstOrNull { it.first == selected }?.second.orEmpty(), songSortOptions) else emptyList()
 
     TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -1727,6 +1742,14 @@ internal fun DrillDownHeader(title: String, onBack: () -> Unit, trailing: (@Comp
             modifier = Modifier.weight(1f),
         )
         trailing?.invoke()
+    }
+}
+
+/** Plays [songs] shuffled from a random one — the icon-only twin of the Songs tab's Shuffle all chip. */
+@Composable
+private fun ShuffleAllButton(songs: List<MediaStoreItem>, coordinator: PlaybackCoordinator) {
+    IconButton(onClick = { coordinator.playLocal(songs, songs.indices.random(), shuffle = true) }, modifier = Modifier.size(32.dp)) {
+        Icon(Icons.Default.Shuffle, stringResource(Res.string.shuffle_all), Modifier.size(18.dp), tint = DesignColors.InkSoft)
     }
 }
 

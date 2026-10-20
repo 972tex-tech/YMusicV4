@@ -79,14 +79,20 @@ internal fun rememberSortState(id: String, settings: SettingsStore): SortState {
     return state
 }
 
-/** A full-width row that right-aligns the [SortControl] — used by tabs where sort is the only
- *  toolbar. The Folders tab instead drops [SortControl] into its scan row. */
+/** A full-width row that right-aligns the [SortControl], with optional [leading] actions on the
+ *  left. The Folders tab instead drops [SortControl] into its scan row. */
 @Composable
-internal fun SortBar(labels: List<StringResource>, state: SortState, modifier: Modifier = Modifier) {
+internal fun SortBar(
+    labels: List<StringResource>,
+    state: SortState,
+    modifier: Modifier = Modifier,
+    leading: (@Composable () -> Unit)? = null,
+) {
     Row(
         modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 16.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        leading?.invoke()
         Spacer(Modifier.weight(1f))
         SortControl(labels, state)
     }
