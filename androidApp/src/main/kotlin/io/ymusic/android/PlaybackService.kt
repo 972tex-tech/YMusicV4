@@ -35,12 +35,15 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.SettableFuture
 import io.ymusic.player.PlayableItem
+import io.ymusic.player.PlaybackState
 import io.ymusic.player.Player
+import io.ymusic.player.PlayerError
 import io.ymusic.player.isPlaying
 import io.ymusic.player.media3.Media3PlayerAdapter
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.SearchFocus
 import io.ymusic.ui.playFromSearch
+import io.ymusic.ui.playerErrorMessage
 import io.ymusic.ui.playhistory.PlayAgainStore
 import io.ymusic.ui.youtubeThumbUrl
 import kmpcommon.log.Logger
@@ -53,9 +56,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import projectcommon.error.runSuspendCatching
@@ -152,6 +157,8 @@ class PlaybackService : MediaLibraryService() {
             logger = log,
             applyMediaItems = { _, items, startIndex, _ -> applyBrowseItems(items, startIndex) },
             insertMediaItems = { target, index, items -> insertBrowseItems(target, index, items) },
+            errorMessage = { error -> errorText?.takeIf { it.first === error }?.second },
+            extraInvalidations = errorTextChanged,
         )
         bitmapLoader.delegate = graph.imageLoader?.let {
             ImageLoaderBitmapLoader(it, serviceScope, artworkAuthority(this@PlaybackService))
@@ -159,6 +166,12 @@ class PlaybackService : MediaLibraryService() {
         session?.player = adapter
         pendingPlayer?.release()
         pendingPlayer = null
+        serviceScope.launch {
+            player.status.map { (it.state as? PlaybackState.Error)?.error }.distinctUntilChanged().collect { error ->
+                errorText = error?.let { it to playerErrorMessage(it) }
+                errorTextChanged.emit(Unit)
+            }
+        }
         serviceScope.launch {
             combine(player.status, player.queue) { status, queue ->
                 isPlaying(status, queue) to queue.currentItem
@@ -170,6 +183,10 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private var resumeJob: Job? = null
+
+    /** The localized text for the player's current error, for controllers (Android Auto). */
+    private var errorText: Pair<PlayerError, String>? = null
+    private val errorTextChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     /** [playOrResume] once the graph exists. Single-flight: one play press reaches both
      *  onPlaybackResumption and the player's play, and two concurrent resumes would load the

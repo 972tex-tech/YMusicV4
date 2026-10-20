@@ -951,6 +951,24 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
 /** Engine track kind for YouTube auto-translate languages (clones of a source track, one per language). */
 private const val AUTO_TRANSLATE_KIND = "asrt"
 
+/** A playback failure for the user: a known category, else "Playback failed (code)". */
+internal fun playerErrorText(error: io.ymusic.player.PlayerError): UiText = when {
+    error.code == CAPTCHA_CODE -> UiText.Resource(Res.string.error_captcha)
+    error.code == "network" -> UiText.Resource(Res.string.error_network)
+    error.code == SUPERVISED_ACCOUNT_CODE -> UiText.Resource(Res.string.error_supervised_account)
+    error.code == io.ymusic.player.PlayerError.FILE_MISSING -> UiText.Resource(Res.string.playback_file_missing)
+    error.code == io.ymusic.player.PlayerError.VIDEO_DECODER_FAILED -> UiText.Resource(Res.string.playback_video_unsupported)
+    else -> when (error.playability()) {
+        Playability.SignInRequired -> UiText.Resource(Res.string.playback_sign_in_required)
+        Playability.Unavailable -> UiText.Resource(Res.string.playback_unavailable)
+        Playability.RetryLater -> UiText.Resource(Res.string.playback_retry_later)
+        null -> UiText.Resource(Res.string.playback_failed, error.code)
+    }
+}
+
+/** [playerErrorText] resolved off composition, for surfaces outside the app UI (Android Auto). */
+suspend fun playerErrorMessage(error: io.ymusic.player.PlayerError): String = playerErrorText(error).load()
+
 /**
  * The playback error on a dark panel at the bottom of the picture, above the overlay chrome so its actions
  * stay tappable, and lifted over the controls strip while that shows: up to two lines of message (a playability verdict, captcha or decoder verdict, else
@@ -990,20 +1008,7 @@ private fun BoxScope.PlaybackErrorText(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            when {
-                captcha -> stringResource(Res.string.error_captcha)
-                error.code == "network" -> stringResource(Res.string.error_network)
-                error.code == SUPERVISED_ACCOUNT_CODE -> stringResource(Res.string.error_supervised_account)
-                error.code == io.ymusic.player.PlayerError.FILE_MISSING -> stringResource(Res.string.playback_file_missing)
-                error.code == io.ymusic.player.PlayerError.VIDEO_DECODER_FAILED ->
-                    stringResource(Res.string.playback_video_unsupported)
-                else -> when (error.playability()) {
-                    Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
-                    Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
-                    Playability.RetryLater -> stringResource(Res.string.playback_retry_later)
-                    null -> stringResource(Res.string.playback_failed, error.code)
-                }
-            },
+            playerErrorText(error).resolve(),
             color = Color.White,
             fontSize = 13.sp,
             textAlign = TextAlign.Center,
