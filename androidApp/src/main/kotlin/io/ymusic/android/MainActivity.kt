@@ -238,6 +238,57 @@ class MainActivity : FragmentActivity() {
         return FeedbackFile(filename, bytes, contentType = contentResolver.getType(uri))
     }
 
+    private var pendingCreate: CompletableDeferred<android.net.Uri?>? = null
+    private val createDocumentLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            pendingCreate?.complete(result.data?.data?.takeIf { result.resultCode == RESULT_OK })
+            pendingCreate = null
+        }
+
+    private val createDocument: suspend (String, String) -> android.net.Uri? = { name, mimeType ->
+        pendingCreate?.complete(null)
+        val deferred = CompletableDeferred<android.net.Uri?>()
+        pendingCreate = deferred
+        withContext(Dispatchers.Main) {
+            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType(mimeType)
+                .putExtra(Intent.EXTRA_TITLE, name)
+            createDocumentLauncher.launch(intent)
+        }
+        deferred.await()
+    }
+
+    private var pendingOpen: CompletableDeferred<android.net.Uri?>? = null
+    private val openDocumentLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            pendingOpen?.complete(uri)
+            pendingOpen = null
+        }
+
+    private val openDocument: suspend (List<String>) -> android.net.Uri? = { mimeTypes ->
+        pendingOpen?.complete(null)
+        val deferred = CompletableDeferred<android.net.Uri?>()
+        pendingOpen = deferred
+        withContext(Dispatchers.Main) { openDocumentLauncher.launch(mimeTypes.toTypedArray()) }
+        deferred.await()
+    }
+
+    private var pendingPermission: CompletableDeferred<Boolean>? = null
+    private val permissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            pendingPermission?.complete(granted)
+            pendingPermission = null
+        }
+
+    private val requestPermission: suspend (String) -> Boolean = { permission ->
+        pendingPermission?.complete(false)
+        val deferred = CompletableDeferred<Boolean>()
+        pendingPermission = deferred
+        withContext(Dispatchers.Main) { permissionLauncher.launch(permission) }
+        deferred.await()
+    }
+
     private var pendingScan: CompletableDeferred<String?>? = null
     private val scanQr: suspend () -> String? = {
         pendingScan?.complete(null)
@@ -320,6 +371,15 @@ class MainActivity : FragmentActivity() {
         if (app.deviceOwnerAuth === confirmOwner) app.deviceOwnerAuth = null
         pendingOwner?.complete(false)
         pendingOwner = null
+        if (app.documentCreator === createDocument) app.documentCreator = null
+        pendingCreate?.complete(null)
+        pendingCreate = null
+        if (app.documentOpener === openDocument) app.documentOpener = null
+        pendingOpen?.complete(null)
+        pendingOpen = null
+        if (app.permissionRequester === requestPermission) app.permissionRequester = null
+        pendingPermission?.complete(false)
+        pendingPermission = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -346,6 +406,9 @@ class MainActivity : FragmentActivity() {
         (application as YMusicApplication).feedbackFilePicker = pickFeedbackFiles
         (application as YMusicApplication).qrScanner = scanQr
         (application as YMusicApplication).deviceOwnerAuth = confirmOwner
+        (application as YMusicApplication).documentCreator = createDocument
+        (application as YMusicApplication).documentOpener = openDocument
+        (application as YMusicApplication).permissionRequester = requestPermission
         sectionFor(intent)?.let { pendingSection.value = it }
         // A recreation re-delivers the launching intent; its link was already opened.
         if (savedInstanceState == null) openLink(intent)
