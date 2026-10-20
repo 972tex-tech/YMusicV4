@@ -28,6 +28,7 @@ internal fun youtubeThumbnailSources(videoId: String): List<ImageSource> = listO
  * names is one of these pictures); anything else is the url alone.
  */
 internal fun artRequestSources(url: String): Pair<String, List<ImageSource>> {
+    googleArtSources(url)?.let { return it }
     val videoId = youtubeVideoIdOf(url) ?: return imageCacheKey(url) to listOf(ImageSource(url))
     return youtubeImageKey(videoId) to youtubeThumbnailSources(videoId)
 }
@@ -40,9 +41,32 @@ internal fun artRequestSources(url: String): Pair<String, List<ImageSource>> {
 internal fun thumbRequestSources(thumbs: List<YtThumb>): Pair<String, List<ImageSource>>? {
     if (thumbs.isEmpty()) return null
     val listed = thumbs.map { ImageSource(it.url, it.w ?: 0, it.h ?: 0) }
+    val largest = thumbs.largestThumbUrl() ?: thumbs.last().url
+    googleArtSources(largest)?.let { (key, sized) -> return key to (sized + listed).distinctBy { it.url } }
     val videoId = thumbs.firstNotNullOfOrNull { youtubeVideoIdOf(it.url) }
-        ?: return imageCacheKey(thumbs.largestThumbUrl() ?: thumbs.last().url) to listed
+        ?: return imageCacheKey(largest) to listed
     return youtubeImageKey(videoId) to youtubeThumbnailSources(videoId) + listed
 }
+
+/**
+ * Identity + sizes for Google image-server art (`…googleusercontent.com/…=wN-hN…`, YT Music): the
+ * server scales the same image to any `=wN-hN` (capped at the original), so one url — whatever size
+ * it names — offers every view its fit. Null for any other url.
+ */
+internal fun googleArtSources(url: String): Pair<String, List<ImageSource>>? {
+    val match = GOOGLE_SIZED_ART.find(url) ?: return null
+    val (prefix, width, middle, height, rest) = match.destructured
+    val w = width.toIntOrNull()?.takeIf { it > 0 } ?: return null
+    val h = height.toIntOrNull()?.takeIf { it > 0 } ?: return null
+    val sources = GOOGLE_ART_SIZES.map { size ->
+        val sizedHeight = (size.toLong() * h / w).toInt()
+        ImageSource("$prefix$size$middle$sizedHeight$rest", size, sizedHeight)
+    }
+    return "$prefix$middle$rest" to sources
+}
+
+private val GOOGLE_ART_SIZES = listOf(120, 240, 480, 720)
+
+private val GOOGLE_SIZED_ART = Regex("""^(https?://[^/]+\.googleusercontent\.com/[^=]+=w)(\d+)(.*?-h)(\d+)(.*)$""")
 
 private val YTIMG_VIDEO = Regex("""^https?://i\d*\.ytimg\.com/vi(?:_webp)?/([A-Za-z0-9_-]{11})/""")
