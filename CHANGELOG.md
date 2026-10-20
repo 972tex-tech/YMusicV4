@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### NEW
+- Android: play by voice with Gemini or Google Assistant ("play Eminem on YMusic"), on the phone and in Android Auto ([8ceba3de9](https://github.com/ymusic-io/YMusicV4/commit/8ceba3de90106ab234992c9213309cab19965f6c))
+- Android Auto: your YouTube library (history, Watch later, Liked videos, subscriptions) in Discover ([5bf1149ca](https://github.com/ymusic-io/YMusicV4/commit/5bf1149ca10120f896d5888a8ed0c6f88aceb8d1))
+- Android Auto: shuffle and repeat buttons ([ad5bb9895](https://github.com/ymusic-io/YMusicV4/commit/ad5bb98955c03fd062be107b0aeff19e1ff6c5f5))
+- Back up and restore your playlists; on Android, import playlists from other music apps ([a699bd263..f682e498e](https://github.com/ymusic-io/YMusicV4/compare/0a2baec60c65482323e4b1317079dfa8d9843768...f682e498e6ffd122a9be63eb0e15fb1403fffe15))
+- Create a local playlist from the downloaded videos of a YouTube playlist ([332363518](https://github.com/ymusic-io/YMusicV4/commit/332363518c1be8c49b6b2209f203d7c809f3c03d))
+- Android: rotation lock button in fullscreen video ([0901988ec](https://github.com/ymusic-io/YMusicV4/commit/0901988ec64d0e6234a4d7b7fc4c69f690681d86))
+- "Index prefix" option when downloading a playlist numbers the files in playlist order ([dda3963fc](https://github.com/ymusic-io/YMusicV4/commit/dda3963fc1bf199082569176c1cdcf10cf72562c))
+- Terms of use and privacy policy, linked from Settings → About ([3b9e735b4..1d1f827f3](https://github.com/ymusic-io/YMusicV4/compare/947e33bf52aab79421c04e00701cabeb5006fbc0...1d1f827f37e150708a2a5132772bbf53d1454ca5))
+
+### FIXED
+- Android Auto: YMusic kept loading and showed nothing when the app wasn't already running ([b82f5ac77](https://github.com/ymusic-io/YMusicV4/commit/b82f5ac77bbdd30cffae6fff86ea537bf02c2e79))
+- Android Auto: YT Music albums and playlists didn't open ([162f9498c](https://github.com/ymusic-io/YMusicV4/commit/162f9498c5486815cdb1fa73c2cdf4470668c276))
+- With repeat one on, a video froze on its last frame after seeking to the end or skipping a SponsorBlock outro ([a26ae1633..f70bd983a](https://github.com/ymusic-io/YMusicV4/compare/119c329cfde5dca30c6e5ad87fad1b696085452e...f70bd983ad7b19776c5d366b2f0d7fa5f64e0dc8))
+- Playback could stay loading forever after a long listening session ([b0901d97c](https://github.com/ymusic-io/YMusicV4/commit/b0901d97ce8854090dc901a09ad1de6d775514db))
+- Search suggestions with accented letters (e.g. Vietnamese) came out garbled ([119c329cf](https://github.com/ymusic-io/YMusicV4/commit/119c329cfde5dca30c6e5ad87fad1b696085452e))
+- Right-to-left languages: the rewind and fast-forward buttons were swapped ([ce63e0b6c](https://github.com/ymusic-io/YMusicV4/commit/ce63e0b6ca4e873649b3325cca0c89ea105c03f5))
+- Library sort order reset to Name on every launch ([88505834a](https://github.com/ymusic-io/YMusicV4/commit/88505834a2cd320ae206f1336278c8f89751a0be))
+
+### IMPROVED
+- Sharper YT Music artwork in the feed, Now Playing, notification, widgets and Android Auto ([d13756a23..d708d47f1](https://github.com/ymusic-io/YMusicV4/compare/b143b0e8711a5b8babc77b59d40b35d429fae043...d708d47f1984c53091c11e892e74924ab0f5f18b))
+- Android Auto: menus follow the app's language, and a failed song shows a readable error ([8abe33f9f..b143b0e87](https://github.com/ymusic-io/YMusicV4/compare/dda3963fc1bf199082569176c1cdcf10cf72562c...b143b0e8711a5b8babc77b59d40b35d429fae043))
+- A playback failure from a lost connection says "Can't reach YouTube" instead of an error code ([abbe3f4e0](https://github.com/ymusic-io/YMusicV4/commit/abbe3f4e0d737c3ca04b8354d58110d22ca60dad))
+- A download whose connection dropped says "Network error" instead of "Something went wrong" ([982817918](https://github.com/ymusic-io/YMusicV4/commit/9828179186d76d6f49fe971e106107c82efdb59b))
+- Slow-loading videos no longer fail with a timeout too early ([2428c5aa4..151dcf4fd](https://github.com/ymusic-io/YMusicV4/compare/abbe3f4e0d737c3ca04b8354d58110d22ca60dad...151dcf4fd25a676c8220adef2775414d90b65dcc))
+- Android: the update dialog suggests downloading in the browser only after the install permission has been pending for an hour ([507e9d603](https://github.com/ymusic-io/YMusicV4/commit/507e9d603d587b855eb9397cf40abac024661025))
+
 ## 4.0.8
 
 ### FIXED
