@@ -56,8 +56,9 @@ import java.io.File
  * it, and nothing it writes afterwards reaches the dialog.
  *
  * A download or install the user asks for first needs the OS's install permission ("Install unknown
- * apps"); without it the user grants it ([allowInstall], continued in [onResume]), or — once a
- * downloaded APK has waited [BROWSER_FALLBACK_AFTER_MS] for it — takes the release from the browser.
+ * apps"); without it the user grants it ([allowInstall], continued in [onResume]), or takes the
+ * release from the browser — offered at once for a download, and for an install once the downloaded
+ * APK has waited [BROWSER_FALLBACK_AFTER_MS].
  */
 class AndroidAppUpdates(
     private val context: Context,
@@ -256,9 +257,10 @@ class AndroidAppUpdates(
     private fun needInstallPermission(update: AppUpdate, install: Boolean) {
         installAfterPermission = install
         val apk = apkFile(update)
-        // The APK's mtime is when its download finished.
-        val struggling = apk.isFile && System.currentTimeMillis() - apk.lastModified() >= BROWSER_FALLBACK_AFTER_MS
-        set(update.release, UpdateDownload.NeedsInstallPermission(offerBrowser = struggling))
+        // A download held back by the permission never writes the APK, so it can't age into the
+        // fallback; the browser is offered at once. The APK's mtime is when its download finished.
+        val offerBrowser = !install || (apk.isFile && System.currentTimeMillis() - apk.lastModified() >= BROWSER_FALLBACK_AFTER_MS)
+        set(update.release, UpdateDownload.NeedsInstallPermission(offerBrowser = offerBrowser))
     }
 
     override fun allowInstall() {
