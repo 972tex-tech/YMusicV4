@@ -98,6 +98,20 @@
             </intent-filter>
         </activity>
 
+        <!-- Gemini / Assistant "play X on YMusic" on the phone; see VoiceSearchActivity. -->
+        <activity
+            android:name=".VoiceSearchActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.YMusicV4.Share">
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- Share targets (a link shared from YouTube): one per action, like legacy; see ShareActivity. Its own
              empty affinity: never part of (or the root of) YMusic's task, or a repeat share only raises it. -->
         <activity

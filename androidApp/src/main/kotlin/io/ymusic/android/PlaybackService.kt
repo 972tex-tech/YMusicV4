@@ -3,12 +3,15 @@ package io.ymusic.android
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.SearchManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Bundle
 import android.os.PowerManager
+import android.provider.MediaStore
 import android.support.v4.media.session.MediaSessionCompat
 import android.view.KeyEvent
 import android.view.View
@@ -36,6 +39,8 @@ import io.ymusic.player.Player
 import io.ymusic.player.isPlaying
 import io.ymusic.player.media3.Media3PlayerAdapter
 import io.ymusic.ui.AppGraph
+import io.ymusic.ui.SearchFocus
+import io.ymusic.ui.playFromSearch
 import io.ymusic.ui.playhistory.PlayAgainStore
 import io.ymusic.ui.youtubeThumbUrl
 import kmpcommon.log.Logger
@@ -53,6 +58,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import projectcommon.error.runSuspendCatching
 import androidx.media3.session.R as Media3R
 
 /**
@@ -204,8 +210,8 @@ class PlaybackService : MediaLibraryService() {
         val chosen = items.getOrNull(startIndex) ?: items.firstOrNull() ?: return
         val id = chosen.mediaId
         when {
-            // Voice "play on YMusic" with nothing named.
-            id.isEmpty() -> resumeWhenReady()
+            // A voice request: no id, the words in requestMetadata (see onAddMediaItems).
+            id.isEmpty() -> playFromVoice(chosen.requestMetadata.searchQuery, chosen.requestMetadata.extras)
             id.startsWith(MediaBrowseTree.YT_SONG_PREFIX) -> {
                 val videoId = id.removePrefix(MediaBrowseTree.YT_SONG_PREFIX)
                 // A cache miss (process died since browsing) still plays from the id alone.
@@ -226,6 +232,23 @@ class PlaybackService : MediaLibraryService() {
                     if (index >= 0) coordinator.playLocal(songs, index)
                 }
             }
+        }
+    }
+
+    /** Gemini / Assistant "play [query] on YMusic" (Auto's play-from-search or [VoiceSearchActivity]);
+     *  a blank query ("play YMusic") resumes the last session. */
+    private fun playFromVoice(query: String?, extras: Bundle?) {
+        if (query.isNullOrBlank()) return resumeWhenReady()
+        serviceScope.launch {
+            ready.await()
+            val coordinator = coordinator ?: return@launch
+            val voiceLog = log?.fork("voice-search", extras?.getString(MediaStore.EXTRA_MEDIA_FOCUS)?.let { mapOf("focus" to it) })
+            val played = runSuspendCatching { coordinator.playFromSearch(query, searchFocus(extras)) }
+                .onFailure { voiceLog?.log(Logger.Level.WARN, "voice search failed", it) }
+                .getOrDefault(false)
+            if (!played) voiceLog?.log(Logger.Level.WARN, "voice search matched nothing playable")
+            // Nothing to play: no (playing × item) transition will demote the start's foreground.
+            if (player?.queue?.value?.currentItem == null) updateNotification()
         }
     }
 
@@ -371,23 +394,16 @@ class PlaybackService : MediaLibraryService() {
 
         /** Controllers send bare mediaIds; refill each from the tree so the adapter's queue items
          *  carry display metadata (an unknown id passes through — [applyBrowseItems] copes).
-         *  Voice ("play Eminem on YMusic") is one item with an empty mediaId and the words in
-         *  requestMetadata.searchQuery: it becomes the search results, the first one plays. */
+         *  A voice request is one item with an empty mediaId and the words + focus extras in
+         *  requestMetadata: it passes through untouched for [applyBrowseItems] to resolve. */
         override fun onAddMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>,
         ): ListenableFuture<MutableList<MediaItem>> = future {
+            if (mediaItems.singleOrNull()?.requestMetadata?.searchQuery != null) return@future mediaItems
             val tree = browseTree() ?: return@future mediaItems
-            val query = mediaItems.singleOrNull()?.requestMetadata?.searchQuery
-            if (query.isNullOrBlank()) {
-                mediaItems.map { tree.item(it.mediaId) ?: it }.toMutableList()
-            } else {
-                tree.searchItems(query)
-                    .filter { it.mediaMetadata.isPlayable == true }
-                    .ifEmpty { mediaItems }
-                    .toMutableList()
-            }
+            mediaItems.map { tree.item(it.mediaId) ?: it }.toMutableList()
         }
 
         /** "Play" with nothing queued (steering-wheel button, Auto's play on a fresh process):
@@ -472,6 +488,9 @@ class PlaybackService : MediaLibraryService() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_PLAY_FROM_SEARCH) {
+            playFromVoice(intent.getStringExtra(SearchManager.QUERY), intent.extras)
+        }
         intent?.action?.takeIf { it in WIDGET_ACTIONS }?.let { action ->
             serviceScope.launch { onWidgetCommand(action) }
         }
@@ -485,6 +504,13 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
+
+    // media3 stops a non-playing service when a task goes away; VoiceSearchActivity's own task ends
+    // the moment it forwards, before the request it handed over has played anything.
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (rootIntent?.component?.className == VoiceSearchActivity::class.java.name) return
+        super.onTaskRemoved(rootIntent)
+    }
 
     override fun onDestroy() {
         // Teardown steps are independent: one failing must not skip the rest (a held wake lock
@@ -749,4 +775,13 @@ private fun PlayableItem.toMediaMetadata(context: android.content.Context): Medi
     }
     target?.let { builder.setArtworkUri(artworkContentUri(context, it)) }
     return builder.build()
+}
+
+/** Android's voice-search focus extra (MediaStore.EXTRA_MEDIA_FOCUS) as a [SearchFocus]. */
+private fun searchFocus(extras: Bundle?): SearchFocus = when (extras?.getString(MediaStore.EXTRA_MEDIA_FOCUS)) {
+    MediaStore.Audio.Media.ENTRY_CONTENT_TYPE -> SearchFocus.Song
+    MediaStore.Audio.Artists.ENTRY_CONTENT_TYPE -> SearchFocus.Artist
+    MediaStore.Audio.Albums.ENTRY_CONTENT_TYPE -> SearchFocus.Album
+    MediaStore.Audio.Playlists.ENTRY_CONTENT_TYPE -> SearchFocus.Playlist
+    else -> SearchFocus.Any
 }
