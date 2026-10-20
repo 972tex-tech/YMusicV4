@@ -7,6 +7,8 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.session.MediaConstants
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtFeedPage
+import io.ymusic.dynamicengine.yt.extractAccountLibrary
+import io.ymusic.dynamicengine.yt.extractChannelDetail
 import io.ymusic.dynamicengine.yt.extractHomeFeed
 import io.ymusic.dynamicengine.yt.extractMusicCharts
 import io.ymusic.dynamicengine.yt.extractMusicExplore
@@ -15,6 +17,7 @@ import io.ymusic.dynamicengine.yt.extractMusicNewReleases
 import io.ymusic.dynamicengine.yt.extractPlaylistDetail
 import io.ymusic.dynamicengine.yt.extractTrendingMusicFeed
 import io.ymusic.dynamicengine.yt.search
+import io.ymusic.dynamicengine.yt.ytLoginStatus
 import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.player.PlayableItem
 import io.ymusic.ui.AppGraph
@@ -31,7 +34,8 @@ import io.ymusic.ui.youtubeThumbUrl
  *  - **Library** → Songs / Playlists (incl. the computed Recent-play & Top-tracks lists), straight
  *    from the local media store: always available, offline and logged-out.
  *  - **Discover** → Trending / Home, the `yt/…` engine feeds (anonymous Home is a nudge page — the
- *    folder simply comes back empty, matching the phone app's empty state).
+ *    folder simply comes back empty, matching the phone app's empty state), plus the signed-in
+ *    account library: History / Watch later / Liked / Subscriptions and the library shelves.
  *  - **YT Music** → Home / Explore / New releases / Charts, the `ytmusic/…` engine feeds.
  *
  * Feed shelves flatten into ONE list per folder, each item tagged with its shelf title via the
@@ -74,10 +78,20 @@ class MediaBrowseTree(private val context: Context, private val graph: AppGraph)
                 browsable(LIB_SONGS, context.getString(R.string.browse_library_songs)),
                 browsable(LIB_PLAYLISTS, context.getString(R.string.browse_library_playlists)),
             )
-            parentId == TAB_DISCOVER -> listOf(
-                browsable(DISC_TRENDING, context.getString(R.string.browse_discover_trending)),
-                browsable(DISC_HOME, context.getString(R.string.browse_discover_home)),
-            )
+            parentId == TAB_DISCOVER -> buildList {
+                add(browsable(DISC_TRENDING, context.getString(R.string.browse_discover_trending)))
+                add(browsable(DISC_HOME, context.getString(R.string.browse_discover_home)))
+                if (!graph.guest && graph.engines.ytLoginStatus()) {
+                    add(browsable(DISC_ACCOUNT, context.getString(R.string.browse_discover_account)))
+                }
+            }
+            // The nav links are the app's own (same as the phone's AccountLibraryScreen).
+            parentId == DISC_ACCOUNT -> listOf(
+                browsable(YT_FEED_PREFIX + "/feed/history", context.getString(R.string.browse_account_history)),
+                browsable(YT_LIST_PREFIX + "/playlist?list=WL", context.getString(R.string.browse_account_watch_later)),
+                browsable(YT_LIST_PREFIX + "/playlist?list=LL", context.getString(R.string.browse_account_liked)),
+                browsable(YT_FEED_PREFIX + "/feed/subscriptions", context.getString(R.string.browse_account_subscriptions)),
+            ) + feedChildren(graph.engines.extractAccountLibrary())
             parentId == TAB_YTMUSIC -> listOf(
                 browsable(YTM_HOME, context.getString(R.string.browse_ytmusic_home)),
                 browsable(YTM_EXPLORE, context.getString(R.string.browse_ytmusic_explore)),
@@ -96,6 +110,8 @@ class MediaBrowseTree(private val context: Context, private val graph: AppGraph)
             parentId == YTM_CHARTS -> feedChildren(graph.engines.extractMusicCharts())
             parentId.startsWith(YT_LIST_PREFIX) ->
                 feedChildren(graph.engines.extractPlaylistDetail(parentId.removePrefix(YT_LIST_PREFIX)))
+            parentId.startsWith(YT_FEED_PREFIX) ->
+                feedChildren(graph.engines.extractChannelDetail(parentId.removePrefix(YT_FEED_PREFIX)))
             else -> emptyList()
         }
         if (pageSize <= 0 || page < 0) return all
@@ -296,6 +312,7 @@ class MediaBrowseTree(private val context: Context, private val graph: AppGraph)
         const val LIB_PLAYLISTS = "lib_playlists"
         const val DISC_TRENDING = "disc_trending"
         const val DISC_HOME = "disc_home"
+        const val DISC_ACCOUNT = "disc_account"
         const val YTM_HOME = "ytm_home"
         const val YTM_EXPLORE = "ytm_explore"
         const val YTM_NEW = "ytm_new"
@@ -306,6 +323,9 @@ class MediaBrowseTree(private val context: Context, private val graph: AppGraph)
 
         /** Browsable engine playlist/album: `ytlist:<engine app link, verbatim>`. */
         const val YT_LIST_PREFIX = "ytlist:"
+
+        /** Browsable engine feed page (`/feed/…` app link, verbatim): `ytfeed:<link>`. */
+        const val YT_FEED_PREFIX = "ytfeed:"
 
         /** Playable local song: `song:<containerId>/<rowId>` — the container is the play context. */
         const val LOCAL_SONG_PREFIX = "song:"

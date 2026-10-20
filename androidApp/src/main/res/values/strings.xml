@@ -12,6 +12,11 @@
     <string name="browse_library_playlists">Playlists</string>
     <string name="browse_discover_trending">Trending</string>
     <string name="browse_discover_home">Home</string>
+    <string name="browse_discover_account">Your library</string>
+    <string name="browse_account_history">Watch history</string>
+    <string name="browse_account_watch_later">Watch later</string>
+    <string name="browse_account_liked">Liked videos</string>
+    <string name="browse_account_subscriptions">Subscriptions</string>
     <string name="browse_ytmusic_home">Home</string>
     <string name="browse_ytmusic_explore">Explore</string>
     <string name="browse_ytmusic_new">New releases</string>
