@@ -73,6 +73,9 @@ internal class PlayerImpl(
     private val _progress = MutableStateFlow(Progress())
     override val progress: StateFlow<Progress> = _progress.asStateFlow()
 
+    /** The engine's own play-head, without [progress]'s seek-target hold: a seek may land elsewhere. */
+    private val engineProgress = MutableStateFlow(Progress())
+
     private val _queue = MutableStateFlow(QueueState())
     override val queue: StateFlow<QueueState> = _queue.asStateFlow()
 
@@ -847,6 +850,7 @@ internal class PlayerImpl(
         } else {
             publishStatus(PlaybackStatus())
             _progress.value = Progress()
+            engineProgress.value = Progress()
         }
     }
 
@@ -856,6 +860,7 @@ internal class PlayerImpl(
     }
 
     private fun publishProgress(snapshot: Progress) {
+        engineProgress.value = snapshot
         val pending = pendingSeekMs
         if (pending != null) {
             pendingSeekTicks++
@@ -889,7 +894,7 @@ internal class PlayerImpl(
     private suspend fun skipSponsorLoop() {
         var skippedSeg: SkipSegment? = null
         var lastItem: PlayableItem? = null
-        _progress.collect { snapshot ->
+        engineProgress.collect { snapshot ->
             val playbackPosition = snapshot.positionMs
             var nowPlaying = controller.state.currentItem
             if (skippedSeg != null && (lastItem != nowPlaying || skipSegmentData == null)) {
