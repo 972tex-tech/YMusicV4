@@ -570,6 +570,7 @@ private fun FeedSections(
         val layout = feedLayoutFor(maxWidth)
         val columns = if (layout != FeedLayout.Grid) 1 else gridColumnsFor(maxWidth)
         val wide = layout == FeedLayout.WideList
+        val compactTitle = feedCompactTitleFor(maxWidth)
         val listState = hoistedListState ?: rememberLazyListState()
         // Report scroll to the shell (which lifts the app bar); the feed doesn't touch the bar itself.
         TrackScroll { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
@@ -603,6 +604,7 @@ private fun FeedSections(
                     columns = columns,
                     metrics = metrics,
                     wide = wide,
+                    compactTitle = compactTitle,
                     expanded = expanded[index] ?: !section.collapsible,
                     onToggle = { expanded[index] = !(expanded[index] ?: !section.collapsible) },
                     coordinator = coordinator,
@@ -638,6 +640,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     columns: Int,
     metrics: GridMetrics,
     wide: Boolean,
+    compactTitle: Boolean,
     expanded: Boolean,
     onToggle: () -> Unit,
     coordinator: PlaybackCoordinator,
@@ -700,6 +703,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                 actions = itemActions(item, coordinator),
                 onClick = itemClick(item, section, coordinator, onOpen, onPlayItem),
                 wide = wide,
+                compactTitle = compactTitle,
             )
         }
     } else {
@@ -932,13 +936,16 @@ internal fun rankMusicFirst(items: List<YtFeedItem>): List<YtFeedItem> {
 /** The three feed layout bands a surface width falls into. */
 internal enum class FeedLayout { SquareList, WideList, Grid }
 
-/** The ONE place the feed breakpoints live: square list under 380dp, 16:9 list to 469dp, then the
+/** The ONE place the feed breakpoints live: square list under 320dp, 16:9 list to 469dp, then the
  *  grid ([gridColumnsFor] columns). */
 internal fun feedLayoutFor(width: androidx.compose.ui.unit.Dp): FeedLayout = when {
-    width < 380.dp -> FeedLayout.SquareList
+    width < 320.dp -> FeedLayout.SquareList
     width < 470.dp -> FeedLayout.WideList
     else -> FeedLayout.Grid
 }
+
+/** Feed list rows under 380dp use [ListTitleCompactStyle]. */
+internal fun feedCompactTitleFor(width: androidx.compose.ui.unit.Dp): Boolean = width < 380.dp
 
 /** Max-item-width model: the FEWEST columns (≥2) keeping every card ≤ [GRID_CARD_MAX_WIDTH], with
  *  the gutter between columns counted. Cards shrink toward the next column, never past the max. */

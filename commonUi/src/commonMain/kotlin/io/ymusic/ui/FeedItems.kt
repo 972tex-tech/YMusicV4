@@ -95,6 +95,8 @@ import org.jetbrains.compose.resources.stringResource
 
 internal val ListTitleStyle: TextStyle @Composable get() =
     TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink, lineHeight = 17.5.sp)
+internal val ListTitleCompactStyle: TextStyle @Composable get() =
+    TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink, lineHeight = 16.sp)
 internal val ListSubStyle: TextStyle @Composable get() = TextStyle(fontSize = 11.5.sp, color = DesignColors.InkSecondary)
 internal val GridTitleStyle: TextStyle @Composable get() =
     TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink, lineHeight = 15.6.sp)
@@ -231,7 +233,7 @@ fun SectionHeader(
 }
 
 /** video / playlist / channel — list form, one row size per band: 92dp square thumb, or 16:9
- *  160×90 when [wide] (the [FeedLayout.WideList] band). */
+ *  160×90 when [wide] (the [FeedLayout.WideList] band). [compactTitle] on narrow screens ([feedCompactTitleFor]). */
 @Composable
 fun FeedListItem(
     item: YtFeedItem,
@@ -239,6 +241,7 @@ fun FeedListItem(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     wide: Boolean = false,
+    compactTitle: Boolean = false,
 ) {
     Row(
         modifier
@@ -266,7 +269,7 @@ fun FeedListItem(
         Column(Modifier.weight(1f).padding(end = if (bare) 12.dp else 0.dp)) {
             Text(
                 item.title,
-                style = ListTitleStyle,
+                style = if (compactTitle) ListTitleCompactStyle else ListTitleStyle,
                 maxLines = if (wide) 3 else 2,
                 overflow = TextOverflow.Ellipsis,
             )
