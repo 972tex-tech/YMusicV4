@@ -73,12 +73,14 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.model.MediaStoreBucket
@@ -553,10 +555,10 @@ private fun FoldersTab(
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(columns),
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
+                        contentPadding = PaddingValues(start = LibraryGridPadding, end = LibraryGridPadding, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                         state = folderGridState,
                     ) {
-                        item(span = { GridItemSpan(maxLineSpan) }) { header() }
+                        item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.bleedGridPadding()) { header() } }
                         items(sortedFolders, key = { "b${it.id}" }) { bucket ->
                             LibraryGridCard(
                                 icon = Icons.Default.Folder,
@@ -574,7 +576,7 @@ private fun FoldersTab(
                             key = { sortedItems[it.first()].id },
                             span = { GridItemSpan(maxLineSpan) },
                         ) { group ->
-                            Row(Modifier.fillMaxWidth()) {
+                            Row(Modifier.bleedGridPadding()) {
                                 group.forEach { i ->
                                     Box(Modifier.weight(1f)) { SongRow(sortedItems[i], coordinator) { coordinator.playLocal(sortedItems, i) } }
                                 }
@@ -605,6 +607,16 @@ private fun FoldersTab(
 /** The width at/above which the Library's browse grids appear (below it, a single-column list). The
  *  Library sets its own breakpoint rather than borrowing the Discover video feed's. */
 internal val LibraryGridMinWidth = 480.dp
+
+/** A library grid's side padding; with a card's own 6dp it puts card content on the 16dp inset. */
+internal val LibraryGridPadding = 10.dp
+
+/** Full width plus [LibraryGridPadding] on each side, for a full-span grid row that carries its own 16dp inset. */
+private fun Modifier.bleedGridPadding(): Modifier = layout { measurable, constraints ->
+    val bleed = LibraryGridPadding.roundToPx()
+    val placeable = measurable.measure(constraints.offset(horizontal = 2 * bleed))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-bleed, 0) }
+}
 
 /** The fixed height of a tab's sub-toolbar band — the sort/scan/breadcrumb toolbar and the drill-down
  *  back-row all use it, with their content vertically centered, so any element's center sits at the
@@ -1038,10 +1050,10 @@ private fun PlaylistsTab(
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
+                    contentPadding = PaddingValues(start = LibraryGridPadding, end = LibraryGridPadding, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                     state = gridState,
                 ) {
-                    item(span = { GridItemSpan(maxLineSpan) }) { header() }
+                    item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.bleedGridPadding()) { header() } }
                     if (open == null) {
                         items(entries, key = { it.id }) { entry ->
                             PlaylistCard(entry, onOpen = { selected = it }, onRename = { renaming = it }, onDelete = { deleting = it })
@@ -1054,7 +1066,7 @@ private fun PlaylistsTab(
                             key = { songs[it.first()].id },
                             span = { GridItemSpan(maxLineSpan) },
                         ) { group ->
-                            Row(Modifier.fillMaxWidth()) {
+                            Row(Modifier.bleedGridPadding()) {
                                 group.forEach { i -> Box(Modifier.weight(1f)) { SongRow(songs[i], coordinator) { coordinator.playLocal(songs, i) } } }
                                 repeat(perRow - group.size) { Spacer(Modifier.weight(1f)) }
                             }
