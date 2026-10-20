@@ -9,6 +9,7 @@ import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.mediastore.model.Playlist
 import io.ymusic.mediastore.model.PlaylistItem
 import io.ymusic.mediastore.model.PlaylistItemDetail
+import io.ymusic.mediastore.model.PlaylistSnapshot
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.flow.Flow
 
@@ -109,6 +110,14 @@ interface BetterMediaStore {
 
     /** Replace the playlist's order with [orderedCodes] (the codes already in it, in the new order). */
     suspend fun reorderPlaylist(playlistId: Long, orderedCodes: List<String>)
+
+    /**
+     * Write [snapshots] in one transaction. [replaceAll] deletes every playlist first and recreates the
+     * snapshots exactly (order, createdAt, addedAt). Otherwise each snapshot merges into the playlist with
+     * the same name (case-insensitive, the oldest when several match) or a new one, appending only codes
+     * not already in it.
+     */
+    suspend fun restorePlaylists(snapshots: List<PlaylistSnapshot>, replaceAll: Boolean)
 
     suspend fun playlistItems(playlistId: Long): List<PlaylistItem>
 
