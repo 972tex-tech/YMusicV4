@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -34,9 +33,6 @@ internal class PlayerImpl(
 
     private var playWhenReadyIntent = false
     private var released = false
-    /** Seek target held across in-flight ticks whose play-head is still the pre-seek position. */
-    private var pendingSeekMs: Long? = null
-    private var pendingSeekTicks = 0
 
     /** Monotonic stamp for the `Pair<String, Long>` preference fields — freshest choice wins a restore. */
     private var configSeq = 0L
@@ -72,9 +68,6 @@ internal class PlayerImpl(
 
     private val _progress = MutableStateFlow(Progress())
     override val progress: StateFlow<Progress> = _progress.asStateFlow()
-
-    /** The engine's own play-head, without [progress]'s seek-target hold: a seek may land elsewhere. */
-    private val engineProgress = MutableStateFlow(Progress())
 
     private val _queue = MutableStateFlow(QueueState())
     override val queue: StateFlow<QueueState> = _queue.asStateFlow()
@@ -265,9 +258,6 @@ internal class PlayerImpl(
         if (released) return
         val engine = _currentEngine.value ?: return
         val ms = positionMs.coerceAtLeast(0L)
-        pendingSeekMs = ms
-        pendingSeekTicks = 0
-        _progress.value = _progress.value.copy(positionMs = ms)
         engine.seekTo(ms)
     }
 
@@ -616,7 +606,6 @@ internal class PlayerImpl(
 
     private fun loadCurrent(startPositionMs: Long) {
         val item = controller.state.currentItem ?: return
-        clearPendingSeek()
         loadGeneration++
         val gen = loadGeneration
         when (item) {
@@ -784,7 +773,7 @@ internal class PlayerImpl(
         }
         engineJobs += scope.launch {
             engine.progress.collect {
-                publishProgress(it)
+                _progress.value = it
                 maybePreloadNext()
             }
         }
@@ -843,36 +832,13 @@ internal class PlayerImpl(
     private fun stopActive() {
         prepareJob?.cancel()
         holdPrepareTimeout = false
-        clearPendingSeek()
         val engine = _currentEngine.value
         if (engine != null) {
             engine.stop()
         } else {
             publishStatus(PlaybackStatus())
             _progress.value = Progress()
-            engineProgress.value = Progress()
         }
-    }
-
-    private fun clearPendingSeek() {
-        pendingSeekMs = null
-        pendingSeekTicks = 0
-    }
-
-    private fun publishProgress(snapshot: Progress) {
-        engineProgress.value = snapshot
-        val pending = pendingSeekMs
-        if (pending != null) {
-            pendingSeekTicks++
-            val close = abs(snapshot.positionMs - pending) <= SEEK_SETTLE_MS
-            if (pendingSeekTicks == 1 || !close) {
-                _progress.value = snapshot.copy(positionMs = pending)
-                if (pendingSeekTicks >= SEEK_HOLD_TICKS) pendingSeekMs = null
-                return
-            }
-            pendingSeekMs = null
-        }
-        _progress.value = snapshot
     }
 
     private fun setPlayWhenReadyIntent(value: Boolean) {
@@ -894,7 +860,7 @@ internal class PlayerImpl(
     private suspend fun skipSponsorLoop() {
         var skippedSeg: SkipSegment? = null
         var lastItem: PlayableItem? = null
-        engineProgress.collect { snapshot ->
+        _progress.collect { snapshot ->
             val playbackPosition = snapshot.positionMs
             var nowPlaying = controller.state.currentItem
             if (skippedSeg != null && (lastItem != nowPlaying || skipSegmentData == null)) {
@@ -981,12 +947,6 @@ internal class PlayerImpl(
 
         /** UniPlayer `tryMakePlayerReady` timeout, for the engines that do not bound their own init. */
         const val PREPARE_TIMEOUT_MS = 10_000L
-
-        /** A listen tick within this of the seek target counts as landed. */
-        const val SEEK_SETTLE_MS = 500L
-
-        /** Give up the hold so a failed seek cannot pin the play-head forever. */
-        const val SEEK_HOLD_TICKS = 25
 
         const val MIN_SKIP_LENGTH_MS = 1_000L
 
