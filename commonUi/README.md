@@ -44,6 +44,12 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
   A playlist queue's `QueueSource.resumeToken` (the `NextQueueSource` step: radio, playlist position or continuation) is saved with the
   session, so a resumed playlist keeps loading from where it had reached.
 
+- **Playlist transfer** (`PlaylistTransfer.kt`) — the Playlists tab's ⋮ menu: Import from device (shell
+  `DevicePlaylistSource`; Android reads MediaStore playlists and keeps only members matching a Library item, merged
+  by name), Back up (`createDocument` → a `ymusic.playlists` v1 JSON of every user playlist's codes) and Restore
+  (`openDocument` → Merge by name or Replace all, via `BetterMediaStore.restorePlaylists`). Smart playlists are
+  never included. Each action hides when its `AppGraph` seam is null.
+
 - **Thumbnails** — render through `:image-loader` (`LocalImageLoader` provided from `AppGraph.imageLoader`; null
   keeps placeholder boxes).
 

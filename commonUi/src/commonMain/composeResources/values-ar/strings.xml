@@ -618,4 +618,68 @@
     <string name="link_queued_last">تمت الإضافة إلى نهاية قائمة الانتظار</string>
     <string name="menu_details_comments">التفاصيل والتعليقات</string>
     <string name="menu_speed_pitch">السرعة وطبقة الصوت</string>
+    <string name="playlist_menu_import_device">استيراد من الجهاز</string>
+    <string name="playlist_menu_backup">نسخ قوائم التشغيل احتياطيًا</string>
+    <string name="playlist_menu_restore">استعادة قوائم التشغيل</string>
+    <string name="playlist_import_title">استيراد قوائم التشغيل</string>
+    <string name="playlist_import_desc">قوائم التشغيل من تطبيقات الموسيقى الأخرى على هذا الجهاز.</string>
+    <string name="playlist_import_select_all">تحديد الكل</string>
+    <string name="playlist_import_hint">تُضاف الأغاني الموجودة في مكتبتك فقط. تُدمج قوائم التشغيل التي تحمل الاسم نفسه.</string>
+    <string name="playlist_import_confirm">استيراد</string>
+    <string name="playlist_import_confirm_count">استيراد (%1$d)</string>
+    <string name="playlist_import_empty">لم يُعثر على قوائم تشغيل على هذا الجهاز.</string>
+    <string name="playlist_import_permission">اسمح بالوصول إلى الموسيقى لاستيراد قوائم التشغيل</string>
+    <string name="playlist_import_none_matched">لا توجد أي من هذه الأغاني في مكتبتك</string>
+    <plurals name="playlist_import_result">
+        <item quantity="zero">تم استيراد %1$d قائمة تشغيل · %2$d من %3$d أغنية</item>
+        <item quantity="one">تم استيراد قائمة تشغيل واحدة · %2$d من %3$d أغنية</item>
+        <item quantity="two">تم استيراد قائمتي تشغيل · %2$d من %3$d أغنية</item>
+        <item quantity="few">تم استيراد %1$d قوائم تشغيل · %2$d من %3$d أغنية</item>
+        <item quantity="many">تم استيراد %1$d قائمة تشغيل · %2$d من %3$d أغنية</item>
+        <item quantity="other">تم استيراد %1$d قائمة تشغيل · %2$d من %3$d أغنية</item>
+    </plurals>
+    <plurals name="playlist_backup_result">
+        <item quantity="zero">تم نسخ %1$d قائمة تشغيل احتياطيًا</item>
+        <item quantity="one">تم نسخ قائمة تشغيل واحدة احتياطيًا</item>
+        <item quantity="two">تم نسخ قائمتي تشغيل احتياطيًا</item>
+        <item quantity="few">تم نسخ %1$d قوائم تشغيل احتياطيًا</item>
+        <item quantity="many">تم نسخ %1$d قائمة تشغيل احتياطيًا</item>
+        <item quantity="other">تم نسخ %1$d قائمة تشغيل احتياطيًا</item>
+    </plurals>
+    <string name="playlist_restore_title">استعادة قوائم التشغيل</string>
+    <string name="playlist_restore_merge">دمج</string>
+    <string name="playlist_restore_merge_desc">أضف الأغاني إلى قوائم التشغيل التي تحمل الاسم نفسه. تبقى قوائم التشغيل الأخرى كما هي.</string>
+    <string name="playlist_restore_replace">استبدال</string>
+    <plurals name="playlist_restore_replace_desc">
+        <item quantity="zero">احذف قوائم التشغيل الحالية (%1$d) واستعد النسخة الاحتياطية كما هي.</item>
+        <item quantity="one">احذف قائمة التشغيل الحالية واستعد النسخة الاحتياطية كما هي.</item>
+        <item quantity="two">احذف قائمتي التشغيل الحاليتين واستعد النسخة الاحتياطية كما هي.</item>
+        <item quantity="few">احذف قوائم التشغيل الحالية (%1$d) واستعد النسخة الاحتياطية كما هي.</item>
+        <item quantity="many">احذف قوائم التشغيل الحالية (%1$d) واستعد النسخة الاحتياطية كما هي.</item>
+        <item quantity="other">احذف قوائم التشغيل الحالية (%1$d) واستعد النسخة الاحتياطية كما هي.</item>
+    </plurals>
+    <string name="playlist_restore_replace_desc_none">استعد النسخة الاحتياطية كما هي.</string>
+    <string name="playlist_restore_confirm">استعادة</string>
+    <plurals name="playlist_restore_result">
+        <item quantity="zero">تمت استعادة %1$d قائمة تشغيل</item>
+        <item quantity="one">تمت استعادة قائمة تشغيل واحدة</item>
+        <item quantity="two">تمت استعادة قائمتي تشغيل</item>
+        <item quantity="few">تمت استعادة %1$d قوائم تشغيل</item>
+        <item quantity="many">تمت استعادة %1$d قائمة تشغيل</item>
+        <item quantity="other">تمت استعادة %1$d قائمة تشغيل</item>
+    </plurals>
+    <string name="playlist_restore_failed_title">تتعذر الاستعادة</string>
+    <string name="error_playlist_backup_invalid">هذا الملف ليس نسخة احتياطية لقوائم تشغيل YMusic.</string>
+    <string name="error_playlist_backup_newer">أُنشئت هذه النسخة الاحتياطية بإصدار أحدث من YMusic. حدّث التطبيق لاستعادتها.</string>
+    <plurals name="n_playlists">
+        <item quantity="zero">%1$d قائمة تشغيل</item>
+        <item quantity="one">قائمة تشغيل واحدة</item>
+        <item quantity="two">قائمتا تشغيل</item>
+        <item quantity="few">%1$d قوائم تشغيل</item>
+        <item quantity="many">%1$d قائمة تشغيل</item>
+        <item quantity="other">%1$d قائمة تشغيل</item>
+    </plurals>
+    <string name="playlists_empty_title">لا توجد قوائم تشغيل بعد</string>
+    <string name="playlists_empty_desc">انقل قوائم التشغيل من تطبيق موسيقى آخر، أو استعد نسخة احتياطية.</string>
+    <string name="playlists_empty_restore">استعادة نسخة احتياطية</string>
 </resources>

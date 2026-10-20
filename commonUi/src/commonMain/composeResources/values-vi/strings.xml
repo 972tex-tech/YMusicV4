@@ -623,4 +623,43 @@
     <string name="link_queued_last">Đã thêm vào cuối danh sách phát</string>
     <string name="menu_details_comments">Chi tiết &amp; bình luận</string>
     <string name="menu_speed_pitch">Tốc độ &amp; cao độ</string>
+    <string name="playlist_menu_import_device">Nhập từ thiết bị</string>
+    <string name="playlist_menu_backup">Sao lưu danh sách phát</string>
+    <string name="playlist_menu_restore">Khôi phục danh sách phát</string>
+    <string name="playlist_import_title">Nhập danh sách phát</string>
+    <string name="playlist_import_desc">Danh sách phát từ các ứng dụng nghe nhạc khác trên thiết bị này.</string>
+    <string name="playlist_import_select_all">Chọn tất cả</string>
+    <string name="playlist_import_hint">Chỉ thêm những bài đã có trong Thư viện. Danh sách phát trùng tên sẽ được gộp.</string>
+    <string name="playlist_import_confirm">Nhập</string>
+    <string name="playlist_import_confirm_count">Nhập (%1$d)</string>
+    <string name="playlist_import_empty">Không tìm thấy danh sách phát nào trên thiết bị này.</string>
+    <string name="playlist_import_permission">Cho phép truy cập nhạc để nhập danh sách phát</string>
+    <string name="playlist_import_none_matched">Không bài nào trong số này có trong Thư viện</string>
+    <plurals name="playlist_import_result">
+        <item quantity="other">Đã nhập %1$d danh sách phát · %2$d/%3$d bài</item>
+    </plurals>
+    <plurals name="playlist_backup_result">
+        <item quantity="other">Đã sao lưu %1$d danh sách phát</item>
+    </plurals>
+    <string name="playlist_restore_title">Khôi phục danh sách phát</string>
+    <string name="playlist_restore_merge">Gộp</string>
+    <string name="playlist_restore_merge_desc">Thêm bài vào danh sách phát trùng tên. Các danh sách phát khác được giữ nguyên.</string>
+    <string name="playlist_restore_replace">Thay thế</string>
+    <plurals name="playlist_restore_replace_desc">
+        <item quantity="other">Xoá %1$d danh sách phát hiện có và khôi phục đúng như bản sao lưu.</item>
+    </plurals>
+    <string name="playlist_restore_replace_desc_none">Khôi phục đúng như bản sao lưu.</string>
+    <string name="playlist_restore_confirm">Khôi phục</string>
+    <plurals name="playlist_restore_result">
+        <item quantity="other">Đã khôi phục %1$d danh sách phát</item>
+    </plurals>
+    <string name="playlist_restore_failed_title">Không thể khôi phục</string>
+    <string name="error_playlist_backup_invalid">Tệp này không phải bản sao lưu danh sách phát của YMusic.</string>
+    <string name="error_playlist_backup_newer">Bản sao lưu này được tạo bởi phiên bản YMusic mới hơn. Hãy cập nhật ứng dụng để khôi phục.</string>
+    <plurals name="n_playlists">
+        <item quantity="other">%1$d danh sách phát</item>
+    </plurals>
+    <string name="playlists_empty_title">Chưa có danh sách phát</string>
+    <string name="playlists_empty_desc">Chuyển danh sách phát từ ứng dụng nghe nhạc khác sang, hoặc khôi phục bản sao lưu.</string>
+    <string name="playlists_empty_restore">Khôi phục bản sao lưu</string>
 </resources>

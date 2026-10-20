@@ -331,7 +331,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                     downloadLocation = downloadLocation,
                                     onToggleDownloadLocation = onToggleDownloadLocation,
                                 )
-                                LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator, graph.playHistory)
+                                LibraryTab.Playlists -> PlaylistsTab(store, graph, loaded, coordinator, graph.playHistory)
                                 LibraryTab.Songs -> if (loaded.songs.isEmpty()) {
                                     EmptyState(stringResource(Res.string.library_no_songs), onReload = null)
                                 } else {
@@ -861,6 +861,7 @@ private val smartPlaylists = listOf(
 @Composable
 private fun PlaylistsTab(
     store: BetterMediaStore,
+    graph: AppGraph,
     content: LibraryContent,
     coordinator: PlaybackCoordinator,
     playHistory: PlayHistoryStore?,
@@ -956,6 +957,11 @@ private fun PlaylistsTab(
         )
     }
 
+    val transfer = rememberPlaylistTransferState(store, graph) { refreshTick++ }
+    PlaylistTransferDialogs(transfer, userPlaylistCount = userLists.orEmpty().size)
+    val transferMenu = playlistTransferMenu(transfer, hasUserPlaylists = !userLists.isNullOrEmpty())
+    val showEmptyHint = userLists?.isEmpty() == true && (transfer.canImport || transfer.canRestore)
+
     val open = selected
     val isUser = open != null && open.first > 0
     val sort = rememberSortState("sort.playlists")
@@ -964,7 +970,7 @@ private fun PlaylistsTab(
     // sort control at the same end position as the list-level toolbar's (system playlists carry none).
     val header: @Composable () -> Unit = {
         if (open == null) {
-            PlaylistsToolbar(sort) { showCreate = true }
+            PlaylistsToolbar(sort, transferMenu) { showCreate = true }
         } else {
             DrillDownHeader(
                 open.second,
@@ -1019,6 +1025,7 @@ private fun PlaylistsTab(
                         items(entries, key = { it.id }) { entry ->
                             PlaylistCard(entry, onOpen = { selected = it }, onRename = { renaming = it }, onDelete = { deleting = it })
                         }
+                        if (showEmptyHint) item("empty", span = { GridItemSpan(maxLineSpan) }) { NoPlaylistsHint(transfer) }
                     } else {
                         val perRow = librarySongColumns(maxWidth)
                         items(
@@ -1040,6 +1047,7 @@ private fun PlaylistsTab(
                         items(entries, key = { it.id }) { entry ->
                             PlaylistRow(entry, onOpen = { selected = it }, onRename = { renaming = it }, onDelete = { deleting = it })
                         }
+                        if (showEmptyHint) item("empty") { NoPlaylistsHint(transfer) }
                     } else {
                         itemsIndexed(songs, key = { _, s -> s.id }) { i, song ->
                             SongRow(song, coordinator) { coordinator.playLocal(songs, i) }
@@ -1115,9 +1123,9 @@ private fun playlistActions(playlist: Playlist, onRename: () -> Unit, onDelete: 
     return ItemActions(listOf(rename to onRename, delete to onDelete))
 }
 
-/** The Playlists toolbar: the "+ New playlist" pill on the left, the sort control on the right. */
+/** The Playlists toolbar: the "+ New playlist" pill on the left, the sort control and [menu] on the right. */
 @Composable
-private fun PlaylistsToolbar(sort: SortState, onCreate: () -> Unit) {
+private fun PlaylistsToolbar(sort: SortState, menu: ItemActions?, onCreate: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 16.dp, end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1126,6 +1134,7 @@ private fun PlaylistsToolbar(sort: SortState, onCreate: () -> Unit) {
         LibraryChip(stringResource(Res.string.playlist_new), selected = false, onClick = onCreate)
         Spacer(Modifier.weight(1f))
         SortControl(playlistSortOptions.map { it.label }, sort)
+        if (menu != null) MoreMenu(menu)
     }
 }
 

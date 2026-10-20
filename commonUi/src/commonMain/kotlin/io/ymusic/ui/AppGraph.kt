@@ -181,6 +181,14 @@ class AppGraph(
      * rest of the feedback form still works.
      */
     val pickFeedbackFiles: (suspend () -> List<FeedbackFile>)? = null,
+    /** The OS "save as" picker: a sink into the chosen file (the caller closes it), null when canceled.
+     *  Null hides playlist backup. */
+    val createDocument: (suspend (suggestedName: String, mimeType: String) -> okio.Sink?)? = null,
+    /** The OS file picker: a source over the chosen file (the caller closes it), null when canceled.
+     *  Null hides playlist restore. */
+    val openDocument: (suspend (mimeTypes: List<String>) -> okio.Source?)? = null,
+    /** Playlists other apps registered with the OS; null hides "Import from device". */
+    val devicePlaylists: DevicePlaylistSource? = null,
     /**
      * The shell's self-updater; null where the platform store owns updates (iOS) or the shell
      * has none — the update prompt and its setting then never appear.
