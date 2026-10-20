@@ -917,7 +917,11 @@ internal class PlayerImpl(
             if (!_status.value.state.isPlaying() || nowPlaying != skipSegmentData?.playableItem) {
                 return@collect
             }
-            if (finishesTrack(nearest, snapshot.durationMs)) onTrackEnded() else seekTo(endTime)
+            when {
+                finishesTrack(nearest, snapshot.durationMs) -> onTrackEnded()
+                loopsTrack(nearest, snapshot.durationMs) -> seekTo(skipRestartMs())
+                else -> seekTo(endTime)
+            }
             skippedSeg = nearest
             lastItem = nowPlaying
         }
@@ -941,6 +945,13 @@ internal class PlayerImpl(
         if (controller.state.loopMode == LoopMode.One) return false
         if ((controller.state.currentItem as? PlayableItem.YtMedia)?.live == true) return false
         return prepareNextIndex != null
+    }
+
+    /** Loop-one restarts at an outro: a seek onto the MSE tail stalls paused instead of ending, so it never loops. */
+    private fun loopsTrack(segment: SkipSegment, durationMs: Long): Boolean {
+        if (durationMs <= 0L || segment.startMs + segment.lengthMs < durationMs - OUTRO_TOLERANCE_MS) return false
+        if ((controller.state.currentItem as? PlayableItem.YtMedia)?.live == true) return false
+        return controller.state.loopMode == LoopMode.One && !_sleepAfterCurrent.value
     }
 
     private data class SkipSegmentData(
