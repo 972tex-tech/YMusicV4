@@ -88,9 +88,11 @@ E20151 D player/init player config carries no jsUrl (engine-js logic/player/boot
 E20152 D player/init base.js failed to evaluate (truncated/corrupt body or YouTube JS change) (engine-js logic/player/boot.ts)
 E20153 D player/init ytcfg lacks WEB_PLAYER_CONTEXT_CONFIG_ID_KEVLAR_WATCH after base.js eval (engine-js logic/player/boot.ts)
 E20154 D http exchange ended by a cancellation the JS client did not request, after or before the head (dynamic-engine internal/HttpProtocol.kt serveHttp)
-E20155 - player/init session scrape (get_player_config) not done within 15 s (engine-js logic/player/boot.ts)
-E20156 - player/init BotGuard (interpreter + snapshot + GenerateIT) not done within 15 s (engine-js logic/player/boot.ts)
-E20157 - player/init base.js download not done within 15 s (engine-js logic/player/boot.ts)
+E20155 - player/init (or PO-token minter) 20 s deadline hit with the session scrape (get_player_config) the earliest step still running (engine-js logic/player/boot.ts)
+E20156 - player/init (or PO-token minter) 20 s deadline hit with BotGuard (interpreter + snapshot + GenerateIT) the earliest step still running (engine-js logic/player/boot.ts)
+E20157 - player/init 20 s deadline hit with the base.js download the earliest step still running (engine-js logic/player/boot.ts)
+E20158 - player/init (or PO-token minter) 20 s deadline hit with the player storage hydrate the earliest step still running (engine-js logic/player/boot.ts)
+E20159 - player/init (or PO-token minter) 20 s deadline hit with no tracked step running (engine-js logic/player/boot.ts)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 

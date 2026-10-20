@@ -672,19 +672,71 @@ async function fetchPlayerConfig(): Promise<Record<string, unknown>> {
   });
 }
 
-const SESSION_STEP_MS = 15000;
-const BOTGUARD_STEP_MS = 15000;
-const BASEJS_STEP_MS = 15000;
+/** The whole player/init (or a PO-token mint's BotGuard) gets this long; the host's own 30 s cap
+ *  is only a backstop for an engine that stopped answering. */
+const INIT_DEADLINE_MS = 20000;
 /** A loop-on seek this close to the end restarts the loop; the buffer ends a few ms short of the duration. */
 const LOOP_TAIL_S = 0.5;
 
-/** Rejects with [code] when [task] has not settled within [ms]; the task itself keeps running. */
-function withinStep<T>(task: Promise<T>, ms: number, code: string, step: string): Promise<T> {
+/** An init step in flight: what an expired deadline names and abandons. */
+interface InitStep {
+  name: string;
+  code: string;
+  abort: (e: Error) => void;
+}
+
+/** In start order; shared by player/init and the PO-token mint, which run the same steps. */
+const runningSteps: InitStep[] = [];
+
+/** [task] as a named step: settles with it, or rejects when a deadline expires while it runs. */
+function initStep<T>(task: Promise<T>, name: string, code: string): Promise<T> {
+  return new Promise<T>(function (resolve, reject) {
+    const step: InitStep = {
+      name: name,
+      code: code,
+      abort: function (e: Error) {
+        finish();
+        reject(e);
+      },
+    };
+    function finish(): void {
+      const i = runningSteps.indexOf(step);
+      if (i >= 0) runningSteps.splice(i, 1);
+    }
+    runningSteps.push(step);
+    task.then(
+      function (value) {
+        finish();
+        resolve(value);
+      },
+      function (e: unknown) {
+        finish();
+        reject(e);
+      },
+    );
+  });
+}
+
+/** Rejects when [task] has not settled within [INIT_DEADLINE_MS], with the code of the earliest
+ *  step still running; those steps are abandoned with the same error, so the config / minter
+ *  they belong to starts fresh on the next attempt instead of awaiting a hung one. */
+function withinInitDeadline<T>(task: Promise<T>, what: string): Promise<T> {
   return new Promise<T>(function (resolve, reject) {
     const timer = setTimeout(function () {
-      console.warn("player/init " + step + " timed out after " + ms + "ms");
-      reject(new JsEngineErrorImpl(step + " timed out after " + ms + "ms", code));
-    }, ms);
+      const steps = runningSteps.slice();
+      const first = steps[0];
+      const names = steps
+        .map(function (s) {
+          return s.name;
+        })
+        .join(", ");
+      const message =
+        what + " not done within " + INIT_DEADLINE_MS + "ms; still running: " + (names || "none");
+      console.warn(message);
+      const err = new JsEngineErrorImpl(message, first ? first.code : "E20159");
+      for (const s of steps) s.abort(err);
+      reject(err);
+    }, INIT_DEADLINE_MS);
     task.then(
       function (value) {
         clearTimeout(timer);
@@ -752,7 +804,7 @@ class Player {
 
   init(): Promise<Record<string, unknown>> {
     if (this.initP == null) {
-      this.initP = this.doInit().then(
+      this.initP = withinInitDeadline(this.doInit(), "player/init").then(
         (v) => v,
         (e: unknown) => {
           this.initP = null;
@@ -790,11 +842,11 @@ class Player {
   }
 
   private async doConfig(): Promise<Record<string, unknown>> {
-    await playerStorageReady();
+    await initStep(playerStorageReady(), "player storage", "E20158");
     installOrigEnv();
     installNativeUrl();
     setLocation(ORIGIN + "/", "/", "");
-    const cfg = await withinStep(fetchPlayerConfig(), SESSION_STEP_MS, "E20155", "session scrape");
+    const cfg = await initStep(fetchPlayerConfig(), "session scrape", "E20155");
     applyNavigatorLanguages(cfg["acceptLanguage"]);
     return cfg;
   }
@@ -802,12 +854,7 @@ class Player {
   private async doMinter(): Promise<Record<string, unknown>> {
     const cfg = await this.ensureConfig();
     const out: Record<string, unknown> = { "step": "minter" };
-    this.mintFn = await withinStep(
-      minterFromConfig(cfg, out),
-      BOTGUARD_STEP_MS,
-      "E20156",
-      "botguard",
-    );
+    this.mintFn = await initStep(minterFromConfig(cfg, out), "botguard", "E20156");
     endLayoutProbes();
     const self = this;
     installCaptionMinter(function (id: string) {
@@ -829,12 +876,7 @@ class Player {
     if (!jsUrlRaw) throw new JsEngineErrorImpl("player config has no jsUrl", "E20151");
     const jsUrl = absUrl(jsUrlRaw);
     cfg["jsUrl"] = jsUrl;
-    const download = withinStep(
-      downloadBaseJs(jsUrl),
-      BASEJS_STEP_MS,
-      "E20157",
-      "base.js download",
-    );
+    const download = initStep(downloadBaseJs(jsUrl), "base.js download", "E20157");
     download.catch(function () {});
     const out = await this.ensureMinter();
 
@@ -1087,7 +1129,7 @@ class Player {
   }
 
   async mintPo(videoId: string): Promise<Record<string, unknown>> {
-    const minterOut = await this.ensureMinter();
+    const minterOut = await withinInitDeadline(this.ensureMinter(), "po token minter");
     const token = await this.mintToken(videoId);
     return {
       "videoId": videoId,
