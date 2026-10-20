@@ -56,6 +56,7 @@ internal class MseAudioOutput(private val host: Long) {
     private var padAt = 0L
     private var padFrames = 0L
     private var starvedSinceMs = 0L
+    private var underrunLoggedAtMs = 0L
 
     /** Highest position reported in this generation: AudioTrack timestamps can step backwards. */
     private var reportedFrames = -1L
@@ -286,7 +287,13 @@ internal class MseAudioOutput(private val host: Long) {
     private inner class SinkListener : AudioSink.Listener {
         override fun onPositionDiscontinuity() = Unit
 
-        override fun onUnderrun(bufferSize: Int, bufferSizeMs: Long, elapsedSinceLastFeedMs: Long) = Unit
+        override fun onUnderrun(bufferSize: Int, bufferSizeMs: Long, elapsedSinceLastFeedMs: Long) {
+            val now = SystemClock.uptimeMillis()
+            if (now - underrunLoggedAtMs < UNDERRUN_LOG_INTERVAL_MS) return
+            underrunLoggedAtMs = now
+            // sinceFeed at or past the buffer: we stopped feeding; well under it: the device starved itself.
+            MseLogBridge.fire(LOG_WARN, "mse audio sink underrun buffer=${bufferSizeMs}ms sinceFeed=${elapsedSinceLastFeedMs}ms")
+        }
 
         override fun onSkipSilenceEnabledChanged(skipSilenceEnabled: Boolean) = Unit
 
@@ -317,6 +324,7 @@ internal class MseAudioOutput(private val host: Long) {
         const val START_STARVED_MS = 100L
         const val END_PAD_MS = 50L
         const val CONFIGURE_RETRY_MS = 1000L
+        const val UNDERRUN_LOG_INTERVAL_MS = 10_000L
 
         /** Pad margin: 1/50 s. */
         const val START_PAD_MARGIN_DIVISOR = 50

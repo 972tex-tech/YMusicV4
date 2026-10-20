@@ -228,6 +228,7 @@
     <string name="settings_show_fps_hint">Zobrazí počet snímků za sekundu přes video v Právě hraje. Měření se zastaví při pozastavení nebo opuštění obrazovky.</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">Licence open source</string>
+    <string name="settings_terms">Podmínky a soukromí</string>
     <string name="settings_licenses_intro">YMusic je open source pod licencí GNU GPL v3.0. Obsahuje tyto komponenty:</string>
 
     <!-- Feedback -->
@@ -259,6 +260,8 @@
     <string name="cd_exit_fullscreen">Ukončit celou obrazovku</string>
     <string name="cd_fit_video">Přizpůsobit video</string>
     <string name="cd_fill_video">Vyplnit obrazovku</string>
+    <string name="cd_lock_rotation">Uzamknout otáčení</string>
+    <string name="cd_unlock_rotation">Odemknout otáčení</string>
     <string name="cd_rewind10">Přetočit o 10 sekund zpět</string>
     <string name="cd_forward10">Přetočit o 10 sekund vpřed</string>
     <string name="cd_repeat_off">Opakovat: vypnuto</string>
@@ -448,6 +451,8 @@
     <string name="download_save_quick">Uložit jako Rychlé stažení</string>
     <string name="quick_download_menu">Rychlé stažení · %1$s</string>
     <string name="playlist_download_title">Stáhnout playlist</string>
+    <string name="playlist_index_prefix">Předpona s pořadím</string>
+    <string name="playlist_index_prefix_hint">Názvy souborů začnou 1. 2. 3.</string>
     <string name="playlist_load_more">+ Načíst další</string>
     <string name="playlist_check_all">Označit vše</string>
     <string name="playlist_check_not_downloaded">Označit nestažené</string>

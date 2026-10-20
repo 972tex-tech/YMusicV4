@@ -226,6 +226,7 @@
     <string name="settings_show_fps_hint">Now Playing വീഡിയോയുടെ മുകളിൽ ഓരോ സെക്കൻഡിലെയും ഫ്രെയിമുകൾ കാണിക്കുക. താൽക്കാലികമായി നിർത്തുമ്പോഴോ ആ സ്ക്രീനിൽ നിന്ന് പുറത്തുപോകുമ്പോഴോ അളക്കൽ നിർത്തും.</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">ഓപ്പൺ സോഴ്‌സ് ലൈസൻസുകൾ</string>
+    <string name="settings_terms">നിബന്ധനകളും സ്വകാര്യതയും</string>
     <string name="settings_licenses_intro">YMusic GNU GPL v3.0 പ്രകാരം ഓപ്പൺ സോഴ്‌സ് ആണ്. ഇതിൽ ഈ ഘടകങ്ങൾ ഉൾപ്പെടുന്നു:</string>
 
     <!-- Feedback -->
@@ -257,6 +258,8 @@
     <string name="cd_exit_fullscreen">പൂർണ്ണ സ്ക്രീനിൽ നിന്ന് പുറത്തുകടക്കുക</string>
     <string name="cd_fit_video">വീഡിയോ ഫിറ്റ് ചെയ്യുക</string>
     <string name="cd_fill_video">സ്ക്രീൻ നിറയ്ക്കുക</string>
+    <string name="cd_lock_rotation">റൊട്ടേഷൻ ലോക്ക് ചെയ്യുക</string>
+    <string name="cd_unlock_rotation">റൊട്ടേഷൻ അൺലോക്ക് ചെയ്യുക</string>
     <string name="cd_rewind10">10 സെക്കൻഡ് പിന്നോട്ട്</string>
     <string name="cd_forward10">10 സെക്കൻഡ് മുന്നോട്ട്</string>
     <string name="cd_repeat_off">ആവർത്തിക്കുക: ഓഫ്</string>
@@ -446,6 +449,8 @@
     <string name="download_save_quick">ദ്രുത ഡൗൺലോഡായി സേവ് ചെയ്യുക</string>
     <string name="quick_download_menu">ദ്രുത ഡൗൺലോഡ് · %1$s</string>
     <string name="playlist_download_title">പ്ലേലിസ്റ്റ് ഡൗൺലോഡ് ചെയ്യുക</string>
+    <string name="playlist_index_prefix">ക്രമനമ്പർ മുൻകുറി</string>
+    <string name="playlist_index_prefix_hint">ഫയൽ പേരുകൾ 1. 2. 3. എന്ന് തുടങ്ങും</string>
     <string name="playlist_load_more">+ കൂടുതൽ ലോഡ് ചെയ്യുക</string>
     <string name="playlist_check_all">എല്ലാം തിരഞ്ഞെടുക്കുക</string>
     <string name="playlist_check_not_downloaded">ഡൗൺലോഡ് ചെയ്യാത്തവ തിരഞ്ഞെടുക്കുക</string>

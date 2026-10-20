@@ -226,6 +226,7 @@
     <string name="settings_show_fps_hint">प्ले होत असलेल्या व्हिडिओवर प्रति सेकंद फ्रेम दाखवा. थांबवल्यावर किंवा ती स्क्रीन सोडल्यावर मोजणी थांबते.</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">ओपन सोर्स परवाने</string>
+    <string name="settings_terms">अटी आणि गोपनीयता</string>
     <string name="settings_licenses_intro">YMusic हे GNU GPL v3.0 अंतर्गत ओपन सोर्स आहे. यात हे घटक समाविष्ट आहेत:</string>
 
     <!-- Feedback -->
@@ -257,6 +258,8 @@
     <string name="cd_exit_fullscreen">पूर्ण स्क्रीनमधून बाहेर पडा</string>
     <string name="cd_fit_video">व्हिडिओ फिट करा</string>
     <string name="cd_fill_video">स्क्रीन भरा</string>
+    <string name="cd_lock_rotation">फिरवणे लॉक करा</string>
+    <string name="cd_unlock_rotation">फिरवणे अनलॉक करा</string>
     <string name="cd_rewind10">10 सेकंद मागे</string>
     <string name="cd_forward10">10 सेकंद पुढे</string>
     <string name="cd_repeat_off">पुन्हा करा: बंद</string>
@@ -446,6 +449,8 @@
     <string name="download_save_quick">क्विक डाउनलोड म्हणून सेव्ह करा</string>
     <string name="quick_download_menu">क्विक डाउनलोड · %1$s</string>
     <string name="playlist_download_title">प्लेलिस्ट डाउनलोड करा</string>
+    <string name="playlist_index_prefix">क्रमांक उपसर्ग</string>
+    <string name="playlist_index_prefix_hint">फाइल नावे 1. 2. 3. ने सुरू होतील</string>
     <string name="playlist_load_more">+ अधिक लोड करा</string>
     <string name="playlist_check_all">सर्व निवडा</string>
     <string name="playlist_check_not_downloaded">डाउनलोड न झालेले निवडा</string>

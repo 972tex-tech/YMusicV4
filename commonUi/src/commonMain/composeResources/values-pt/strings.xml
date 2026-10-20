@@ -227,6 +227,7 @@
     <string name="settings_show_fps_hint">Mostra os quadros por segundo sobre o vídeo em reprodução. A medição para quando pausado ou quando você sai dessa tela.</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">Licenças de código aberto</string>
+    <string name="settings_terms">Termos e privacidade</string>
     <string name="settings_licenses_intro">O YMusic é de código aberto sob a GNU GPL v3.0. Ele inclui estes componentes:</string>
 
     <!-- Feedback -->
@@ -258,6 +259,8 @@
     <string name="cd_exit_fullscreen">Sair da tela cheia</string>
     <string name="cd_fit_video">Ajustar vídeo</string>
     <string name="cd_fill_video">Preencher tela</string>
+    <string name="cd_lock_rotation">Bloquear rotação</string>
+    <string name="cd_unlock_rotation">Desbloquear rotação</string>
     <string name="cd_rewind10">Voltar 10 segundos</string>
     <string name="cd_forward10">Avançar 10 segundos</string>
     <string name="cd_repeat_off">Repetir: desativado</string>
@@ -447,6 +450,8 @@
     <string name="download_save_quick">Salvar como download rápido</string>
     <string name="quick_download_menu">Download rápido · %1$s</string>
     <string name="playlist_download_title">Baixar playlist</string>
+    <string name="playlist_index_prefix">Prefixo numérico</string>
+    <string name="playlist_index_prefix_hint">Os nomes dos arquivos começam com 1. 2. 3.</string>
     <string name="playlist_load_more">+ Carregar mais</string>
     <string name="playlist_check_all">Marcar todos</string>
     <string name="playlist_check_not_downloaded">Marcar não baixados</string>

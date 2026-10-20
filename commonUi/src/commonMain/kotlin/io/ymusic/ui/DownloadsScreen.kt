@@ -339,7 +339,7 @@ private fun DownloadCard(
                         )
                         DownloadState.COMPLETED -> {
                             Text(humanSize(task.totalBytes), style = MaterialTheme.typography.labelSmall, color = c.inkMuted, fontFamily = FontFamily.Monospace)
-                            Text(formatDownloadDate(task.updatedAt), style = MaterialTheme.typography.labelSmall, color = c.inkMuted)
+                            Text(formatShortDate(task.updatedAt), style = MaterialTheme.typography.labelSmall, color = c.inkMuted)
                         }
                         DownloadState.FAILED -> {
                             Text(downloadErrorText(task), style = MaterialTheme.typography.bodySmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -499,9 +499,9 @@ private fun DownloadFormat.badgeColor(): Color = when (this) {
     DownloadFormat.VIDEO_WEBM -> Color(0xFFB23C17) // rust
 }
 
-/** `updatedAt` (a completed task's finish time) as e.g. "Jul 31, 2026", in the device's time zone. */
+/** An epoch-millis instant as e.g. "Jul 31, 2026", in the device's time zone. */
 @Composable
-private fun formatDownloadDate(epochMs: Long): String {
+internal fun formatShortDate(epochMs: Long): String {
     val dt = Instant.fromEpochMilliseconds(epochMs).toLocalDateTime(TimeZone.currentSystemDefault())
     val month = stringArrayResource(Res.array.month_abbr)[dt.monthNumber - 1]
     return stringResource(Res.string.downloads_completed_date, month, dt.dayOfMonth, dt.year)

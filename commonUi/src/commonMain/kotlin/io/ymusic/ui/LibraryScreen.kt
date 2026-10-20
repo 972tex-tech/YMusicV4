@@ -85,6 +85,7 @@ import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.mediastore.model.Playlist
 import io.ymusic.mediastore.model.PlaylistItemDetail
 import io.ymusic.settings.AppSettings
+import io.ymusic.settings.SettingsStore
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.playhistory.PlayHistoryStore
@@ -330,12 +331,13 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                     onRevealHandled = { revealBucket = null },
                                     downloadLocation = downloadLocation,
                                     onToggleDownloadLocation = onToggleDownloadLocation,
+                                    settings = graph.settings,
                                 )
-                                LibraryTab.Playlists -> PlaylistsTab(store, loaded, coordinator, graph.playHistory)
+                                LibraryTab.Playlists -> PlaylistsTab(store, graph, loaded, coordinator, graph.playHistory)
                                 LibraryTab.Songs -> if (loaded.songs.isEmpty()) {
                                     EmptyState(stringResource(Res.string.library_no_songs), onReload = null)
                                 } else {
-                                    val sort = rememberSortState("sort.songs")
+                                    val sort = rememberSortState("songs", graph.settings)
                                     SongList(
                                         sort.sort(loaded.songs, songSortOptions),
                                         coordinator,
@@ -350,6 +352,8 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                         Icons.Default.Person,
                                         stringResource(Res.string.unknown_artist),
                                         coordinator,
+                                        sortId = "artists",
+                                        settings = graph.settings,
                                     ) { it.artist }
                                 }
                                 LibraryTab.Albums -> if (loaded.songs.isEmpty()) {
@@ -360,6 +364,8 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                         Icons.Default.Album,
                                         stringResource(Res.string.unknown_album),
                                         coordinator,
+                                        sortId = "albums",
+                                        settings = graph.settings,
                                     ) { it.album }
                                 }
                                 LibraryTab.Genres -> if (loaded.songs.isEmpty()) {
@@ -370,6 +376,8 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                         Icons.Default.Category,
                                         stringResource(Res.string.unknown_genre),
                                         coordinator,
+                                        sortId = "genres",
+                                        settings = graph.settings,
                                     ) { it.genre }
                                 }
                             }
@@ -411,6 +419,7 @@ private fun FoldersTab(
     onRevealHandled: () -> Unit,
     downloadLocation: String?,
     onToggleDownloadLocation: ((MediaStoreBucket) -> Unit)?,
+    settings: SettingsStore,
 ) {
     fun isDownloadLocation(bucket: MediaStoreBucket) =
         downloadLocation != null && bucket.uri.toString() == downloadLocation
@@ -466,7 +475,7 @@ private fun FoldersTab(
                 }
             }
         }
-        val sort = rememberSortState("sort.folders")
+        val sort = rememberSortState("folders", settings)
         val sortedFolders = sort.sort(children, folderSortOptions)
         val sortedItems = sort.sort(items, songSortOptions)
         val folderId = path.lastOrNull()?.first
@@ -861,6 +870,7 @@ private val smartPlaylists = listOf(
 @Composable
 private fun PlaylistsTab(
     store: BetterMediaStore,
+    graph: AppGraph,
     content: LibraryContent,
     coordinator: PlaybackCoordinator,
     playHistory: PlayHistoryStore?,
@@ -875,7 +885,7 @@ private fun PlaylistsTab(
     // kept as PlaylistItemDetail so it can be sorted by addedAt as well as by title.
     var systemSongs by remember { mutableStateOf<List<MediaStoreItem>?>(null) }
     var userItems by remember { mutableStateOf<List<PlaylistItemDetail>?>(null) }
-    val playlistSongSort = rememberSortState("sort.playlist.songs")
+    val playlistSongSort = rememberSortState("playlist.songs", graph.settings)
     // Create/rename/delete don't emit itemsChanges, so the outer content tick won't reload the list —
     // bump this after any playlist mutation to reload playlists() + counts.
     var refreshTick by remember { mutableStateOf(0) }
@@ -956,15 +966,20 @@ private fun PlaylistsTab(
         )
     }
 
+    val transfer = rememberPlaylistTransferState(store, graph) { refreshTick++ }
+    PlaylistTransferDialogs(transfer, userPlaylistCount = userLists.orEmpty().size)
+    val transferMenu = playlistTransferMenu(transfer, hasUserPlaylists = !userLists.isNullOrEmpty())
+    val showEmptyHint = userLists?.isEmpty() == true && (transfer.canImport || transfer.canRestore)
+
     val open = selected
     val isUser = open != null && open.first > 0
-    val sort = rememberSortState("sort.playlists")
+    val sort = rememberSortState("playlists", graph.settings)
     // The first item is always the header — the list-level toolbar, or the drill-down back-row. Both
     // use the same row padding/height, so it stays put across the drill-in. A user playlist carries a
     // sort control at the same end position as the list-level toolbar's (system playlists carry none).
     val header: @Composable () -> Unit = {
         if (open == null) {
-            PlaylistsToolbar(sort) { showCreate = true }
+            PlaylistsToolbar(sort, transferMenu) { showCreate = true }
         } else {
             DrillDownHeader(
                 open.second,
@@ -1019,6 +1034,7 @@ private fun PlaylistsTab(
                         items(entries, key = { it.id }) { entry ->
                             PlaylistCard(entry, onOpen = { selected = it }, onRename = { renaming = it }, onDelete = { deleting = it })
                         }
+                        if (showEmptyHint) item("empty", span = { GridItemSpan(maxLineSpan) }) { NoPlaylistsHint(transfer) }
                     } else {
                         val perRow = librarySongColumns(maxWidth)
                         items(
@@ -1040,6 +1056,7 @@ private fun PlaylistsTab(
                         items(entries, key = { it.id }) { entry ->
                             PlaylistRow(entry, onOpen = { selected = it }, onRename = { renaming = it }, onDelete = { deleting = it })
                         }
+                        if (showEmptyHint) item("empty") { NoPlaylistsHint(transfer) }
                     } else {
                         itemsIndexed(songs, key = { _, s -> s.id }) { i, song ->
                             SongRow(song, coordinator) { coordinator.playLocal(songs, i) }
@@ -1115,9 +1132,9 @@ private fun playlistActions(playlist: Playlist, onRename: () -> Unit, onDelete: 
     return ItemActions(listOf(rename to onRename, delete to onDelete))
 }
 
-/** The Playlists toolbar: the "+ New playlist" pill on the left, the sort control on the right. */
+/** The Playlists toolbar: the "+ New playlist" pill on the left, the sort control and [menu] on the right. */
 @Composable
-private fun PlaylistsToolbar(sort: SortState, onCreate: () -> Unit) {
+private fun PlaylistsToolbar(sort: SortState, menu: ItemActions?, onCreate: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 16.dp, end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1126,6 +1143,7 @@ private fun PlaylistsToolbar(sort: SortState, onCreate: () -> Unit) {
         LibraryChip(stringResource(Res.string.playlist_new), selected = false, onClick = onCreate)
         Spacer(Modifier.weight(1f))
         SortControl(playlistSortOptions.map { it.label }, sort)
+        if (menu != null) MoreMenu(menu)
     }
 }
 
@@ -1499,6 +1517,8 @@ private fun GroupedList(
     icon: ImageVector,
     unknownLabel: String,
     coordinator: PlaybackCoordinator,
+    sortId: String,
+    settings: SettingsStore,
     keyOf: (MediaStoreItem) -> String?,
 ) {
     // Saveable: the opened artist/album/genre survives the tab leaving composition.
@@ -1516,8 +1536,8 @@ private fun GroupedList(
     val grouped = groups
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
-    val sort = rememberSortState("sort.group")
-    val songSort = rememberSortState("sort.group.songs")
+    val sort = rememberSortState(sortId, settings)
+    val songSort = rememberSortState("$sortId.songs", settings)
     if (grouped == null) {
         CenteredBox { CircularProgressIndicator() }
         return

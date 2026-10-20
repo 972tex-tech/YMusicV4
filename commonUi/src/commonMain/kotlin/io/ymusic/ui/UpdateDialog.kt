@@ -46,6 +46,7 @@ import io.ymusic.ui.resources.update_failed
 import io.ymusic.ui.resources.update_full_changelog
 import io.ymusic.ui.resources.update_install_now
 import io.ymusic.ui.resources.update_install_permission
+import io.ymusic.ui.resources.update_install_permission_allow
 import io.ymusic.ui.resources.update_installing
 import io.ymusic.ui.resources.update_manual_hint
 import io.ymusic.ui.resources.update_official_site
@@ -62,8 +63,8 @@ import org.jetbrains.compose.resources.stringResource
  * download is invisible until then (it prompts only once ready), and "Download" joins it, retries
  * it, or starts it. A ready
  * installer turns the button into "Install now" however it was downloaded. A failure links the
- * official download site. Without the OS's install permission the user picks between granting it
- * and downloading the release in the browser.
+ * official download site. Without the OS's install permission the user is asked to grant it; the
+ * browser download is offered only once an installer has waited on that for a while.
  *
  * "Ask later" hides it for the rest of this run (the update itself stays offered: the drawer still
  * flags it), except that a download the user started brings it back once ready; the next cold
@@ -163,11 +164,14 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
             if (download is UpdateDownload.NeedsInstallPermission) {
+                val browserLink = openDownloadPage?.takeIf { download.offerBrowser }
                 Text(
-                    stringResource(Res.string.update_install_permission),
+                    stringResource(
+                        if (browserLink != null) Res.string.update_install_permission else Res.string.update_install_permission_allow,
+                    ),
                     style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
                 )
-                openDownloadPage?.let { LinkText(stringResource(Res.string.update_download_in_browser), it) }
+                browserLink?.let { LinkText(stringResource(Res.string.update_download_in_browser), it) }
             }
             if (requested && download is UpdateDownload.Failed) {
                 Text(

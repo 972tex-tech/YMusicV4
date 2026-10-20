@@ -226,6 +226,7 @@
     <string name="settings_show_fps_hint">Показва кадрите в секунда върху видеото в „Сега се изпълнява“. Отчитането спира при пауза или когато напуснете екрана.</string>
     <string name="overlay_fps">%1$d кадъра/с</string>
     <string name="settings_licenses">Лицензи за отворен код</string>
+    <string name="settings_terms">Условия и поверителност</string>
     <string name="settings_licenses_intro">YMusic е с отворен код под лиценз GNU GPL v3.0. Включва следните компоненти:</string>
 
     <!-- Feedback -->
@@ -257,6 +258,8 @@
     <string name="cd_exit_fullscreen">Изход от цял екран</string>
     <string name="cd_fit_video">Побери видеото</string>
     <string name="cd_fill_video">Запълни екрана</string>
+    <string name="cd_lock_rotation">Заключи завъртането</string>
+    <string name="cd_unlock_rotation">Отключи завъртането</string>
     <string name="cd_rewind10">10 секунди назад</string>
     <string name="cd_forward10">10 секунди напред</string>
     <string name="cd_repeat_off">Повторение: изключено</string>
@@ -446,6 +449,8 @@
     <string name="download_save_quick">Запази като бързо изтегляне</string>
     <string name="quick_download_menu">Бързо изтегляне · %1$s</string>
     <string name="playlist_download_title">Изтегляне на плейлиста</string>
+    <string name="playlist_index_prefix">Номер в началото</string>
+    <string name="playlist_index_prefix_hint">Имената на файловете започват с 1. 2. 3.</string>
     <string name="playlist_load_more">+ Зареди още</string>
     <string name="playlist_check_all">Отметни всички</string>
     <string name="playlist_check_not_downloaded">Отметни неизтеглените</string>

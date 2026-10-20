@@ -227,6 +227,7 @@
     <string name="settings_show_fps_hint">Prikazuje broj sličica u sekundi preko videozapisa na zaslonu Sada svira. Mjerenje se zaustavlja pri pauzi ili kad napustite zaslon.</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">Licence otvorenog koda</string>
+    <string name="settings_terms">Uvjeti i privatnost</string>
     <string name="settings_licenses_intro">YMusic je otvorenog koda pod licencom GNU GPL v3.0. Uključuje ove komponente:</string>
 
     <!-- Feedback -->
@@ -258,6 +259,8 @@
     <string name="cd_exit_fullscreen">Izađi iz cijelog zaslona</string>
     <string name="cd_fit_video">Prilagodi videozapis</string>
     <string name="cd_fill_video">Ispuni zaslon</string>
+    <string name="cd_lock_rotation">Zaključaj rotaciju</string>
+    <string name="cd_unlock_rotation">Otključaj rotaciju</string>
     <string name="cd_rewind10">Premotaj 10 sekundi unatrag</string>
     <string name="cd_forward10">Premotaj 10 sekundi unaprijed</string>
     <string name="cd_repeat_off">Ponavljanje: isključeno</string>
@@ -447,6 +450,8 @@
     <string name="download_save_quick">Spremi kao Brzo preuzimanje</string>
     <string name="quick_download_menu">Brzo preuzimanje · %1$s</string>
     <string name="playlist_download_title">Preuzmi popis za reprodukciju</string>
+    <string name="playlist_index_prefix">Prefiks rednog broja</string>
+    <string name="playlist_index_prefix_hint">Nazivi datoteka počinju s 1. 2. 3.</string>
     <string name="playlist_load_more">+ Učitaj više</string>
     <string name="playlist_check_all">Označi sve</string>
     <string name="playlist_check_not_downloaded">Označi nepreuzete</string>

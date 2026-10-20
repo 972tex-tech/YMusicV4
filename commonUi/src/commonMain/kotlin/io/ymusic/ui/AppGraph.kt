@@ -182,6 +182,14 @@ class AppGraph(
      * rest of the feedback form still works.
      */
     val pickFeedbackFiles: (suspend () -> List<FeedbackFile>)? = null,
+    /** The OS "save as" picker: a sink into the chosen file (the caller closes it), null when canceled.
+     *  Null hides playlist backup. */
+    val createDocument: (suspend (suggestedName: String, mimeType: String) -> okio.Sink?)? = null,
+    /** The OS file picker: a source over the chosen file (the caller closes it), null when canceled.
+     *  Null hides playlist restore. */
+    val openDocument: (suspend (mimeTypes: List<String>) -> okio.Source?)? = null,
+    /** Playlists other apps registered with the OS; null hides "Import from device". */
+    val devicePlaylists: DevicePlaylistSource? = null,
     /**
      * The shell's self-updater; null where the platform store owns updates (iOS) or the shell
      * has none — the update prompt and its setting then never appear.
@@ -258,6 +266,9 @@ class AppGraph(
 
     /** Fullscreen only: stretch the picture to the hole. Mini / Now Playing always fit. */
     val videoFillScreen = mutableStateOf(false)
+
+    /** Fullscreen only: hold the current orientation regardless of the sensor and the system lock. */
+    val videoRotationLocked = mutableStateOf(false)
 
     val localeEpoch = MutableStateFlow(0)
 

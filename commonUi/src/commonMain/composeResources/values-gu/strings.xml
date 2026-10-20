@@ -226,6 +226,7 @@
     <string name="settings_show_fps_hint">Now Playing વીડિયો પર પ્રતિ સેકન્ડ ફ્રેમ બતાવો. થોભાવો અથવા તે સ્ક્રીન છોડો ત્યારે માપન બંધ થાય છે.</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">ઓપન સોર્સ લાઇસન્સ</string>
+    <string name="settings_terms">શરતો અને ગોપનીયતા</string>
     <string name="settings_licenses_intro">YMusic GNU GPL v3.0 હેઠળ ઓપન સોર્સ છે. તેમાં આ ઘટકો શામેલ છે:</string>
 
     <!-- Feedback -->
@@ -257,6 +258,8 @@
     <string name="cd_exit_fullscreen">પૂર્ણ સ્ક્રીનમાંથી બહાર નીકળો</string>
     <string name="cd_fit_video">વીડિયો ફિટ કરો</string>
     <string name="cd_fill_video">સ્ક્રીન ભરો</string>
+    <string name="cd_lock_rotation">રોટેશન લૉક કરો</string>
+    <string name="cd_unlock_rotation">રોટેશન અનલૉક કરો</string>
     <string name="cd_rewind10">10 સેકન્ડ પાછળ</string>
     <string name="cd_forward10">10 સેકન્ડ આગળ</string>
     <string name="cd_repeat_off">પુનરાવર્તન: બંધ</string>
@@ -446,6 +449,8 @@
     <string name="download_save_quick">ઝડપી ડાઉનલોડ તરીકે સેવ કરો</string>
     <string name="quick_download_menu">ઝડપી ડાઉનલોડ · %1$s</string>
     <string name="playlist_download_title">પ્લેલિસ્ટ ડાઉનલોડ કરો</string>
+    <string name="playlist_index_prefix">ક્રમાંક ઉપસર્ગ</string>
+    <string name="playlist_index_prefix_hint">ફાઇલ નામ 1. 2. 3. થી શરૂ થશે</string>
     <string name="playlist_load_more">+ વધુ લોડ કરો</string>
     <string name="playlist_check_all">બધા પસંદ કરો</string>
     <string name="playlist_check_not_downloaded">ડાઉનલોડ ન થયેલા પસંદ કરો</string>

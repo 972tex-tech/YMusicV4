@@ -228,6 +228,7 @@
     <string name="settings_show_fps_hint">Показывать число кадров в секунду поверх видео на экране воспроизведения. Подсчёт останавливается на паузе или при уходе с экрана.</string>
     <string name="overlay_fps">%1$d кадр/с</string>
     <string name="settings_licenses">Лицензии открытого ПО</string>
+    <string name="settings_terms">Условия и конфиденциальность</string>
     <string name="settings_licenses_intro">YMusic — открытое ПО под лицензией GNU GPL v3.0. В него входят следующие компоненты:</string>
 
     <!-- Feedback -->
@@ -259,6 +260,8 @@
     <string name="cd_exit_fullscreen">Выйти из полноэкранного режима</string>
     <string name="cd_fit_video">Вписать видео</string>
     <string name="cd_fill_video">Заполнить экран</string>
+    <string name="cd_lock_rotation">Заблокировать поворот</string>
+    <string name="cd_unlock_rotation">Разблокировать поворот</string>
     <string name="cd_rewind10">Назад на 10 секунд</string>
     <string name="cd_forward10">Вперёд на 10 секунд</string>
     <string name="cd_repeat_off">Повтор: выкл.</string>
@@ -448,6 +451,8 @@
     <string name="download_save_quick">Сохранить как быструю загрузку</string>
     <string name="quick_download_menu">Быстрая загрузка · %1$s</string>
     <string name="playlist_download_title">Скачать плейлист</string>
+    <string name="playlist_index_prefix">Номер в начале</string>
+    <string name="playlist_index_prefix_hint">Имена файлов начинаются с 1. 2. 3.</string>
     <string name="playlist_load_more">+ Загрузить ещё</string>
     <string name="playlist_check_all">Отметить все</string>
     <string name="playlist_check_not_downloaded">Отметить нескачанные</string>

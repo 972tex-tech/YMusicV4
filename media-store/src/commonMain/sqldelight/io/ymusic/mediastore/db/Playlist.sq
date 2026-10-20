@@ -19,6 +19,9 @@ UPDATE playlist SET name = ?, updatedAt = ? WHERE id = ?;
 deletePlaylist:
 DELETE FROM playlist WHERE id = ?;
 
+deleteAllPlaylists:
+DELETE FROM playlist;
+
 findPlaylist:
 SELECT * FROM playlist WHERE id = ?;
 

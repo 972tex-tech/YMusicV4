@@ -225,6 +225,7 @@
     <string name="settings_show_fps_hint">Tampilkan jumlah gambar per detik di atas video yang sedang diputar. Pengukuran berhenti saat dijeda atau saat Anda meninggalkan layar tersebut.</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">Lisensi open source</string>
+    <string name="settings_terms">Ketentuan &amp; privasi</string>
     <string name="settings_licenses_intro">YMusic adalah open source di bawah GNU GPL v3.0. Aplikasi ini menyertakan komponen berikut:</string>
 
     <!-- Feedback -->
@@ -256,6 +257,8 @@
     <string name="cd_exit_fullscreen">Keluar dari layar penuh</string>
     <string name="cd_fit_video">Sesuaikan video</string>
     <string name="cd_fill_video">Penuhi layar</string>
+    <string name="cd_lock_rotation">Kunci rotasi</string>
+    <string name="cd_unlock_rotation">Buka kunci rotasi</string>
     <string name="cd_rewind10">Mundur 10 detik</string>
     <string name="cd_forward10">Maju 10 detik</string>
     <string name="cd_repeat_off">Ulangi: nonaktif</string>
@@ -445,6 +448,8 @@
     <string name="download_save_quick">Simpan sebagai Unduhan cepat</string>
     <string name="quick_download_menu">Unduhan cepat · %1$s</string>
     <string name="playlist_download_title">Unduh daftar putar</string>
+    <string name="playlist_index_prefix">Awalan nomor urut</string>
+    <string name="playlist_index_prefix_hint">Nama file diawali 1. 2. 3.</string>
     <string name="playlist_load_more">+ Muat lebih banyak</string>
     <string name="playlist_check_all">Centang semua</string>
     <string name="playlist_check_not_downloaded">Centang yang belum diunduh</string>

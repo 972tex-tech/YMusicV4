@@ -57,6 +57,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.ScreenLockRotation
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -105,6 +107,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -116,6 +119,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -148,6 +152,7 @@ import io.ymusic.ui.resources.cd_fill_video
 import io.ymusic.ui.resources.cd_fit_video
 import io.ymusic.ui.resources.cd_forward10
 import io.ymusic.ui.resources.cd_fullscreen
+import io.ymusic.ui.resources.cd_lock_rotation
 import io.ymusic.ui.resources.cd_more
 import io.ymusic.ui.resources.cd_next
 import io.ymusic.ui.resources.cd_pause
@@ -158,9 +163,11 @@ import io.ymusic.ui.resources.cd_repeat_off
 import io.ymusic.ui.resources.cd_repeat_one
 import io.ymusic.ui.resources.cd_rewind10
 import io.ymusic.ui.resources.cd_shuffle
+import io.ymusic.ui.resources.cd_unlock_rotation
 import io.ymusic.ui.resources.download_audio_track
 import io.ymusic.ui.resources.download_quality
 import io.ymusic.ui.resources.error_captcha
+import io.ymusic.ui.resources.error_network
 import io.ymusic.ui.resources.error_supervised_account
 import io.ymusic.ui.resources.ic_sponsor_block
 import io.ymusic.ui.resources.menu_add_to_playlist
@@ -429,7 +436,8 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     SideEffect { VideoOverlayNative.armed = true }
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
     SyncImmersiveSystemBars(immersive = true)
-    SyncSensorRotation(enabled = true)
+    val rotationLocked by graph.videoRotationLocked
+    SyncSensorRotation(locked = rotationLocked)
     val fillScreen by graph.videoFillScreen
     Box(Modifier.fillMaxSize()) {
         PlayerSurfaceHole(
@@ -448,6 +456,12 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
                     isFullscreen = true,
                     fillScreen = fillScreen,
                     onToggleFill = { graph.videoFillScreen.value = !graph.videoFillScreen.value },
+                    rotationLocked = rotationLocked,
+                    onToggleRotationLock = if (rotationLockSupported) {
+                        { graph.videoRotationLocked.value = !graph.videoRotationLocked.value }
+                    } else {
+                        null
+                    },
                     onToggleFullscreen = onExit,
                 )
             }
@@ -717,6 +731,8 @@ private fun BoxScope.VideoOverlayControls(
     isFullscreen: Boolean = false,
     fillScreen: Boolean = false,
     onToggleFill: (() -> Unit)? = null,
+    rotationLocked: Boolean = false,
+    onToggleRotationLock: (() -> Unit)? = null,
     onToggleFullscreen: () -> Unit,
 ) {
     val player = coordinator.player
@@ -771,6 +787,14 @@ private fun BoxScope.VideoOverlayControls(
             DurationLabel(player, progress, overlayStyle)
             Box(Modifier.weight(1f))
             CaptionToggle(player, offTint = Color(0xFFEEEEEE))
+            if (onToggleRotationLock != null) {
+                ActionIcon(
+                    if (rotationLocked) Icons.Default.ScreenLockRotation else Icons.Default.ScreenRotation,
+                    stringResource(if (rotationLocked) Res.string.cd_unlock_rotation else Res.string.cd_lock_rotation),
+                    tint = Color(0xFFEEEEEE),
+                    onClick = onToggleRotationLock,
+                )
+            }
             if (onToggleFill != null) {
                 ActionIcon(
                     if (fillScreen) Icons.Default.FitScreen else Icons.Default.CropFree,
@@ -927,6 +951,24 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
 /** Engine track kind for YouTube auto-translate languages (clones of a source track, one per language). */
 private const val AUTO_TRANSLATE_KIND = "asrt"
 
+/** A playback failure for the user: a known category, else "Playback failed (code)". */
+internal fun playerErrorText(error: io.ymusic.player.PlayerError): UiText = when {
+    error.code == CAPTCHA_CODE -> UiText.Resource(Res.string.error_captcha)
+    error.code == "network" -> UiText.Resource(Res.string.error_network)
+    error.code == SUPERVISED_ACCOUNT_CODE -> UiText.Resource(Res.string.error_supervised_account)
+    error.code == io.ymusic.player.PlayerError.FILE_MISSING -> UiText.Resource(Res.string.playback_file_missing)
+    error.code == io.ymusic.player.PlayerError.VIDEO_DECODER_FAILED -> UiText.Resource(Res.string.playback_video_unsupported)
+    else -> when (error.playability()) {
+        Playability.SignInRequired -> UiText.Resource(Res.string.playback_sign_in_required)
+        Playability.Unavailable -> UiText.Resource(Res.string.playback_unavailable)
+        Playability.RetryLater -> UiText.Resource(Res.string.playback_retry_later)
+        null -> UiText.Resource(Res.string.playback_failed, error.code)
+    }
+}
+
+/** [playerErrorText] resolved off composition, for surfaces outside the app UI (Android Auto). */
+suspend fun playerErrorMessage(error: io.ymusic.player.PlayerError): String = playerErrorText(error).load()
+
 /**
  * The playback error on a dark panel at the bottom of the picture, above the overlay chrome so its actions
  * stay tappable, and lifted over the controls strip while that shows: up to two lines of message (a playability verdict, captcha or decoder verdict, else
@@ -966,19 +1008,7 @@ private fun BoxScope.PlaybackErrorText(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            when {
-                captcha -> stringResource(Res.string.error_captcha)
-                error.code == SUPERVISED_ACCOUNT_CODE -> stringResource(Res.string.error_supervised_account)
-                error.code == io.ymusic.player.PlayerError.FILE_MISSING -> stringResource(Res.string.playback_file_missing)
-                error.code == io.ymusic.player.PlayerError.VIDEO_DECODER_FAILED ->
-                    stringResource(Res.string.playback_video_unsupported)
-                else -> when (error.playability()) {
-                    Playability.SignInRequired -> stringResource(Res.string.playback_sign_in_required)
-                    Playability.Unavailable -> stringResource(Res.string.playback_unavailable)
-                    Playability.RetryLater -> stringResource(Res.string.playback_retry_later)
-                    null -> stringResource(Res.string.playback_failed, error.code)
-                }
-            },
+            playerErrorText(error).resolve(),
             color = Color.White,
             fontSize = 13.sp,
             textAlign = TextAlign.Center,
@@ -1330,11 +1360,13 @@ private fun SeekBar(player: io.ymusic.player.Player, progress: Progress) {
     val labelProgress = scrubMs?.let { progress.copy(positionMs = it) } ?: progress
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 2.dp)) {
         SeekSlider(player, progress, trackColor = DesignColors.OutlineSoft, onScrubMs = { scrubMs = it })
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            val timeStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary)
-            Text(labelProgress.progressLabel.orEmpty(), style = timeStyle)
-            Spacer(Modifier.weight(1f))
-            DurationLabel(player, progress, timeStyle)
+        MediaLtr {
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                val timeStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary)
+                Text(labelProgress.progressLabel.orEmpty(), style = timeStyle)
+                Spacer(Modifier.weight(1f))
+                DurationLabel(player, progress, timeStyle)
+            }
         }
     }
 }
@@ -1402,63 +1434,82 @@ private fun TransportRow(
 ) {
     val player = coordinator.player
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Row(
-            // SpaceEvenly inside a capped width: the gaps grow with the window (≈ the mockup's 26dp
-            // at phone width) up to the cap, instead of a fixed cluster.
-            Modifier
-                .widthIn(max = if (seekButtons) 480.dp else 320.dp)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
+        MediaLtr { TransportButtons(player, playing, iconTint, playBackground, playForeground, playSize, seekButtons) }
+    }
+}
+
+/** Media controls stay left-to-right in RTL locales, matching the seek bar's direction of time. */
+@Composable
+private fun MediaLtr(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr, content = content)
+}
+
+@Composable
+private fun TransportButtons(
+    player: Player,
+    playing: Boolean,
+    iconTint: Color,
+    playBackground: Color,
+    playForeground: Color,
+    playSize: Dp,
+    seekButtons: Boolean,
+) {
+    Row(
+        // SpaceEvenly inside a capped width: the gaps grow with the window (≈ the mockup's 26dp
+        // at phone width) up to the cap, instead of a fixed cluster.
+        Modifier
+            .widthIn(max = if (seekButtons) 480.dp else 320.dp)
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (seekButtons) {
+            ActionIcon(
+                Icons.Default.FastRewind,
+                stringResource(Res.string.cd_rewind10),
+                iconSize = 26.dp,
+                hitSize = 36.dp,
+                tint = iconTint,
+                onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
+            )
+        }
+        ActionIcon(
+            Icons.Default.SkipPrevious,
+            stringResource(Res.string.cd_previous),
+            iconSize = 26.dp,
+            hitSize = 36.dp,
+            tint = iconTint,
+            onClick = { player.skipPrev() },
+        )
+        Box(
+            Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable(role = Role.Button) { player.togglePlay() },
+            contentAlignment = Alignment.Center,
         ) {
-            if (seekButtons) {
-                ActionIcon(
-                    Icons.Default.FastRewind,
-                    stringResource(Res.string.cd_rewind10),
-                    iconSize = 26.dp,
-                    hitSize = 36.dp,
-                    tint = iconTint,
-                    onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
-                )
-            }
+            Icon(
+                if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                stringResource(if (playing) Res.string.cd_pause else Res.string.cd_play),
+                Modifier.size(26.dp),
+                tint = playForeground,
+            )
+        }
+        ActionIcon(
+            Icons.Default.SkipNext,
+            stringResource(Res.string.cd_next),
+            iconSize = 26.dp,
+            hitSize = 36.dp,
+            tint = iconTint,
+            onClick = { player.skipNext() },
+        )
+        if (seekButtons) {
             ActionIcon(
-                Icons.Default.SkipPrevious,
-                stringResource(Res.string.cd_previous),
+                Icons.Default.FastForward,
+                stringResource(Res.string.cd_forward10),
                 iconSize = 26.dp,
                 hitSize = 36.dp,
                 tint = iconTint,
-                onClick = { player.skipPrev() },
+                onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
             )
-            Box(
-                Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable(role = Role.Button) { player.togglePlay() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    stringResource(if (playing) Res.string.cd_pause else Res.string.cd_play),
-                    Modifier.size(26.dp),
-                    tint = playForeground,
-                )
-            }
-            ActionIcon(
-                Icons.Default.SkipNext,
-                stringResource(Res.string.cd_next),
-                iconSize = 26.dp,
-                hitSize = 36.dp,
-                tint = iconTint,
-                onClick = { player.skipNext() },
-            )
-            if (seekButtons) {
-                ActionIcon(
-                    Icons.Default.FastForward,
-                    stringResource(Res.string.cd_forward10),
-                    iconSize = 26.dp,
-                    hitSize = 36.dp,
-                    tint = iconTint,
-                    onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
-                )
-            }
         }
     }
 }

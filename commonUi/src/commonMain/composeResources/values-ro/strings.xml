@@ -227,6 +227,7 @@
     <string name="settings_show_fps_hint">Afișează cadrele pe secundă peste videoclipul din Se redă acum. Măsurarea se oprește când pui pauză sau părăsești ecranul.</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">Licențe open source</string>
+    <string name="settings_terms">Termeni și confidențialitate</string>
     <string name="settings_licenses_intro">YMusic este open source sub licența GNU GPL v3.0. Include aceste componente:</string>
 
     <!-- Feedback -->
@@ -258,6 +259,8 @@
     <string name="cd_exit_fullscreen">Ieși din ecranul complet</string>
     <string name="cd_fit_video">Încadrează videoclipul</string>
     <string name="cd_fill_video">Umple ecranul</string>
+    <string name="cd_lock_rotation">Blochează rotirea</string>
+    <string name="cd_unlock_rotation">Deblochează rotirea</string>
     <string name="cd_rewind10">Înapoi 10 secunde</string>
     <string name="cd_forward10">Înainte 10 secunde</string>
     <string name="cd_repeat_off">Repetă: dezactivat</string>
@@ -447,6 +450,8 @@
     <string name="download_save_quick">Salvează ca Descărcare rapidă</string>
     <string name="quick_download_menu">Descărcare rapidă · %1$s</string>
     <string name="playlist_download_title">Descarcă playlistul</string>
+    <string name="playlist_index_prefix">Prefix numeric</string>
+    <string name="playlist_index_prefix_hint">Numele fișierelor încep cu 1. 2. 3.</string>
     <string name="playlist_load_more">+ Încarcă mai multe</string>
     <string name="playlist_check_all">Bifează tot</string>
     <string name="playlist_check_not_downloaded">Bifează nedescărcatele</string>

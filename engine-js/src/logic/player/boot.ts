@@ -14,7 +14,9 @@ import {
 } from "../../protocol/mse";
 import { applyNavigatorLanguages, endLayoutProbes, installOrigEnv } from "./env";
 import { installXhr } from "../yt/xhr";
-import { fetchCacheState, installFetch } from "../yt/fetch";
+import { installFetch } from "../yt/fetch";
+import { executeWithCookies } from "../yt/cookies";
+import { HttpRequest } from "../../protocol/http";
 import { utf8Encode } from "../../transport";
 import { minterFromConfig } from "./pot";
 import { installPlayerAdStrip } from "./skip_ads";
@@ -647,17 +649,16 @@ export function requireFreshPlayerConfig(fresh: boolean): void {
 
 /** The base.js response head for diagnostics. Content-Length/-Encoding are as the host relayed
  *  them: a transport that transparently gunzips (OkHttp) drops both. */
-function baseJsHead(res: FetchResponse): string {
-  const headers = res["headers"];
+function baseJsHead(res: HttpResponse): string {
   return (
     "status=" +
-    res["status"] +
+    res.status +
     " contentLength=" +
-    (headers["get"]("content-length") ?? "-") +
+    (res.headers.get("content-length") ?? "-") +
     " encoding=" +
-    (headers["get"]("content-encoding") ?? "-") +
+    (res.headers.get("content-encoding") ?? "-") +
     " cache=" +
-    fetchCacheState(res)
+    (res.cache ?? "network")
   );
 }
 
@@ -669,6 +670,113 @@ async function fetchPlayerConfig(): Promise<Record<string, unknown>> {
     if (c) await c;
     return await pipe.source.readJsonObject();
   });
+}
+
+/** The whole player/init (or a PO-token mint's BotGuard) gets this long; the host's own 30 s cap
+ *  is only a backstop for an engine that stopped answering. */
+const INIT_DEADLINE_MS = 20000;
+/** A loop-on seek this close to the end restarts the loop; the buffer ends a few ms short of the duration. */
+const LOOP_TAIL_S = 0.5;
+
+/** An init step in flight: what an expired deadline names and abandons. */
+interface InitStep {
+  name: string;
+  code: string;
+  abort: (e: Error) => void;
+}
+
+/** In start order; shared by player/init and the PO-token mint, which run the same steps. */
+const runningSteps: InitStep[] = [];
+
+/** [task] as a named step: settles with it, or rejects when a deadline expires while it runs. */
+function initStep<T>(task: Promise<T>, name: string, code: string): Promise<T> {
+  return new Promise<T>(function (resolve, reject) {
+    const step: InitStep = {
+      name: name,
+      code: code,
+      abort: function (e: Error) {
+        finish();
+        reject(e);
+      },
+    };
+    function finish(): void {
+      const i = runningSteps.indexOf(step);
+      if (i >= 0) runningSteps.splice(i, 1);
+    }
+    runningSteps.push(step);
+    task.then(
+      function (value) {
+        finish();
+        resolve(value);
+      },
+      function (e: unknown) {
+        finish();
+        reject(e);
+      },
+    );
+  });
+}
+
+/** Rejects when [task] has not settled within [INIT_DEADLINE_MS], with the code of the earliest
+ *  step still running; those steps are abandoned with the same error, so the config / minter
+ *  they belong to starts fresh on the next attempt instead of awaiting a hung one. */
+function withinInitDeadline<T>(task: Promise<T>, what: string): Promise<T> {
+  return new Promise<T>(function (resolve, reject) {
+    const timer = setTimeout(function () {
+      const steps = runningSteps.slice();
+      const first = steps[0];
+      const names = steps
+        .map(function (s) {
+          return s.name;
+        })
+        .join(", ");
+      const message =
+        what + " not done within " + INIT_DEADLINE_MS + "ms; still running: " + (names || "none");
+      console.warn(message);
+      const err = new JsEngineErrorImpl(message, first ? first.code : "E20159");
+      for (const s of steps) s.abort(err);
+      reject(err);
+    }, INIT_DEADLINE_MS);
+    task.then(
+      function (value) {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      function (e: unknown) {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+interface BaseJsDownload {
+  text: string;
+  head: string;
+}
+
+async function downloadBaseJs(jsUrl: string): Promise<BaseJsDownload> {
+  let head = "status=none";
+  try {
+    const res = await executeWithCookies(
+      jsUrl,
+      HttpRequest.get(jsUrl)
+        .setHeader("Referer", ORIGIN + "/")
+        .setHeader("Origin", ORIGIN),
+    );
+    head = baseJsHead(res);
+    if (!res.ok) {
+      res.close();
+      throw new Error("GET " + jsUrl + " status=" + res.status);
+    }
+    return { text: await res.text(), head: head };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("base.js fetch failed " + head + " err=" + msg + " jsUrl=" + jsUrl);
+    throw new JsEngineErrorImpl("base.js fetch: " + msg + " (" + head + ")", "E20075", {
+      cause: e instanceof Error ? e : undefined,
+    });
+  }
 }
 
 /** Everything `player/load` applies before the first frame, so the host needs one round-trip. */
@@ -688,7 +796,7 @@ class Player {
   private tempo = 1;
   private pitch = 1;
   private mintFn: ((id: Uint8Array) => unknown) | null = null;
-  private config: Record<string, unknown> | null = null;
+  private configP: Promise<Record<string, unknown>> | null = null;
   private minterP: Promise<Record<string, unknown>> | null = null;
   private initP: Promise<Record<string, unknown>> | null = null;
   private createFn: ((r: unknown, a: unknown, b: unknown) => unknown) | null = null;
@@ -696,7 +804,7 @@ class Player {
 
   init(): Promise<Record<string, unknown>> {
     if (this.initP == null) {
-      this.initP = this.doInit().then(
+      this.initP = withinInitDeadline(this.doInit(), "player/init").then(
         (v) => v,
         (e: unknown) => {
           this.initP = null;
@@ -705,6 +813,19 @@ class Player {
       );
     }
     return this.initP;
+  }
+
+  private ensureConfig(): Promise<Record<string, unknown>> {
+    if (this.configP == null) {
+      this.configP = this.doConfig().then(
+        (v) => v,
+        (e: unknown) => {
+          this.configP = null;
+          throw e;
+        },
+      );
+    }
+    return this.configP;
   }
 
   private ensureMinter(): Promise<Record<string, unknown>> {
@@ -720,19 +841,20 @@ class Player {
     return this.minterP;
   }
 
-  private async doMinter(): Promise<Record<string, unknown>> {
-    const out: Record<string, unknown> = { "step": "env" };
-    await playerStorageReady();
+  private async doConfig(): Promise<Record<string, unknown>> {
+    await initStep(playerStorageReady(), "player storage", "E20158");
     installOrigEnv();
     installNativeUrl();
     setLocation(ORIGIN + "/", "/", "");
-    out["step"] = "config";
-    const cfg = await fetchPlayerConfig();
-    this.config = cfg;
+    const cfg = await initStep(fetchPlayerConfig(), "session scrape", "E20155");
     applyNavigatorLanguages(cfg["acceptLanguage"]);
+    return cfg;
+  }
 
-    out["step"] = "minter";
-    this.mintFn = await minterFromConfig(cfg, out);
+  private async doMinter(): Promise<Record<string, unknown>> {
+    const cfg = await this.ensureConfig();
+    const out: Record<string, unknown> = { "step": "minter" };
+    this.mintFn = await initStep(minterFromConfig(cfg, out), "botguard", "E20156");
     endLayoutProbes();
     const self = this;
     installCaptionMinter(function (id: string) {
@@ -746,12 +868,17 @@ class Player {
     return out;
   }
 
+  /** Session scrape, then BotGuard with base.js downloading alongside; base.js is evaluated only
+   *  after the BotGuard snapshot. */
   private async doInit(): Promise<Record<string, unknown>> {
-    const out = await this.ensureMinter();
-    const cfg = this.config;
-    if (!cfg) throw new JsEngineErrorImpl("player config missing", "E20150");
+    const cfg = await this.ensureConfig();
     const jsUrlRaw = typeof cfg["jsUrl"] === "string" ? (cfg["jsUrl"] as string) : "";
     if (!jsUrlRaw) throw new JsEngineErrorImpl("player config has no jsUrl", "E20151");
+    const jsUrl = absUrl(jsUrlRaw);
+    cfg["jsUrl"] = jsUrl;
+    const download = initStep(downloadBaseJs(jsUrl), "base.js download", "E20157");
+    download.catch(function () {});
+    const out = await this.ensureMinter();
 
     installPlayerTree();
     installPlayerAdStrip();
@@ -759,25 +886,11 @@ class Player {
     installAdaptiveFormatsHeader();
     installWatchNextHarvest();
 
-    const jsUrl = absUrl(jsUrlRaw);
-    if (typeof cfg["jsUrl"] === "string") cfg["jsUrl"] = jsUrl;
     out["jsUrl"] = jsUrl;
     out["step"] = "basejs";
-    let baseJs: string;
-    let head = "status=none";
-    try {
-      const res = await fetch(jsUrl);
-      if (res) head = baseJsHead(res);
-      if (!res || !res["ok"])
-        throw new Error("GET " + jsUrl + " status=" + (res ? res["status"] : "no response"));
-      baseJs = await (res as { text(): Promise<string> })["text"]();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn("base.js fetch failed " + head + " err=" + msg + " jsUrl=" + jsUrl);
-      throw new JsEngineErrorImpl("base.js fetch: " + msg + " (" + head + ")", "E20075", {
-        cause: e instanceof Error ? e : undefined,
-      });
-    }
+    const downloaded = await download;
+    const baseJs = downloaded.text;
+    const head = downloaded.head;
     out["baseJsSrc"] = "cdn";
     out["baseJsLen"] = baseJs.length;
     console.info("base.js source=cdn " + head + " len=" + baseJs.length + " jsUrl=" + jsUrl);
@@ -1016,7 +1129,7 @@ class Player {
   }
 
   async mintPo(videoId: string): Promise<Record<string, unknown>> {
-    const minterOut = await this.ensureMinter();
+    const minterOut = await withinInitDeadline(this.ensureMinter(), "po token minter");
     const token = await this.mintToken(videoId);
     return {
       "videoId": videoId,
@@ -1096,8 +1209,14 @@ class Player {
   seek(t: number): void {
     const player = moviePlayer();
     if (!player) return;
-    const ct = activeHtmlMedia() ? __mseCurrentTime() : -1;
+    const el = activeHtmlMedia();
+    const ct = el ? __mseCurrentTime() : -1;
     console.info("mse seek t=" + t + " ct=" + ct);
+    // base.js pauses a seek onto the tail instead of ending it, so a looping element never wraps.
+    if (el && el["loop"] && !isLiveDuration()) {
+      const d = Number(el["duration"]);
+      if (isFinite(d) && d > 0 && t >= d - LOOP_TAIL_S) t = 0;
+    }
     player["seekTo"](t, true);
     onCaptionSeek();
   }

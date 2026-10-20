@@ -59,6 +59,7 @@ kotlin {
                 implementation(Libs.Kotlinx.coroutinesCore)
                 implementation(Libs.Kotlinx.dateTime)
                 implementation(project(":kmpHttp:core"))
+                implementation(project(":kmpHttp:json"))
             }
         }
 

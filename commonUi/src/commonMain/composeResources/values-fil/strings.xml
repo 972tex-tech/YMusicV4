@@ -226,6 +226,7 @@
     <string name="settings_show_fps_hint">Ipakita ang frames per second sa ibabaw ng video sa Now Playing. Humihinto ang sampling kapag naka-pause o umalis ka sa screen na iyon.</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">Mga open source na lisensya</string>
+    <string name="settings_terms">Mga tuntunin at privacy</string>
     <string name="settings_licenses_intro">Open source ang YMusic sa ilalim ng GNU GPL v3.0. Kasama rito ang mga component na ito:</string>
 
     <!-- Feedback -->
@@ -257,6 +258,8 @@
     <string name="cd_exit_fullscreen">Lumabas sa full screen</string>
     <string name="cd_fit_video">Ipagkasya ang video</string>
     <string name="cd_fill_video">Punuin ang screen</string>
+    <string name="cd_lock_rotation">I-lock ang pag-ikot</string>
+    <string name="cd_unlock_rotation">I-unlock ang pag-ikot</string>
     <string name="cd_rewind10">I-rewind nang 10 segundo</string>
     <string name="cd_forward10">I-forward nang 10 segundo</string>
     <string name="cd_repeat_off">Ulitin: naka-off</string>
@@ -446,6 +449,8 @@
     <string name="download_save_quick">I-save bilang Quick download</string>
     <string name="quick_download_menu">Quick download · %1$s</string>
     <string name="playlist_download_title">I-download ang playlist</string>
+    <string name="playlist_index_prefix">Prefix na numero</string>
+    <string name="playlist_index_prefix_hint">Simulan ang pangalan ng file sa 1. 2. 3.</string>
     <string name="playlist_load_more">+ Mag-load pa</string>
     <string name="playlist_check_all">Piliin lahat</string>
     <string name="playlist_check_not_downloaded">Piliin ang hindi pa na-download</string>

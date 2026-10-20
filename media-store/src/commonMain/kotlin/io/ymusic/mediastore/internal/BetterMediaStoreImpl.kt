@@ -13,6 +13,7 @@ import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.mediastore.model.Playlist
 import io.ymusic.mediastore.model.PlaylistItem
 import io.ymusic.mediastore.model.PlaylistItemDetail
+import io.ymusic.mediastore.model.PlaylistSnapshot
 import kmpcommon.uri.Uri
 import kmpcommon.uri.canonicalString
 import kotlinx.coroutines.CoroutineDispatcher
@@ -302,6 +303,39 @@ internal class BetterMediaStoreImpl(
             db.transaction {
                 orderedCodes.forEachIndexed { index, code ->
                     plItemQ.setSortKey(index.toLong(), playlistId, code)
+                }
+            }
+        }
+
+    override suspend fun restorePlaylists(snapshots: List<PlaylistSnapshot>, replaceAll: Boolean): Unit =
+        withContext(io) {
+            db.transaction {
+                val ts = now()
+                if (replaceAll) {
+                    playlistQ.deleteAllPlaylists()
+                    for (snapshot in snapshots) {
+                        playlistQ.insertPlaylist(snapshot.name, snapshot.createdAt, ts)
+                        val id = playlistQ.lastInsertRowId().executeAsOne()
+                        snapshot.items.forEachIndexed { index, item ->
+                            plItemQ.addPlaylistItem(id, item.code, index.toLong(), item.addedAt)
+                        }
+                    }
+                    return@transaction
+                }
+                val existing = playlistQ.allPlaylists().executeAsList()
+                    .groupBy { it.name.trim().lowercase() }
+                    .mapValues { (_, rows) -> rows.minOf { it.id } }
+                    .toMutableMap()
+                for (snapshot in snapshots) {
+                    val key = snapshot.name.trim().lowercase()
+                    val id = existing[key] ?: run {
+                        playlistQ.insertPlaylist(snapshot.name.trim(), snapshot.createdAt, ts)
+                        playlistQ.lastInsertRowId().executeAsOne().also { existing[key] = it }
+                    }
+                    for (item in snapshot.items) {
+                        lastSortKey = maxOf(now(), lastSortKey + 1)
+                        plItemQ.addPlaylistItem(id, item.code, lastSortKey, item.addedAt)
+                    }
                 }
             }
         }

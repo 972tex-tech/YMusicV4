@@ -7,7 +7,7 @@ import platform.Foundation.NSFileSystemFreeSize
 import platform.Foundation.NSNumber
 
 @OptIn(ExperimentalForeignApi::class)
-internal actual fun usableSpaceBytes(dir: Path): Long? {
+actual fun usableSpaceBytes(dir: Path): Long? {
     val attrs = NSFileManager.defaultManager.attributesOfFileSystemForPath(dir.toString(), error = null)
     return (attrs?.get(NSFileSystemFreeSize) as? NSNumber)?.longLongValue
 }

@@ -226,6 +226,7 @@
     <string name="settings_show_fps_hint">Másodpercenkénti képkockaszám megjelenítése a Most szól videón. A mérés leáll szüneteltetéskor vagy a képernyő elhagyásakor.</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">Nyílt forráskódú licencek</string>
+    <string name="settings_terms">Feltételek és adatvédelem</string>
     <string name="settings_licenses_intro">A YMusic nyílt forráskódú, GNU GPL v3.0 licenc alatt. A következő összetevőket tartalmazza:</string>
 
     <!-- Feedback -->
@@ -257,6 +258,8 @@
     <string name="cd_exit_fullscreen">Kilépés a teljes képernyőből</string>
     <string name="cd_fit_video">Videó igazítása</string>
     <string name="cd_fill_video">Képernyő kitöltése</string>
+    <string name="cd_lock_rotation">Forgatás zárolása</string>
+    <string name="cd_unlock_rotation">Forgatás feloldása</string>
     <string name="cd_rewind10">10 másodperc vissza</string>
     <string name="cd_forward10">10 másodperc előre</string>
     <string name="cd_repeat_off">Ismétlés: ki</string>
@@ -446,6 +449,8 @@
     <string name="download_save_quick">Mentés Gyors letöltésként</string>
     <string name="quick_download_menu">Gyors letöltés · %1$s</string>
     <string name="playlist_download_title">Lejátszási lista letöltése</string>
+    <string name="playlist_index_prefix">Sorszám előtag</string>
+    <string name="playlist_index_prefix_hint">A fájlnevek 1. 2. 3. kezdettel</string>
     <string name="playlist_load_more">+ Továbbiak betöltése</string>
     <string name="playlist_check_all">Összes kijelölése</string>
     <string name="playlist_check_not_downloaded">Nem letöltöttek kijelölése</string>

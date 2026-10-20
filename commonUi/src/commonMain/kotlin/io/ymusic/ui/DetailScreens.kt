@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.LibraryAdd
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +62,7 @@ import io.ymusic.ui.resources.cd_share
 import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.resources.channel_sign_in_to_subscribe
 import io.ymusic.ui.resources.detail_playlist
+import io.ymusic.ui.resources.local_playlist_create
 import io.ymusic.ui.resources.playlist_removed
 import io.ymusic.ui.resources.playlist_saved
 import io.ymusic.ui.resources.playlist_sign_in_to_save
@@ -198,6 +201,12 @@ fun PlaylistDetailScreen(
         }
     }
 
+    val store = coordinator.graph.mediaStore
+    var creatingLocal by remember { mutableStateOf<String?>(null) }
+    if (store != null) {
+        creatingLocal?.let { title -> LocalPlaylistFromDownloadsDialog(store, title, s.feed.pager) { creatingLocal = null } }
+    }
+
     Column(Modifier.fillMaxSize()) {
         DetailAppBar(stringResource(Res.string.detail_playlist), onBack, onSearch)
         CompositionLocalProvider(LocalRemoveFromYtPlaylist provides { s.removeVideo(it) }) {
@@ -229,6 +238,7 @@ fun PlaylistDetailScreen(
                             }
                         },
                         onDownload = onDownload?.let { open -> { open(title, s.feed.pager) } },
+                        onCreateLocal = store?.let { { creatingLocal = title } },
                         save = ready?.pageHeader?.savePlaylistId?.let { playlistId ->
                             { SavePlaylistToggle(s.saved, s.saving) { s.toggleSaved(playlistId) } }
                         },
@@ -250,6 +260,7 @@ internal fun PlaylistHeader(
     meta: String?,
     onShuffle: (() -> Unit)?,
     onDownload: (() -> Unit)? = null,
+    onCreateLocal: (() -> Unit)? = null,
     save: (@Composable () -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxWidth()) {
@@ -274,6 +285,7 @@ internal fun PlaylistHeader(
             save?.invoke()
             ActionIcon(Icons.Outlined.Share, stringResource(Res.string.cd_share), enabled = false, onClick = {})
             ActionIcon(Icons.Outlined.FileDownload, stringResource(Res.string.cd_download), enabled = onDownload != null, onClick = { onDownload?.invoke() })
+            if (onCreateLocal != null) ActionIcon(Icons.Outlined.LibraryAdd, stringResource(Res.string.local_playlist_create), onClick = onCreateLocal)
             Box(Modifier.weight(1f))
             Box(
                 Modifier.size(46.dp).clip(CircleShape).background(DesignColors.InkStrong).clickable(enabled = onShuffle != null, role = Role.Button, onClick = { onShuffle?.invoke() }),

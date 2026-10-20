@@ -11,6 +11,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import java.net.SocketTimeoutException
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resumeWithException
 import kotlin.time.Duration
 
@@ -56,6 +58,7 @@ class OkKmpHttpClient : KmpHttpClient {
                 if (networkInterceptors().find { it is NetworkInterceptorBridge } == null) {
                     addNetworkInterceptor(NetworkInterceptorBridge())
                 }
+                if (interceptors().none { it is ReadTimeoutBridge }) addInterceptor(ReadTimeoutBridge())
                 if (builder.interceptors.any { it is HttpLogInterceptor }) eventListenerFactory(CallTraceListener.factory)
             }
             .build()
@@ -100,11 +103,16 @@ class OkKmpHttpClient : KmpHttpClient {
 
                     suspendCancellableCoroutine { cont ->
                         val request =
-                            if (networkInterceptors.isNotEmpty()) {
+                            if (networkInterceptors.isNotEmpty() || timeout != null) {
                                 beforeNetworkRequest.newBuilder()
-                                    .tag(OkKmpHttpClient::class, this@OkKmpHttpClient)
-                                    .tag(RedirectOptions::class, options)
-                                    .tag(Job::class, cont.context.job)
+                                    .apply {
+                                        if (networkInterceptors.isNotEmpty()) {
+                                            tag(OkKmpHttpClient::class, this@OkKmpHttpClient)
+                                            tag(RedirectOptions::class, options)
+                                            tag(Job::class, cont.context.job)
+                                        }
+                                        if (timeout != null) tag(ReadTimeout::class, ReadTimeout(timeout))
+                                    }
                                     .build()
                             } else {
                                 beforeNetworkRequest
@@ -115,7 +123,13 @@ class OkKmpHttpClient : KmpHttpClient {
                             val resp = call.execute()                  // blocks THIS thread
                             cont.resume(resp) { _, _, _ -> resp.close() }
                         } catch (e: Throwable) {
-                            if (cont.isActive) cont.resumeWithException(e)
+                            // ReadTimeoutBridge's timeout fires just before the execute timeout: same contract.
+                            val failure = if (timeout != null && e is SocketTimeoutException) {
+                                HttpTimeoutException("no response within $timeout").apply { initCause(e) }
+                            } else {
+                                e
+                            }
+                            if (cont.isActive) cont.resumeWithException(failure)
                         }
                     }
                 },
@@ -149,6 +163,22 @@ class OkKmpHttpClient : KmpHttpClient {
 
         override fun build(): OkKmpHttpClient {
             return OkKmpHttpClient(this)
+        }
+    }
+
+    private class ReadTimeout(executeTimeout: Duration) {
+        val millis: Int = (executeTimeout.inWholeMilliseconds * READ_TIMEOUT_SHARE).toLong().coerceIn(1, Int.MAX_VALUE.toLong()).toInt()
+    }
+
+    /**
+     * OkHttp's read timeout for the call, just under its execute timeout. The execute timeout cancels
+     * the call, which never checks the connection; OkHttp's own timeout firing first does (an HTTP/2
+     * degraded ping), so a silent pooled connection is retired instead of taking every next request.
+     */
+    private class ReadTimeoutBridge : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
+            val readTimeout = chain.request().tag(ReadTimeout::class) ?: return chain.proceed(chain.request())
+            return chain.withReadTimeout(readTimeout.millis, TimeUnit.MILLISECONDS).proceed(chain.request())
         }
     }
 
@@ -186,3 +216,5 @@ class OkKmpHttpClient : KmpHttpClient {
 actual fun KmpHttpClient.Companion.Builder(): KmpHttpClient.BaseBuilder<*> {
     return OkKmpHttpClient.Builder()
 }
+
+private const val READ_TIMEOUT_SHARE = 0.9

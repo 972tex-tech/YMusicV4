@@ -226,6 +226,7 @@
     <string name="settings_show_fps_hint">نمایش تعداد فریم در ثانیه روی ویدیوی در حال پخش. نمونه‌برداری هنگام توقف یا خروج از آن صفحه متوقف می‌شود.</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">مجوزهای متن‌باز</string>
+    <string name="settings_terms">شرایط و حریم خصوصی</string>
     <string name="settings_licenses_intro">YMusic متن‌باز و تحت مجوز GNU GPL v3.0 است. این برنامه شامل این اجزا است:</string>
 
     <!-- Feedback -->
@@ -257,6 +258,8 @@
     <string name="cd_exit_fullscreen">خروج از تمام‌صفحه</string>
     <string name="cd_fit_video">متناسب با ویدیو</string>
     <string name="cd_fill_video">پر کردن صفحه</string>
+    <string name="cd_lock_rotation">قفل چرخش</string>
+    <string name="cd_unlock_rotation">باز کردن قفل چرخش</string>
     <string name="cd_rewind10">10 ثانیه عقب</string>
     <string name="cd_forward10">10 ثانیه جلو</string>
     <string name="cd_repeat_off">تکرار: خاموش</string>
@@ -446,6 +449,8 @@
     <string name="download_save_quick">ذخیره به‌عنوان دانلود سریع</string>
     <string name="quick_download_menu">دانلود سریع · %1$s</string>
     <string name="playlist_download_title">دانلود لیست پخش</string>
+    <string name="playlist_index_prefix">پیشوند شماره</string>
+    <string name="playlist_index_prefix_hint">نام فایل‌ها با 1. 2. 3. شروع شود</string>
     <string name="playlist_load_more">+ بارگذاری بیشتر</string>
     <string name="playlist_check_all">انتخاب همه</string>
     <string name="playlist_check_not_downloaded">انتخاب دانلودنشده‌ها</string>

@@ -226,6 +226,7 @@
     <string name="settings_show_fps_hint">Now Playing ভিডিওর উপর প্রতি সেকেন্ডে ফ্রেম দেখান। বিরতি দিলে বা স্ক্রিন ছেড়ে গেলে মাপা বন্ধ হয়।</string>
     <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">ওপেন সোর্স লাইসেন্স</string>
+    <string name="settings_terms">শর্তাবলী ও গোপনীয়তা</string>
     <string name="settings_licenses_intro">YMusic GNU GPL v3.0-এর অধীনে ওপেন সোর্স। এতে এই উপাদানগুলো রয়েছে:</string>
 
     <!-- Feedback -->
@@ -257,6 +258,8 @@
     <string name="cd_exit_fullscreen">পূর্ণ স্ক্রিন থেকে বেরোন</string>
     <string name="cd_fit_video">ভিডিও মানানসই করুন</string>
     <string name="cd_fill_video">স্ক্রিন ভরাট করুন</string>
+    <string name="cd_lock_rotation">ঘোরানো লক করুন</string>
+    <string name="cd_unlock_rotation">ঘোরানো আনলক করুন</string>
     <string name="cd_rewind10">10 সেকেন্ড পিছিয়ে যান</string>
     <string name="cd_forward10">10 সেকেন্ড এগিয়ে যান</string>
     <string name="cd_repeat_off">পুনরাবৃত্তি: বন্ধ</string>
@@ -446,6 +449,8 @@
     <string name="download_save_quick">দ্রুত ডাউনলোড হিসেবে সেভ করুন</string>
     <string name="quick_download_menu">দ্রুত ডাউনলোড · %1$s</string>
     <string name="playlist_download_title">প্লেলিস্ট ডাউনলোড করুন</string>
+    <string name="playlist_index_prefix">ক্রমিক উপসর্গ</string>
+    <string name="playlist_index_prefix_hint">ফাইলের নাম 1. 2. 3. দিয়ে শুরু হবে</string>
     <string name="playlist_load_more">+ আরও লোড করুন</string>
     <string name="playlist_check_all">সব চিহ্নিত করুন</string>
     <string name="playlist_check_not_downloaded">ডাউনলোড না হওয়াগুলো চিহ্নিত করুন</string>

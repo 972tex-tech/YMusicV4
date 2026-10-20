@@ -62,7 +62,7 @@ import kotlin.math.max
 
 /** The engine-composed music detail link prefix ("/ytmusic/browse?id=…", see musicParse.ts) — the
  *  app routes items/deeplinks carrying it to the music detail layer instead of the WEB pages. */
-internal const val MusicBrowsePrefix = "/ytmusic/browse"
+const val MusicBrowsePrefix = "/ytmusic/browse"
 
 /** The YT Music top tabs. All but Library are anonymous WEB_REMIX feeds; Library needs sign-in. */
 enum class YtMusicTab(val label: StringResource) {
@@ -222,6 +222,12 @@ fun MusicDetailScreen(
     // A category/feed browse (New releases, Charts, Moods & genres, a mood) vs a track list.
     val isFeed = session.url.contains("id=FEmusic")
 
+    val store = coordinator.graph.mediaStore
+    var creatingLocal by remember { mutableStateOf<String?>(null) }
+    if (store != null) {
+        creatingLocal?.let { title -> LocalPlaylistFromDownloadsDialog(store, title, session.feed.pager) { creatingLocal = null } }
+    }
+
     Column(Modifier.fillMaxSize()) {
         DetailAppBar(
             if (isFeed) (ready?.pageHeader?.title ?: session.item.title) else stringResource(Res.string.detail_playlist),
@@ -272,6 +278,7 @@ fun MusicDetailScreen(
                             }
                         },
                         onDownload = onDownload?.let { open -> { open(title, session.feed.pager) } },
+                        onCreateLocal = store?.let { { creatingLocal = title } },
                     )
                 }
             },
