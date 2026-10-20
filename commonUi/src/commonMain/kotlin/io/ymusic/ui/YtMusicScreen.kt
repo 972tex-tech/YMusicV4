@@ -254,7 +254,7 @@ fun MusicDetailScreen(
                 } else {
                     {
                         PlayAllBar(
-                            onPlayAll = { coordinator.playAll(videos) },
+                            onPlayAll = { coordinator.playAll(videos, shuffle = false) },
                             onShuffleAll = { coordinator.playAll(videos, startIndex = videos.indices.random(), shuffle = true) },
                         )
                     }

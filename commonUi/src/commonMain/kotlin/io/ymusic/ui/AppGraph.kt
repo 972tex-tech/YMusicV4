@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.mediastore.BetterMediaStore
+import io.ymusic.player.LoopMode
 import io.ymusic.player.Player
 import io.ymusic.remoteconfig.ApiService
 import io.ymusic.remoteconfig.RemoteConfigData
@@ -31,6 +32,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /** The player-quality settings key — public because shell settings stores (iOS NSUserDefaults
  *  seeding) enumerate the keys they persist. */
@@ -40,6 +44,8 @@ const val PlaybackVolumeKey = "player.volume"
 const val PlaybackSpeedKey = "player.speed"
 const val PlaybackPitchKey = "player.pitch"
 const val PlaybackEqKey = "player.eq"
+const val PlaybackShuffleKey = "player.shuffle"
+const val PlaybackLoopModeKey = "player.loopMode"
 
 /** How a shell scan ended; the shared UI renders it as the user-facing summary. */
 sealed interface ScanResult {
@@ -254,6 +260,16 @@ class AppGraph(
         playHistory?.takeUnless { guest }?.let {
             PlayAgainRecorder(player, it.playAgain, logger?.fork("play-again"))
                 .start(CoroutineScope(SupervisorJob() + Dispatchers.Default))
+        }
+        // Here, not in App: Android Auto can start playback without the UI ever composing.
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
+            val savedLoop = settings.string(PlaybackLoopModeKey, "").value
+            player.setLoopMode(LoopMode.entries.firstOrNull { it.name == savedLoop } ?: LoopMode.None)
+            player.setShuffle(settings.string(PlaybackShuffleKey, "0").value == "1")
+            player.queue.map { it.shuffle to it.loopMode }.distinctUntilChanged().collect { (shuffle, loop) ->
+                settings.putString(PlaybackShuffleKey, if (shuffle) "1" else "0")
+                settings.putString(PlaybackLoopModeKey, loop.name)
+            }
         }
     }
 

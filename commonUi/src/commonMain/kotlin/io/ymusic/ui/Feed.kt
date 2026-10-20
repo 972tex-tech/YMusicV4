@@ -654,7 +654,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                 onToggle = if (section.collapsible) onToggle else null,
                 onCta = when {
                     section.header?.ctaAction == YtSectionHeader.CTA_PLAY_ALL -> {
-                        { coordinator.playAll(section.items) }
+                        { coordinator.playAll(section.items, shuffle = false) }
                     }
                     deeplink != null && onDeeplink != null -> {
                         { onDeeplink(deeplink, section.header?.title) }
