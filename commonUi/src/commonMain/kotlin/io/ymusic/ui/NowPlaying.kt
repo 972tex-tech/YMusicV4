@@ -107,6 +107,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -118,6 +119,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -1353,11 +1355,13 @@ private fun SeekBar(player: io.ymusic.player.Player, progress: Progress) {
     val labelProgress = scrubMs?.let { progress.copy(positionMs = it) } ?: progress
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 2.dp)) {
         SeekSlider(player, progress, trackColor = DesignColors.OutlineSoft, onScrubMs = { scrubMs = it })
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            val timeStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary)
-            Text(labelProgress.progressLabel.orEmpty(), style = timeStyle)
-            Spacer(Modifier.weight(1f))
-            DurationLabel(player, progress, timeStyle)
+        MediaLtr {
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                val timeStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkSecondary)
+                Text(labelProgress.progressLabel.orEmpty(), style = timeStyle)
+                Spacer(Modifier.weight(1f))
+                DurationLabel(player, progress, timeStyle)
+            }
         }
     }
 }
@@ -1425,63 +1429,82 @@ private fun TransportRow(
 ) {
     val player = coordinator.player
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Row(
-            // SpaceEvenly inside a capped width: the gaps grow with the window (≈ the mockup's 26dp
-            // at phone width) up to the cap, instead of a fixed cluster.
-            Modifier
-                .widthIn(max = if (seekButtons) 480.dp else 320.dp)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
+        MediaLtr { TransportButtons(player, playing, iconTint, playBackground, playForeground, playSize, seekButtons) }
+    }
+}
+
+/** Media controls stay left-to-right in RTL locales, matching the seek bar's direction of time. */
+@Composable
+private fun MediaLtr(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr, content = content)
+}
+
+@Composable
+private fun TransportButtons(
+    player: Player,
+    playing: Boolean,
+    iconTint: Color,
+    playBackground: Color,
+    playForeground: Color,
+    playSize: Dp,
+    seekButtons: Boolean,
+) {
+    Row(
+        // SpaceEvenly inside a capped width: the gaps grow with the window (≈ the mockup's 26dp
+        // at phone width) up to the cap, instead of a fixed cluster.
+        Modifier
+            .widthIn(max = if (seekButtons) 480.dp else 320.dp)
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (seekButtons) {
+            ActionIcon(
+                Icons.Default.FastRewind,
+                stringResource(Res.string.cd_rewind10),
+                iconSize = 26.dp,
+                hitSize = 36.dp,
+                tint = iconTint,
+                onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
+            )
+        }
+        ActionIcon(
+            Icons.Default.SkipPrevious,
+            stringResource(Res.string.cd_previous),
+            iconSize = 26.dp,
+            hitSize = 36.dp,
+            tint = iconTint,
+            onClick = { player.skipPrev() },
+        )
+        Box(
+            Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable(role = Role.Button) { player.togglePlay() },
+            contentAlignment = Alignment.Center,
         ) {
-            if (seekButtons) {
-                ActionIcon(
-                    Icons.Default.FastRewind,
-                    stringResource(Res.string.cd_rewind10),
-                    iconSize = 26.dp,
-                    hitSize = 36.dp,
-                    tint = iconTint,
-                    onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
-                )
-            }
+            Icon(
+                if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                stringResource(if (playing) Res.string.cd_pause else Res.string.cd_play),
+                Modifier.size(26.dp),
+                tint = playForeground,
+            )
+        }
+        ActionIcon(
+            Icons.Default.SkipNext,
+            stringResource(Res.string.cd_next),
+            iconSize = 26.dp,
+            hitSize = 36.dp,
+            tint = iconTint,
+            onClick = { player.skipNext() },
+        )
+        if (seekButtons) {
             ActionIcon(
-                Icons.Default.SkipPrevious,
-                stringResource(Res.string.cd_previous),
+                Icons.Default.FastForward,
+                stringResource(Res.string.cd_forward10),
                 iconSize = 26.dp,
                 hitSize = 36.dp,
                 tint = iconTint,
-                onClick = { player.skipPrev() },
+                onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
             )
-            Box(
-                Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable(role = Role.Button) { player.togglePlay() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    stringResource(if (playing) Res.string.cd_pause else Res.string.cd_play),
-                    Modifier.size(26.dp),
-                    tint = playForeground,
-                )
-            }
-            ActionIcon(
-                Icons.Default.SkipNext,
-                stringResource(Res.string.cd_next),
-                iconSize = 26.dp,
-                hitSize = 36.dp,
-                tint = iconTint,
-                onClick = { player.skipNext() },
-            )
-            if (seekButtons) {
-                ActionIcon(
-                    Icons.Default.FastForward,
-                    stringResource(Res.string.cd_forward10),
-                    iconSize = 26.dp,
-                    hitSize = 36.dp,
-                    tint = iconTint,
-                    onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
-                )
-            }
         }
     }
 }
