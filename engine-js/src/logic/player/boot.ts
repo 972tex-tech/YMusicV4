@@ -1171,7 +1171,7 @@ class Player {
     const ct = el ? __mseCurrentTime() : -1;
     console.info("mse seek t=" + t + " ct=" + ct);
     // base.js pauses a seek onto the tail instead of ending it, so a looping element never wraps.
-    if (el && el["loop"]) {
+    if (el && el["loop"] && !isLiveDuration()) {
       const d = Number(el["duration"]);
       if (isFinite(d) && d > 0 && t >= d - LOOP_TAIL_S) t = 0;
     }
