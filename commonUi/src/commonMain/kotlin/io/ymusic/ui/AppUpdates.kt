@@ -64,6 +64,7 @@ sealed interface UpdateDownload {
     data class Failed(val code: String) : UpdateDownload
 
     /** The OS will not let this app install packages until the user allows it ("Install unknown
-     *  apps"); the alternative is downloading the release in the browser. */
-    data object NeedsInstallPermission : UpdateDownload
+     *  apps"). [offerBrowser]: the user has struggled with that long enough to be offered the
+     *  release in the browser instead. */
+    data class NeedsInstallPermission(val offerBrowser: Boolean) : UpdateDownload
 }
