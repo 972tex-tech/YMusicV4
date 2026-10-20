@@ -10,6 +10,7 @@ import io.ymusic.dynamicengine.yt.YtFeedPage
 import io.ymusic.dynamicengine.yt.extractAccountLibrary
 import io.ymusic.dynamicengine.yt.extractChannelDetail
 import io.ymusic.dynamicengine.yt.extractHomeFeed
+import io.ymusic.dynamicengine.yt.extractMusicBrowse
 import io.ymusic.dynamicengine.yt.extractMusicCharts
 import io.ymusic.dynamicengine.yt.extractMusicExplore
 import io.ymusic.dynamicengine.yt.extractMusicHome
@@ -21,6 +22,7 @@ import io.ymusic.dynamicengine.yt.ytLoginStatus
 import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.player.PlayableItem
 import io.ymusic.ui.AppGraph
+import io.ymusic.ui.MusicBrowsePrefix
 import io.ymusic.ui.localArtUrl
 import io.ymusic.ui.playhistory.mediaItemsByPlayHistoryCodes
 import io.ymusic.ui.toLocalMedia
@@ -108,8 +110,16 @@ class MediaBrowseTree(private val context: Context, private val graph: AppGraph)
             parentId == YTM_EXPLORE -> feedChildren(graph.engines.extractMusicExplore())
             parentId == YTM_NEW -> feedChildren(graph.engines.extractMusicNewReleases())
             parentId == YTM_CHARTS -> feedChildren(graph.engines.extractMusicCharts())
-            parentId.startsWith(YT_LIST_PREFIX) ->
-                feedChildren(graph.engines.extractPlaylistDetail(parentId.removePrefix(YT_LIST_PREFIX)))
+            parentId.startsWith(YT_LIST_PREFIX) -> {
+                val url = parentId.removePrefix(YT_LIST_PREFIX)
+                feedChildren(
+                    if (url.startsWith(MusicBrowsePrefix)) {
+                        graph.engines.extractMusicBrowse(url)
+                    } else {
+                        graph.engines.extractPlaylistDetail(url)
+                    },
+                )
+            }
             parentId.startsWith(YT_FEED_PREFIX) ->
                 feedChildren(graph.engines.extractChannelDetail(parentId.removePrefix(YT_FEED_PREFIX)))
             else -> emptyList()
