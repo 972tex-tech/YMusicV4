@@ -260,6 +260,8 @@
     <string name="cd_exit_fullscreen">Ukončiť celú obrazovku</string>
     <string name="cd_fit_video">Prispôsobiť video</string>
     <string name="cd_fill_video">Vyplniť obrazovku</string>
+    <string name="cd_lock_rotation">Uzamknúť otáčanie</string>
+    <string name="cd_unlock_rotation">Odomknúť otáčanie</string>
     <string name="cd_rewind10">Pretočiť o 10 sekúnd späť</string>
     <string name="cd_forward10">Pretočiť o 10 sekúnd dopredu</string>
     <string name="cd_repeat_off">Opakovať: vypnuté</string>
@@ -449,6 +451,8 @@
     <string name="download_save_quick">Uložiť ako Rýchle stiahnutie</string>
     <string name="quick_download_menu">Rýchle stiahnutie · %1$s</string>
     <string name="playlist_download_title">Stiahnuť playlist</string>
+    <string name="playlist_index_prefix">Predpona s poradím</string>
+    <string name="playlist_index_prefix_hint">Názvy súborov začnú 1. 2. 3.</string>
     <string name="playlist_load_more">+ Načítať ďalšie</string>
     <string name="playlist_check_all">Označiť všetko</string>
     <string name="playlist_check_not_downloaded">Označiť nestiahnuté</string>

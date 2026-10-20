@@ -17,6 +17,7 @@ import io.ymusic.player.LoopMode
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackState
 import io.ymusic.player.Player
+import io.ymusic.player.PlayerError
 import io.ymusic.player.isPlaying
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -67,6 +68,9 @@ class Media3PlayerAdapter(
      *  onAddMediaItems, so the owner converts them back to [PlayableItem]s. Null = adds are
      *  dropped. */
     private val insertMediaItems: ((player: Player, index: Int, items: List<MediaItem>) -> Unit)? = null,
+    /** The user-facing message controllers (Android Auto) show for a playback failure; null = the
+     *  raw code + message. Re-read on every [extraInvalidations] emission. */
+    private val errorMessage: (PlayerError) -> String? = { null },
 ) : SimpleBasePlayer(Looper.getMainLooper()) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -144,7 +148,7 @@ class Media3PlayerAdapter(
         if (error != null) {
             builder.setPlayerError(
                 PlaybackException(
-                    listOfNotNull(error.code, error.message).joinToString(": "),
+                    errorMessage(error) ?: listOfNotNull(error.code, error.message).joinToString(": "),
                     error.cause,
                     PlaybackException.ERROR_CODE_UNSPECIFIED,
                 ),

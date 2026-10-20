@@ -10,6 +10,7 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.SettableFuture
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.imageloader.decodeScaled
+import io.ymusic.ui.artImageRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,7 +49,7 @@ class ImageLoaderBitmapLoader(
         } else {
             uri.toString()
         }
-        imageLoader.load(target, ARTWORK_MAX_PX, ARTWORK_MAX_PX, cacheInMemory = false).asAndroidBitmap()
+        imageLoader.load(artImageRequest(target, ARTWORK_MAX_PX, ARTWORK_MAX_PX), cacheInMemory = false).asAndroidBitmap()
     }
 
     private fun <T : Any> future(block: suspend () -> T): ListenableFuture<T> {

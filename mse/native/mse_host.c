@@ -107,6 +107,9 @@ struct MseHost {
     int aq_buf_bytes;
     int flushing;
     double dac_tick_ns;
+    /* dec_loop only, no lock: end of its last fill pass while playing; 0 after a paused wait. */
+    double fill_end_ns;
+    double fill_gap_logged_ns;
     /* Last clock handed out, and whether it came from the audio device (see dac_handover). */
     double clk_last;
     int clk_dac;
@@ -944,6 +947,25 @@ static void aq_watchdog(MseHost *h)
 }
 #endif
 
+#ifdef MSE_DAC
+#define FILL_GAP_LOG_MS 150.0
+#define FILL_GAP_LOW_RING_MS 100
+
+/* At a pass end. Passes run every ~2 ms, so a long gap that left the ring nearly empty is this
+   thread starved or stuck while the device ran out of audio. */
+static void log_fill_gap(MseHost *h, int ring_at_wake)
+{
+    double now = now_ns(), gap = h->fill_end_ns > 0 ? (now - h->fill_end_ns) / 1e6 : 0;
+    h->fill_end_ns = now;
+    if (gap < FILL_GAP_LOG_MS || ring_at_wake >= FILL_GAP_LOW_RING_MS)
+        return;
+    if (now - h->fill_gap_logged_ns < 10e9)
+        return;
+    h->fill_gap_logged_ns = now;
+    mse_critf(MSE_LOG_WARN, "mse audio fill gap %.0fms ring=%dms", gap, ring_at_wake);
+}
+#endif
+
 static void *dec_loop(void *arg)
 {
     MseHost *h = (MseHost *)arg;
@@ -954,6 +976,7 @@ static void *dec_loop(void *arg)
         double pts = 0;
 #ifdef MSE_DAC
         int filled;
+        int ring_at_wake;
 #ifdef MSE_AQ
         AudioQueueRef start_q = NULL;
 #endif
@@ -961,13 +984,20 @@ static void *dec_loop(void *arg)
         pthread_mutex_lock(&h->mu);
         h->busy = 0;
         pthread_cond_broadcast(&h->cv);
-        while (!h->released && (!h->playing || h->gate))
+        while (!h->released && (!h->playing || h->gate)) {
+#ifdef MSE_DAC
+            h->fill_end_ns = 0;
+#endif
             pthread_cond_wait(&h->cv, &h->mu);
+        }
         if (h->released) {
             pthread_mutex_unlock(&h->mu);
             return NULL;
         }
         h->busy = 1;
+#ifdef MSE_DAC
+        ring_at_wake = ring_ms(h);
+#endif
         pthread_mutex_unlock(&h->mu);
         clock = host_clock(h);
 
@@ -1112,6 +1142,9 @@ static void *dec_loop(void *arg)
         }
 #endif
         maybe_notify_ended(h);
+#ifdef MSE_DAC
+        log_fill_gap(h, ring_at_wake);
+#endif
         {
             struct timespec sl;
             /* Never 0: pull_audio returning 0 with packets still pending

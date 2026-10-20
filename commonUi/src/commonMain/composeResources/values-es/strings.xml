@@ -259,6 +259,8 @@
     <string name="cd_exit_fullscreen">Salir de pantalla completa</string>
     <string name="cd_fit_video">Ajustar vídeo</string>
     <string name="cd_fill_video">Llenar pantalla</string>
+    <string name="cd_lock_rotation">Bloquear rotación</string>
+    <string name="cd_unlock_rotation">Desbloquear rotación</string>
     <string name="cd_rewind10">Retroceder 10 segundos</string>
     <string name="cd_forward10">Avanzar 10 segundos</string>
     <string name="cd_repeat_off">Repetir: desactivado</string>
@@ -448,6 +450,8 @@
     <string name="download_save_quick">Guardar como descarga rápida</string>
     <string name="quick_download_menu">Descarga rápida · %1$s</string>
     <string name="playlist_download_title">Descargar lista</string>
+    <string name="playlist_index_prefix">Prefijo de índice</string>
+    <string name="playlist_index_prefix_hint">Los nombres de archivo empiezan con 1. 2. 3.</string>
     <string name="playlist_load_more">+ Cargar más</string>
     <string name="playlist_check_all">Marcar todo</string>
     <string name="playlist_check_not_downloaded">Marcar no descargados</string>

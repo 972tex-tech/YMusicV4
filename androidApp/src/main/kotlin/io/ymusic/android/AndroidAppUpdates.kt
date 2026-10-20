@@ -56,8 +56,9 @@ import java.io.File
  * it, and nothing it writes afterwards reaches the dialog.
  *
  * A download or install the user asks for first needs the OS's install permission ("Install unknown
- * apps"); without it the user either grants it ([allowInstall], continued in [onResume]) or takes
- * the release from the browser.
+ * apps"); without it the user grants it ([allowInstall], continued in [onResume]), or takes the
+ * release from the browser — offered at once for a download, and for an install once the downloaded
+ * APK has waited [BROWSER_FALLBACK_AFTER_MS].
  */
 class AndroidAppUpdates(
     private val context: Context,
@@ -255,7 +256,11 @@ class AndroidAppUpdates(
 
     private fun needInstallPermission(update: AppUpdate, install: Boolean) {
         installAfterPermission = install
-        set(update.release, UpdateDownload.NeedsInstallPermission)
+        val apk = apkFile(update)
+        // A download held back by the permission never writes the APK, so it can't age into the
+        // fallback; the browser is offered at once. The APK's mtime is when its download finished.
+        val offerBrowser = !install || (apk.isFile && System.currentTimeMillis() - apk.lastModified() >= BROWSER_FALLBACK_AFTER_MS)
+        set(update.release, UpdateDownload.NeedsInstallPermission(offerBrowser = offerBrowser))
     }
 
     override fun allowInstall() {
@@ -323,6 +328,8 @@ class AndroidAppUpdates(
 
     private fun apkFile(update: AppUpdate) = File(downloadDir, "YMusic-${update.versionCode}.apk")
 }
+
+private const val BROWSER_FALLBACK_AFTER_MS = 60 * 60 * 1000L
 
 /** One published build: a re-published version is a different release. */
 private val AppUpdate.release: String get() = "$versionCode-$sha256"

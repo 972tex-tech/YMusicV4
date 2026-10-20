@@ -320,6 +320,8 @@
     <string name="cd_minimize">Minimize</string>
     <string name="cd_fit_video">Fit video</string>
     <string name="cd_fill_video">Fill screen</string>
+    <string name="cd_lock_rotation">Lock rotation</string>
+    <string name="cd_unlock_rotation">Unlock rotation</string>
     <string name="cd_rewind10">Rewind 10 seconds</string>
     <string name="cd_forward10">Forward 10 seconds</string>
     <string name="cd_repeat_off">Repeat: off</string>
@@ -466,6 +468,7 @@
     <string name="update_download">Download</string>
     <string name="update_install_now">Install now</string>
     <string name="update_install_permission">Android needs your permission before YMusic can install updates. Allow it, or download the new version in your browser instead.</string>
+    <string name="update_install_permission_allow">Android needs your permission before YMusic can install updates.</string>
     <string name="update_allow_install">Allow</string>
     <string name="update_download_in_browser">Download in browser</string>
     <string name="update_ask_later">Ask later</string>
@@ -533,6 +536,8 @@
     <string name="download_save_quick">Save as Quick download</string>
     <string name="quick_download_menu">Quick download · %1$s</string>
     <string name="playlist_download_title">Download playlist</string>
+    <string name="playlist_index_prefix">Index prefix</string>
+    <string name="playlist_index_prefix_hint">Start file names with 1. 2. 3.</string>
     <string name="playlist_load_more">+ Load more</string>
     <string name="playlist_check_all">Check all</string>
     <string name="playlist_check_not_downloaded">Check not downloaded</string>
@@ -550,6 +555,17 @@
     <plurals name="playlist_added">
         <item quantity="one">Added %1$d video to downloads</item>
         <item quantity="other">Added %1$d videos to downloads</item>
+    </plurals>
+    <string name="local_playlist_create">Create local playlist</string>
+    <string name="local_playlist_desc">Make an offline playlist of the videos in this playlist you've already downloaded.</string>
+    <string name="local_playlist_empty">None of the loaded videos are downloaded yet.</string>
+    <plurals name="local_playlist_downloaded">
+        <item quantity="one">%1$d downloaded video</item>
+        <item quantity="other">%1$d downloaded videos</item>
+    </plurals>
+    <plurals name="local_playlist_created">
+        <item quantity="one">Created %1$s with %2$d song</item>
+        <item quantity="other">Created %1$s with %2$d songs</item>
     </plurals>
     <string name="playlist_add_to">Add to playlist</string>
     <string name="playlist_select_library">Select a Library playlist</string>
@@ -641,4 +657,48 @@
     <string name="link_queued_last">Added to the end of the queue</string>
     <string name="menu_details_comments">Details &amp; comments</string>
     <string name="menu_speed_pitch">Speed &amp; pitch</string>
+    <string name="playlist_menu_import_device">Import from device</string>
+    <string name="playlist_menu_backup">Back up playlists</string>
+    <string name="playlist_menu_restore">Restore playlists</string>
+    <string name="playlist_import_title">Import playlists</string>
+    <string name="playlist_import_desc">Playlists from other music apps on this device.</string>
+    <string name="playlist_import_select_all">Select all</string>
+    <string name="playlist_import_hint">Only songs already in your Library are added. Playlists with the same name are merged.</string>
+    <string name="playlist_import_confirm">Import</string>
+    <string name="playlist_import_confirm_count">Import (%1$d)</string>
+    <string name="playlist_import_empty">No playlists found on this device.</string>
+    <string name="playlist_import_permission">Allow access to music to import playlists</string>
+    <string name="playlist_import_none_matched">None of these songs are in your Library</string>
+    <plurals name="playlist_import_result">
+        <item quantity="one">Imported %1$d playlist · %2$d of %3$d songs</item>
+        <item quantity="other">Imported %1$d playlists · %2$d of %3$d songs</item>
+    </plurals>
+    <plurals name="playlist_backup_result">
+        <item quantity="one">Backed up %1$d playlist</item>
+        <item quantity="other">Backed up %1$d playlists</item>
+    </plurals>
+    <string name="playlist_restore_title">Restore playlists</string>
+    <string name="playlist_restore_merge">Merge</string>
+    <string name="playlist_restore_merge_desc">Add songs to playlists with the same name. Your other playlists stay.</string>
+    <string name="playlist_restore_replace">Replace</string>
+    <plurals name="playlist_restore_replace_desc">
+        <item quantity="one">Delete your %1$d playlist and restore the backup exactly.</item>
+        <item quantity="other">Delete your %1$d playlists and restore the backup exactly.</item>
+    </plurals>
+    <string name="playlist_restore_replace_desc_none">Restore the backup exactly.</string>
+    <string name="playlist_restore_confirm">Restore</string>
+    <plurals name="playlist_restore_result">
+        <item quantity="one">Restored %1$d playlist</item>
+        <item quantity="other">Restored %1$d playlists</item>
+    </plurals>
+    <string name="playlist_restore_failed_title">Can’t restore</string>
+    <string name="error_playlist_backup_invalid">This file isn’t a YMusic playlist backup.</string>
+    <string name="error_playlist_backup_newer">This backup was made by a newer version of YMusic. Update the app to restore it.</string>
+    <plurals name="n_playlists">
+        <item quantity="one">%1$d playlist</item>
+        <item quantity="other">%1$d playlists</item>
+    </plurals>
+    <string name="playlists_empty_title">No playlists yet</string>
+    <string name="playlists_empty_desc">Bring your playlists over from another music app, or restore a backup.</string>
+    <string name="playlists_empty_restore">Restore backup</string>
 </resources>

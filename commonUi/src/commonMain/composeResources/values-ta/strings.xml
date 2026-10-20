@@ -258,6 +258,8 @@
     <string name="cd_exit_fullscreen">முழுத்திரையிலிருந்து வெளியேறு</string>
     <string name="cd_fit_video">வீடியோவைப் பொருத்து</string>
     <string name="cd_fill_video">திரையை நிரப்பு</string>
+    <string name="cd_lock_rotation">சுழற்சியைப் பூட்டு</string>
+    <string name="cd_unlock_rotation">சுழற்சியைத் திற</string>
     <string name="cd_rewind10">10 வினாடிகள் பின்னோக்கி</string>
     <string name="cd_forward10">10 வினாடிகள் முன்னோக்கி</string>
     <string name="cd_repeat_off">மீண்டும் இயக்கு: முடக்கம்</string>
@@ -447,6 +449,8 @@
     <string name="download_save_quick">விரைவுப் பதிவிறக்கமாகச் சேமி</string>
     <string name="quick_download_menu">விரைவுப் பதிவிறக்கம் · %1$s</string>
     <string name="playlist_download_title">பிளேலிஸ்ட்டைப் பதிவிறக்கு</string>
+    <string name="playlist_index_prefix">எண் முன்னொட்டு</string>
+    <string name="playlist_index_prefix_hint">கோப்புப் பெயர்கள் 1. 2. 3. என்று தொடங்கும்</string>
     <string name="playlist_load_more">+ மேலும் ஏற்று</string>
     <string name="playlist_check_all">அனைத்தையும் தேர்வுசெய்</string>
     <string name="playlist_check_not_downloaded">பதிவிறக்காதவற்றைத் தேர்வுசெய்</string>

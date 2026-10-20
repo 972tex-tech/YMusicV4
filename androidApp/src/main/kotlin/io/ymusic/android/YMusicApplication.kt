@@ -121,6 +121,8 @@ import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
 import okio.Path.Companion.toPath
+import okio.sink
+import okio.source
 import projectcommon.log.FileLogger
 import projectcommon.log.LoggingWorker
 import java.io.File
@@ -200,6 +202,15 @@ class YMusicApplication : Application() {
 
     /** The current Activity's PIN / biometric prompt — same lifecycle as [folderPicker]. */
     @Volatile var deviceOwnerAuth: (suspend (String, String) -> Boolean)? = null
+
+    /** The current Activity's "save as" picker (suggested name, mime type) — same lifecycle as [folderPicker]. */
+    @Volatile var documentCreator: (suspend (String, String) -> android.net.Uri?)? = null
+
+    /** The current Activity's single-file picker (accepted mime types) — same lifecycle as [folderPicker]. */
+    @Volatile var documentOpener: (suspend (List<String>) -> android.net.Uri?)? = null
+
+    /** The current Activity's runtime permission prompt — same lifecycle as [folderPicker]. */
+    @Volatile var permissionRequester: (suspend (String) -> Boolean)? = null
 
     // For onTrimMemory, which cannot await the deferred; set once the build completes.
     @Volatile private var builtImageLoader: ImageLoader? = null
@@ -661,6 +672,21 @@ class YMusicApplication : Application() {
             downloads = downloadService,
             sendFeedback = sendFeedbackAction.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },
             pickFeedbackFiles = { feedbackFilePicker?.invoke() ?: emptyList() },
+            createDocument = { name, mimeType ->
+                documentCreator?.invoke(name, mimeType)?.let { uri ->
+                    withContext(Dispatchers.IO) {
+                        contentResolver.openOutputStream(uri, "wt")?.sink() ?: error("no output stream for $uri")
+                    }
+                }
+            },
+            openDocument = { mimeTypes ->
+                documentOpener?.invoke(mimeTypes)?.let { uri ->
+                    withContext(Dispatchers.IO) {
+                        contentResolver.openInputStream(uri)?.source() ?: error("no input stream for $uri")
+                    }
+                }
+            },
+            devicePlaylists = AndroidDevicePlaylists(this) { permission -> permissionRequester?.invoke(permission) ?: false },
         ) { modifier ->
             // The ONE shared videoContainer is hosted at two call sites (the docked preview and Now
             // Playing). They're logically exclusive, but across a transition frame Compose builds the

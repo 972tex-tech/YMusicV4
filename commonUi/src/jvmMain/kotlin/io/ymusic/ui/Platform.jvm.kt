@@ -18,7 +18,9 @@ internal actual fun SyncSystemBars(dark: Boolean) {
 }
 
 @Composable
-internal actual fun SyncSensorRotation(enabled: Boolean) = Unit
+internal actual fun SyncSensorRotation(locked: Boolean) = Unit
+
+internal actual val rotationLockSupported: Boolean = false
 
 @Composable
 internal actual fun SyncImmersiveSystemBars(immersive: Boolean) = Unit

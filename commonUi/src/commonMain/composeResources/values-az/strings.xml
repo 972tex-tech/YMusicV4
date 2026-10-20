@@ -258,6 +258,8 @@
     <string name="cd_exit_fullscreen">Tam ekrandan çıx</string>
     <string name="cd_fit_video">Videonu sığdır</string>
     <string name="cd_fill_video">Ekranı doldur</string>
+    <string name="cd_lock_rotation">Fırlanmanı kilidlə</string>
+    <string name="cd_unlock_rotation">Fırlanma kilidini aç</string>
     <string name="cd_rewind10">10 saniyə geri</string>
     <string name="cd_forward10">10 saniyə irəli</string>
     <string name="cd_repeat_off">Təkrarla: söndürülüb</string>
@@ -447,6 +449,8 @@
     <string name="download_save_quick">Sürətli yükləmə kimi saxla</string>
     <string name="quick_download_menu">Sürətli yükləmə · %1$s</string>
     <string name="playlist_download_title">Pleylisti yüklə</string>
+    <string name="playlist_index_prefix">İndeks prefiksi</string>
+    <string name="playlist_index_prefix_hint">Fayl adlarını 1. 2. 3. ilə başla</string>
     <string name="playlist_load_more">+ Daha çox yüklə</string>
     <string name="playlist_check_all">Hamısını seç</string>
     <string name="playlist_check_not_downloaded">Yüklənməyənləri seç</string>

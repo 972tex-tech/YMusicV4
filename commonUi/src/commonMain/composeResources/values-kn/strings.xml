@@ -258,6 +258,8 @@
     <string name="cd_exit_fullscreen">ಪೂರ್ಣ ಪರದೆಯಿಂದ ನಿರ್ಗಮಿಸಿ</string>
     <string name="cd_fit_video">ವೀಡಿಯೊ ಹೊಂದಿಸಿ</string>
     <string name="cd_fill_video">ಪರದೆ ತುಂಬಿಸಿ</string>
+    <string name="cd_lock_rotation">ತಿರುಗುವಿಕೆ ಲಾಕ್ ಮಾಡಿ</string>
+    <string name="cd_unlock_rotation">ತಿರುಗುವಿಕೆ ಅನ್‌ಲಾಕ್ ಮಾಡಿ</string>
     <string name="cd_rewind10">10 ಸೆಕೆಂಡ್ ಹಿಂದಕ್ಕೆ</string>
     <string name="cd_forward10">10 ಸೆಕೆಂಡ್ ಮುಂದಕ್ಕೆ</string>
     <string name="cd_repeat_off">ಪುನರಾವರ್ತಿಸಿ: ಆಫ್</string>
@@ -447,6 +449,8 @@
     <string name="download_save_quick">ತ್ವರಿತ ಡೌನ್‌ಲೋಡ್ ಆಗಿ ಉಳಿಸಿ</string>
     <string name="quick_download_menu">ತ್ವರಿತ ಡೌನ್‌ಲೋಡ್ · %1$s</string>
     <string name="playlist_download_title">ಪ್ಲೇಲಿಸ್ಟ್ ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ</string>
+    <string name="playlist_index_prefix">ಸಂಖ್ಯೆ ಪೂರ್ವಪ್ರತ್ಯಯ</string>
+    <string name="playlist_index_prefix_hint">ಫೈಲ್ ಹೆಸರುಗಳು 1. 2. 3. ನಿಂದ ಆರಂಭ</string>
     <string name="playlist_load_more">+ ಇನ್ನಷ್ಟು ಲೋಡ್ ಮಾಡಿ</string>
     <string name="playlist_check_all">ಎಲ್ಲವನ್ನೂ ಆಯ್ಕೆಮಾಡಿ</string>
     <string name="playlist_check_not_downloaded">ಡೌನ್‌ಲೋಡ್ ಆಗದವನ್ನು ಆಯ್ಕೆಮಾಡಿ</string>

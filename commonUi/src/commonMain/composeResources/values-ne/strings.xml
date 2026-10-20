@@ -258,6 +258,8 @@
     <string name="cd_exit_fullscreen">पूर्ण स्क्रिनबाट बाहिर निस्कनुहोस्</string>
     <string name="cd_fit_video">भिडियो मिलाउनुहोस्</string>
     <string name="cd_fill_video">स्क्रिन भर्नुहोस्</string>
+    <string name="cd_lock_rotation">घुमाउने लक गर्नुहोस्</string>
+    <string name="cd_unlock_rotation">घुमाउने अनलक गर्नुहोस्</string>
     <string name="cd_rewind10">10 सेकेन्ड पछाडि</string>
     <string name="cd_forward10">10 सेकेन्ड अगाडि</string>
     <string name="cd_repeat_off">दोहोर्याउनुहोस्: बन्द</string>
@@ -447,6 +449,8 @@
     <string name="download_save_quick">द्रुत डाउनलोडको रूपमा सेभ गर्नुहोस्</string>
     <string name="quick_download_menu">द्रुत डाउनलोड · %1$s</string>
     <string name="playlist_download_title">प्लेलिस्ट डाउनलोड गर्नुहोस्</string>
+    <string name="playlist_index_prefix">क्रम उपसर्ग</string>
+    <string name="playlist_index_prefix_hint">फाइल नाम 1. 2. 3. बाट सुरु हुन्छ</string>
     <string name="playlist_load_more">+ थप लोड गर्नुहोस्</string>
     <string name="playlist_check_all">सबै छान्नुहोस्</string>
     <string name="playlist_check_not_downloaded">डाउनलोड नभएका छान्नुहोस्</string>

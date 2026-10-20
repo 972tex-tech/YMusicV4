@@ -257,6 +257,8 @@
     <string name="cd_exit_fullscreen">結束全螢幕</string>
     <string name="cd_fit_video">符合影片大小</string>
     <string name="cd_fill_video">填滿螢幕</string>
+    <string name="cd_lock_rotation">鎖定螢幕旋轉</string>
+    <string name="cd_unlock_rotation">解鎖螢幕旋轉</string>
     <string name="cd_rewind10">倒轉 10 秒</string>
     <string name="cd_forward10">快轉 10 秒</string>
     <string name="cd_repeat_off">重複播放：關閉</string>
@@ -446,6 +448,8 @@
     <string name="download_save_quick">儲存為快速下載</string>
     <string name="quick_download_menu">快速下載 · %1$s</string>
     <string name="playlist_download_title">下載播放清單</string>
+    <string name="playlist_index_prefix">序號前綴</string>
+    <string name="playlist_index_prefix_hint">檔名以 1. 2. 3. 開頭</string>
     <string name="playlist_load_more">+ 載入更多</string>
     <string name="playlist_check_all">全選</string>
     <string name="playlist_check_not_downloaded">勾選未下載的</string>

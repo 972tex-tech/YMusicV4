@@ -153,9 +153,9 @@ internal fun AudioOnlyArtWave(
     }
     BoxWithConstraints(modifier.clipToBounds()) {
         val side = minOf(maxHeight * 0.86f, maxWidth * 0.32f)
-        // One decode covering both the hole (backdrop) and the square, so both layers share it.
+        // The square, floored at the system artwork size; the blurred backdrop reuses this decode.
         val decodeSize = with(LocalDensity.current) {
-            IntSize(maxOf(maxWidth, side).roundToPx(), maxOf(maxHeight, side).roundToPx())
+            maxOf(side.roundToPx(), NOW_PLAYING_ART_PX).let { IntSize(it, it) }
         }
         val art = rememberArtTransition(url, decodeSize)
         PrefetchNextArt(player, decodeSize)
@@ -290,10 +290,7 @@ private fun PrefetchNextArt(player: Player, decodeSize: IntSize) {
     }
 }
 
-private fun artRequest(url: String, size: IntSize): ImageRequest {
-    val (key, sources) = artRequestSources(url)
-    return ImageRequest(key, sources, size)
-}
+private fun artRequest(url: String, size: IntSize): ImageRequest = artImageRequest(url, size.width, size.height)
 
 @Composable
 private fun BoxScope.ArtImageLayer(bitmap: ImageBitmap?, alpha: () -> Float) {

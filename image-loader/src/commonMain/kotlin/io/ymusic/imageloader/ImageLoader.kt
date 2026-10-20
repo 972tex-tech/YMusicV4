@@ -312,7 +312,8 @@ internal fun scaleSuffix(scale: ImageScale): String = if (scale == ImageScale.Fi
  * Sources to try for a [size] box. A source's size is what [record] measured when it was fetched,
  * else its declared size after crop. Order: those that cover the box, smallest first (already
  * fetched ones before untried ones — likely on disk); then those of unknown size, as given; then
- * the smaller ones, largest first, fetched before untried — the best available when nothing covers.
+ * the smaller ones — the best available when nothing covers: a fetched one that covers at least half
+ * the box first (close enough to skip a download), then largest first.
  */
 internal fun orderSources(
     sources: List<ImageSource>,
@@ -325,9 +326,13 @@ internal fun orderSources(
     val fetched = sources.filterTo(HashSet()) { imageCacheKey(it.url) in record.fetched }
     val (known, unknown) = sources.partition { measured.getValue(it) != null }
     val (covering, smaller) = known.partition { covers(measured.getValue(it)!!, size, scale) }
+    val half = IntSize((size.width + 1) / 2, (size.height + 1) / 2)
     return covering.sortedWith(compareBy<ImageSource> { it !in fetched }.thenBy { measured.getValue(it)!!.first }) +
         unknown +
-        smaller.sortedWith(compareBy<ImageSource> { it !in fetched }.thenByDescending { measured.getValue(it)!!.first })
+        smaller.sortedWith(
+            compareBy<ImageSource> { !(it in fetched && covers(measured.getValue(it)!!, half, scale)) }
+                .thenByDescending { measured.getValue(it)!!.first },
+        )
 }
 
 /** The declared size after crop, or null when not declared. */

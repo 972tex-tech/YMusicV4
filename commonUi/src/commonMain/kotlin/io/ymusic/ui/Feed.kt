@@ -69,6 +69,8 @@ import io.ymusic.ui.resources.error_disk_full
 import io.ymusic.ui.resources.error_generic
 import io.ymusic.ui.resources.error_live_still_processing
 import io.ymusic.ui.resources.error_network
+import io.ymusic.ui.resources.error_playlist_backup_invalid
+import io.ymusic.ui.resources.error_playlist_backup_newer
 import io.ymusic.ui.resources.error_supervised_account
 import io.ymusic.ui.resources.feed_empty
 import io.ymusic.ui.resources.menu_add_to_playlist
@@ -498,6 +500,8 @@ internal fun errorText(code: String): UiText = when (code) {
     StillProcessingException.CODE -> UiText.Resource(Res.string.error_live_still_processing)
     CAPTCHA_CODE -> UiText.Resource(Res.string.error_captcha)
     SUPERVISED_ACCOUNT_CODE -> UiText.Resource(Res.string.error_supervised_account)
+    PLAYLIST_BACKUP_INVALID_CODE -> UiText.Resource(Res.string.error_playlist_backup_invalid)
+    PLAYLIST_BACKUP_NEWER_CODE -> UiText.Resource(Res.string.error_playlist_backup_newer)
     else -> UiText.Resource(Res.string.error_generic, code)
 }
 

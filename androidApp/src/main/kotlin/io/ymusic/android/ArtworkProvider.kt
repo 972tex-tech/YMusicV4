@@ -6,6 +6,8 @@ import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import io.ymusic.ui.NOW_PLAYING_ART_PX
+import io.ymusic.ui.artImageRequest
 import kotlinx.coroutines.runBlocking
 import okio.ByteString
 import okio.ByteString.Companion.decodeHex
@@ -68,7 +70,7 @@ class ArtworkProvider : ContentProvider() {
         val app = requireNotNull(context).applicationContext as YMusicApplication
         try {
             return runBlocking {
-                app.services.await().imageLoader.loadFile(target, ARTWORK_MAX_PX, ARTWORK_MAX_PX)
+                app.services.await().imageLoader.loadFile(artImageRequest(target, ARTWORK_MAX_PX, ARTWORK_MAX_PX))
             } ?: throw FileNotFoundException("no scaled disk cache to serve artwork from")
         } catch (e: FileNotFoundException) {
             throw e
@@ -163,7 +165,7 @@ internal fun isAllowedArtworkTarget(target: String): Boolean {
 internal const val ARTWORK_URI_PARAM = "uri"
 internal const val ARTWORK_SIG_PARAM = "sig"
 
-/** Session/notification/Auto artwork target size; [io.ymusic.imageloader.ImageLoader] never upscales. */
-internal const val ARTWORK_MAX_PX = 640
+/** Session/notification/Auto artwork target size, shared with Now Playing; the loader never upscales. */
+internal const val ARTWORK_MAX_PX = NOW_PLAYING_ART_PX
 
 private val ALLOWED_IMAGE_HOSTS = listOf("ytimg.com", "ggpht.com", "googleusercontent.com")

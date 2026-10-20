@@ -258,6 +258,8 @@
     <string name="cd_exit_fullscreen">Volledig scherm sluiten</string>
     <string name="cd_fit_video">Video passend maken</string>
     <string name="cd_fill_video">Scherm vullen</string>
+    <string name="cd_lock_rotation">Rotatie vergrendelen</string>
+    <string name="cd_unlock_rotation">Rotatie ontgrendelen</string>
     <string name="cd_rewind10">10 seconden terug</string>
     <string name="cd_forward10">10 seconden vooruit</string>
     <string name="cd_repeat_off">Herhalen: uit</string>
@@ -447,6 +449,8 @@
     <string name="download_save_quick">Opslaan als Snelle download</string>
     <string name="quick_download_menu">Snelle download · %1$s</string>
     <string name="playlist_download_title">Afspeellijst downloaden</string>
+    <string name="playlist_index_prefix">Nummer vooraan</string>
+    <string name="playlist_index_prefix_hint">Bestandsnamen beginnen met 1. 2. 3.</string>
     <string name="playlist_load_more">+ Meer laden</string>
     <string name="playlist_check_all">Alles aanvinken</string>
     <string name="playlist_check_not_downloaded">Niet-gedownloade aanvinken</string>

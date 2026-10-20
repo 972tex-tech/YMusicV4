@@ -20,6 +20,7 @@ import io.ymusic.download.DownloadState
 import io.ymusic.download.DownloadTask
 import io.ymusic.download.DownloadTasksAggregator
 import io.ymusic.imageloader.ImageLoader
+import io.ymusic.ui.artImageRequest
 import io.ymusic.ui.downloadErrorMessage
 import kmpcommon.log.Logger
 import kmpcommon.log.debug
@@ -299,7 +300,7 @@ class DownloadForegroundService : Service() {
         icons[task.id] = null
         serviceScope.launch {
             icons[task.id] = try {
-                loader.load(url, THUMB_PX, THUMB_PX, cacheInMemory = false).asAndroidBitmap()
+                loader.load(artImageRequest(url, THUMB_PX, THUMB_PX), cacheInMemory = false).asAndroidBitmap()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

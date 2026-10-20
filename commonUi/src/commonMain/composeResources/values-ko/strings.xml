@@ -257,6 +257,8 @@
     <string name="cd_exit_fullscreen">전체 화면 종료</string>
     <string name="cd_fit_video">화면에 맞추기</string>
     <string name="cd_fill_video">화면 채우기</string>
+    <string name="cd_lock_rotation">화면 회전 잠금</string>
+    <string name="cd_unlock_rotation">화면 회전 잠금 해제</string>
     <string name="cd_rewind10">10초 뒤로</string>
     <string name="cd_forward10">10초 앞으로</string>
     <string name="cd_repeat_off">반복: 끄기</string>
@@ -446,6 +448,8 @@
     <string name="download_save_quick">빠른 다운로드로 저장</string>
     <string name="quick_download_menu">빠른 다운로드 · %1$s</string>
     <string name="playlist_download_title">재생목록 다운로드</string>
+    <string name="playlist_index_prefix">번호 접두사</string>
+    <string name="playlist_index_prefix_hint">파일 이름을 1. 2. 3.으로 시작</string>
     <string name="playlist_load_more">+ 더 불러오기</string>
     <string name="playlist_check_all">모두 선택</string>
     <string name="playlist_check_not_downloaded">다운로드 안 된 항목 선택</string>

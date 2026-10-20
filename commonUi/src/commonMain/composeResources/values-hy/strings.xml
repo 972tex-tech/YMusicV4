@@ -258,6 +258,8 @@
     <string name="cd_exit_fullscreen">Դուրս գալ լիաէկրանից</string>
     <string name="cd_fit_video">Տեղավորել տեսանյութը</string>
     <string name="cd_fill_video">Լցնել էկրանը</string>
+    <string name="cd_lock_rotation">Կողպել պտտումը</string>
+    <string name="cd_unlock_rotation">Ապակողպել պտտումը</string>
     <string name="cd_rewind10">10 վայրկյան հետ</string>
     <string name="cd_forward10">10 վայրկյան առաջ</string>
     <string name="cd_repeat_off">Կրկնել: անջատված</string>
@@ -447,6 +449,8 @@
     <string name="download_save_quick">Պահել որպես Արագ ներբեռնում</string>
     <string name="quick_download_menu">Արագ ներբեռնում · %1$s</string>
     <string name="playlist_download_title">Ներբեռնել երգացանկը</string>
+    <string name="playlist_index_prefix">Համարի նախածանց</string>
+    <string name="playlist_index_prefix_hint">Ֆայլերի անունները սկսել 1. 2. 3.-ով</string>
     <string name="playlist_load_more">+ Բեռնել ավելին</string>
     <string name="playlist_check_all">Նշել բոլորը</string>
     <string name="playlist_check_not_downloaded">Նշել չներբեռնվածները</string>

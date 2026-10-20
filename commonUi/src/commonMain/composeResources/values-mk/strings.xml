@@ -258,6 +258,8 @@
     <string name="cd_exit_fullscreen">Излези од цел екран</string>
     <string name="cd_fit_video">Собери го видеото</string>
     <string name="cd_fill_video">Пополни го екранот</string>
+    <string name="cd_lock_rotation">Заклучи ротација</string>
+    <string name="cd_unlock_rotation">Отклучи ротација</string>
     <string name="cd_rewind10">Премотај 10 секунди назад</string>
     <string name="cd_forward10">Премотај 10 секунди напред</string>
     <string name="cd_repeat_off">Повторувај: исклучено</string>
@@ -447,6 +449,8 @@
     <string name="download_save_quick">Зачувај како брзо преземање</string>
     <string name="quick_download_menu">Брзо преземање · %1$s</string>
     <string name="playlist_download_title">Преземи плејлиста</string>
+    <string name="playlist_index_prefix">Префикс со реден број</string>
+    <string name="playlist_index_prefix_hint">Имињата на датотеките почнуваат со 1. 2. 3.</string>
     <string name="playlist_load_more">+ Вчитај повеќе</string>
     <string name="playlist_check_all">Означи ги сите</string>
     <string name="playlist_check_not_downloaded">Означи ги непреземените</string>

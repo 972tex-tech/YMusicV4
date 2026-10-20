@@ -300,6 +300,8 @@
     <string name="cd_minimize">Thu nhỏ</string>
     <string name="cd_fit_video">Vừa khít</string>
     <string name="cd_fill_video">Phóng đầy</string>
+    <string name="cd_lock_rotation">Khóa xoay</string>
+    <string name="cd_unlock_rotation">Mở khóa xoay</string>
     <string name="cd_rewind10">Tua lùi 10 giây</string>
     <string name="cd_forward10">Tua tới 10 giây</string>
     <string name="cd_repeat_off">Lặp lại: tắt</string>
@@ -444,6 +446,7 @@
     <string name="update_download">Tải xuống</string>
     <string name="update_install_now">Cài đặt ngay</string>
     <string name="update_install_permission">Android cần bạn cho phép trước khi YMusic có thể cài đặt bản cập nhật. Hãy cho phép, hoặc tải bản mới bằng trình duyệt.</string>
+    <string name="update_install_permission_allow">Android cần bạn cho phép trước khi YMusic có thể cài đặt bản cập nhật.</string>
     <string name="update_allow_install">Cho phép</string>
     <string name="update_download_in_browser">Tải bằng trình duyệt</string>
     <string name="update_ask_later">Nhắc lại sau</string>
@@ -510,6 +513,8 @@
     <string name="download_save_quick">Lưu làm Tải nhanh</string>
     <string name="quick_download_menu">Tải nhanh · %1$s</string>
     <string name="playlist_download_title">Tải danh sách phát</string>
+    <string name="playlist_index_prefix">Thêm số thứ tự</string>
+    <string name="playlist_index_prefix_hint">Tên tệp bắt đầu bằng 1. 2. 3.</string>
     <string name="playlist_load_more">+ Tải thêm</string>
     <string name="playlist_check_all">Chọn tất cả</string>
     <string name="playlist_check_not_downloaded">Chọn mục chưa tải</string>
@@ -524,6 +529,15 @@
     </plurals>
     <plurals name="playlist_added">
         <item quantity="other">Đã thêm %1$d video vào danh sách tải</item>
+    </plurals>
+    <string name="local_playlist_create">Tạo danh sách phát offline</string>
+    <string name="local_playlist_desc">Tạo danh sách phát offline gồm các video trong danh sách này mà bạn đã tải về.</string>
+    <string name="local_playlist_empty">Chưa có video nào đã tải trong số video đã tải lên.</string>
+    <plurals name="local_playlist_downloaded">
+        <item quantity="other">%1$d video đã tải</item>
+    </plurals>
+    <plurals name="local_playlist_created">
+        <item quantity="other">Đã tạo %1$s với %2$d bài hát</item>
     </plurals>
     <string name="playlist_add_to">Thêm vào danh sách phát</string>
     <string name="playlist_select_library">Chọn danh sách phát Thư viện</string>
@@ -614,4 +628,43 @@
     <string name="link_queued_last">Đã thêm vào cuối danh sách phát</string>
     <string name="menu_details_comments">Chi tiết &amp; bình luận</string>
     <string name="menu_speed_pitch">Tốc độ &amp; cao độ</string>
+    <string name="playlist_menu_import_device">Nhập từ thiết bị</string>
+    <string name="playlist_menu_backup">Sao lưu danh sách phát</string>
+    <string name="playlist_menu_restore">Khôi phục danh sách phát</string>
+    <string name="playlist_import_title">Nhập danh sách phát</string>
+    <string name="playlist_import_desc">Danh sách phát từ các ứng dụng nghe nhạc khác trên thiết bị này.</string>
+    <string name="playlist_import_select_all">Chọn tất cả</string>
+    <string name="playlist_import_hint">Chỉ thêm những bài đã có trong Thư viện. Danh sách phát trùng tên sẽ được gộp.</string>
+    <string name="playlist_import_confirm">Nhập</string>
+    <string name="playlist_import_confirm_count">Nhập (%1$d)</string>
+    <string name="playlist_import_empty">Không tìm thấy danh sách phát nào trên thiết bị này.</string>
+    <string name="playlist_import_permission">Cho phép truy cập nhạc để nhập danh sách phát</string>
+    <string name="playlist_import_none_matched">Không bài nào trong số này có trong Thư viện</string>
+    <plurals name="playlist_import_result">
+        <item quantity="other">Đã nhập %1$d danh sách phát · %2$d/%3$d bài</item>
+    </plurals>
+    <plurals name="playlist_backup_result">
+        <item quantity="other">Đã sao lưu %1$d danh sách phát</item>
+    </plurals>
+    <string name="playlist_restore_title">Khôi phục danh sách phát</string>
+    <string name="playlist_restore_merge">Gộp</string>
+    <string name="playlist_restore_merge_desc">Thêm bài vào danh sách phát trùng tên. Các danh sách phát khác được giữ nguyên.</string>
+    <string name="playlist_restore_replace">Thay thế</string>
+    <plurals name="playlist_restore_replace_desc">
+        <item quantity="other">Xoá %1$d danh sách phát hiện có và khôi phục đúng như bản sao lưu.</item>
+    </plurals>
+    <string name="playlist_restore_replace_desc_none">Khôi phục đúng như bản sao lưu.</string>
+    <string name="playlist_restore_confirm">Khôi phục</string>
+    <plurals name="playlist_restore_result">
+        <item quantity="other">Đã khôi phục %1$d danh sách phát</item>
+    </plurals>
+    <string name="playlist_restore_failed_title">Không thể khôi phục</string>
+    <string name="error_playlist_backup_invalid">Tệp này không phải bản sao lưu danh sách phát của YMusic.</string>
+    <string name="error_playlist_backup_newer">Bản sao lưu này được tạo bởi phiên bản YMusic mới hơn. Hãy cập nhật ứng dụng để khôi phục.</string>
+    <plurals name="n_playlists">
+        <item quantity="other">%1$d danh sách phát</item>
+    </plurals>
+    <string name="playlists_empty_title">Chưa có danh sách phát</string>
+    <string name="playlists_empty_desc">Chuyển danh sách phát từ ứng dụng nghe nhạc khác sang, hoặc khôi phục bản sao lưu.</string>
+    <string name="playlists_empty_restore">Khôi phục bản sao lưu</string>
 </resources>

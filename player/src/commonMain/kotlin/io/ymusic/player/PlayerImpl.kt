@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -34,9 +33,6 @@ internal class PlayerImpl(
 
     private var playWhenReadyIntent = false
     private var released = false
-    /** Seek target held across in-flight ticks whose play-head is still the pre-seek position. */
-    private var pendingSeekMs: Long? = null
-    private var pendingSeekTicks = 0
 
     /** Monotonic stamp for the `Pair<String, Long>` preference fields — freshest choice wins a restore. */
     private var configSeq = 0L
@@ -262,9 +258,6 @@ internal class PlayerImpl(
         if (released) return
         val engine = _currentEngine.value ?: return
         val ms = positionMs.coerceAtLeast(0L)
-        pendingSeekMs = ms
-        pendingSeekTicks = 0
-        _progress.value = _progress.value.copy(positionMs = ms)
         engine.seekTo(ms)
     }
 
@@ -613,7 +606,6 @@ internal class PlayerImpl(
 
     private fun loadCurrent(startPositionMs: Long) {
         val item = controller.state.currentItem ?: return
-        clearPendingSeek()
         loadGeneration++
         val gen = loadGeneration
         when (item) {
@@ -731,7 +723,7 @@ internal class PlayerImpl(
             }
             else -> return null
         }
-        val next = withTimeoutOrNull(PREPARE_TIMEOUT_MS) {
+        val settled = suspend {
             engine.status.first { snap ->
                 when (val s = snap.state) {
                     is PlaybackState.Error -> true
@@ -740,6 +732,8 @@ internal class PlayerImpl(
                 }
             }.state
         }
+        // The YouTube engine bounds its own init and always settles in ready or Error.
+        val next = if (engine is YtEngine) settled() else withTimeoutOrNull(PREPARE_TIMEOUT_MS) { settled() }
         if (next == null) {
             val err = PlayerError("E60052", "engine prepare timeout", canRetry = true, needReset = true)
             publishStatus(PlaybackStatus(state = PlaybackState.Error(err)))
@@ -779,7 +773,7 @@ internal class PlayerImpl(
         }
         engineJobs += scope.launch {
             engine.progress.collect {
-                publishProgress(it)
+                _progress.value = it
                 maybePreloadNext()
             }
         }
@@ -838,7 +832,6 @@ internal class PlayerImpl(
     private fun stopActive() {
         prepareJob?.cancel()
         holdPrepareTimeout = false
-        clearPendingSeek()
         val engine = _currentEngine.value
         if (engine != null) {
             engine.stop()
@@ -846,26 +839,6 @@ internal class PlayerImpl(
             publishStatus(PlaybackStatus())
             _progress.value = Progress()
         }
-    }
-
-    private fun clearPendingSeek() {
-        pendingSeekMs = null
-        pendingSeekTicks = 0
-    }
-
-    private fun publishProgress(snapshot: Progress) {
-        val pending = pendingSeekMs
-        if (pending != null) {
-            pendingSeekTicks++
-            val close = abs(snapshot.positionMs - pending) <= SEEK_SETTLE_MS
-            if (pendingSeekTicks == 1 || !close) {
-                _progress.value = snapshot.copy(positionMs = pending)
-                if (pendingSeekTicks >= SEEK_HOLD_TICKS) pendingSeekMs = null
-                return
-            }
-            pendingSeekMs = null
-        }
-        _progress.value = snapshot
     }
 
     private fun setPlayWhenReadyIntent(value: Boolean) {
@@ -915,7 +888,11 @@ internal class PlayerImpl(
             if (!_status.value.state.isPlaying() || nowPlaying != skipSegmentData?.playableItem) {
                 return@collect
             }
-            if (finishesTrack(nearest, snapshot.durationMs)) onTrackEnded() else seekTo(endTime)
+            when {
+                finishesTrack(nearest, snapshot.durationMs) -> onTrackEnded()
+                loopsTrack(nearest, snapshot.durationMs) -> seekTo(skipRestartMs())
+                else -> seekTo(endTime)
+            }
             skippedSeg = nearest
             lastItem = nowPlaying
         }
@@ -941,6 +918,13 @@ internal class PlayerImpl(
         return prepareNextIndex != null
     }
 
+    /** Loop-one restarts at an outro: a seek onto the MSE tail stalls paused instead of ending, so it never loops. */
+    private fun loopsTrack(segment: SkipSegment, durationMs: Long): Boolean {
+        if (durationMs <= 0L || segment.startMs + segment.lengthMs < durationMs - OUTRO_TOLERANCE_MS) return false
+        if ((controller.state.currentItem as? PlayableItem.YtMedia)?.live == true) return false
+        return controller.state.loopMode == LoopMode.One && !_sleepAfterCurrent.value
+    }
+
     private data class SkipSegmentData(
         val playableItem: PlayableItem,
         val skipSegments: Map<Long, SkipSegment>,
@@ -961,14 +945,8 @@ internal class PlayerImpl(
         /** Cue the next item this close to the end — legacy UniPlayer. */
         const val PRELOAD_LEAD_MS = 10_000L
 
-        /** UniPlayer `tryMakePlayerReady` timeout. */
+        /** UniPlayer `tryMakePlayerReady` timeout, for the engines that do not bound their own init. */
         const val PREPARE_TIMEOUT_MS = 10_000L
-
-        /** A listen tick within this of the seek target counts as landed. */
-        const val SEEK_SETTLE_MS = 500L
-
-        /** Give up the hold so a failed seek cannot pin the play-head forever. */
-        const val SEEK_HOLD_TICKS = 25
 
         const val MIN_SKIP_LENGTH_MS = 1_000L
 

@@ -259,6 +259,8 @@
     <string name="cd_exit_fullscreen">Surt de la pantalla completa</string>
     <string name="cd_fit_video">Ajusta el vídeo</string>
     <string name="cd_fill_video">Omple la pantalla</string>
+    <string name="cd_lock_rotation">Bloqueja la rotació</string>
+    <string name="cd_unlock_rotation">Desbloqueja la rotació</string>
     <string name="cd_rewind10">Enrere 10 segons</string>
     <string name="cd_forward10">Endavant 10 segons</string>
     <string name="cd_repeat_off">Repeteix: desactivat</string>
@@ -448,6 +450,8 @@
     <string name="download_save_quick">Desa com a Descàrrega ràpida</string>
     <string name="quick_download_menu">Descàrrega ràpida · %1$s</string>
     <string name="playlist_download_title">Descarrega la llista</string>
+    <string name="playlist_index_prefix">Prefix d'índex</string>
+    <string name="playlist_index_prefix_hint">Comença els noms de fitxer amb 1. 2. 3.</string>
     <string name="playlist_load_more">+ Carrega'n més</string>
     <string name="playlist_check_all">Marca-ho tot</string>
     <string name="playlist_check_not_downloaded">Marca els no descarregats</string>

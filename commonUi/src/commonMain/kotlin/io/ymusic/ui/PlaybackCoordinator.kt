@@ -54,14 +54,17 @@ class PlaybackCoordinator(
             }
             scope.launch {
                 player.status.map { it.error }.distinctUntilChanged().collect { err ->
+                    val id = itemId(player.queue.value.currentItem)
                     if (err != null && err.playability() != null) {
-                        log.log(Logger.Level.WARN, "playability ${err.code}: ${err.message}")
+                        log.log(Logger.Level.WARN, "playability ${err.code} id=$id: ${err.message}")
                     } else if (err != null && err.code == PlayerError.FILE_MISSING) {
-                        log.log(Logger.Level.WARN, "file missing: ${err.message}", err.cause)
+                        log.log(Logger.Level.WARN, "file missing id=$id: ${err.message}", err.cause)
+                    } else if (err != null && err.code == "network") {
+                        log.log(Logger.Level.WARN, "network id=$id: ${err.message}", err.cause)
                     } else if (err != null) {
                         log.captureError(
                             TechnicalException(err.code, err.message ?: "player error", cause = err.cause),
-                            prop = mapOf("canRetry" to err.canRetry, "needReset" to err.needReset),
+                            prop = mapOf("id" to id, "canRetry" to err.canRetry, "needReset" to err.needReset),
                         )
                     }
                 }
@@ -243,12 +246,14 @@ class PlaybackCoordinator(
 }
 
 /** One line per playback-state change — what a report needs for buffering / black screen / stuck. */
+private fun itemId(item: PlayableItem?): String = when (item) {
+    is PlayableItem.YtMedia -> item.videoId
+    is PlayableItem.LocalMedia -> item.uri.substringAfterLast('/')
+    null -> "-"
+}
+
 private fun playTrail(status: PlaybackStatus, item: PlayableItem?, config: PlaybackConfig): String {
-    val id = when (item) {
-        is PlayableItem.YtMedia -> item.videoId
-        is PlayableItem.LocalMedia -> item.uri.substringAfterLast('/')
-        null -> "-"
-    }
+    val id = itemId(item)
     val phase = when (val st = status.state) {
         is PlaybackState.Uninitialized -> if (st.isInitializing) "init" else "uninit"
         is PlaybackState.Idle -> "idle"

@@ -257,6 +257,8 @@
     <string name="cd_exit_fullscreen">全画面表示を終了</string>
     <string name="cd_fit_video">動画を画面に合わせる</string>
     <string name="cd_fill_video">画面いっぱいに表示</string>
+    <string name="cd_lock_rotation">回転をロック</string>
+    <string name="cd_unlock_rotation">回転のロックを解除</string>
     <string name="cd_rewind10">10 秒戻す</string>
     <string name="cd_forward10">10 秒進める</string>
     <string name="cd_repeat_off">リピート：オフ</string>
@@ -446,6 +448,8 @@
     <string name="download_save_quick">クイックダウンロードとして保存</string>
     <string name="quick_download_menu">クイックダウンロード · %1$s</string>
     <string name="playlist_download_title">プレイリストをダウンロード</string>
+    <string name="playlist_index_prefix">番号を先頭に付ける</string>
+    <string name="playlist_index_prefix_hint">ファイル名を 1. 2. 3. で始める</string>
     <string name="playlist_load_more">+ さらに読み込む</string>
     <string name="playlist_check_all">すべて選択</string>
     <string name="playlist_check_not_downloaded">未ダウンロードを選択</string>

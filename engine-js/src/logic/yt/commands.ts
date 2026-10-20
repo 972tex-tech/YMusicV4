@@ -608,6 +608,8 @@ onAccept(
       "&gl=" +
       encodeURIComponent(gl) +
       "&client=youtube&gs_ri=youtube" +
+      // Without these the reply is ISO-8859-1: Latin-1 letters (ù, ê, …) arrive as raw bytes.
+      "&ie=utf-8&oe=utf-8" +
       "&q=" +
       encodeURIComponent(query) +
       "&cp=" +

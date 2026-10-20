@@ -1,5 +1,6 @@
 package io.ymusic.download
 
+import io.ymusic.ytmedia.cache.usableSpaceBytes
 import kmpcommon.uri.Uri
 import kmpcommon.uri.fileUri
 import okio.BufferedSink
@@ -11,6 +12,7 @@ import okio.Source
 import okio.buffer
 import okio.use
 import projectcommon.error.CodedError
+import projectcommon.error.DiskFullException
 import projectcommon.error.TechnicalException
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -116,7 +118,16 @@ private class DefaultDownloadScratch(
 ) : DownloadScratch {
 
     init {
-        file.parent?.let { fileSystem.createDirectories(it) }
+        file.parent?.let { dir ->
+            try {
+                fileSystem.createDirectories(dir)
+            } catch (e: IOException) {
+                // okio's mkdir failure carries no errno; a full volume is the common cause.
+                val free = generateSequence(dir) { it.parent }.firstOrNull { fileSystem.exists(it) }?.let(::usableSpaceBytes)
+                if (free != null && free < MIN_FREE_BYTES) throw DiskFullException(e)
+                throw TechnicalException("E70060", "could not create the download scratch directory $dir", cause = e)
+            }
+        }
     }
 
     override val path: String get() = file.toString()
@@ -132,3 +143,6 @@ private class DefaultDownloadScratch(
 
     override fun close() {}
 }
+
+/** Below this, a failed scratch mkdir counts as a full volume. */
+private const val MIN_FREE_BYTES = 1L shl 20
