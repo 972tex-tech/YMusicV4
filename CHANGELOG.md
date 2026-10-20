@@ -1,12 +1,12 @@
 # Changelog
 
-## Unreleased
+## 4.0.9
 
 ### NEW
+- Import your playlists from other music apps (Android), and back up and restore your playlists ([a699bd263..f682e498e](https://github.com/ymusic-io/YMusicV4/compare/0a2baec60c65482323e4b1317079dfa8d9843768...f682e498e6ffd122a9be63eb0e15fb1403fffe15))
 - Android: play by voice with Gemini or Google Assistant ("play Eminem on YMusic"), on the phone and in Android Auto ([8ceba3de9](https://github.com/ymusic-io/YMusicV4/commit/8ceba3de90106ab234992c9213309cab19965f6c))
 - Android Auto: your YouTube library (history, Watch later, Liked videos, subscriptions) in Discover ([5bf1149ca](https://github.com/ymusic-io/YMusicV4/commit/5bf1149ca10120f896d5888a8ed0c6f88aceb8d1))
 - Android Auto: shuffle and repeat buttons ([ad5bb9895](https://github.com/ymusic-io/YMusicV4/commit/ad5bb98955c03fd062be107b0aeff19e1ff6c5f5))
-- Back up and restore your playlists; on Android, import playlists from other music apps ([a699bd263..f682e498e](https://github.com/ymusic-io/YMusicV4/compare/0a2baec60c65482323e4b1317079dfa8d9843768...f682e498e6ffd122a9be63eb0e15fb1403fffe15))
 - Create a local playlist from the downloaded videos of a YouTube playlist ([332363518](https://github.com/ymusic-io/YMusicV4/commit/332363518c1be8c49b6b2209f203d7c809f3c03d))
 - Android: rotation lock button in fullscreen video ([0901988ec](https://github.com/ymusic-io/YMusicV4/commit/0901988ec64d0e6234a4d7b7fc4c69f690681d86))
 - "Index prefix" option when downloading a playlist numbers the files in playlist order ([dda3963fc](https://github.com/ymusic-io/YMusicV4/commit/dda3963fc1bf199082569176c1cdcf10cf72562c))
@@ -26,8 +26,8 @@
 - Android Auto: menus follow the app's language, and a failed song shows a readable error ([8abe33f9f..b143b0e87](https://github.com/ymusic-io/YMusicV4/compare/dda3963fc1bf199082569176c1cdcf10cf72562c...b143b0e8711a5b8babc77b59d40b35d429fae043))
 - A playback failure from a lost connection says "Can't reach YouTube" instead of an error code ([abbe3f4e0](https://github.com/ymusic-io/YMusicV4/commit/abbe3f4e0d737c3ca04b8354d58110d22ca60dad))
 - A download whose connection dropped says "Network error" instead of "Something went wrong" ([982817918](https://github.com/ymusic-io/YMusicV4/commit/9828179186d76d6f49fe971e106107c82efdb59b))
-- Slow-loading videos no longer fail with a timeout too early ([2428c5aa4..151dcf4fd](https://github.com/ymusic-io/YMusicV4/compare/abbe3f4e0d737c3ca04b8354d58110d22ca60dad...151dcf4fd25a676c8220adef2775414d90b65dcc))
-- Android: the update dialog suggests downloading in the browser only after the install permission has been pending for an hour ([507e9d603](https://github.com/ymusic-io/YMusicV4/commit/507e9d603d587b855eb9397cf40abac024661025))
+- A YouTube video that can't start gives up after 20 s with an error naming the step that stalled, instead of failing too early or hanging ([2428c5aa4..151dcf4fd](https://github.com/ymusic-io/YMusicV4/compare/abbe3f4e0d737c3ca04b8354d58110d22ca60dad...151dcf4fd25a676c8220adef2775414d90b65dcc), [aa6a08cf7](https://github.com/ymusic-io/YMusicV4/commit/aa6a08cf757f1940869ccaa953ea5d0b451822e7))
+- Android: the update dialog offers downloading in the browser right away when a download can't start without the install permission, and for an install only after the permission has been pending for an hour ([507e9d603](https://github.com/ymusic-io/YMusicV4/commit/507e9d603d587b855eb9397cf40abac024661025), [0db8e98e6](https://github.com/ymusic-io/YMusicV4/commit/0db8e98e693c974fb1b7d2cc0116bdaa3f6a9965))
 
 ## 4.0.8
 
