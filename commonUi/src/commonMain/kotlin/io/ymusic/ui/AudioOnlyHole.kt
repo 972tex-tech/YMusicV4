@@ -153,8 +153,10 @@ internal fun AudioOnlyArtWave(
     }
     BoxWithConstraints(modifier.clipToBounds()) {
         val side = minOf(maxHeight * 0.86f, maxWidth * 0.32f)
-        // Sized by the square: the blurred backdrop reuses that decode, it needs no resolution.
-        val decodeSize = with(LocalDensity.current) { side.roundToPx().let { IntSize(it, it) } }
+        // The square, floored at the system artwork size; the blurred backdrop reuses this decode.
+        val decodeSize = with(LocalDensity.current) {
+            maxOf(side.roundToPx(), NOW_PLAYING_ART_PX).let { IntSize(it, it) }
+        }
         val art = rememberArtTransition(url, decodeSize)
         PrefetchNextArt(player, decodeSize)
         Box(Modifier.matchParentSize().blur(28.dp)) {

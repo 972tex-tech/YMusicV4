@@ -35,6 +35,10 @@ internal fun artRequestSources(url: String): Pair<String, List<ImageSource>> {
     return youtubeImageKey(videoId) to youtubeThumbnailSources(videoId)
 }
 
+/** Now Playing's art floor and the system artwork size (notification, session, Android Auto): one
+ *  size for both, so a phone fetches and decodes a song's art once for the two. */
+const val NOW_PLAYING_ART_PX = 640
+
 /** A single art url as an [ImageRequest] for a [width]×[height] box, with the variants
  *  [artRequestSources] derives — for surfaces outside Compose (notification, widget, Android Auto). */
 fun artImageRequest(url: String, width: Int, height: Int): ImageRequest {
