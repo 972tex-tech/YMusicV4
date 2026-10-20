@@ -5,7 +5,14 @@
 // nesting changes), unknown renderers skipped not failed, quoted wire keys throughout, and the app
 // stays dumb — every navigation target is an engine-composed app link round-tripped verbatim.
 
-import type { WireChip, WireFeedItem, WireFeedPage, WireSection, WireSectionHeader } from "./wire";
+import type {
+  WireChip,
+  WireFeedItem,
+  WireFeedPage,
+  WireSection,
+  WireSectionHeader,
+  WireThumb,
+} from "./wire";
 import { asString, get, isObj, textOf, thumbVariants, walk } from "./scan";
 import { isMixPlaylist, playlistUrl, searchChipToken } from "./parse";
 
@@ -76,7 +83,49 @@ function pageTypeOf(endpoint: unknown): string | undefined {
 
 /** Variants of a `{musicThumbnailRenderer:{thumbnail:{thumbnails:[…]}}}` node. */
 function musicThumbs(node: unknown): WireFeedItem["thumbs"] {
-  return thumbVariants(get(node, "musicThumbnailRenderer", "thumbnail", "thumbnails"));
+  return withLargerArt(
+    thumbVariants(get(node, "musicThumbnailRenderer", "thumbnail", "thumbnails")),
+  );
+}
+
+/** Feed row/card (480) and Now Playing (720). List-row art comes at 60/120 only; Google's image
+ *  server serves any `=wN-hN` size of the same image, capped at the original. */
+const MUSIC_ART_SIZES = [480, 720];
+
+function digitsEnd(s: string, from: number): number {
+  let i = from;
+  while (i < s.length && s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57) i++;
+  return i;
+}
+
+function withLargerArt(thumbs: WireThumb[] | undefined): WireThumb[] | undefined {
+  const last = thumbs?.[thumbs.length - 1];
+  if (thumbs === undefined || last === undefined) return thumbs;
+  const url = last["url"];
+  const at = url.lastIndexOf("=w");
+  if (at < 0 || url.indexOf("googleusercontent.com/") < 0) return thumbs;
+  const wEnd = digitsEnd(url, at + 2);
+  const hAt = url.indexOf("-h", wEnd);
+  if (hAt < 0) return thumbs;
+  const hEnd = digitsEnd(url, hAt + 2);
+  const w = parseInt(url.substring(at + 2, wEnd), 10);
+  const h = parseInt(url.substring(hAt + 2, hEnd), 10);
+  if (!(w > 0) || !(h > 0)) return thumbs;
+  const out = thumbs.slice();
+  for (const size of MUSIC_ART_SIZES) {
+    if (size <= w) continue;
+    const height = Math.round((size * h) / w);
+    const sized =
+      url.substring(0, at) +
+      "=w" +
+      size +
+      url.substring(wEnd, hAt) +
+      "-h" +
+      height +
+      url.substring(hEnd);
+    out.push({ "url": sized, "w": size, "h": height });
+  }
+  return out;
 }
 
 // ---- Leaf items --------------------------------------------------------------------------------
