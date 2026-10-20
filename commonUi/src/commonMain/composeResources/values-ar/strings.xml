@@ -305,6 +305,8 @@
     <string name="cd_minimize">تصغير</string>
     <string name="cd_fit_video">ملاءمة الفيديو</string>
     <string name="cd_fill_video">ملء الشاشة</string>
+    <string name="cd_lock_rotation">قفل التدوير</string>
+    <string name="cd_unlock_rotation">إلغاء قفل التدوير</string>
     <string name="cd_rewind10">إرجاع 10 ثوانٍ</string>
     <string name="cd_forward10">تقديم 10 ثوانٍ</string>
     <string name="cd_repeat_off">التكرار: إيقاف</string>

@@ -57,6 +57,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.ScreenLockRotation
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -148,6 +150,7 @@ import io.ymusic.ui.resources.cd_fill_video
 import io.ymusic.ui.resources.cd_fit_video
 import io.ymusic.ui.resources.cd_forward10
 import io.ymusic.ui.resources.cd_fullscreen
+import io.ymusic.ui.resources.cd_lock_rotation
 import io.ymusic.ui.resources.cd_more
 import io.ymusic.ui.resources.cd_next
 import io.ymusic.ui.resources.cd_pause
@@ -158,6 +161,7 @@ import io.ymusic.ui.resources.cd_repeat_off
 import io.ymusic.ui.resources.cd_repeat_one
 import io.ymusic.ui.resources.cd_rewind10
 import io.ymusic.ui.resources.cd_shuffle
+import io.ymusic.ui.resources.cd_unlock_rotation
 import io.ymusic.ui.resources.download_audio_track
 import io.ymusic.ui.resources.download_quality
 import io.ymusic.ui.resources.error_captcha
@@ -430,7 +434,8 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
     SideEffect { VideoOverlayNative.armed = true }
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
     SyncImmersiveSystemBars(immersive = true)
-    SyncSensorRotation(enabled = true)
+    val rotationLocked by graph.videoRotationLocked
+    SyncSensorRotation(locked = rotationLocked)
     val fillScreen by graph.videoFillScreen
     Box(Modifier.fillMaxSize()) {
         PlayerSurfaceHole(
@@ -449,6 +454,12 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
                     isFullscreen = true,
                     fillScreen = fillScreen,
                     onToggleFill = { graph.videoFillScreen.value = !graph.videoFillScreen.value },
+                    rotationLocked = rotationLocked,
+                    onToggleRotationLock = if (rotationLockSupported) {
+                        { graph.videoRotationLocked.value = !graph.videoRotationLocked.value }
+                    } else {
+                        null
+                    },
                     onToggleFullscreen = onExit,
                 )
             }
@@ -718,6 +729,8 @@ private fun BoxScope.VideoOverlayControls(
     isFullscreen: Boolean = false,
     fillScreen: Boolean = false,
     onToggleFill: (() -> Unit)? = null,
+    rotationLocked: Boolean = false,
+    onToggleRotationLock: (() -> Unit)? = null,
     onToggleFullscreen: () -> Unit,
 ) {
     val player = coordinator.player
@@ -772,6 +785,14 @@ private fun BoxScope.VideoOverlayControls(
             DurationLabel(player, progress, overlayStyle)
             Box(Modifier.weight(1f))
             CaptionToggle(player, offTint = Color(0xFFEEEEEE))
+            if (onToggleRotationLock != null) {
+                ActionIcon(
+                    if (rotationLocked) Icons.Default.ScreenLockRotation else Icons.Default.ScreenRotation,
+                    stringResource(if (rotationLocked) Res.string.cd_unlock_rotation else Res.string.cd_lock_rotation),
+                    tint = Color(0xFFEEEEEE),
+                    onClick = onToggleRotationLock,
+                )
+            }
             if (onToggleFill != null) {
                 ActionIcon(
                     if (fillScreen) Icons.Default.FitScreen else Icons.Default.CropFree,

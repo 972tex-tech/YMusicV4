@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
@@ -47,23 +49,30 @@ internal actual fun SyncSystemBars(dark: Boolean) {
 }
 
 @Composable
-internal actual fun SyncSensorRotation(enabled: Boolean) {
+internal actual fun SyncSensorRotation(locked: Boolean) {
     val view = LocalView.current
     if (view.isInEditMode) return
-    DisposableEffect(enabled) {
+    val activity = remember(view) {
         var ctx = view.context
         while (ctx is ContextWrapper && ctx !is Activity) {
             ctx = ctx.baseContext
         }
-        val activity = ctx as? Activity
+        ctx as? Activity
+    }
+    // Toggling must not pass through UNSPECIFIED, or LOCKED could capture the system's orientation.
+    SideEffect {
         activity?.requestedOrientation =
-            if (enabled) ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-            else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            if (locked) ActivityInfo.SCREEN_ORIENTATION_LOCKED
+            else ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+    }
+    DisposableEffect(activity) {
         onDispose {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
 }
+
+internal actual val rotationLockSupported: Boolean = true
 
 @Composable
 internal actual fun SyncImmersiveSystemBars(immersive: Boolean) {

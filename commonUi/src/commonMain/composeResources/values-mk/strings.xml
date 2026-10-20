@@ -258,6 +258,8 @@
     <string name="cd_exit_fullscreen">Излези од цел екран</string>
     <string name="cd_fit_video">Собери го видеото</string>
     <string name="cd_fill_video">Пополни го екранот</string>
+    <string name="cd_lock_rotation">Заклучи ротација</string>
+    <string name="cd_unlock_rotation">Отклучи ротација</string>
     <string name="cd_rewind10">Премотај 10 секунди назад</string>
     <string name="cd_forward10">Премотај 10 секунди напред</string>
     <string name="cd_repeat_off">Повторувај: исклучено</string>

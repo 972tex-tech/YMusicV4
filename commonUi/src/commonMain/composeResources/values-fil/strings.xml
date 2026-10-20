@@ -258,6 +258,8 @@
     <string name="cd_exit_fullscreen">Lumabas sa full screen</string>
     <string name="cd_fit_video">Ipagkasya ang video</string>
     <string name="cd_fill_video">Punuin ang screen</string>
+    <string name="cd_lock_rotation">I-lock ang pag-ikot</string>
+    <string name="cd_unlock_rotation">I-unlock ang pag-ikot</string>
     <string name="cd_rewind10">I-rewind nang 10 segundo</string>
     <string name="cd_forward10">I-forward nang 10 segundo</string>
     <string name="cd_repeat_off">Ulitin: naka-off</string>

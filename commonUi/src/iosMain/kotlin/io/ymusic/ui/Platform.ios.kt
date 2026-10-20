@@ -24,9 +24,11 @@ internal actual fun SyncSystemBars(dark: Boolean) {
 }
 
 @Composable
-internal actual fun SyncSensorRotation(enabled: Boolean) {
+internal actual fun SyncSensorRotation(locked: Boolean) {
     // Info.plist already lists portrait and both landscapes.
 }
+
+internal actual val rotationLockSupported: Boolean = false
 
 @Composable
 internal actual fun SyncImmersiveSystemBars(immersive: Boolean) {
