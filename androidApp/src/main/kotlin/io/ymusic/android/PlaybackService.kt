@@ -26,14 +26,19 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.BitmapLoader
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CacheBitmapLoader
+import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionError
+import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.SettableFuture
+import io.ymusic.player.LoopMode
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.PlaybackState
 import io.ymusic.player.Player
@@ -45,6 +50,11 @@ import io.ymusic.ui.SearchFocus
 import io.ymusic.ui.playFromSearch
 import io.ymusic.ui.playerErrorMessage
 import io.ymusic.ui.playhistory.PlayAgainStore
+import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.cd_repeat_all
+import io.ymusic.ui.resources.cd_repeat_off
+import io.ymusic.ui.resources.cd_repeat_one
+import io.ymusic.ui.resources.cd_shuffle
 import io.ymusic.ui.youtubeThumbUrl
 import kmpcommon.log.Logger
 import kmpcommon.log.debug
@@ -63,6 +73,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import org.jetbrains.compose.resources.getString
 import projectcommon.error.runSuspendCatching
 import androidx.media3.session.R as Media3R
 
@@ -173,6 +184,11 @@ class PlaybackService : MediaLibraryService() {
             }
         }
         serviceScope.launch {
+            player.queue.map { it.shuffle to it.loopMode }.distinctUntilChanged().collect { (shuffle, loop) ->
+                session?.setMediaButtonPreferences(shuffleRepeatButtons(shuffle, loop))
+            }
+        }
+        serviceScope.launch {
             combine(player.status, player.queue) { status, queue ->
                 isPlaying(status, queue) to queue.currentItem
             }.distinctUntilChanged().collect { updateNotification() }
@@ -187,6 +203,33 @@ class PlaybackService : MediaLibraryService() {
     /** The localized text for the player's current error, for controllers (Android Auto). */
     private var errorText: Pair<PlayerError, String>? = null
     private val errorTextChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** Auto shows custom actions only (a legacy controller sees no shuffle/repeat otherwise). */
+    private suspend fun shuffleRepeatButtons(shuffle: Boolean, loop: LoopMode): ImmutableList<CommandButton> =
+        ImmutableList.of(
+            CommandButton.Builder(if (shuffle) CommandButton.ICON_SHUFFLE_ON else CommandButton.ICON_SHUFFLE_OFF)
+                .setDisplayName(getString(Res.string.cd_shuffle))
+                .setSessionCommand(COMMAND_SHUFFLE)
+                .build(),
+            CommandButton.Builder(
+                when (loop) {
+                    LoopMode.None -> CommandButton.ICON_REPEAT_OFF
+                    LoopMode.All -> CommandButton.ICON_REPEAT_ALL
+                    LoopMode.One -> CommandButton.ICON_REPEAT_ONE
+                },
+            )
+                .setDisplayName(
+                    getString(
+                        when (loop) {
+                            LoopMode.None -> Res.string.cd_repeat_off
+                            LoopMode.All -> Res.string.cd_repeat_all
+                            LoopMode.One -> Res.string.cd_repeat_one
+                        },
+                    ),
+                )
+                .setSessionCommand(COMMAND_REPEAT)
+                .build(),
+        )
 
     /** [playOrResume] once the graph exists. Single-flight: one play press reaches both
      *  onPlaybackResumption and the player's play, and two concurrent resumes would load the
@@ -333,8 +376,37 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<MediaSession.ConnectionResult> = Futures.immediateFuture(
             MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS)
+                .setAvailableSessionCommands(
+                    MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+                        .add(COMMAND_SHUFFLE)
+                        .add(COMMAND_REPEAT)
+                        .build(),
+                )
                 .build(),
         )
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<SessionResult> {
+            val player = this@PlaybackService.player
+                ?: return Futures.immediateFuture(SessionResult(SessionError.ERROR_SESSION_DISCONNECTED))
+            val queue = player.queue.value
+            when (customCommand.customAction) {
+                COMMAND_SHUFFLE.customAction -> player.setShuffle(!queue.shuffle)
+                COMMAND_REPEAT.customAction -> player.setLoopMode(
+                    when (queue.loopMode) {
+                        LoopMode.None -> LoopMode.All
+                        LoopMode.All -> LoopMode.One
+                        LoopMode.One -> LoopMode.None
+                    },
+                )
+                else -> return super.onCustomCommand(session, controller, customCommand, args)
+            }
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
 
         override fun onMediaButtonEvent(
             session: MediaSession,
@@ -762,6 +834,8 @@ class PlaybackService : MediaLibraryService() {
         const val CHANNEL_ID = "io.ymusic.playback"
         const val NOTIFICATION_ID = 1001
         const val ACTION_DISMISS = "io.ymusic.android.playback.DISMISS"
+        val COMMAND_SHUFFLE = SessionCommand("io.ymusic.android.playback.SHUFFLE", Bundle.EMPTY)
+        val COMMAND_REPEAT = SessionCommand("io.ymusic.android.playback.REPEAT", Bundle.EMPTY)
         const val DISMISS_REQUEST_CODE = 100
         const val LOCK_RELEASE_GRACE_MS = 60_000L
         const val HEADSET_CLICK_WINDOW_MS = 300L
