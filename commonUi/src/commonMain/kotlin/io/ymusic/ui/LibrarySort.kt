@@ -21,30 +21,34 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.listSaver
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.ymusic.settings.AppSettings
+import io.ymusic.settings.SettingsStore
+import io.ymusic.settings.flow
+import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_sort
 import io.ymusic.ui.resources.cd_sort_ascending
 import io.ymusic.ui.resources.cd_sort_descending
+import kotlinx.coroutines.flow.drop
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /** One sort choice: a localized [label] and the ascending [comparator] it sorts by. */
 internal class SortOption<T>(val label: StringResource, val comparator: Comparator<T>)
 
-/** The selected sort option (index into a tab's options) + direction. Saveable so it survives tab
- *  switches and rotation; per the product decision it resets on process death (no settings store). */
+/** The selected sort option (index into a tab's options) + direction, persisted per list. */
 internal class SortState(index: Int = 0, descending: Boolean = false) {
     var index by mutableStateOf(index)
     var descending by mutableStateOf(descending)
@@ -54,17 +58,26 @@ internal class SortState(index: Int = 0, descending: Boolean = false) {
         return if (descending) sorted.asReversed() else sorted
     }
 
+    fun encode(): String = "$index,${if (descending) 1 else 0}"
+
     companion object {
-        val Saver = listSaver<SortState, Any>(
-            save = { listOf(it.index, it.descending) },
-            restore = { SortState(it[0] as Int, it[1] as Boolean) },
-        )
+        fun decode(raw: String): SortState {
+            val parts = raw.split(',')
+            val index = parts.getOrNull(0)?.toIntOrNull()?.takeIf { it >= 0 } ?: return SortState()
+            return SortState(index, parts.getOrNull(1) == "1")
+        }
     }
 }
 
 @Composable
-internal fun rememberSortState(key: String): SortState =
-    rememberSaveable(key, saver = SortState.Saver) { SortState() }
+internal fun rememberSortState(id: String, settings: SettingsStore): SortState {
+    val setting = remember(id) { AppSettings.librarySort(id) }
+    val state = remember(id, settings) { SortState.decode(settings.flow(setting).value) }
+    LaunchedEffect(state) {
+        snapshotFlow { state.encode() }.drop(1).collect { settings.put(setting, it) }
+    }
+    return state
+}
 
 /** A full-width row that right-aligns the [SortControl] — used by tabs where sort is the only
  *  toolbar. The Folders tab instead drops [SortControl] into its scan row. */
@@ -96,7 +109,7 @@ internal fun SortControl(labels: List<StringResource>, state: SortState) {
             ) {
                 Icon(Icons.AutoMirrored.Filled.Sort, stringResource(Res.string.cd_sort), Modifier.size(16.dp), tint = DesignColors.InkSoft)
                 Text(
-                    stringResource(labels[state.index]),
+                    stringResource(labels.getOrElse(state.index) { labels.first() }),
                     style = TextStyle(fontSize = 12.5.sp, color = DesignColors.Ink),
                 )
             }

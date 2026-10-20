@@ -90,6 +90,9 @@ object AppSettings {
     /** The Discover tab the app reopens on: a DiscoverTab id, 0 = none yet. */
     val lastDiscoverTab = IntSetting("app.lastDiscoverTab", 0)
 
+    /** A Library list's sort choice, `"<option index>,<1 = descending>"`; blank = the list's default. */
+    fun librarySort(id: String) = StringSetting("library.sort.$id", "")
+
     /**
      * Fetch updates in the background as soon as they are found, so the update prompt opens ready
      * to install. On by default; the install itself always waits for the user's tap. Android and

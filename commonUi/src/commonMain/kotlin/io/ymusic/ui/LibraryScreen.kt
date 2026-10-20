@@ -85,6 +85,7 @@ import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.mediastore.model.Playlist
 import io.ymusic.mediastore.model.PlaylistItemDetail
 import io.ymusic.settings.AppSettings
+import io.ymusic.settings.SettingsStore
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.playhistory.PlayHistoryStore
@@ -330,12 +331,13 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                     onRevealHandled = { revealBucket = null },
                                     downloadLocation = downloadLocation,
                                     onToggleDownloadLocation = onToggleDownloadLocation,
+                                    settings = graph.settings,
                                 )
                                 LibraryTab.Playlists -> PlaylistsTab(store, graph, loaded, coordinator, graph.playHistory)
                                 LibraryTab.Songs -> if (loaded.songs.isEmpty()) {
                                     EmptyState(stringResource(Res.string.library_no_songs), onReload = null)
                                 } else {
-                                    val sort = rememberSortState("sort.songs")
+                                    val sort = rememberSortState("songs", graph.settings)
                                     SongList(
                                         sort.sort(loaded.songs, songSortOptions),
                                         coordinator,
@@ -350,6 +352,8 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                         Icons.Default.Person,
                                         stringResource(Res.string.unknown_artist),
                                         coordinator,
+                                        sortId = "artists",
+                                        settings = graph.settings,
                                     ) { it.artist }
                                 }
                                 LibraryTab.Albums -> if (loaded.songs.isEmpty()) {
@@ -360,6 +364,8 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                         Icons.Default.Album,
                                         stringResource(Res.string.unknown_album),
                                         coordinator,
+                                        sortId = "albums",
+                                        settings = graph.settings,
                                     ) { it.album }
                                 }
                                 LibraryTab.Genres -> if (loaded.songs.isEmpty()) {
@@ -370,6 +376,8 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                         Icons.Default.Category,
                                         stringResource(Res.string.unknown_genre),
                                         coordinator,
+                                        sortId = "genres",
+                                        settings = graph.settings,
                                     ) { it.genre }
                                 }
                             }
@@ -411,6 +419,7 @@ private fun FoldersTab(
     onRevealHandled: () -> Unit,
     downloadLocation: String?,
     onToggleDownloadLocation: ((MediaStoreBucket) -> Unit)?,
+    settings: SettingsStore,
 ) {
     fun isDownloadLocation(bucket: MediaStoreBucket) =
         downloadLocation != null && bucket.uri.toString() == downloadLocation
@@ -466,7 +475,7 @@ private fun FoldersTab(
                 }
             }
         }
-        val sort = rememberSortState("sort.folders")
+        val sort = rememberSortState("folders", settings)
         val sortedFolders = sort.sort(children, folderSortOptions)
         val sortedItems = sort.sort(items, songSortOptions)
         val folderId = path.lastOrNull()?.first
@@ -876,7 +885,7 @@ private fun PlaylistsTab(
     // kept as PlaylistItemDetail so it can be sorted by addedAt as well as by title.
     var systemSongs by remember { mutableStateOf<List<MediaStoreItem>?>(null) }
     var userItems by remember { mutableStateOf<List<PlaylistItemDetail>?>(null) }
-    val playlistSongSort = rememberSortState("sort.playlist.songs")
+    val playlistSongSort = rememberSortState("playlist.songs", graph.settings)
     // Create/rename/delete don't emit itemsChanges, so the outer content tick won't reload the list —
     // bump this after any playlist mutation to reload playlists() + counts.
     var refreshTick by remember { mutableStateOf(0) }
@@ -964,7 +973,7 @@ private fun PlaylistsTab(
 
     val open = selected
     val isUser = open != null && open.first > 0
-    val sort = rememberSortState("sort.playlists")
+    val sort = rememberSortState("playlists", graph.settings)
     // The first item is always the header — the list-level toolbar, or the drill-down back-row. Both
     // use the same row padding/height, so it stays put across the drill-in. A user playlist carries a
     // sort control at the same end position as the list-level toolbar's (system playlists carry none).
@@ -1508,6 +1517,8 @@ private fun GroupedList(
     icon: ImageVector,
     unknownLabel: String,
     coordinator: PlaybackCoordinator,
+    sortId: String,
+    settings: SettingsStore,
     keyOf: (MediaStoreItem) -> String?,
 ) {
     // Saveable: the opened artist/album/genre survives the tab leaving composition.
@@ -1525,8 +1536,8 @@ private fun GroupedList(
     val grouped = groups
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
-    val sort = rememberSortState("sort.group")
-    val songSort = rememberSortState("sort.group.songs")
+    val sort = rememberSortState(sortId, settings)
+    val songSort = rememberSortState("$sortId.songs", settings)
     if (grouped == null) {
         CenteredBox { CircularProgressIndicator() }
         return
