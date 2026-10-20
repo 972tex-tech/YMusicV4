@@ -675,6 +675,8 @@ async function fetchPlayerConfig(): Promise<Record<string, unknown>> {
 const SESSION_STEP_MS = 15000;
 const BOTGUARD_STEP_MS = 15000;
 const BASEJS_STEP_MS = 15000;
+/** A loop-on seek this close to the end restarts the loop; the buffer ends a few ms short of the duration. */
+const LOOP_TAIL_S = 0.5;
 
 /** Rejects with [code] when [task] has not settled within [ms]; the task itself keeps running. */
 function withinStep<T>(task: Promise<T>, ms: number, code: string, step: string): Promise<T> {
@@ -1165,8 +1167,14 @@ class Player {
   seek(t: number): void {
     const player = moviePlayer();
     if (!player) return;
-    const ct = activeHtmlMedia() ? __mseCurrentTime() : -1;
+    const el = activeHtmlMedia();
+    const ct = el ? __mseCurrentTime() : -1;
     console.info("mse seek t=" + t + " ct=" + ct);
+    // base.js pauses a seek onto the tail instead of ending it, so a looping element never wraps.
+    if (el && el["loop"]) {
+      const d = Number(el["duration"]);
+      if (isFinite(d) && d > 0 && t >= d - LOOP_TAIL_S) t = 0;
+    }
     player["seekTo"](t, true);
     onCaptionSeek();
   }
