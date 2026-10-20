@@ -145,6 +145,8 @@ import io.ymusic.ui.resources.cd_fullscreen
 import io.ymusic.ui.resources.cd_minimize
 import io.ymusic.ui.resources.feedback_attach
 import io.ymusic.ui.resources.folder_picker_title
+import io.ymusic.ui.resources.playlist_menu_backup
+import io.ymusic.ui.resources.playlist_menu_restore
 import io.ymusic.ui.resources.ymusic_logo
 import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
 import io.ymusic.ui.sponsorblock.sponsorBlockJdbcDriver
@@ -179,6 +181,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okio.FileSystem
+import okio.Path.Companion.toOkioPath
 import okio.Path.Companion.toPath
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
@@ -898,6 +901,8 @@ private suspend fun buildGraph(settings: AppStoreSettings, session: CookieSessio
         remoteConfig = remoteConfig.config,
         sendFeedback = sendFeedbackAction.takeIf { SENTRY_DSN.isNotEmpty() },
         pickFeedbackFiles = ::pickFeedbackFiles,
+        createDocument = { name, _ -> pickSaveFile(name)?.let { file -> withContext(Dispatchers.IO) { FileSystem.SYSTEM.sink(file.toOkioPath()) } } },
+        openDocument = { _ -> pickOpenFile()?.let { file -> withContext(Dispatchers.IO) { FileSystem.SYSTEM.source(file.toOkioPath()) } } },
         windowResizing = windowResizing,
     ) { modifier ->
         DesktopPlayerSurface(localSurface, mseSurface, windowResizing, player.status, modifier)
@@ -1394,6 +1399,28 @@ private suspend fun pickFeedbackFiles(): List<io.ymusic.ui.FeedbackFile> {
             if (size > io.ymusic.ui.FeedbackFile.MAX_BYTES) io.ymusic.ui.FeedbackFile(file.name, bytes = null, sizeBytes = size)
             else io.ymusic.ui.FeedbackFile(file.name, file.readBytes())
         }
+    }
+}
+
+/** The "save as" dialog for a playlist backup; null when canceled. */
+private suspend fun pickSaveFile(suggestedName: String): File? {
+    val title = getString(Res.string.playlist_menu_backup)
+    return withContext(Dispatchers.Main) {
+        val dialog = FileDialog(null as Frame?, title, FileDialog.SAVE)
+        dialog.file = suggestedName
+        dialog.isVisible = true
+        dialog.file?.let { File(dialog.directory, it) }
+    }
+}
+
+/** The open dialog for a playlist backup; null when canceled. */
+private suspend fun pickOpenFile(): File? {
+    val title = getString(Res.string.playlist_menu_restore)
+    return withContext(Dispatchers.Main) {
+        val dialog = FileDialog(null as Frame?, title, FileDialog.LOAD)
+        dialog.setFilenameFilter { _, name -> name.endsWith(".json", ignoreCase = true) }
+        dialog.isVisible = true
+        dialog.file?.let { File(dialog.directory, it) }
     }
 }
 
