@@ -6,6 +6,7 @@ import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import io.ymusic.ui.artImageRequest
 import kotlinx.coroutines.runBlocking
 import okio.ByteString
 import okio.ByteString.Companion.decodeHex
@@ -68,7 +69,7 @@ class ArtworkProvider : ContentProvider() {
         val app = requireNotNull(context).applicationContext as YMusicApplication
         try {
             return runBlocking {
-                app.services.await().imageLoader.loadFile(target, ARTWORK_MAX_PX, ARTWORK_MAX_PX)
+                app.services.await().imageLoader.loadFile(artImageRequest(target, ARTWORK_MAX_PX, ARTWORK_MAX_PX))
             } ?: throw FileNotFoundException("no scaled disk cache to serve artwork from")
         } catch (e: FileNotFoundException) {
             throw e

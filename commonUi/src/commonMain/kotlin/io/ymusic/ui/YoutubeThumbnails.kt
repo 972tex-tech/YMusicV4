@@ -1,6 +1,8 @@
 package io.ymusic.ui
 
+import androidx.compose.ui.unit.IntSize
 import io.ymusic.dynamicengine.yt.YtThumb
+import io.ymusic.imageloader.ImageRequest
 import io.ymusic.imageloader.ImageSource
 import io.ymusic.imageloader.SourceCrop
 import io.ymusic.imageloader.imageCacheKey
@@ -31,6 +33,13 @@ internal fun artRequestSources(url: String): Pair<String, List<ImageSource>> {
     googleArtSources(url)?.let { return it }
     val videoId = youtubeVideoIdOf(url) ?: return imageCacheKey(url) to listOf(ImageSource(url))
     return youtubeImageKey(videoId) to youtubeThumbnailSources(videoId)
+}
+
+/** A single art url as an [ImageRequest] for a [width]×[height] box, with the variants
+ *  [artRequestSources] derives — for surfaces outside Compose (notification, widget, Android Auto). */
+fun artImageRequest(url: String, width: Int, height: Int): ImageRequest {
+    val (key, sources) = artRequestSources(url)
+    return ImageRequest(key, sources, IntSize(width, height))
 }
 
 /**

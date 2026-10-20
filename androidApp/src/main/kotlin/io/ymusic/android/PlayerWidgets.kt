@@ -25,6 +25,7 @@ import androidx.palette.graphics.Palette
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.player.isPlaying
 import io.ymusic.ui.AppGraph
+import io.ymusic.ui.artImageRequest
 import kmpcommon.WorkerThread
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
@@ -203,7 +204,7 @@ class PlayerWidgets(
     }
 
     private suspend fun loadArt(url: String, loader: ImageLoader): WidgetArt? = try {
-        val source = loader.load(url, ART_SOURCE_PX, ART_SOURCE_PX, cacheInMemory = false).asAndroidBitmap()
+        val source = loader.load(artImageRequest(url, ART_SOURCE_PX, ART_SOURCE_PX), cacheInMemory = false).asAndroidBitmap()
         deriveArt(url, source)
     } catch (e: CancellationException) {
         throw e

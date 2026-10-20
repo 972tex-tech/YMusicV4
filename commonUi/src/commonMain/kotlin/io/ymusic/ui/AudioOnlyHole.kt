@@ -290,10 +290,7 @@ private fun PrefetchNextArt(player: Player, decodeSize: IntSize) {
     }
 }
 
-private fun artRequest(url: String, size: IntSize): ImageRequest {
-    val (key, sources) = artRequestSources(url)
-    return ImageRequest(key, sources, size)
-}
+private fun artRequest(url: String, size: IntSize): ImageRequest = artImageRequest(url, size.width, size.height)
 
 @Composable
 private fun BoxScope.ArtImageLayer(bitmap: ImageBitmap?, alpha: () -> Float) {
