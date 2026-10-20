@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.util.BitmapLoader
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.LibraryResult
@@ -28,6 +29,7 @@ import androidx.media3.session.MediaSession
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.SettableFuture
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.Player
@@ -50,6 +52,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.media3.session.R as Media3R
 
 /**
@@ -74,6 +77,11 @@ class PlaybackService : MediaLibraryService() {
     private var coordinator: io.ymusic.ui.PlaybackCoordinator? = null
     private var playAgain: PlayAgainStore? = null
     private val ready = CompletableDeferred<Unit>()
+    /** [ready] for Guava callers (the deferred bitmap loader). */
+    private val readyFuture = SettableFuture.create<Unit>()
+    /** The session's player until [init] swaps in the real adapter (cold start only). */
+    private var pendingPlayer: PendingPlayer? = null
+    private val bitmapLoader = DeferredBitmapLoader()
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var art: Pair<String, Bitmap?>? = null
@@ -98,10 +106,29 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
         log = (application as YMusicApplication).rootLogger.fork("playback-service")
         createChannel()
+        // The session must exist before the first bind: a legacy MediaBrowserService bind (Auto on a
+        // dead process) that finds no session gets a null binder the framework caches for the whole
+        // binding, leaving Auto spinning. NEVER block on graphAsync() here: it builds on main.
+        val pending = PendingPlayer(
+            onPlay = ::resumeWhenReady,
+            onSetItems = { items, start -> serviceScope.launch { ready.await(); applyBrowseItems(items, start) } },
+        ).also { pendingPlayer = it }
+        sessionOwner?.takeIf { it !== this }?.let { stale ->
+            log?.log(Logger.Level.WARN, "a previous PlaybackService still holds a live session; releasing it")
+            stale.releaseSession()
+        }
+        sessionOwner = this
+        session = MediaLibrarySession.Builder(this, pending, LibraryCallback())
+            .setId("playback-${++sessionCount}")
+            .setSessionActivity(sessionActivityIntent())
+            // Artwork through the shared app ImageLoader (https + art://, UI-shared caches)
+            // instead of media3's DataSource loader, which knows neither art:// nor our caches.
+            // CacheBitmapLoader memoizes the current artwork; our loader stays out of the LRU.
+            .setBitmapLoader(CacheBitmapLoader(bitmapLoader))
+            .build()
         // The graph is normally long built when playback starts this service (await returns
-        // inline); the cold path (notification action after process death, Auto connecting on a
-        // dead process) initializes async — onStartCommand's placeholder covers the foreground
-        // contract meanwhile. onGetSession answers null until this completes; Auto retries.
+        // inline); the cold path initializes async — onStartCommand's placeholder covers the
+        // foreground contract meanwhile.
         serviceScope.launch {
             init((application as YMusicApplication).graphAsync().await())
         }
@@ -110,7 +137,7 @@ class PlaybackService : MediaLibraryService() {
     @OptIn(UnstableApi::class)
     private fun init(graph: AppGraph) {
         val player = graph.player.also { this.player = it }
-        val tree = MediaBrowseTree(this, graph).also { this.tree = it }
+        tree = MediaBrowseTree(this, graph)
         coordinator = graph.playback
         playAgain = graph.playHistory?.playAgain
         val adapter = Media3PlayerAdapter(
@@ -120,25 +147,12 @@ class PlaybackService : MediaLibraryService() {
             applyMediaItems = { _, items, startIndex, _ -> applyBrowseItems(items, startIndex) },
             insertMediaItems = { target, index, items -> insertBrowseItems(target, index, items) },
         )
-        sessionOwner?.takeIf { it !== this }?.let { stale ->
-            log?.log(Logger.Level.WARN, "a previous PlaybackService still holds a live session; releasing it")
-            stale.releaseSession()
+        bitmapLoader.delegate = graph.imageLoader?.let {
+            ImageLoaderBitmapLoader(it, serviceScope, artworkAuthority(this@PlaybackService))
         }
-        sessionOwner = this
-        session = MediaLibrarySession.Builder(this, adapter, LibraryCallback(tree))
-            .setId("playback-${++sessionCount}")
-            .setSessionActivity(sessionActivityIntent())
-            .apply {
-                // Artwork through the shared app ImageLoader (https + art://, UI-shared caches)
-                // instead of media3's DataSource loader, which knows neither art:// nor our caches.
-                // CacheBitmapLoader memoizes the current artwork; our loader stays out of the LRU.
-                graph.imageLoader?.let {
-                    setBitmapLoader(
-                        CacheBitmapLoader(ImageLoaderBitmapLoader(it, serviceScope, artworkAuthority(this@PlaybackService))),
-                    )
-                }
-            }
-            .build()
+        session?.player = adapter
+        pendingPlayer?.release()
+        pendingPlayer = null
         serviceScope.launch {
             combine(player.status, player.queue) { status, queue ->
                 isPlaying(status, queue) to queue.currentItem
@@ -146,6 +160,20 @@ class PlaybackService : MediaLibraryService() {
         }
         holdLocksWhilePlaying(player)
         ready.complete(Unit)
+        readyFuture.set(Unit)
+    }
+
+    private var resumeJob: Job? = null
+
+    /** [playOrResume] once the graph exists. Single-flight: one play press reaches both
+     *  onPlaybackResumption and the player's play, and two concurrent resumes would load the
+     *  "Play again" queue twice. */
+    private fun resumeWhenReady() {
+        if (resumeJob?.isActive == true) return
+        resumeJob = serviceScope.launch {
+            ready.await()
+            playOrResume()
+        }
     }
 
     /** Play, or with an empty queue (fresh process) resume the newest "Play again" session. */
@@ -176,6 +204,8 @@ class PlaybackService : MediaLibraryService() {
         val chosen = items.getOrNull(startIndex) ?: items.firstOrNull() ?: return
         val id = chosen.mediaId
         when {
+            // Voice "play on YMusic" with nothing named.
+            id.isEmpty() -> resumeWhenReady()
             id.startsWith(MediaBrowseTree.YT_SONG_PREFIX) -> {
                 val videoId = id.removePrefix(MediaBrowseTree.YT_SONG_PREFIX)
                 // A cache miss (process died since browsing) still plays from the id alone.
@@ -236,16 +266,24 @@ class PlaybackService : MediaLibraryService() {
         val clicks = headsetClickCount
         headsetClickCount = 0
         headsetClickJob = null
-        val player = this.player ?: return
-        when {
-            clicks == 1 -> player.togglePlay()
-            clicks == 2 -> player.skipNext()
-            clicks > 2 -> player.skipPrev()
+        serviceScope.launch {
+            ready.await()
+            val player = this@PlaybackService.player ?: return@launch
+            when {
+                clicks == 1 -> if (player.queue.value.currentItem == null) resumeWhenReady() else player.togglePlay()
+                clicks == 2 -> player.skipNext()
+                clicks > 2 -> player.skipPrev()
+            }
         }
     }
 
     /** The Auto browse surface — all list building lives in [MediaBrowseTree]. */
-    private inner class LibraryCallback(private val tree: MediaBrowseTree) : MediaLibrarySession.Callback {
+    private inner class LibraryCallback : MediaLibrarySession.Callback {
+        /** The tree once the graph exists; null after [INIT_TIMEOUT_MS] so Auto gets an error
+         *  result instead of an endless spinner. */
+        private suspend fun browseTree(): MediaBrowseTree? =
+            withTimeoutOrNull(INIT_TIMEOUT_MS) { ready.await() }?.let { this@PlaybackService.tree }
+
         // Media3 gives untrusted controllers (any third-party app, e.g. a screen reader dispatching
         // media keys) read-only player commands and drops the rest silently; any app may drive playback.
         @OptIn(UnstableApi::class)
@@ -280,7 +318,7 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<MediaItem>> =
             // Must be already done: the legacy onGetRoot blocks the main thread until this resolves,
             // and its completion callback is posted to that same main thread — a pending future deadlocks.
-            Futures.immediateFuture(LibraryResult.ofItem(tree.rootItem(), params))
+            Futures.immediateFuture(LibraryResult.ofItem(MediaBrowseTree.ROOT_ITEM, params))
 
         override fun onGetChildren(
             session: MediaLibrarySession,
@@ -290,6 +328,7 @@ class PlaybackService : MediaLibraryService() {
             pageSize: Int,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
+            val tree = browseTree() ?: return@future LibraryResult.ofError(LibraryResult.RESULT_ERROR_UNKNOWN)
             LibraryResult.ofItemList(ImmutableList.copyOf(tree.children(parentId, page, pageSize)), params)
         }
 
@@ -298,7 +337,7 @@ class PlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             mediaId: String,
         ): ListenableFuture<LibraryResult<MediaItem>> = future {
-            tree.item(mediaId)?.let { LibraryResult.ofItem(it, null) }
+            browseTree()?.item(mediaId)?.let { LibraryResult.ofItem(it, null) }
                 ?: LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
         }
 
@@ -308,6 +347,7 @@ class PlaybackService : MediaLibraryService() {
             query: String,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<Void>> = future {
+            val tree = browseTree() ?: return@future LibraryResult.ofError(LibraryResult.RESULT_ERROR_UNKNOWN)
             val results = tree.searchItems(query)
             synchronized(searchResults) { searchResults[query] = results }
             session.notifySearchResultChanged(browser, query, results.size, params)
@@ -322,19 +362,68 @@ class PlaybackService : MediaLibraryService() {
             pageSize: Int,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
-            val all = synchronized(searchResults) { searchResults[query] } ?: tree.searchItems(query)
+            val all = synchronized(searchResults) { searchResults[query] }
+                ?: browseTree()?.searchItems(query)
+                ?: return@future LibraryResult.ofError(LibraryResult.RESULT_ERROR_UNKNOWN)
             val sliced = if (pageSize > 0 && page >= 0) all.drop(page * pageSize).take(pageSize) else all
             LibraryResult.ofItemList(ImmutableList.copyOf(sliced), params)
         }
 
         /** Controllers send bare mediaIds; refill each from the tree so the adapter's queue items
-         *  carry display metadata (an unknown id passes through — [applyBrowseItems] copes). */
+         *  carry display metadata (an unknown id passes through — [applyBrowseItems] copes).
+         *  Voice ("play Eminem on YMusic") is one item with an empty mediaId and the words in
+         *  requestMetadata.searchQuery: it becomes the search results, the first one plays. */
         override fun onAddMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>,
         ): ListenableFuture<MutableList<MediaItem>> = future {
-            mediaItems.map { tree.item(it.mediaId) ?: it }.toMutableList()
+            val tree = browseTree() ?: return@future mediaItems
+            val query = mediaItems.singleOrNull()?.requestMetadata?.searchQuery
+            if (query.isNullOrBlank()) {
+                mediaItems.map { tree.item(it.mediaId) ?: it }.toMutableList()
+            } else {
+                tree.searchItems(query)
+                    .filter { it.mediaMetadata.isPlayable == true }
+                    .ifEmpty { mediaItems }
+                    .toMutableList()
+            }
+        }
+
+        /** "Play" with nothing queued (steering-wheel button, Auto's play on a fresh process):
+         *  YMusic resumes through its own "Play again" sessions rather than a media3 item list,
+         *  so start that and decline media3's resumption. isForPlayback = false is the system
+         *  only asking what it would play (Android 13+ media controls) — never start then. */
+        @OptIn(UnstableApi::class)
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            isForPlayback: Boolean,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            if (isForPlayback) resumeWhenReady()
+            return Futures.immediateFailedFuture(UnsupportedOperationException("resumed via Play again"))
+        }
+    }
+
+    /** Session artwork loader that exists before the graph: requests made during a cold start
+     *  wait for [readyFuture], then go to the app ImageLoader-backed [delegate]. */
+    @OptIn(UnstableApi::class)
+    private inner class DeferredBitmapLoader : BitmapLoader {
+        @Volatile var delegate: BitmapLoader? = null
+
+        override fun supportsMimeType(mimeType: String): Boolean = mimeType.startsWith("image/")
+
+        override fun decodeBitmap(data: ByteArray): ListenableFuture<Bitmap> = chain { it.decodeBitmap(data) }
+
+        override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> = chain { it.loadBitmap(uri) }
+
+        private fun chain(op: (BitmapLoader) -> ListenableFuture<Bitmap>): ListenableFuture<Bitmap> {
+            delegate?.let { return op(it) }
+            return Futures.transformAsync(
+                readyFuture,
+                { delegate?.let(op) ?: Futures.immediateFailedFuture(IllegalStateException("no image loader")) },
+                MoreExecutors.directExecutor(),
+            )
         }
     }
 
@@ -417,6 +506,7 @@ class PlaybackService : MediaLibraryService() {
                 .onFailure { log?.log(Logger.Level.WARN, "player adapter release failed", it) }
         }
         session = null
+        pendingPlayer = null
     }
 
     /** Playing → foreground (undismissable). Paused → demoted, notification stays and is swipeable. */
@@ -624,6 +714,8 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private companion object {
+        /** How long an Auto browse call waits for a cold-start graph before failing. */
+        const val INIT_TIMEOUT_MS = 30_000L
         const val CHANNEL_ID = "io.ymusic.playback"
         const val NOTIFICATION_ID = 1001
         const val ACTION_DISMISS = "io.ymusic.android.playback.DISMISS"

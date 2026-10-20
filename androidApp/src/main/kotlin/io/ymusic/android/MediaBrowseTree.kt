@@ -51,7 +51,7 @@ class MediaBrowseTree(private val context: Context, private val graph: AppGraph)
     /** The last full list served for a local container — play context for [localContext]. */
     private var lastLocal: Pair<String, List<MediaStoreItem>>? = null
 
-    fun rootItem(): MediaItem = browsable(ROOT, "YMusic", style = null)
+    fun rootItem(): MediaItem = ROOT_ITEM
 
     /** The remembered feed item behind a "yt:" playable id, for queue building. */
     @Synchronized
@@ -275,6 +275,20 @@ class MediaBrowseTree(private val context: Context, private val graph: AppGraph)
 
     companion object {
         const val ROOT = "root"
+
+        /** Built without the graph: the root query is answered before the graph exists. */
+        val ROOT_ITEM: MediaItem = MediaItem.Builder()
+            .setMediaId(ROOT)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle("YMusic")
+                    .setIsBrowsable(true)
+                    .setIsPlayable(false)
+                    .setExtras(Bundle())
+                    .build(),
+            )
+            .build()
+
         const val TAB_LIBRARY = "tab_library"
         const val TAB_DISCOVER = "tab_discover"
         const val TAB_YTMUSIC = "tab_ytmusic"
