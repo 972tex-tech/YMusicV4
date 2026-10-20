@@ -551,6 +551,17 @@
         <item quantity="one">Added %1$d video to downloads</item>
         <item quantity="other">Added %1$d videos to downloads</item>
     </plurals>
+    <string name="local_playlist_create">Create local playlist</string>
+    <string name="local_playlist_desc">Make an offline playlist of the videos in this playlist you've already downloaded.</string>
+    <string name="local_playlist_empty">None of the loaded videos are downloaded yet.</string>
+    <plurals name="local_playlist_downloaded">
+        <item quantity="one">%1$d downloaded video</item>
+        <item quantity="other">%1$d downloaded videos</item>
+    </plurals>
+    <plurals name="local_playlist_created">
+        <item quantity="one">Created %1$s with %2$d song</item>
+        <item quantity="other">Created %1$s with %2$d songs</item>
+    </plurals>
     <string name="playlist_add_to">Add to playlist</string>
     <string name="playlist_select_library">Select a Library playlist</string>
     <string name="playlist_target_none">None</string>

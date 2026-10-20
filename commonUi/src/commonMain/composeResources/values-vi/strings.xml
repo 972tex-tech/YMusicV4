@@ -525,6 +525,15 @@
     <plurals name="playlist_added">
         <item quantity="other">Đã thêm %1$d video vào danh sách tải</item>
     </plurals>
+    <string name="local_playlist_create">Tạo danh sách phát offline</string>
+    <string name="local_playlist_desc">Tạo danh sách phát offline gồm các video trong danh sách này mà bạn đã tải về.</string>
+    <string name="local_playlist_empty">Chưa có video nào đã tải trong số video đã tải lên.</string>
+    <plurals name="local_playlist_downloaded">
+        <item quantity="other">%1$d video đã tải</item>
+    </plurals>
+    <plurals name="local_playlist_created">
+        <item quantity="other">Đã tạo %1$s với %2$d bài hát</item>
+    </plurals>
     <string name="playlist_add_to">Thêm vào danh sách phát</string>
     <string name="playlist_select_library">Chọn danh sách phát Thư viện</string>
     <string name="playlist_target_none">Không</string>

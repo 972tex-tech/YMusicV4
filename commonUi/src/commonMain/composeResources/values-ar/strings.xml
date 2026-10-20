@@ -533,6 +533,17 @@
         <item quantity="one">تمت إضافة فيديو واحد إلى التنزيلات</item>
         <item quantity="other">تمت إضافة %1$d فيديو إلى التنزيلات</item>
     </plurals>
+    <string name="local_playlist_create">إنشاء قائمة تشغيل محلية</string>
+    <string name="local_playlist_desc">أنشئ قائمة تشغيل بلا إنترنت من فيديوهات هذه القائمة التي نزّلتها بالفعل.</string>
+    <string name="local_playlist_empty">لم يتم تنزيل أي من الفيديوهات المحمّلة بعد.</string>
+    <plurals name="local_playlist_downloaded">
+        <item quantity="one">فيديو واحد تم تنزيله</item>
+        <item quantity="other">%1$d فيديو تم تنزيله</item>
+    </plurals>
+    <plurals name="local_playlist_created">
+        <item quantity="one">تم إنشاء %1$s بأغنية واحدة</item>
+        <item quantity="other">تم إنشاء %1$s بـ %2$d أغنية</item>
+    </plurals>
     <string name="playlist_add_to">إضافة إلى قائمة تشغيل</string>
     <string name="playlist_select_library">اختر قائمة تشغيل من المكتبة</string>
     <string name="playlist_target_none">لا شيء</string>

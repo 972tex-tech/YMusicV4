@@ -222,6 +222,12 @@ fun MusicDetailScreen(
     // A category/feed browse (New releases, Charts, Moods & genres, a mood) vs a track list.
     val isFeed = session.url.contains("id=FEmusic")
 
+    val store = coordinator.graph.mediaStore
+    var creatingLocal by remember { mutableStateOf<String?>(null) }
+    if (store != null) {
+        creatingLocal?.let { title -> LocalPlaylistFromDownloadsDialog(store, title, session.feed.pager) { creatingLocal = null } }
+    }
+
     Column(Modifier.fillMaxSize()) {
         DetailAppBar(
             if (isFeed) (ready?.pageHeader?.title ?: session.item.title) else stringResource(Res.string.detail_playlist),
@@ -272,6 +278,7 @@ fun MusicDetailScreen(
                             }
                         },
                         onDownload = onDownload?.let { open -> { open(title, session.feed.pager) } },
+                        onCreateLocal = store?.let { { creatingLocal = title } },
                     )
                 }
             },
