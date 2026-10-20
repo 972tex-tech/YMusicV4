@@ -153,10 +153,8 @@ internal fun AudioOnlyArtWave(
     }
     BoxWithConstraints(modifier.clipToBounds()) {
         val side = minOf(maxHeight * 0.86f, maxWidth * 0.32f)
-        // One decode covering both the hole (backdrop) and the square, so both layers share it.
-        val decodeSize = with(LocalDensity.current) {
-            IntSize(maxOf(maxWidth, side).roundToPx(), maxOf(maxHeight, side).roundToPx())
-        }
+        // Sized by the square: the blurred backdrop reuses that decode, it needs no resolution.
+        val decodeSize = with(LocalDensity.current) { side.roundToPx().let { IntSize(it, it) } }
         val art = rememberArtTransition(url, decodeSize)
         PrefetchNextArt(player, decodeSize)
         Box(Modifier.matchParentSize().blur(28.dp)) {
