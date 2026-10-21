@@ -140,6 +140,8 @@ internal class AndroidLocalPlayer(
                 val detail = error.errorCodeName + ": " + error.message
                 val playerError = if (error.isFileMissing()) {
                     PlayerError(PlayerError.FILE_MISSING, detail, canRetry = false, cause = error)
+                } else if (error.isAccessDenied()) {
+                    PlayerError(PlayerError.FOLDER_ACCESS_LOST, detail, canRetry = false, cause = error)
                 } else {
                     PlayerError("E60010", detail, cause = error)
                 }
@@ -532,6 +534,9 @@ private fun sameUri(a: MediaItem, b: MediaItem): Boolean =
 /** ExoPlayer's own not-found code, a [FileNotFoundException] anywhere in the chain, or the documents
  *  provider's IllegalArgumentException ("Failed to determine if … is child of …: java.io.FileNotFoundException")
  *  that carries it only in its message — the cause doesn't survive the binder. */
+private fun PlaybackException.isAccessDenied(): Boolean =
+    generateSequence<Throwable>(this) { it.cause }.any { it is SecurityException }
+
 private fun PlaybackException.isFileMissing(): Boolean =
     errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
         generateSequence<Throwable>(this) { it.cause }.any {
