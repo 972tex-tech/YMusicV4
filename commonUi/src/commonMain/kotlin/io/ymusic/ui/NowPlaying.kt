@@ -175,8 +175,10 @@ import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.menu_details_comments
 import io.ymusic.ui.resources.menu_reload_player
 import io.ymusic.ui.resources.menu_speed_pitch
+import io.ymusic.ui.resources.playback_add_folder_again
 import io.ymusic.ui.resources.playback_failed
 import io.ymusic.ui.resources.playback_file_missing
+import io.ymusic.ui.resources.playback_folder_access_lost
 import io.ymusic.ui.resources.playback_retry_later
 import io.ymusic.ui.resources.playback_sign_in_required
 import io.ymusic.ui.resources.playback_unavailable
@@ -470,7 +472,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
                     onToggleFullscreen = onExit,
                 )
             }
-            status.error?.let { PlaybackErrorText(graph.player, it, VideoOverlayNative.showing) }
+            status.error?.let { PlaybackErrorText(graph, it, VideoOverlayNative.showing) }
             PlayerCaptionOverlay(graph.player, VideoOverlayNative.showing, fill = fillScreen)
         }
     }
@@ -540,7 +542,7 @@ private fun PortraitNowPlaying(
                         onToggleFullscreen = onFullscreen,
                     )
                 }
-                status.error?.let { PlaybackErrorText(player, it, VideoOverlayNative.showing) }
+                status.error?.let { PlaybackErrorText(graph, it, VideoOverlayNative.showing) }
                 val overlayOn = VideoOverlayNative.showing
                 PlayerCaptionOverlay(player, overlayVisible = overlayOn)
                 if (!overlayOn) {
@@ -653,7 +655,7 @@ private fun LandscapeNowPlaying(
                     AutoHidingOverlay {
                         VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
                     }
-                    status.error?.let { PlaybackErrorText(player, it, VideoOverlayNative.showing) }
+                    status.error?.let { PlaybackErrorText(graph, it, VideoOverlayNative.showing) }
                     PlayerCaptionOverlay(player, VideoOverlayNative.showing)
                 }
             }
@@ -1031,6 +1033,7 @@ internal fun playerErrorText(error: io.ymusic.player.PlayerError): UiText = when
     error.code == "network" -> UiText.Resource(Res.string.error_network)
     error.code == SUPERVISED_ACCOUNT_CODE -> UiText.Resource(Res.string.error_supervised_account)
     error.code == io.ymusic.player.PlayerError.FILE_MISSING -> UiText.Resource(Res.string.playback_file_missing)
+    error.code == io.ymusic.player.PlayerError.FOLDER_ACCESS_LOST -> UiText.Resource(Res.string.playback_folder_access_lost)
     error.code == io.ymusic.player.PlayerError.VIDEO_DECODER_FAILED -> UiText.Resource(Res.string.playback_video_unsupported)
     else -> when (error.playability()) {
         Playability.SignInRequired -> UiText.Resource(Res.string.playback_sign_in_required)
@@ -1050,17 +1053,23 @@ suspend fun playerErrorMessage(error: io.ymusic.player.PlayerError): String = pl
  */
 @Composable
 private fun BoxScope.PlaybackErrorText(
-    player: io.ymusic.player.Player,
+    graph: AppGraph,
     error: io.ymusic.player.PlayerError,
     overlayVisible: Boolean,
 ) {
+    val player = graph.player
     val controlsInset by animateDpAsState(if (overlayVisible) VideoControlsStrip * LocalVideoOverlayScale.current else 44.dp)
     val captcha = error.code == CAPTCHA_CODE
     val signIn = error.playability() == Playability.SignInRequired
     val resolver = LocalCaptchaResolver.current
     val openLogin = LocalOpenLogin.current
+    val scanController = LocalScanController.current
+    val scanFolder = graph.scanLibraryFolder
     val actions = buildList<Pair<String, () -> Unit>> {
         if (signIn) add(stringResource(Res.string.signin_button) to openLogin)
+        if (error.code == io.ymusic.player.PlayerError.FOLDER_ACCESS_LOST && scanController != null && scanFolder != null) {
+            add(stringResource(Res.string.playback_add_folder_again) to { scanController.start(scanFolder) })
+        }
         if (captcha && resolver != null) add(stringResource(resolver.label) to { resolver.resolve { player.play() } })
         // play() reloads the current item after a retryable error. A stream the device cannot decode
         // would fail again, so that retry plays audio only; picking a quality turns video back on.

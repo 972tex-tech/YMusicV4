@@ -112,6 +112,11 @@ class AppGraph(
      */
     val rescanLibrary: RescanAction? = null,
     /**
+     * Soft-deletes every Library folder whose storage grant the app no longer holds (Android SAF), so
+     * its items stop showing as playable; re-adding the folder revives them. Null where grants can't be lost.
+     */
+    val pruneUngrantedFolders: (suspend () -> Unit)? = null,
+    /**
      * Permanently deletes the item's FILE from storage (okio delete on desktop, SAF
      * DocumentsContract on Android) — the destructive half of the Library's "Remove from disk";
      * the UI removes the media-store row only after this returns. Throws on failure (surfaced in

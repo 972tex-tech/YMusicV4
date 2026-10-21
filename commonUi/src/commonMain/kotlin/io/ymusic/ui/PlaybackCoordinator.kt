@@ -59,6 +59,8 @@ class PlaybackCoordinator(
                         log.log(Logger.Level.WARN, "playability ${err.code} id=$id: ${err.message}")
                     } else if (err != null && err.code == PlayerError.FILE_MISSING) {
                         log.log(Logger.Level.WARN, "file missing id=$id: ${err.message}", err.cause)
+                    } else if (err != null && err.code == PlayerError.FOLDER_ACCESS_LOST) {
+                        log.log(Logger.Level.WARN, "folder access lost id=$id: ${err.message}", err.cause)
                     } else if (err != null && err.code == "network") {
                         log.log(Logger.Level.WARN, "network id=$id: ${err.message}", err.cause)
                     } else if (err != null) {
@@ -67,6 +69,14 @@ class PlaybackCoordinator(
                             prop = mapOf("id" to id, "canRetry" to err.canRetry, "needReset" to err.needReset),
                         )
                     }
+                }
+            }
+        }
+        val pruneUngrantedFolders = graph.pruneUngrantedFolders
+        if (pruneUngrantedFolders != null) {
+            scope.launch {
+                player.status.map { it.error?.code == PlayerError.FOLDER_ACCESS_LOST }.distinctUntilChanged().collect { lost ->
+                    if (lost) pruneUngrantedFolders()
                 }
             }
         }
