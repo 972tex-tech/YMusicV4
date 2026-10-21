@@ -345,7 +345,7 @@ internal fun DesignAppBar(
     }
 }
 
-/** The search input bar: back · pill field (`.sfield`: gray pill, 13.5sp text, clear ✕ while
+/** The search input bar: back · pill field (`.sfield`: 40dp gray pill, 15sp text, clear ✕ while
  *  non-empty). [autoFocus] off for showcase hosting (the catalogue). */
 @Composable
 internal fun SearchInputBar(
@@ -362,27 +362,28 @@ internal fun SearchInputBar(
         Row(
             Modifier
                 .weight(1f)
+                .height(40.dp)
                 .clip(RoundedCornerShape(999.dp))
                 .background(DesignColors.FieldPill)
-                .padding(start = 13.dp, end = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                // The ✕'s own 8dp inset is the trailing padding while it shows.
+                .padding(start = 16.dp, end = if (value.text.isEmpty()) 16.dp else 0.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BasicTextField(
                 value = value,
                 onValueChange = onValue,
                 singleLine = true,
-                textStyle = TextStyle(fontSize = 13.5.sp, color = DesignColors.Ink),
+                textStyle = TextStyle(fontSize = 15.sp, color = DesignColors.Ink),
                 cursorBrush = SolidColor(DesignColors.Accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { onSubmit(value.text) }),
-                modifier = Modifier.weight(1f).padding(vertical = 8.dp).focusRequester(focusRequester),
+                modifier = Modifier.weight(1f).fillMaxHeight().focusRequester(focusRequester),
                 decorationBox = { inner ->
-                    Box {
+                    Box(Modifier.fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
                         if (value.text.isEmpty()) {
                             Text(
                                 placeholder,
-                                style = TextStyle(fontSize = 13.5.sp, color = DesignColors.InkFaint),
+                                style = TextStyle(fontSize = 15.sp, color = DesignColors.InkFaint),
                                 maxLines = 1,
                             )
                         }
@@ -394,8 +395,6 @@ internal fun SearchInputBar(
                 ActionIcon(
                     Icons.Default.Close,
                     stringResource(Res.string.cd_clear),
-                    iconSize = 16.dp,
-                    hitSize = 28.dp,
                     tint = DesignColors.InkSecondary,
                     onClick = { onValue(TextFieldValue("")) },
                 )

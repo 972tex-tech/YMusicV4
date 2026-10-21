@@ -281,34 +281,35 @@ private fun QueryRow(
     onRemove: (() -> Unit)? = null,
 ) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        // The trailing ActionIcons' 8dp inset completes the 16dp end margin.
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, Modifier.size(19.dp), tint = DesignColors.InkSecondary)
+        Icon(icon, null, Modifier.size(24.dp), tint = DesignColors.InkSecondary)
         Text(
             text,
-            style = TextStyle(fontSize = 13.5.sp, color = DesignColors.Ink),
+            style = TextStyle(fontSize = 15.sp, color = DesignColors.Ink),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        if (onRemove != null) {
+        Row {
+            if (onRemove != null) {
+                ActionIcon(
+                    Icons.Default.Close,
+                    stringResource(Res.string.cd_remove_from_history),
+                    tint = DesignColors.InkSecondary,
+                    onClick = onRemove,
+                )
+            }
             ActionIcon(
-                Icons.Default.Close,
-                stringResource(Res.string.cd_remove_from_history),
-                iconSize = 19.dp,
-                tint = DesignColors.InkSecondary,
-                onClick = onRemove,
+                Icons.Default.NorthWest,
+                stringResource(Res.string.cd_insert_query),
+                tint = DesignColors.PlaceholderIcon,
+                onClick = onInsert,
             )
         }
-        ActionIcon(
-            Icons.Default.NorthWest,
-            stringResource(Res.string.cd_insert_query),
-            iconSize = 17.dp,
-            tint = DesignColors.PlaceholderIcon,
-            onClick = onInsert,
-        )
     }
 }
 
