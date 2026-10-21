@@ -1263,11 +1263,11 @@ internal fun DiscoverTabRow(
     val density = LocalDensity.current
     // Each tab's centre (in the row's space) so the fixed-width indicator can slide between them.
     val centers = remember { mutableStateMapOf<DiscoverTab, Dp>() }
-    // The tab's padding is INSIDE its clickable, so press/hover fills a square around the icon
-    // instead of hugging the glyph's own width. The row's spacing and leading inset are reduced by
-    // that padding, which keeps the icons drawn exactly where they were.
-    Column(Modifier.padding(start = if (inline) 0.dp else 20.dp - TabTouchPadding)) {
-        Row(horizontalArrangement = Arrangement.spacedBy((if (inline) 20.dp else 24.dp) - TabTouchPadding * 2)) {
+    // Each tab's clickable spans half the icon gap on either side, so the tabs tile the row with no
+    // dead space between them; the leading inset is reduced by that half-gap.
+    val halfGap = (if (inline) 20.dp else 24.dp) / 2
+    Column(Modifier.padding(start = if (inline) 0.dp else 20.dp - halfGap)) {
+        Row {
             tabs.forEach { t ->
                 val active = t == selected
                 Box(
@@ -1277,12 +1277,12 @@ internal fun DiscoverTabRow(
                     }
                         .clip(RoundedCornerShape(10.dp))
                         .clickable { onSelect(t) }
-                        .padding(TabTouchPadding),
+                        .padding(horizontal = halfGap, vertical = 8.dp),
                 ) {
                     Icon(
                         t.icon,
                         stringResource(t.label),
-                        Modifier.size(22.dp),
+                        Modifier.size(24.dp),
                         tint = if (active) DesignColors.Accent else DesignColors.InkFaint,
                     )
                 }
@@ -1305,9 +1305,6 @@ internal fun DiscoverTabRow(
 }
 
 private val DiscoverUnderlineWidth = 34.dp
-
-/** Breathing room around a Discover tab icon — the press/hover surface, not a visual gap. */
-private val TabTouchPadding = 7.dp
 
 @Composable
 private fun DiscoverFeed(

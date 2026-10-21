@@ -211,7 +211,7 @@ private fun AccountNavRow(target: NavTarget, onDeeplink: ((String, String?) -> U
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Icon(target.icon, null, Modifier.size(21.dp), tint = DesignColors.InkMuted)
+        Icon(target.icon, null, Modifier.size(24.dp), tint = DesignColors.InkMuted)
         Text(target.label, style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink))
     }
 }
@@ -228,7 +228,7 @@ private fun AccountNavChip(target: NavTarget, onDeeplink: ((String, String?) -> 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        Icon(target.icon, null, Modifier.size(16.dp), tint = DesignColors.InkMuted)
+        Icon(target.icon, null, Modifier.size(24.dp), tint = DesignColors.InkMuted)
         Text(target.label, style = TextStyle(fontSize = 12.5.sp, color = DesignColors.Ink), maxLines = 1)
     }
 }
