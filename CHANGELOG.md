@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### NEW
+- Library: "Shuffle all" on the Songs tab, and a shuffle button in playlist, artist and album lists ([7946634bd](https://github.com/ymusic-io/YMusicV4/commit/7946634bd21633d8e511e47b601b710ec87f9bdb))
+- Repeat and shuffle are remembered across app restarts ([bf6980155](https://github.com/ymusic-io/YMusicV4/commit/bf6980155aaad848154d93c296f8ba0e8e7000b2))
+- Landscape Now Playing: the queue follows the playing song ([b3733dbea](https://github.com/ymusic-io/YMusicV4/commit/b3733dbea8824f77fdc391ed0c6956ddd36dcf0d))
+
+### FIXED
+- A YouTube playlist's All / Videos / Shorts chips and your own playlist's sort order did nothing ([90a46674a](https://github.com/ymusic-io/YMusicV4/commit/90a46674a2d6c710814c18f26fa60a81d2248fb4))
+- Tapping a song in a playlist turned shuffle off ([bf6980155](https://github.com/ymusic-io/YMusicV4/commit/bf6980155aaad848154d93c296f8ba0e8e7000b2))
+
+### IMPROVED
+- Bigger, easier-to-tap icon buttons, chips, tabs, search field and "View all" links ([#12](https://github.com/ymusic-io/YMusicV4/issues/12), [b7122c4d1..0d021e35a](https://github.com/ymusic-io/YMusicV4/compare/42688bb23d1b620acde6fdf1f7787ffd4ebe1279...0d021e35afdeeddc6956e5e951e847925e57ce31))
+- Video controls grow on large screens, and the portrait video controls get ±10s buttons ([#12](https://github.com/ymusic-io/YMusicV4/issues/12), [320894247](https://github.com/ymusic-io/YMusicV4/commit/320894247955b0216008f8aa535780ed86dc7afb), [0af7188f4](https://github.com/ymusic-io/YMusicV4/commit/0af7188f4e269c203c206991b7cbaf91bea2cbb9))
+- Landscape Now Playing: a wider queue with larger rows on large screens ([#12](https://github.com/ymusic-io/YMusicV4/issues/12), [b3733dbea](https://github.com/ymusic-io/YMusicV4/commit/b3733dbea8824f77fdc391ed0c6956ddd36dcf0d))
+- More phones get the wide-thumbnail feed list ([42688bb23](https://github.com/ymusic-io/YMusicV4/commit/42688bb23d1b620acde6fdf1f7787ffd4ebe1279))
+
 ## 4.0.9
 
 ### NEW
