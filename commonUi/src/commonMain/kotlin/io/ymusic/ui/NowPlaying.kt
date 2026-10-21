@@ -85,6 +85,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -202,6 +203,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.Playability
 import projectcommon.error.errorCode
+import kotlin.math.roundToInt
 
 internal fun formatMillis(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
@@ -448,7 +450,7 @@ private fun FullscreenVideo(graph: AppGraph, coordinator: PlaybackCoordinator, o
             fill = fillScreen,
             settings = graph.settings,
         )
-        Box(Modifier.fillMaxSize()) {
+        VideoOverlayHost(Modifier.fillMaxSize()) {
             BufferingIndicator(status)
             AutoHidingOverlay {
                 VideoOverlayControls(
@@ -525,7 +527,7 @@ private fun PortraitNowPlaying(
                 Modifier.fillMaxSize(),
                 settings = graph.settings,
             )
-            Box(Modifier.fillMaxSize()) {
+            VideoOverlayHost(Modifier.fillMaxSize()) {
                 // Stay composed: remounting after scroll-up missed the next scroll-down
                 // (chrome window kept a stale content lambda).
                 BufferingIndicator(status)
@@ -636,7 +638,7 @@ private fun LandscapeNowPlaying(
                 Modifier.fillMaxSize(),
                 settings = graph.settings,
             )
-            Box(
+            VideoOverlayHost(
                 Modifier.fillMaxSize()
                     .windowInsetsPadding(WindowInsets.navigationBars),
             ) {
@@ -736,24 +738,27 @@ private fun BoxScope.VideoOverlayControls(
     onToggleFullscreen: () -> Unit,
 ) {
     val player = coordinator.player
+    val scale = LocalVideoOverlayScale.current
+    val iconSize = 24.dp * scale
+    val hitSize = 40.dp * scale
     Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.24f)))
 
     Column(
         Modifier.align(Alignment.TopStart)
             .then(if (isFullscreen) Modifier.keepBelowStatusBar() else Modifier)
-            .padding(start = 16.dp, end = 16.dp, top = 11.dp),
+            .padding(start = 16.dp * scale, end = 16.dp * scale, top = 11.dp * scale),
     ) {
         Text(
             current?.displayTitle.orEmpty(),
-            style = TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = Color.White),
+            style = TextStyle(fontSize = 13.5.sp * scale, fontWeight = FontWeight.Bold, color = Color.White),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         ArtistLine(
             current,
             status,
-            TextStyle(fontSize = 11.sp, color = Color(0xFFDADADA)),
-            Modifier.padding(top = 3.dp),
+            TextStyle(fontSize = 11.sp * scale, color = Color(0xFFDADADA)),
+            Modifier.padding(top = 3.dp * scale),
         )
     }
 
@@ -764,33 +769,36 @@ private fun BoxScope.VideoOverlayControls(
             iconTint = Color.White,
             playBackground = Color.Black.copy(alpha = 0.42f),
             playForeground = Color.White,
-            playSize = 58.dp,
+            playSize = 58.dp * scale,
             seekButtons = !compact,
+            scale = scale,
         )
     }
 
     var scrubMs by remember { mutableStateOf<Long?>(null) }
     val labelProgress = scrubMs?.let { progress.copy(positionMs = it) } ?: progress
     Column(
-        Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 11.dp, end = 11.dp, bottom = 8.dp),
+        Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 11.dp * scale, end = 11.dp * scale, bottom = 8.dp * scale),
     ) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val overlayStyle = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE))
+            val overlayStyle = TextStyle(fontSize = 10.sp * scale, fontWeight = FontWeight.Bold, color = Color(0xFFEEEEEE))
             labelProgress.progressLabel?.let {
                 Text(it, style = overlayStyle)
                 Text(" / ", style = overlayStyle)
             }
             DurationLabel(player, progress, overlayStyle)
             Box(Modifier.weight(1f))
-            CaptionToggle(player, offTint = Color(0xFFEEEEEE))
+            CaptionToggle(player, offTint = Color(0xFFEEEEEE), iconSize = iconSize, hitSize = hitSize)
             if (onToggleRotationLock != null) {
                 ActionIcon(
                     if (rotationLocked) Icons.Default.ScreenLockRotation else Icons.Default.ScreenRotation,
                     stringResource(if (rotationLocked) Res.string.cd_unlock_rotation else Res.string.cd_lock_rotation),
+                    iconSize = iconSize,
+                    hitSize = hitSize,
                     tint = Color(0xFFEEEEEE),
                     onClick = onToggleRotationLock,
                 )
@@ -799,6 +807,8 @@ private fun BoxScope.VideoOverlayControls(
                 ActionIcon(
                     if (fillScreen) Icons.Default.FitScreen else Icons.Default.CropFree,
                     stringResource(if (fillScreen) Res.string.cd_fit_video else Res.string.cd_fill_video),
+                    iconSize = iconSize,
+                    hitSize = hitSize,
                     tint = Color(0xFFEEEEEE),
                     onClick = onToggleFill,
                 )
@@ -806,6 +816,8 @@ private fun BoxScope.VideoOverlayControls(
             ActionIcon(
                 if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
                 stringResource(if (isFullscreen) Res.string.cd_exit_fullscreen else Res.string.cd_fullscreen),
+                iconSize = iconSize,
+                hitSize = hitSize,
                 tint = Color(0xFFEEEEEE),
                 onClick = onToggleFullscreen,
             )
@@ -820,8 +832,20 @@ private fun BoxScope.VideoOverlayControls(
     }
 }
 
-/** Height of the video controls' bottom strip, which captions on the picture stay above while it shows. */
+/** Height of the video controls' bottom strip at 1× overlay scale; captions and errors stay above it while it shows. */
 private val VideoControlsStrip = 72.dp
+
+/** How much the video overlay chrome scales: 1× up to a 400dp short side, growing with the video area to 1.3×. */
+private val LocalVideoOverlayScale = compositionLocalOf { 1f }
+
+/** The box over the video picture: sets [LocalVideoOverlayScale] from its own size for the overlay, captions and errors. */
+@Composable
+private fun VideoOverlayHost(modifier: Modifier, content: @Composable BoxScope.() -> Unit) {
+    BoxWithConstraints(modifier) {
+        val scale = (minOf(maxWidth, maxHeight) / 400.dp).coerceIn(1f, 1.3f)
+        CompositionLocalProvider(LocalVideoOverlayScale provides scale) { content() }
+    }
+}
 
 /**
  * Captions centered on the picture (the video's contain-fit rect, as [VideoHole] lays it out): in the bar
@@ -837,7 +861,8 @@ private fun BoxScope.PlayerCaptionOverlay(
     if (lines.isEmpty()) return
     val status by player.status.collectAsState()
     val audioOnly = showsAudioOnly(player)
-    val controlsInset by animateDpAsState(if (overlayVisible) VideoControlsStrip else 12.dp)
+    val strip = VideoControlsStrip * LocalVideoOverlayScale.current
+    val controlsInset by animateDpAsState(if (overlayVisible) strip else 12.dp)
     val twoRows = captionTwoRowHeight()
     BoxWithConstraints(Modifier.matchParentSize()) {
         val ratio = status.videoSize?.aspectRatio?.takeIf { it > 0f } ?: (16f / 9f)
@@ -851,7 +876,7 @@ private fun BoxScope.PlayerCaptionOverlay(
             pictureHeight = maxHeight
         }
         val bar = (maxHeight - pictureHeight) / 2
-        if (bar >= twoRows + VideoControlsStrip + DesignSpacing.Space8) {
+        if (bar >= twoRows + strip + DesignSpacing.Space8) {
             CaptionOverlay(
                 lines,
                 Modifier.align(Alignment.TopCenter)
@@ -875,7 +900,7 @@ private fun BoxScope.PlayerCaptionOverlay(
  * captions are on. Picking a language turns captions on and selects it; Off hides them.
  */
 @Composable
-private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
+private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color, iconSize: Dp = 24.dp, hitSize: Dp = 40.dp) {
     val captions by player.captions.collectAsState()
     val config by player.config.collectAsState()
     if (captions.tracks.isEmpty()) return
@@ -895,6 +920,8 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color) {
         ActionIcon(
             if (config.captionVisible) Icons.Default.ClosedCaption else Icons.Outlined.ClosedCaptionOff,
             stringResource(Res.string.cd_captions),
+            iconSize = iconSize,
+            hitSize = hitSize,
             tint = if (config.captionVisible) DesignColors.Accent else offTint,
             onClick = { open = true },
         )
@@ -980,7 +1007,7 @@ private fun BoxScope.PlaybackErrorText(
     error: io.ymusic.player.PlayerError,
     overlayVisible: Boolean,
 ) {
-    val controlsInset by animateDpAsState(if (overlayVisible) VideoControlsStrip else 44.dp)
+    val controlsInset by animateDpAsState(if (overlayVisible) VideoControlsStrip * LocalVideoOverlayScale.current else 44.dp)
     val captcha = error.code == CAPTCHA_CODE
     val signIn = error.playability() == Playability.SignInRequired
     val resolver = LocalCaptchaResolver.current
@@ -1431,11 +1458,20 @@ private fun TransportRow(
     playForeground: Color = DesignColors.OnInk,
     playSize: Dp = 64.dp,
     seekButtons: Boolean = true,
+    scale: Float = 1f,
 ) {
     val player = coordinator.player
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        MediaLtr { TransportButtons(player, playing, iconTint, playBackground, playForeground, playSize, seekButtons) }
+        MediaLtr { TransportButtons(player, playing, iconTint, playBackground, playForeground, playSize, seekButtons, scale) }
     }
+}
+
+/** [this] at an even pixel count, so nested centred boxes split their difference exactly — an odd
+ *  difference rounds half a pixel down at every level. */
+@Composable
+private fun Dp.evenPx(): Dp {
+    val density = LocalDensity.current.density
+    return ((value * density / 2).roundToInt() * 2 / density).dp
 }
 
 /** Media controls stay left-to-right in RTL locales, matching the seek bar's direction of time. */
@@ -1453,12 +1489,16 @@ private fun TransportButtons(
     playForeground: Color,
     playSize: Dp,
     seekButtons: Boolean,
+    scale: Float,
 ) {
+    val iconSize = (24.dp * scale).evenPx()
+    val hitSize = (40.dp * scale).evenPx()
+    val circle = playSize.evenPx()
     Row(
         // SpaceEvenly inside a capped width: the gaps grow with the window (≈ the mockup's 26dp
         // at phone width) up to the cap, instead of a fixed cluster.
         Modifier
-            .widthIn(max = if (seekButtons) 480.dp else 320.dp)
+            .widthIn(max = (if (seekButtons) 480.dp else 320.dp) * scale)
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1468,6 +1508,8 @@ private fun TransportButtons(
             ActionIcon(
                 Icons.Default.FastRewind,
                 stringResource(Res.string.cd_rewind10),
+                iconSize = iconSize,
+                hitSize = hitSize,
                 tint = iconTint,
                 onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
             )
@@ -1475,23 +1517,27 @@ private fun TransportButtons(
         ActionIcon(
             Icons.Default.SkipPrevious,
             stringResource(Res.string.cd_previous),
+            iconSize = iconSize,
+            hitSize = hitSize,
             tint = iconTint,
             onClick = { player.skipPrev() },
         )
         Box(
-            Modifier.size(playSize).clip(CircleShape).background(playBackground).clickable(role = Role.Button) { player.togglePlay() },
+            Modifier.size(circle).clip(CircleShape).background(playBackground).clickable(role = Role.Button) { player.togglePlay() },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                 stringResource(if (playing) Res.string.cd_pause else Res.string.cd_play),
-                Modifier.size(26.dp),
+                Modifier.size((26.dp * scale).evenPx()),
                 tint = playForeground,
             )
         }
         ActionIcon(
             Icons.Default.SkipNext,
             stringResource(Res.string.cd_next),
+            iconSize = iconSize,
+            hitSize = hitSize,
             tint = iconTint,
             onClick = { player.skipNext() },
         )
@@ -1499,6 +1545,8 @@ private fun TransportButtons(
             ActionIcon(
                 Icons.Default.FastForward,
                 stringResource(Res.string.cd_forward10),
+                iconSize = iconSize,
+                hitSize = hitSize,
                 tint = iconTint,
                 onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
             )
