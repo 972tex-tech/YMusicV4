@@ -56,6 +56,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -63,6 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtSectionHeader
@@ -204,32 +206,47 @@ fun SectionHeader(
                 val playAll = header.ctaAction == YtSectionHeader.CTA_PLAY_ALL
                 val cta = if (onCta != null && (header.ctaDeeplink != null || playAll)) onCta else null
                 val label = header.ctaText ?: stringResource(if (playAll) Res.string.play_all else Res.string.cd_view_all)
-                Row(
-                    if (cta != null) {
-                        Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .clickable(onClick = cta)
-                            .semantics { contentDescription = label }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    } else {
-                        Modifier
-                    },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (playAll) {
-                        Icon(Icons.Default.PlayArrow, null, Modifier.size(14.dp), tint = DesignColors.InkSoft)
-                    }
-                    // A tappable CTA always says what it does — the engine's label when it sent
-                    // one, the app's localized text otherwise (shelf endpoints carry no text).
-                    val text = if (header.ctaText != null || cta != null) label else null
-                    text?.let { Text(it, style = TextStyle(fontSize = 12.sp, color = DesignColors.InkSoft)) }
-                    if (!playAll) {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(14.dp), tint = DesignColors.InkSoft)
+                // The tap padding bleeds out of the layout, so the bigger target doesn't make the header taller.
+                Box(if (cta != null) Modifier.bleed(SectionCtaPaddingH, SectionCtaPaddingV) else Modifier) {
+                    Row(
+                        if (cta != null) {
+                            Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .clickable(onClick = cta)
+                                .semantics { contentDescription = label }
+                                .padding(horizontal = SectionCtaPaddingH, vertical = SectionCtaPaddingV)
+                        } else {
+                            Modifier
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (playAll) {
+                            Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp), tint = DesignColors.InkSoft)
+                        }
+                        // A tappable CTA always says what it does — the engine's label when it sent
+                        // one, the app's localized text otherwise (shelf endpoints carry no text).
+                        val text = if (header.ctaText != null || cta != null) label else null
+                        text?.let { Text(it, style = TextStyle(fontSize = 13.5.sp, color = DesignColors.InkSoft)) }
+                        if (!playAll) {
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(18.dp), tint = DesignColors.InkSoft)
+                        }
                     }
                 }
             }
         }
     }
+}
+
+private val SectionCtaPaddingH = 10.dp
+private val SectionCtaPaddingV = 6.dp
+
+/** Lays the content out [horizontal]/[vertical] smaller on each side than it measures, so its padding
+ *  overhangs the neighbours instead of pushing them; touches on the overhang still reach it. */
+private fun Modifier.bleed(horizontal: Dp, vertical: Dp): Modifier = layout { measurable, constraints ->
+    val h = horizontal.roundToPx()
+    val v = vertical.roundToPx()
+    val placeable = measurable.measure(constraints.offset(horizontal = 2 * h, vertical = 2 * v))
+    layout(placeable.width - 2 * h, placeable.height - 2 * v) { placeable.place(-h, -v) }
 }
 
 /** video / playlist / channel — list form, one row size per band: 92dp square thumb, or 16:9
