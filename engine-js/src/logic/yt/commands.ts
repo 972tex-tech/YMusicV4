@@ -36,7 +36,7 @@ import {
   parseSearchChipToken,
   rankSearchItems,
 } from "./parse";
-import { asString, get } from "./scan";
+import { asString, get, isObj, walk } from "./scan";
 import type { WireFeedItem, WireFeedPage, WireLocales, WireSuggest } from "./wire";
 
 function putIfString(
@@ -308,7 +308,19 @@ async function playlistBrowse(
   fields: Record<string, unknown>,
   log?: JsLogger,
 ): Promise<WireFeedPage> {
-  return collectPage(await innertubeJson("browse", fields, log), { shorts: true });
+  const root = await innertubeJson("browse", fields, log);
+  // A section-level continuation pages the "related playlists" shelf, not the list's tracks —
+  // only the one inside the item section belongs to the playlist.
+  walk(root["contents"], (key, value) => {
+    if (key !== "sectionListRenderer" || !isObj(value) || !Array.isArray(value["contents"])) return;
+    value["contents"] = value["contents"].filter(
+      (section) =>
+        get(section, "continuationItemViewModel") === undefined &&
+        get(section, "continuationItemRenderer") === undefined,
+    );
+    return true;
+  });
+  return collectPage(root, { shorts: true });
 }
 
 // A channel detail: {"url","continuation"?}, url an engine-composed
