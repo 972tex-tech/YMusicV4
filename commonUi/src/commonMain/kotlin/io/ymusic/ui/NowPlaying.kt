@@ -1071,11 +1071,11 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
     val excludedMsg = stringResource(Res.string.sponsor_block_excluded)
 
     Row(
-        // Paddings/gaps shave the ActionIcon hit-inset (5dp) so the glyphs keep the bar's metrics.
+        // Paddings/gaps shave the ActionIcon hit-inset (8dp) so the glyphs keep the bar's metrics.
         Modifier.fillMaxWidth()
             .background(DesignColors.Surface)
-            .padding(horizontal = 11.dp, vertical = 3.dp),
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
+            .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ActionIcon(Icons.Default.KeyboardArrowDown, stringResource(Res.string.cd_close), onClick = onClose)
@@ -1468,8 +1468,6 @@ private fun TransportButtons(
             ActionIcon(
                 Icons.Default.FastRewind,
                 stringResource(Res.string.cd_rewind10),
-                iconSize = 26.dp,
-                hitSize = 36.dp,
                 tint = iconTint,
                 onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
             )
@@ -1477,8 +1475,6 @@ private fun TransportButtons(
         ActionIcon(
             Icons.Default.SkipPrevious,
             stringResource(Res.string.cd_previous),
-            iconSize = 26.dp,
-            hitSize = 36.dp,
             tint = iconTint,
             onClick = { player.skipPrev() },
         )
@@ -1496,8 +1492,6 @@ private fun TransportButtons(
         ActionIcon(
             Icons.Default.SkipNext,
             stringResource(Res.string.cd_next),
-            iconSize = 26.dp,
-            hitSize = 36.dp,
             tint = iconTint,
             onClick = { player.skipNext() },
         )
@@ -1505,8 +1499,6 @@ private fun TransportButtons(
             ActionIcon(
                 Icons.Default.FastForward,
                 stringResource(Res.string.cd_forward10),
-                iconSize = 26.dp,
-                hitSize = 36.dp,
                 tint = iconTint,
                 onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
             )
@@ -1587,7 +1579,6 @@ private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, tot
                     LoopMode.One -> Res.string.cd_repeat_one
                 },
             ),
-            iconSize = 20.dp,
             tint = if (loopMode != LoopMode.None) DesignColors.Accent else DesignColors.InkSoft,
             onClick = {
                 player.setLoopMode(
@@ -1603,7 +1594,6 @@ private fun QueueHeader(coordinator: PlaybackCoordinator, currentIndex: Int, tot
             Icons.Default.Shuffle,
             stringResource(Res.string.cd_shuffle),
             checked = shuffle,
-            iconSize = 20.dp,
             tint = if (shuffle) DesignColors.Accent else DesignColors.InkSoft,
             onCheckedChange = { player.setShuffle(it) },
         )

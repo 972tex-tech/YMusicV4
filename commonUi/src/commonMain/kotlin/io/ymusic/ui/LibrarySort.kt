@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -139,13 +138,10 @@ internal fun SortControl(labels: List<StringResource>, state: SortState) {
                 }
             }
         }
-        IconButton(onClick = { state.descending = !state.descending }, modifier = Modifier.size(32.dp)) {
-            Icon(
-                if (state.descending) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
-                stringResource(if (state.descending) Res.string.cd_sort_descending else Res.string.cd_sort_ascending),
-                Modifier.size(17.dp),
-                tint = DesignColors.InkSoft,
-            )
-        }
+        ActionIcon(
+            if (state.descending) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+            stringResource(if (state.descending) Res.string.cd_sort_descending else Res.string.cd_sort_ascending),
+            tint = DesignColors.InkSoft,
+        ) { state.descending = !state.descending }
     }
 }

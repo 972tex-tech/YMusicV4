@@ -289,14 +289,14 @@ internal fun TabLabel(text: String, active: Boolean) {
     )
 }
 
-/** The bars' shared metrics row. Horizontal paddings/gaps shave the ActionIcon hit-inset (5dp) so
+/** The bars' shared metrics row. Horizontal paddings/gaps shave the ActionIcon hit-inset (8dp) so
  *  the glyphs keep the mockups' 16dp margins; vertical paddings are the mockup values unshaved
  *  (5/7dp, top +1 standing in for the under-status-bar margin) because the title and the search
  *  pill carry no inset — shaving the bottom made non-icon content sit visibly low in the bar. */
 @Composable
 internal fun AppBarRow(content: @Composable RowScope.() -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 11.dp, end = 11.dp, top = 6.dp, bottom = 7.dp),
+        Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 7.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,

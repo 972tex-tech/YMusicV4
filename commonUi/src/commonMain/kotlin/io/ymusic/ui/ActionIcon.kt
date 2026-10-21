@@ -18,17 +18,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * A small icon action: the glyph centered in a [hitSize] circular hover/press target. Interactive
- * icons never take clicks on their glyph bounds alone — [hitSize] keeps the target ≥32dp (24dp is
- * the floor for the tightest spots).
+ * A small icon action: the glyph centered in a [hitSize] circular hover/press target — the standard
+ * is a 24dp glyph with 8dp around it (40dp).
  */
 @Composable
 fun ActionIcon(
     icon: ImageVector,
     contentDescription: String?,
     modifier: Modifier = Modifier,
-    iconSize: Dp = 22.dp,
-    hitSize: Dp = 32.dp,
+    iconSize: Dp = 24.dp,
+    hitSize: Dp = 40.dp,
     tint: Color = DesignColors.InkMuted,
     enabled: Boolean = true,
     onClick: () -> Unit,
@@ -43,8 +42,8 @@ fun ActionIcon(
     painter: Painter,
     contentDescription: String?,
     modifier: Modifier = Modifier,
-    iconSize: Dp = 22.dp,
-    hitSize: Dp = 32.dp,
+    iconSize: Dp = 24.dp,
+    hitSize: Dp = 40.dp,
     tint: Color = DesignColors.InkMuted,
     enabled: Boolean = true,
     onClick: () -> Unit,
@@ -61,8 +60,8 @@ fun ToggleActionIcon(
     contentDescription: String,
     checked: Boolean,
     modifier: Modifier = Modifier,
-    iconSize: Dp = 22.dp,
-    hitSize: Dp = 32.dp,
+    iconSize: Dp = 24.dp,
+    hitSize: Dp = 40.dp,
     tint: Color = DesignColors.InkMuted,
     enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,

@@ -49,7 +49,6 @@ import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -1419,20 +1418,12 @@ private fun FoldersToolbar(
 @Composable
 private fun RescanButton(rescan: ScanAction, controller: ScanController) {
     if (controller.running) {
-        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(Modifier.size(20.dp))
         }
     } else {
-        IconButton(
-            onClick = { controller.start(rescan) },
-            modifier = Modifier.size(32.dp),
-        ) {
-            Icon(
-                Icons.Default.Refresh,
-                contentDescription = stringResource(Res.string.library_rescan),
-                modifier = Modifier.size(19.dp),
-                tint = DesignColors.InkSoft,
-            )
+        ActionIcon(Icons.Default.Refresh, stringResource(Res.string.library_rescan), tint = DesignColors.InkSoft) {
+            controller.start(rescan)
         }
     }
 }
@@ -1729,21 +1720,12 @@ private fun LibraryGridCard(
 @Composable
 internal fun DrillDownHeader(title: String, onBack: () -> Unit, trailing: (@Composable () -> Unit)? = null) {
     Row(
-        // The 21dp arrow is centred in a 32dp button, so it sits ~5.5dp in from the button's edge.
-        // Pull the row's start in by that much (16 − 5.5 ≈ 11) so the arrow GLYPH lines up with the
-        // list items' 16dp content inset; the button's larger tap area just reaches a little further left.
-        modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 11.dp, end = 8.dp),
+        // The 24dp arrow sits 4dp inside its 32dp button; a 12dp start puts the glyph on the 16dp content inset.
+        modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 12.dp, end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                stringResource(Res.string.cd_back),
-                Modifier.size(21.dp),
-                tint = DesignColors.InkSoft,
-            )
-        }
+        ActionIcon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(Res.string.cd_back), hitSize = 32.dp, tint = DesignColors.InkSoft, onClick = onBack)
         Text(
             title,
             style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
@@ -1760,8 +1742,8 @@ internal fun DrillDownHeader(title: String, onBack: () -> Unit, trailing: (@Comp
 /** Plays [songs] shuffled from a random one — the icon-only twin of the Songs tab's Shuffle all chip. */
 @Composable
 private fun ShuffleAllButton(songs: List<MediaStoreItem>, coordinator: PlaybackCoordinator) {
-    IconButton(onClick = { coordinator.playLocal(songs, songs.indices.random(), shuffle = true) }, modifier = Modifier.size(32.dp)) {
-        Icon(Icons.Default.Shuffle, stringResource(Res.string.shuffle_all), Modifier.size(18.dp), tint = DesignColors.InkSoft)
+    ActionIcon(Icons.Default.Shuffle, stringResource(Res.string.shuffle_all), tint = DesignColors.InkSoft) {
+        coordinator.playLocal(songs, songs.indices.random(), shuffle = true)
     }
 }
 
