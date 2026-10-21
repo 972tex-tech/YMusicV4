@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 4.0.10
 
 ### NEW
 - Library: "Shuffle all" on the Songs tab, and a shuffle button in playlist, artist and album lists ([7946634bd](https://github.com/ymusic-io/YMusicV4/commit/7946634bd21633d8e511e47b601b710ec87f9bdb))
@@ -8,6 +8,7 @@
 - Landscape Now Playing: the queue follows the playing song ([b3733dbea](https://github.com/ymusic-io/YMusicV4/commit/b3733dbea8824f77fdc391ed0c6956ddd36dcf0d))
 
 ### FIXED
+- "Load more" in a YouTube playlist added random songs and other playlists instead of the playlist's own songs ([#17](https://github.com/ymusic-io/YMusicV4/issues/17), [c3b16c0c4](https://github.com/ymusic-io/YMusicV4/commit/c3b16c0c48b27956a7b56f365749618435a91e48))
 - A YouTube playlist's All / Videos / Shorts chips and your own playlist's sort order did nothing ([90a46674a](https://github.com/ymusic-io/YMusicV4/commit/90a46674a2d6c710814c18f26fa60a81d2248fb4))
 - Tapping a song in a playlist turned shuffle off ([bf6980155](https://github.com/ymusic-io/YMusicV4/commit/bf6980155aaad848154d93c296f8ba0e8e7000b2))
 
