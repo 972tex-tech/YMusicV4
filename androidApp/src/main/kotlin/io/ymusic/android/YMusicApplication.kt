@@ -456,6 +456,7 @@ class YMusicApplication : Application() {
         AudioFocusCoordinator(this, graph.player, graph.settings, appScope).start()
         SystemAudioEffects(this, graph.player, graph.settings, appScope, rootLogger.fork("system-audio-fx")).start()
         widgets.attach(graph)
+        graph.pruneUngrantedFolders?.let { prune -> scope.launch { prune() } }
         // Same pattern for downloads: any change that (re)starts work also (re)starts the
         // dataSync foreground host; the service winds itself down when the queue drains. Enqueue
         // and resume are user actions with the app foregrounded, so FGS-start is permitted.
@@ -636,6 +637,7 @@ class YMusicApplication : Application() {
                     PackageManager.PERMISSION_GRANTED
             },
             rescanLibrary = { folderUri, onProgress -> rescanKnownRoots(shared.mediaStore, folderUri, onProgress) },
+            pruneUngrantedFolders = { pruneUngrantedFolders(shared.mediaStore) },
             deleteFromDisk = { item ->
                 withContext(Dispatchers.IO) {
                     val uri = android.net.Uri.parse(item.uri.toString())
@@ -776,6 +778,23 @@ class YMusicApplication : Application() {
             roots.map { it.uri }
         }
         return scanUris(store, uris, onProgress)
+    }
+
+    /** Soft-deletes each Library root whose SAF tree grant is gone (revoked, or restored from a backup made on
+     *  another install); picking the folder again re-grants it and the scan revives its rows. */
+    private suspend fun pruneUngrantedFolders(store: BetterMediaStore) {
+        val ungranted = withContext(Dispatchers.IO) {
+            store.childBuckets(null).filter { bucket ->
+                val uri = android.net.Uri.parse(bucket.uri.toString())
+                uri.scheme == "content" &&
+                    checkCallingOrSelfUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) != PackageManager.PERMISSION_GRANTED
+            }
+        }
+        for (bucket in ungranted) {
+            rootLogger.fork("library-grants", mapOf("bucket" to bucket.uri.toString()))
+                .log(Logger.Level.WARN, "folder grant lost; soft-deleting its library rows")
+            store.deleteBucket(bucket.id)
+        }
     }
 
     /** Scans each root [uris] into [store] via SAF + the bundled ffmpeg (content:// proxied over ymix),
