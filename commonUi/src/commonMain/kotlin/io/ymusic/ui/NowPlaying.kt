@@ -534,7 +534,7 @@ private fun PortraitNowPlaying(
                 AutoHidingOverlay {
                     VideoOverlayControls(
                         coordinator, status, progress, current,
-                        compact = true, onToggleFullscreen = onFullscreen,
+                        onToggleFullscreen = onFullscreen,
                     )
                 }
                 status.error?.let { PlaybackErrorText(player, it, VideoOverlayNative.showing) }
@@ -721,15 +721,13 @@ private fun BoxScope.BufferingIndicator(
     )
 }
 
-/** The controls drawn over the video: landscape always, portrait once the inline controls scroll
- *  away. [compact] hides ±10s seek buttons (the portrait overlay). */
+/** The controls drawn over the video: landscape always, portrait once the inline controls scroll away. */
 @Composable
 private fun BoxScope.VideoOverlayControls(
     coordinator: PlaybackCoordinator,
     status: PlaybackStatus,
     progress: io.ymusic.player.Progress,
     current: PlayableItem?,
-    compact: Boolean = false,
     isFullscreen: Boolean = false,
     fillScreen: Boolean = false,
     onToggleFill: (() -> Unit)? = null,
@@ -770,7 +768,6 @@ private fun BoxScope.VideoOverlayControls(
             playBackground = Color.Black.copy(alpha = 0.42f),
             playForeground = Color.White,
             playSize = 58.dp * scale,
-            seekButtons = !compact,
             scale = scale,
         )
     }
@@ -1448,7 +1445,7 @@ private fun SeekSlider(
 }
 
 /** rewind · prev · [play circle] · next · forward. Dark-on-white by default; the video overlay
- *  passes white glyphs on a translucent play circle, and drops the ±10s pair when compact. */
+ *  passes white glyphs on a translucent play circle. */
 @Composable
 private fun TransportRow(
     coordinator: PlaybackCoordinator,
@@ -1457,12 +1454,11 @@ private fun TransportRow(
     playBackground: Color = DesignColors.InkStrong,
     playForeground: Color = DesignColors.OnInk,
     playSize: Dp = 64.dp,
-    seekButtons: Boolean = true,
     scale: Float = 1f,
 ) {
     val player = coordinator.player
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        MediaLtr { TransportButtons(player, playing, iconTint, playBackground, playForeground, playSize, seekButtons, scale) }
+        MediaLtr { TransportButtons(player, playing, iconTint, playBackground, playForeground, playSize, scale) }
     }
 }
 
@@ -1488,7 +1484,6 @@ private fun TransportButtons(
     playBackground: Color,
     playForeground: Color,
     playSize: Dp,
-    seekButtons: Boolean,
     scale: Float,
 ) {
     val iconSize = (24.dp * scale).evenPx()
@@ -1498,22 +1493,20 @@ private fun TransportButtons(
         // SpaceEvenly inside a capped width: the gaps grow with the window (≈ the mockup's 26dp
         // at phone width) up to the cap, instead of a fixed cluster.
         Modifier
-            .widthIn(max = (if (seekButtons) 480.dp else 320.dp) * scale)
+            .widthIn(max = 480.dp * scale)
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (seekButtons) {
-            ActionIcon(
-                Icons.Default.FastRewind,
-                stringResource(Res.string.cd_rewind10),
-                iconSize = iconSize,
-                hitSize = hitSize,
-                tint = iconTint,
-                onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
-            )
-        }
+        ActionIcon(
+            Icons.Default.FastRewind,
+            stringResource(Res.string.cd_rewind10),
+            iconSize = iconSize,
+            hitSize = hitSize,
+            tint = iconTint,
+            onClick = { player.seekTo((player.progress.value.positionMs - 10_000).coerceAtLeast(0)) },
+        )
         ActionIcon(
             Icons.Default.SkipPrevious,
             stringResource(Res.string.cd_previous),
@@ -1541,16 +1534,14 @@ private fun TransportButtons(
             tint = iconTint,
             onClick = { player.skipNext() },
         )
-        if (seekButtons) {
-            ActionIcon(
-                Icons.Default.FastForward,
-                stringResource(Res.string.cd_forward10),
-                iconSize = iconSize,
-                hitSize = hitSize,
-                tint = iconTint,
-                onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
-            )
-        }
+        ActionIcon(
+            Icons.Default.FastForward,
+            stringResource(Res.string.cd_forward10),
+            iconSize = iconSize,
+            hitSize = hitSize,
+            tint = iconTint,
+            onClick = { player.seekTo(player.progress.value.positionMs + 10_000) },
+        )
     }
 }
 
