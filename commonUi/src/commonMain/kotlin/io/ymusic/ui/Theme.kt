@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * The wireframe design language (design/final/…html) as a resolvable palette: the mockups are the
@@ -194,6 +195,9 @@ val LocalDesignColors = staticCompositionLocalOf { LightDesignColors }
 val DesignColors: DesignPalette
     @Composable @ReadOnlyComposable
     get() = LocalDesignColors.current
+
+/** Label size of every chip and pill (filters, sort, tags, CTAs, Library actions). */
+internal val ChipTextSize = 13.5.sp
 
 /**
  * The spacing scale: every layout spacing (margins, gaps, paddings between elements) is one of

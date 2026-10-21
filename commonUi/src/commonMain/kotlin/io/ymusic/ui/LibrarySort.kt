@@ -1,6 +1,5 @@
 package io.ymusic.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -30,8 +29,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.SettingsStore
 import io.ymusic.settings.flow
@@ -104,19 +103,21 @@ internal fun SortControl(labels: List<StringResource>, state: SortState) {
     var open by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box {
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .clickable { open = true }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Sort, stringResource(Res.string.cd_sort), Modifier.size(16.dp), tint = DesignColors.InkSoft)
-                Text(
-                    stringResource(labels.getOrElse(state.index) { labels.first() }),
-                    style = TextStyle(fontSize = 12.5.sp, color = DesignColors.Ink),
-                )
+            ChipTapArea({ open = true }) { indication ->
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .then(indication)
+                        .chipPadding(leadingIcon = true),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Sort, stringResource(Res.string.cd_sort), Modifier.size(16.dp), tint = DesignColors.InkSoft)
+                    Text(
+                        stringResource(labels.getOrElse(state.index) { labels.first() }),
+                        style = TextStyle(fontSize = ChipTextSize, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
+                    )
+                }
             }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                 labels.forEachIndexed { i, label ->

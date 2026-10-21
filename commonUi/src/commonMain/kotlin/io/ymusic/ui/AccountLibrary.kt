@@ -219,16 +219,18 @@ private fun AccountNavRow(target: NavTarget, onDeeplink: ((String, String?) -> U
 @Composable
 private fun AccountNavChip(target: NavTarget, onDeeplink: ((String, String?) -> Unit)?) {
     val shape = RoundedCornerShape(999.dp)
-    Row(
-        Modifier
-            .border(1.dp, DesignColors.OutlineSoft, shape)
-            .clip(shape)
-            .clickable { onDeeplink?.invoke(target.url, target.seedTitle ?: target.label) }
-            .padding(horizontal = 13.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        Icon(target.icon, null, Modifier.size(24.dp), tint = DesignColors.InkMuted)
-        Text(target.label, style = TextStyle(fontSize = 12.5.sp, color = DesignColors.Ink), maxLines = 1)
+    ChipTapArea({ onDeeplink?.invoke(target.url, target.seedTitle ?: target.label) }) { indication ->
+        Row(
+            Modifier
+                .border(1.dp, DesignColors.OutlineSoft, shape)
+                .clip(shape)
+                .then(indication)
+                .chipPadding(leadingIcon = true),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Icon(target.icon, null, Modifier.size(24.dp), tint = DesignColors.InkMuted)
+            Text(target.label, style = TextStyle(fontSize = ChipTextSize, color = DesignColors.Ink), maxLines = 1)
+        }
     }
 }

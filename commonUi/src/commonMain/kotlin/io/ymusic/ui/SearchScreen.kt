@@ -389,30 +389,32 @@ private fun FilterDialog(
 @Composable
 private fun FilterPill(option: YtFilterOption, onClick: () -> Unit) {
     val shape = RoundedCornerShape(999.dp)
-    Text(
-        option.label,
-        style = TextStyle(
-            fontSize = 12.sp,
-            color = when {
-                option.selected -> Color.White
-                option.disabled -> DesignColors.InkFaint
-                else -> DesignColors.InkSoft
-            },
-        ),
-        maxLines = 1,
-        modifier = Modifier
-            .clip(shape)
-            .background(if (option.selected) DesignColors.Accent else Color.Transparent)
-            .border(
-                1.dp,
-                when {
-                    option.selected -> DesignColors.Accent
-                    option.disabled -> DesignColors.OutlineSoft
-                    else -> DesignColors.Outline
+    ChipTapArea(onClick, enabled = !option.disabled) { indication ->
+        Text(
+            option.label,
+            style = TextStyle(
+                fontSize = ChipTextSize,
+                color = when {
+                    option.selected -> Color.White
+                    option.disabled -> DesignColors.InkFaint
+                    else -> DesignColors.InkSoft
                 },
-                shape,
-            )
-            .clickable(enabled = !option.disabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
-    )
+            ),
+            maxLines = 1,
+            modifier = Modifier
+                .clip(shape)
+                .background(if (option.selected) DesignColors.Accent else Color.Transparent)
+                .border(
+                    1.dp,
+                    when {
+                        option.selected -> DesignColors.Accent
+                        option.disabled -> DesignColors.OutlineSoft
+                        else -> DesignColors.Outline
+                    },
+                    shape,
+                )
+                .then(indication)
+                .chipPadding(),
+        )
+    }
 }

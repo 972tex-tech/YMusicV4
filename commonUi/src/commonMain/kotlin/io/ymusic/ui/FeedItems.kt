@@ -1,6 +1,5 @@
 package io.ymusic.ui
 
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -56,7 +55,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -240,15 +238,6 @@ fun SectionHeader(
 private val SectionCtaPaddingH = 10.dp
 private val SectionCtaPaddingV = 6.dp
 
-/** Lays the content out [horizontal]/[vertical] smaller on each side than it measures, so its padding
- *  overhangs the neighbours instead of pushing them; touches on the overhang still reach it. */
-private fun Modifier.bleed(horizontal: Dp, vertical: Dp): Modifier = layout { measurable, constraints ->
-    val h = horizontal.roundToPx()
-    val v = vertical.roundToPx()
-    val placeable = measurable.measure(constraints.offset(horizontal = 2 * h, vertical = 2 * v))
-    layout(placeable.width - 2 * h, placeable.height - 2 * v) { placeable.place(-h, -v) }
-}
-
 /** video / playlist / channel — list form, one row size per band: 92dp square thumb, or 16:9
  *  160×90 when [wide] (the [FeedLayout.WideList] band). [compactTitle] on narrow screens ([feedCompactTitleFor]). */
 @Composable
@@ -404,24 +393,24 @@ private fun ChannelGridCard(
 /** The bordered "Show more (N)" / "Show less" pill under a collapsible section. */
 @Composable
 fun ShowMoreButton(label: String, expanded: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(999.dp))
-            .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
-            .clickable(onClick = onClick)
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.InkMuted))
-        Icon(
-            Icons.Default.KeyboardArrowDown,
-            null,
-            Modifier.size(15.dp).rotate(if (expanded) 180f else 0f),
-            tint = DesignColors.InkMuted,
-        )
+    ChipTapArea(onClick, modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) { indication ->
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
+                .then(indication)
+                .chipPadding(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, style = TextStyle(fontSize = ChipTextSize, fontWeight = FontWeight.SemiBold, color = DesignColors.InkMuted))
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                null,
+                Modifier.size(15.dp).rotate(if (expanded) 180f else 0f),
+                tint = DesignColors.InkMuted,
+            )
+        }
     }
 }
 
@@ -432,15 +421,17 @@ internal fun CtaPill(text: String, onClick: () -> Unit = {}, modifier: Modifier 
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val color = if (hovered) DesignColors.Accent else DesignColors.Ink
-    Text(
-        text,
-        style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = color),
-        modifier = modifier
-            .clip(RoundedCornerShape(999.dp))
-            .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
-            .border(1.4.dp, color, RoundedCornerShape(999.dp))
-            .padding(horizontal = 12.dp, vertical = 5.dp),
-    )
+    ChipTapArea(onClick, modifier, interactionSource = interaction) { indication ->
+        Text(
+            text,
+            style = TextStyle(fontSize = ChipTextSize, fontWeight = FontWeight.SemiBold, color = color),
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .then(indication)
+                .border(1.4.dp, color, RoundedCornerShape(999.dp))
+                .chipPadding(),
+        )
+    }
 }
 
 /** A KIND_TAG section (Explore's Moods & genres, and the New releases / Charts / Moods & genres entry
@@ -498,20 +489,22 @@ private val CAROUSEL_CELL_WIDTH = 80.dp
 private fun TagPill(label: String, accent: String?, onClick: () -> Unit) {
     val shape = RoundedCornerShape(999.dp)
     val border = remember(accent) { accent?.let { runCatching { Color(it.toLong(16)) }.getOrNull() } } ?: DesignColors.OutlineSoft
-    Text(
-        label,
-        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
-        maxLines = 1,
-        // Fill + border are shape-aware (anti-aliased) and drawn BEFORE the clip; clipping first would
-        // hard-cut the border's outer half against an aliased edge (the jagged look). Clip last, only
-        // so the click ripple stays inside the pill.
-        modifier = Modifier
-            .background(DesignColors.SurfaceElevated, shape)
-            .border(1.dp, border, shape)
-            .clip(shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    )
+    ChipTapArea(onClick) { indication ->
+        Text(
+            label,
+            style = TextStyle(fontSize = ChipTextSize, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
+            maxLines = 1,
+            // Fill + border are shape-aware (anti-aliased) and drawn BEFORE the clip; clipping first would
+            // hard-cut the border's outer half against an aliased edge (the jagged look). Clip last, only
+            // so the click ripple stays inside the pill.
+            modifier = Modifier
+                .background(DesignColors.SurfaceElevated, shape)
+                .border(1.dp, border, shape)
+                .clip(shape)
+                .then(indication)
+                .chipPadding(),
+        )
+    }
 }
 
 @Composable

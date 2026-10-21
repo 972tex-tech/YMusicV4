@@ -1346,18 +1346,20 @@ private val OpenPlaylistSaver = listSaver<Pair<Long, String>?, Any>(
 @Composable
 internal fun LibraryChip(label: String, selected: Boolean, icon: ImageVector? = null, onClick: () -> Unit) {
     val content = if (selected) Color.White else DesignColors.Ink
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) DesignColors.Accent else Color.Transparent)
-            .border(1.dp, if (selected) DesignColors.Accent else DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
-            .clickable(onClick = onClick)
-            .padding(start = if (icon != null) 10.dp else 13.dp, end = 13.dp, top = 7.dp, bottom = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (icon != null) Icon(icon, null, Modifier.size(16.dp), tint = content)
-        Text(label, style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = content))
+    ChipTapArea(onClick) { indication ->
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(if (selected) DesignColors.Accent else Color.Transparent)
+                .border(1.dp, if (selected) DesignColors.Accent else DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
+                .then(indication)
+                .chipPadding(leadingIcon = icon != null),
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) Icon(icon, null, Modifier.size(16.dp), tint = content)
+            Text(label, style = TextStyle(fontSize = ChipTextSize, fontWeight = FontWeight.Medium, color = content))
+        }
     }
 }
 
@@ -1374,19 +1376,21 @@ private fun LibraryTabRow(selected: LibraryTab, dragProgress: Float, onSelect: (
 @Composable
 private fun ScanPill(scan: ScanAction, controller: ScanController, label: String) {
     val count = controller.scanned
-    Text(
-        when {
-            controller.running && count != null -> stringResource(Res.string.library_scanning_count, count)
-            controller.running -> stringResource(Res.string.library_scanning)
-            else -> label
-        },
-        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
-            .clickable(enabled = !controller.running) { controller.start(scan) }
-            .padding(horizontal = 13.dp, vertical = 7.dp),
-    )
+    ChipTapArea({ controller.start(scan) }, enabled = !controller.running) { indication ->
+        Text(
+            when {
+                controller.running && count != null -> stringResource(Res.string.library_scanning_count, count)
+                controller.running -> stringResource(Res.string.library_scanning)
+                else -> label
+            },
+            style = TextStyle(fontSize = ChipTextSize, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
+                .then(indication)
+                .chipPadding(),
+        )
+    }
 }
 
 /** The Folders tab toolbar: add-folder pill + rescan on the left, sort on the right. Any side may

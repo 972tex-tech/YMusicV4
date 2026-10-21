@@ -3,7 +3,6 @@ package io.ymusic.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -54,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.download.StillProcessingException
@@ -861,21 +861,27 @@ private fun FeedSortMenu(options: List<YtChip>, modifier: Modifier = Modifier, o
     var open by remember { mutableStateOf(false) }
     val current = options.firstOrNull { it.selected } ?: options.first()
     Box(modifier) {
-        Row(
-            Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .clickable { open = true }
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.Sort,
-                stringResource(Res.string.cd_sort),
-                Modifier.size(16.dp),
-                tint = DesignColors.InkSoft,
-            )
-            Text(current.title, style = TextStyle(fontSize = 12.5.sp, color = DesignColors.Ink), maxLines = 1)
+        ChipTapArea({ open = true }) { indication ->
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .then(indication)
+                    .chipPadding(leadingIcon = true),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Sort,
+                    stringResource(Res.string.cd_sort),
+                    Modifier.size(16.dp),
+                    tint = DesignColors.InkSoft,
+                )
+                Text(
+                    current.title,
+                    style = TextStyle(fontSize = ChipTextSize, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
+                    maxLines = 1,
+                )
+            }
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             options.forEach { option ->
@@ -899,17 +905,19 @@ private fun FeedSortMenu(options: List<YtChip>, modifier: Modifier = Modifier, o
 /** One feed filter pill; [onClick] null = a non-interactive label in the same style. */
 @Composable
 fun FeedChip(title: String, selected: Boolean, onClick: (() -> Unit)?) {
-    Text(
-        title,
-        style = TextStyle(fontSize = 12.sp, color = if (selected) Color.White else DesignColors.InkSoft),
-        maxLines = 1,
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) DesignColors.Accent else Color.Transparent)
-            .border(1.dp, if (selected) DesignColors.Accent else DesignColors.Outline, RoundedCornerShape(999.dp))
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
-    )
+    ChipTapArea(onClick) { indication ->
+        Text(
+            title,
+            style = TextStyle(fontSize = ChipTextSize, color = if (selected) Color.White else DesignColors.InkSoft),
+            maxLines = 1,
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(if (selected) DesignColors.Accent else Color.Transparent)
+                .border(1.dp, if (selected) DesignColors.Accent else DesignColors.Outline, RoundedCornerShape(999.dp))
+                .then(indication)
+                .chipPadding(),
+        )
+    }
 }
 
 /**
