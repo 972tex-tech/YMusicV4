@@ -204,6 +204,9 @@ import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.Playability
 import projectcommon.error.errorCode
 import kotlin.math.roundToInt
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 internal fun formatMillis(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
@@ -612,7 +615,8 @@ private fun PortraitNowPlaying(
     }
 }
 
-/** Landscape split (mockup `.ls`): video left with overlaid controls; 320dp right pane. */
+/** Landscape split (mockup `.ls`): video left with overlaid controls; the queue pane on the right,
+ *  [queuePaneWidth] wide. */
 @Composable
 private fun LandscapeNowPlaying(
     graph: AppGraph,
@@ -629,47 +633,93 @@ private fun LandscapeNowPlaying(
     SideEffect { VideoOverlayNative.armed = true }
     LaunchedEffect(Unit) { VideoOverlayNative.show() }
 
-    Row(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f).fillMaxHeight()) {
-            PlayerSurfaceHole(
-                player,
-                graph.playerSurface,
-                current?.displayThumbnailUrl,
-                Modifier.fillMaxSize(),
-                settings = graph.settings,
-            )
-            VideoOverlayHost(
-                Modifier.fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.navigationBars),
-            ) {
-                BufferingIndicator(status)
-                AutoHidingOverlay {
-                    VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val paneWidth = queuePaneWidth(maxWidth)
+        val largeRows = paneWidth >= QueueLargeRowsFrom
+        Row(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                PlayerSurfaceHole(
+                    player,
+                    graph.playerSurface,
+                    current?.displayThumbnailUrl,
+                    Modifier.fillMaxSize(),
+                    settings = graph.settings,
+                )
+                VideoOverlayHost(
+                    Modifier.fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.navigationBars),
+                ) {
+                    BufferingIndicator(status)
+                    AutoHidingOverlay {
+                        VideoOverlayControls(coordinator, status, progress, current, onToggleFullscreen = onFullscreen)
+                    }
+                    status.error?.let { PlaybackErrorText(player, it, VideoOverlayNative.showing) }
+                    PlayerCaptionOverlay(player, VideoOverlayNative.showing)
                 }
-                status.error?.let { PlaybackErrorText(player, it, VideoOverlayNative.showing) }
-                PlayerCaptionOverlay(player, VideoOverlayNative.showing)
             }
-        }
-        VerticalDivider(color = DesignColors.Divider)
-        Column(
-            Modifier.width(320.dp).fillMaxHeight()
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .background(DesignColors.Surface),
-        ) {
-            PlayerTopBar(coordinator, sleepMs, onClose)
-            QueueHeader(coordinator, queue.currentIndex, queue.displayTotal, queue.shuffle, queue.loopMode)
-            HorizontalDivider(color = DesignColors.Divider)
-            val queueListState = rememberLazyListState()
-            val dragState = rememberQueueDragState(queueListState, indexOffset = 0, player)
-            LazyColumn(state = queueListState, modifier = Modifier.weight(1f)) {
-                itemsIndexed(queue.items) { index, item ->
-                    QueueRow(coordinator, index, item, current = index == queue.currentIndex, dragState)
+            VerticalDivider(color = DesignColors.Divider)
+            Column(
+                Modifier.width(paneWidth).fillMaxHeight()
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .background(DesignColors.Surface),
+            ) {
+                PlayerTopBar(coordinator, sleepMs, onClose)
+                QueueHeader(coordinator, queue.currentIndex, queue.displayTotal, queue.shuffle, queue.loopMode)
+                HorizontalDivider(color = DesignColors.Divider)
+                val queueListState = rememberLazyListState()
+                val dragState = rememberQueueDragState(queueListState, indexOffset = 0, player)
+                FollowCurrentQueueItem(queueListState, queue.currentIndex)
+                LazyColumn(state = queueListState, modifier = Modifier.weight(1f)) {
+                    itemsIndexed(queue.items) { index, item ->
+                        QueueRow(coordinator, index, item, current = index == queue.currentIndex, dragState, large = largeRows)
+                    }
+                    queue.more?.let { more -> item { QueueMoreRow(player, more) } }
                 }
-                queue.more?.let { more -> item { QueueMoreRow(player, more) } }
             }
         }
     }
 }
+
+/**
+ * Brings the playing row back into view when the song changes: only if it left the view or sits more
+ * than 3 rows below the middle, and never within 5s of the user scrolling the list themselves; it
+ * lands around the middle. List indices must equal queue indices.
+ */
+@Composable
+private fun FollowCurrentQueueItem(listState: LazyListState, currentIndex: Int) {
+    var lastUserScroll by remember { mutableStateOf<TimeSource.Monotonic.ValueTimeMark?>(null) }
+    var following by remember { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
+            if (scrolling && !following) lastUserScroll = TimeSource.Monotonic.markNow()
+        }
+    }
+    var previous by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(currentIndex) {
+        val before = previous
+        previous = currentIndex
+        if (currentIndex < 0 || before < 0 || before == currentIndex) return@LaunchedEffect
+        if ((lastUserScroll?.elapsedNow() ?: Duration.INFINITE) < 5.seconds) return@LaunchedEffect
+        val visible = listState.layoutInfo.visibleItemsInfo
+        if (visible.isEmpty()) return@LaunchedEffect
+        val first = visible.first().index
+        val last = visible.last().index
+        if (currentIndex >= last || currentIndex < first || currentIndex >= (first + last) / 2 + 3) {
+            following = true
+            try {
+                listState.animateScrollToItem(maxOf(currentIndex - (last - first) / 2, 0))
+            } finally {
+                following = false
+            }
+        }
+    }
+}
+
+/** The landscape queue pane: 30% of the window, kept between 320dp (phones) and 480dp (desktops). */
+private fun queuePaneWidth(windowWidth: Dp): Dp = (windowWidth * 0.3f).coerceIn(320.dp, 480.dp)
+
+/** Pane width from which queue rows take the larger thumb and text. */
+private val QueueLargeRowsFrom = 380.dp
 
 /**
  * Hosts video-overlay [content] with player-style auto-hide: it fades out after a few seconds of
@@ -1761,6 +1811,7 @@ private fun QueueRow(
     item: io.ymusic.player.PlayableItem,
     current: Boolean,
     dragState: QueueDragState,
+    large: Boolean = false,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val dragging = dragState.draggingIndex == index
@@ -1774,8 +1825,8 @@ private fun QueueRow(
                 else Modifier,
             )
             .clickable { coordinator.player.playAt(index) }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 16.dp, vertical = if (large) 10.dp else 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (large) 12.dp else 8.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Icon(
@@ -1794,10 +1845,10 @@ private fun QueueRow(
                         dragState.drag(amount.y)
                     }
                 },
-            tint = DesignColors.Outline,
+            tint = if (current) DesignColors.Accent else DesignColors.Outline,
         )
         Box(
-            Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
+            Modifier.size(if (large) 60.dp else 48.dp).clip(RoundedCornerShape(6.dp)),
             contentAlignment = Alignment.Center,
         ) {
             ArtImage(item.displayThumbnailUrl, RoundedCornerShape(6.dp)) {
@@ -1808,7 +1859,7 @@ private fun QueueRow(
             Text(
                 item.displayTitle,
                 style = TextStyle(
-                    fontSize = 12.5.sp,
+                    fontSize = if (large) 14.sp else 12.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = if (current) DesignColors.Accent else DesignColors.Ink,
                 ),
@@ -1819,10 +1870,10 @@ private fun QueueRow(
             if (sub.isNotEmpty()) {
                 Text(
                     sub,
-                    style = TextStyle(fontSize = 11.sp, color = DesignColors.InkSecondary),
+                    style = TextStyle(fontSize = if (large) 12.5.sp else 11.sp, color = DesignColors.InkSecondary),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = if (large) 4.dp else 2.dp),
                 )
             }
         }
