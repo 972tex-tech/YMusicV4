@@ -175,14 +175,14 @@ private fun AccountCard(account: YtAccountInfo, onSignOut: () -> Unit, onSwitchA
         Column(Modifier.weight(1f)) {
             Text(
                 account.name.orEmpty(),
-                style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
+                style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             (account.email ?: account.handle)?.let { line ->
                 Text(
                     line,
-                    style = TextStyle(fontSize = 12.sp, color = DesignColors.InkMuted),
+                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkMuted),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -207,12 +207,12 @@ private fun AccountNavRow(target: NavTarget, onDeeplink: ((String, String?) -> U
         Modifier
             .fillMaxWidth()
             .clickable { onDeeplink?.invoke(target.url, target.seedTitle ?: target.label) }
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(horizontal = 18.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Icon(target.icon, null, Modifier.size(24.dp), tint = DesignColors.InkMuted)
-        Text(target.label, style = TextStyle(fontSize = 14.sp, color = DesignColors.Ink))
+        Text(target.label, style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium, color = DesignColors.Ink))
     }
 }
 
