@@ -865,10 +865,8 @@ private fun AppRoot(
         Box(
             Modifier.fillMaxSize()
                 .then(if (desktopLayoutHole) Modifier else Modifier.background(DesignColors.Surface))
-                .drawerEdgeGestureExclusion(
-                    !drawer.isOpen && !nowPlayingOpen && layers.isEmpty() &&
-                        section == AppSection.Discover && discoverTab == DiscoverTab.Home,
-                ),
+                // Every screen that shows the drawer's Menu button (nothing pushed) takes the edge swipe.
+                .drawerEdgeGestureExclusion(!drawer.isOpen && !nowPlayingOpen && layers.isEmpty()),
         ) {
             BoxWithConstraints(
                 Modifier.fillMaxSize().safeDrawingPadding(),
