@@ -103,7 +103,8 @@ class AndroidAppUpdates(
 
     override val blockedReason: StringResource? = null
 
-    private val downloadDir = File(context.cacheDir, "update")
+    // Not cacheDir: the system may clear it between download and install.
+    private val downloadDir = File(context.filesDir, "update")
 
     /** What the user asked for before being sent to grant the install permission: install, or download. */
     @Volatile private var installAfterPermission = false
