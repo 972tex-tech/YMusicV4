@@ -80,6 +80,9 @@ When the user asks **why** / **what** / **how** / **wtf is** (explain a path, a 
 ### I/O
 - **Choose carefully between ByteArray and okio Source/Sink — streams by default, ByteArray only when a platform API forces it.** A `ByteArray` in a signature means the whole payload sits in the heap at once; a `Source`/`Sink` bounds memory to a segment and composes (file, network, cache entry, adapter). Legitimate ByteArray sites carry a justification comment naming the forcing API (e.g. Skia's bytes-only codec). This applies to interfaces most of all — an interface typed `ByteArray` forces every implementation to buffer.
 
+### Moving app data
+When an on-disk location (app dir, cache dir, database file, prefs file) moves from A to B, don't forget to clean up A — like a database migration.
+
 ### Common mistakes
 - Don't use `Char.isLetterOrDigit` to check for `[a-zA-Z0-9]` — it includes non-ASCII letters like `'β'.isLetterOrDigit() == true`.
 
