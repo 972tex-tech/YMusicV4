@@ -42,10 +42,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarData
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -1229,9 +1234,21 @@ private fun AppRoot(
                 SnackbarHost(
                     snackbarHostState,
                     Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = snackbarLift),
-                )
+                ) { data -> SwipeableSnackbar(data) }
             }
         }
+    }
+}
+
+/** A snackbar the user can swipe away, either direction. */
+@Composable
+private fun SwipeableSnackbar(data: SnackbarData) {
+    key(data) {
+        val swipeState = rememberSwipeToDismissBoxState()
+        LaunchedEffect(swipeState.currentValue) {
+            if (swipeState.currentValue != SwipeToDismissBoxValue.Settled) data.dismiss()
+        }
+        SwipeToDismissBox(swipeState, backgroundContent = {}) { Snackbar(data) }
     }
 }
 
