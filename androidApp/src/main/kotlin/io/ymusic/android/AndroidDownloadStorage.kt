@@ -53,6 +53,13 @@ class AndroidDownloadStorage(
             // ExternalStorageProvider's own wording when File.createNewFile() refuses the path it picked.
             if (e.message?.startsWith("Failed to touch") == true) throw DownloadFolderAccessException(destinationFolder.toString(), e)
             throw e
+        } catch (e: IllegalArgumentException) {
+            // "Unknown authority …": the storage provider isn't reachable for this tree.
+            if (e.message?.startsWith("Unknown authority") == true) throw DownloadFolderAccessException(destinationFolder.toString(), e)
+            throw e
+        } catch (e: NullPointerException) {
+            // Thrown provider-side (a null ContentProviderClient inside ExternalStorageProvider).
+            throw DownloadFolderAccessException(destinationFolder.toString(), e)
         } ?: error("SAF createDocument failed in $destinationFolder")
         try {
             resolver.openOutputStream(child)?.use { out ->
