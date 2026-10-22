@@ -230,17 +230,31 @@
     <string name="settings_licenses_intro">YMusic GNU GPL v3.0 lisenziyası ilə açıq mənbəlidir. Aşağıdakı komponentləri ehtiva edir:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Nəyin xarab olduğunu və ya nə görmək istədiyinizi bizə yazın. Ekran görüntüləri və ya log faylları kömək edir.</string>
-    <string name="feedback_message_label">Nə baş verdi?</string>
-    <string name="feedback_name_label">Ad (istəyə bağlı)</string>
-    <string name="feedback_email_label">E-poçt (istəyə bağlı)</string>
-    <string name="feedback_attach">Fayl əlavə et</string>
-    <string name="feedback_send">Göndər</string>
-    <string name="feedback_sent">Rəy göndərildi — təşəkkür edirik!</string>
-    <string name="feedback_send_failed">Rəyi göndərmək mümkün olmadı — yenidən cəhd edin</string>
-    <string name="feedback_attach_failed">Seçilmiş faylı oxumaq mümkün olmadı — əlavə edilmədi</string>
-    <string name="feedback_file_too_large">“%1$s” əlavə etmək üçün çox böyükdür (maks. 10 MB)</string>
-    <string name="cd_remove_attachment">Əlavəni sil</string>
+    <string name="feedback_intro">Nəyin səhv getdiyini və ya nə görmək istədiyinizi GitHub-da və ya e-poçtla bizə bildirin. Jurnallarınızı tapıb cavab verə bilməyimiz üçün aşağıdakı anonim məlumatınızı əlavə edin.</string>
+    <string name="feedback_info_title">Anonim məlumat</string>
+    <string name="feedback_copy">Kopyala</string>
+    <string name="feedback_copied">Kopyalandı</string>
+    <string name="feedback_device_id">Cihaz ID-si</string>
+    <string name="feedback_app">Tətbiq</string>
+    <string name="feedback_engine">Mühərrik</string>
+    <string name="feedback_language">Dil</string>
+    <string name="feedback_info_note">Ad, e-poçt və ya hesab yoxdur — yalnız bu ID-lər və bu tətbiqin logları.</string>
+    <string name="feedback_github_title">GitHub-da problem açın</string>
+    <string name="feedback_github_hint">İctimai. Xətalar və ideyalar üçün ən yaxşısı — başqaları izləyə və əlavə edə bilər.</string>
+    <string name="feedback_email_title">%1$s ünvanına yazın</string>
+    <string name="feedback_email_hint">Şəxsi. Hesab və ya şəxsi suallar üçün ən yaxşısı.</string>
+    <string name="feedback_email_subject">YMusic rəyi</string>
+    <string name="feedback_prefilled_note">Hər ikisi məlumat artıq doldurulmuş halda açılır. Əgər yoxdursa, onu yapışdırın — onsuz kömək edə bilmərik.</string>
+    <string name="feedback_reports_off_title">Anonim hesabatlar söndürülüb</string>
+    <string name="feedback_reports_off_message">Probleminizi araşdırmaq üçün bu tətbiqin loglarına ehtiyacımız var. Davam et düyməsinə toxunun, YMusic anonim hesabatları yenidən aktivləşdirib logları göndərəcək.</string>
+    <string name="feedback_reports_off_note">Ad, e-poçt və ya hesab göndərilmir. Hesabatları Tənzimləmələrdə yenidən söndürə bilərsiniz.</string>
+    <string name="feedback_continue">Davam et</string>
+    <string name="feedback_sentry_link">və ya Sentry ilə</string>
+    <string name="feedback_sentry_title">Sentry ilə göndər</string>
+    <string name="feedback_sentry_label">Nə baş verdi?</string>
+    <string name="feedback_sentry_note">Anonim məlumatınız əlavə olunub. Buradan göndərilən mesajlara cavab verə bilmirik, cavab istəyirsinizsə GitHub və ya e-poçtdan istifadə edin.</string>
+    <string name="feedback_sentry_send">Göndər</string>
+    <string name="feedback_sentry_sent">Sentry ilə göndərildi. Təşəkkür edirik!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menyu</string>

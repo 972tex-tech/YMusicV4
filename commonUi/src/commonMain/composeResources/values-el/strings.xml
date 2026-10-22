@@ -230,17 +230,31 @@
     <string name="settings_licenses_intro">Το YMusic είναι ανοιχτού κώδικα με άδεια GNU GPL v3.0. Περιλαμβάνει τα εξής στοιχεία:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Πείτε μας τι χάλασε ή τι θα θέλατε να δείτε. Στιγμιότυπα οθόνης ή αρχεία καταγραφής βοηθούν.</string>
-    <string name="feedback_message_label">Τι συνέβη;</string>
-    <string name="feedback_name_label">Όνομα (προαιρετικό)</string>
-    <string name="feedback_email_label">Email (προαιρετικό)</string>
-    <string name="feedback_attach">Επισύναψη αρχείων</string>
-    <string name="feedback_send">Αποστολή</string>
-    <string name="feedback_sent">Τα σχόλια στάλθηκαν — ευχαριστούμε!</string>
-    <string name="feedback_send_failed">Δεν ήταν δυνατή η αποστολή — δοκιμάστε ξανά</string>
-    <string name="feedback_attach_failed">Δεν ήταν δυνατή η ανάγνωση του αρχείου — δεν επισυνάφθηκε</string>
-    <string name="feedback_file_too_large">Το «%1$s» είναι πολύ μεγάλο για επισύναψη (έως 10 MB)</string>
-    <string name="cd_remove_attachment">Αφαίρεση συνημμένου</string>
+    <string name="feedback_intro">Πείτε μας τι πήγε στραβά ή τι θα θέλατε να δείτε, στο GitHub ή με email. Συμπεριλάβετε τις ανώνυμες πληροφορίες σας παρακάτω για να βρούμε τα αρχεία καταγραφής σας και να απαντήσουμε.</string>
+    <string name="feedback_info_title">Ανώνυμες πληροφορίες</string>
+    <string name="feedback_copy">Αντιγραφή</string>
+    <string name="feedback_copied">Αντιγράφηκε</string>
+    <string name="feedback_device_id">ID συσκευής</string>
+    <string name="feedback_app">Εφαρμογή</string>
+    <string name="feedback_engine">Μηχανή</string>
+    <string name="feedback_language">Γλώσσα</string>
+    <string name="feedback_info_note">Χωρίς όνομα, email ή λογαριασμό — μόνο αυτά τα ID και τα αρχεία καταγραφής της εφαρμογής.</string>
+    <string name="feedback_github_title">Άνοιγμα θέματος στο GitHub</string>
+    <string name="feedback_github_hint">Δημόσιο. Ιδανικό για σφάλματα και ιδέες — άλλοι μπορούν να το παρακολουθούν και να προσθέτουν.</string>
+    <string name="feedback_email_title">Email στο %1$s</string>
+    <string name="feedback_email_hint">Ιδιωτικό. Ιδανικό για ερωτήσεις λογαριασμού ή προσωπικές.</string>
+    <string name="feedback_email_subject">Σχόλια για το YMusic</string>
+    <string name="feedback_prefilled_note">Και τα δύο ανοίγουν με τις πληροφορίες ήδη συμπληρωμένες. Αν λείπουν, επικολλήστε τις — χωρίς αυτές δεν μπορούμε να βοηθήσουμε.</string>
+    <string name="feedback_reports_off_title">Οι ανώνυμες αναφορές είναι απενεργοποιημένες</string>
+    <string name="feedback_reports_off_message">Για να εξετάσουμε το πρόβλημά σας χρειαζόμαστε τα αρχεία καταγραφής της εφαρμογής. Πατήστε Συνέχεια και το YMusic θα ενεργοποιήσει ξανά τις ανώνυμες αναφορές και θα στείλει τα αρχεία.</string>
+    <string name="feedback_reports_off_note">Δεν αποστέλλεται όνομα, email ή λογαριασμός. Μπορείτε να απενεργοποιήσετε ξανά τις αναφορές στις Ρυθμίσεις.</string>
+    <string name="feedback_continue">Συνέχεια</string>
+    <string name="feedback_sentry_link">ή μέσω Sentry</string>
+    <string name="feedback_sentry_title">Αποστολή μέσω Sentry</string>
+    <string name="feedback_sentry_label">Τι συνέβη;</string>
+    <string name="feedback_sentry_note">Οι ανώνυμες πληροφορίες σας επισυνάπτονται. Δεν μπορούμε να απαντήσουμε σε μηνύματα που στέλνονται από εδώ, οπότε χρησιμοποιήστε GitHub ή email αν θέλετε απάντηση.</string>
+    <string name="feedback_sentry_send">Αποστολή</string>
+    <string name="feedback_sentry_sent">Στάλθηκε μέσω Sentry. Ευχαριστούμε!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Μενού</string>

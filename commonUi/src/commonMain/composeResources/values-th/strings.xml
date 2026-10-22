@@ -229,17 +229,31 @@
     <string name="settings_licenses_intro">YMusic เป็นโอเพนซอร์สภายใต้ GNU GPL v3.0 และมีส่วนประกอบต่อไปนี้:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">บอกเราว่าอะไรเสีย หรือคุณอยากเห็นอะไร ภาพหน้าจอหรือไฟล์บันทึกจะช่วยได้มาก</string>
-    <string name="feedback_message_label">เกิดอะไรขึ้น</string>
-    <string name="feedback_name_label">ชื่อ (ไม่บังคับ)</string>
-    <string name="feedback_email_label">อีเมล (ไม่บังคับ)</string>
-    <string name="feedback_attach">แนบไฟล์</string>
-    <string name="feedback_send">ส่ง</string>
-    <string name="feedback_sent">ส่งความคิดเห็นแล้ว — ขอบคุณ!</string>
-    <string name="feedback_send_failed">ส่งความคิดเห็นไม่ได้ — โปรดลองอีกครั้ง</string>
-    <string name="feedback_attach_failed">อ่านไฟล์ที่เลือกไม่ได้ — ไฟล์ไม่ได้ถูกแนบ</string>
-    <string name="feedback_file_too_large">“%1$s” มีขนาดใหญ่เกินกว่าจะแนบได้ (สูงสุด 10 MB)</string>
-    <string name="cd_remove_attachment">นำไฟล์แนบออก</string>
+    <string name="feedback_intro">บอกเราว่าเกิดปัญหาอะไรหรืออยากเห็นอะไร ผ่าน GitHub หรืออีเมล แนบข้อมูลนิรนามด้านล่างเพื่อให้เราหาบันทึกของคุณและตอบกลับได้</string>
+    <string name="feedback_info_title">ข้อมูลแบบไม่ระบุตัวตน</string>
+    <string name="feedback_copy">คัดลอก</string>
+    <string name="feedback_copied">คัดลอกแล้ว</string>
+    <string name="feedback_device_id">รหัสอุปกรณ์</string>
+    <string name="feedback_app">แอป</string>
+    <string name="feedback_engine">เอนจิน</string>
+    <string name="feedback_language">ภาษา</string>
+    <string name="feedback_info_note">ไม่มีชื่อ อีเมล หรือบัญชี — มีเพียงรหัสเหล่านี้และบันทึกของแอปนี้</string>
+    <string name="feedback_github_title">เปิด issue บน GitHub</string>
+    <string name="feedback_github_hint">สาธารณะ เหมาะสำหรับบั๊กและไอเดีย — คนอื่นติดตามและเพิ่มเติมได้</string>
+    <string name="feedback_email_title">ส่งอีเมลถึง %1$s</string>
+    <string name="feedback_email_hint">ส่วนตัว เหมาะสำหรับคำถามเกี่ยวกับบัญชีหรือเรื่องส่วนตัว</string>
+    <string name="feedback_email_subject">ความคิดเห็นเกี่ยวกับ YMusic</string>
+    <string name="feedback_prefilled_note">ทั้งสองแบบจะเปิดพร้อมข้อมูลที่กรอกไว้แล้ว หากไม่มี ให้วางข้อมูลลงไป — หากไม่มีข้อมูลนี้เราช่วยไม่ได้</string>
+    <string name="feedback_reports_off_title">รายงานแบบไม่ระบุตัวตนปิดอยู่</string>
+    <string name="feedback_reports_off_message">เพื่อตรวจสอบปัญหาของคุณ เราต้องใช้บันทึกของแอปนี้ แตะดำเนินการต่อ แล้ว YMusic จะเปิดรายงานแบบไม่ระบุตัวตนอีกครั้งและส่งบันทึก</string>
+    <string name="feedback_reports_off_note">ไม่มีการส่งชื่อ อีเมล หรือบัญชี คุณปิดรายงานอีกครั้งได้ในการตั้งค่า</string>
+    <string name="feedback_continue">ดำเนินการต่อ</string>
+    <string name="feedback_sentry_link">หรือผ่าน Sentry</string>
+    <string name="feedback_sentry_title">ส่งผ่าน Sentry</string>
+    <string name="feedback_sentry_label">เกิดอะไรขึ้น?</string>
+    <string name="feedback_sentry_note">แนบข้อมูลนิรนามของคุณไว้แล้ว เราไม่สามารถตอบกลับข้อความที่ส่งจากที่นี่ได้ หากต้องการคำตอบ โปรดใช้ GitHub หรืออีเมล</string>
+    <string name="feedback_sentry_send">ส่ง</string>
+    <string name="feedback_sentry_sent">ส่งผ่าน Sentry แล้ว ขอบคุณ!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">เมนู</string>

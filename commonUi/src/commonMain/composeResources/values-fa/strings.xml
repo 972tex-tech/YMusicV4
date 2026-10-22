@@ -230,17 +230,31 @@
     <string name="settings_licenses_intro">YMusic متن‌باز و تحت مجوز GNU GPL v3.0 است. این برنامه شامل این اجزا است:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">بگویید چه چیزی خراب شده یا دوست دارید چه چیزی ببینید. اسکرین‌شات یا فایل لاگ کمک می‌کند.</string>
-    <string name="feedback_message_label">چه اتفاقی افتاد؟</string>
-    <string name="feedback_name_label">نام (اختیاری)</string>
-    <string name="feedback_email_label">ایمیل (اختیاری)</string>
-    <string name="feedback_attach">پیوست فایل</string>
-    <string name="feedback_send">ارسال</string>
-    <string name="feedback_sent">بازخورد ارسال شد — متشکریم!</string>
-    <string name="feedback_send_failed">ارسال بازخورد ممکن نشد — لطفاً دوباره تلاش کنید</string>
-    <string name="feedback_attach_failed">فایل انتخاب‌شده خوانده نشد — پیوست نشد</string>
-    <string name="feedback_file_too_large">«%1$s» برای پیوست بیش از حد بزرگ است (حداکثر 10 MB)</string>
-    <string name="cd_remove_attachment">حذف پیوست</string>
+    <string name="feedback_intro">بگویید چه چیزی خراب شد یا دوست دارید چه چیزی ببینید، در GitHub یا با ایمیل. اطلاعات ناشناس زیر را هم بفرستید تا گزارش‌هایتان را پیدا کنیم و پاسخ دهیم.</string>
+    <string name="feedback_info_title">اطلاعات ناشناس</string>
+    <string name="feedback_copy">کپی</string>
+    <string name="feedback_copied">کپی شد</string>
+    <string name="feedback_device_id">شناسه دستگاه</string>
+    <string name="feedback_app">برنامه</string>
+    <string name="feedback_engine">موتور</string>
+    <string name="feedback_language">زبان</string>
+    <string name="feedback_info_note">بدون نام، ایمیل یا حساب — فقط این شناسه‌ها و گزارش‌های ثبت این برنامه.</string>
+    <string name="feedback_github_title">باز کردن مسئله در GitHub</string>
+    <string name="feedback_github_hint">عمومی. بهترین گزینه برای اشکال‌ها و ایده‌ها — دیگران می‌توانند آن را دنبال کنند و به آن بیفزایند.</string>
+    <string name="feedback_email_title">ایمیل به %1$s</string>
+    <string name="feedback_email_hint">خصوصی. بهترین گزینه برای پرسش‌های مربوط به حساب یا شخصی.</string>
+    <string name="feedback_email_subject">بازخورد YMusic</string>
+    <string name="feedback_prefilled_note">هر دو با اطلاعاتِ از پیش پرشده باز می‌شوند. اگر نبود، آن را جای‌گذاری کنید — بدون آن نمی‌توانیم کمک کنیم.</string>
+    <string name="feedback_reports_off_title">گزارش‌های ناشناس خاموش است</string>
+    <string name="feedback_reports_off_message">برای بررسی مشکل شما به گزارش‌های ثبت این برنامه نیاز داریم. روی ادامه بزنید تا YMusic گزارش‌های ناشناس را دوباره روشن کند و گزارش‌های ثبت را بفرستد.</string>
+    <string name="feedback_reports_off_note">هیچ نام، ایمیل یا حسابی ارسال نمی‌شود. می‌توانید دوباره گزارش‌ها را در تنظیمات خاموش کنید.</string>
+    <string name="feedback_continue">ادامه</string>
+    <string name="feedback_sentry_link">یا از طریق Sentry</string>
+    <string name="feedback_sentry_title">ارسال از طریق Sentry</string>
+    <string name="feedback_sentry_label">چه اتفاقی افتاد؟</string>
+    <string name="feedback_sentry_note">اطلاعات ناشناس شما پیوست شده است. نمی‌توانیم به پیام‌هایی که از اینجا فرستاده می‌شوند پاسخ دهیم، پس اگر پاسخ می‌خواهید از GitHub یا ایمیل استفاده کنید.</string>
+    <string name="feedback_sentry_send">ارسال</string>
+    <string name="feedback_sentry_sent">از طریق Sentry ارسال شد. سپاسگزاریم!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">منو</string>

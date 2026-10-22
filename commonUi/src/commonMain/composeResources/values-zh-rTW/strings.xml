@@ -229,17 +229,31 @@
     <string name="settings_licenses_intro">YMusic 以 GNU GPL v3.0 授權開放原始碼，包含以下元件：</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">告訴我們哪裡出問題，或你希望看到什麼。附上螢幕截圖或記錄檔會很有幫助。</string>
-    <string name="feedback_message_label">發生了什麼事？</string>
-    <string name="feedback_name_label">名稱（選填）</string>
-    <string name="feedback_email_label">電子郵件（選填）</string>
-    <string name="feedback_attach">附加檔案</string>
-    <string name="feedback_send">傳送</string>
-    <string name="feedback_sent">已傳送意見回饋 — 謝謝你！</string>
-    <string name="feedback_send_failed">無法傳送意見回饋 — 請再試一次</string>
-    <string name="feedback_attach_failed">無法讀取所選檔案 — 未附加</string>
-    <string name="feedback_file_too_large">「%1$s」太大，無法附加（上限 10 MB）</string>
-    <string name="cd_remove_attachment">移除附件</string>
+    <string name="feedback_intro">透過 GitHub 或電子郵件告訴我們哪裡出了問題，或你希望看到什麼。請附上下方的匿名資訊，方便我們找到你的記錄並回覆。</string>
+    <string name="feedback_info_title">匿名資訊</string>
+    <string name="feedback_copy">複製</string>
+    <string name="feedback_copied">已複製</string>
+    <string name="feedback_device_id">裝置 ID</string>
+    <string name="feedback_app">應用程式</string>
+    <string name="feedback_engine">引擎</string>
+    <string name="feedback_language">語言</string>
+    <string name="feedback_info_note">不含姓名、電子郵件或帳戶 — 只有這些 ID 和本應用程式的記錄。</string>
+    <string name="feedback_github_title">在 GitHub 上建立 Issue</string>
+    <string name="feedback_github_hint">公開。最適合回報錯誤和提出想法 — 其他人可以追蹤並補充。</string>
+    <string name="feedback_email_title">寄送電子郵件至 %1$s</string>
+    <string name="feedback_email_hint">私人。最適合帳戶或個人問題。</string>
+    <string name="feedback_email_subject">YMusic 意見回饋</string>
+    <string name="feedback_prefilled_note">兩種方式開啟時都會預先填好資訊。如果缺少，請貼上 — 沒有這些資訊我們無法協助。</string>
+    <string name="feedback_reports_off_title">匿名報告已關閉</string>
+    <string name="feedback_reports_off_message">為了調查你的問題，我們需要本應用程式的記錄。輕觸「繼續」，YMusic 會重新開啟匿名報告並傳送記錄。</string>
+    <string name="feedback_reports_off_note">不會傳送姓名、電子郵件或帳戶。你可以隨時在設定中再次關閉報告。</string>
+    <string name="feedback_continue">繼續</string>
+    <string name="feedback_sentry_link">或透過 Sentry 傳送</string>
+    <string name="feedback_sentry_title">透過 Sentry 傳送</string>
+    <string name="feedback_sentry_label">發生了什麼事？</string>
+    <string name="feedback_sentry_note">已附上你的匿名資訊。我們無法回覆從這裡傳送的訊息，如需回覆，請使用 GitHub 或電子郵件。</string>
+    <string name="feedback_sentry_send">傳送</string>
+    <string name="feedback_sentry_sent">已透過 Sentry 傳送。謝謝！</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">選單</string>

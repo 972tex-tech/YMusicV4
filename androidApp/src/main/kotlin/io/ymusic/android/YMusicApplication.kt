@@ -68,10 +68,11 @@ import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.bindCrashReporting
+import io.ymusic.telemetry.captureFeedbackReport
 import io.ymusic.telemetry.installSentryDeviceId
 import io.ymusic.telemetry.installSentryEngineVersion
 import io.ymusic.telemetry.installSentryPlayerVersion
-import io.ymusic.telemetry.sendSentryFeedback
+import io.ymusic.telemetry.sendFeedbackMessage
 import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
@@ -194,9 +195,6 @@ class YMusicApplication : Application() {
     /** The current Activity's SAF folder pick, registered while it lives. The graph is app-scoped
      *  but a pick needs an Activity; a scan is always user-driven, so one is up when this runs. */
     @Volatile var folderPicker: (suspend () -> Uri?)? = null
-
-    /** The current Activity's feedback-attachment file pick — same lifecycle as [folderPicker]. */
-    @Volatile var feedbackFilePicker: (suspend () -> List<io.ymusic.ui.FeedbackFile>)? = null
 
     /** The current Activity's QR scan — same lifecycle as [folderPicker]. */
     @Volatile var qrScanner: (suspend () -> String?)? = null
@@ -676,8 +674,9 @@ class YMusicApplication : Application() {
                 fn(title, subtitle)
             },
             downloads = downloadService,
-            sendFeedback = sendFeedbackAction.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },
-            pickFeedbackFiles = { feedbackFilePicker?.invoke() ?: emptyList() },
+            captureFeedbackReport = captureFeedbackReportAction.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },
+            sendFeedbackMessage = ::sendFeedbackMessage.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },
+            platformInfo = listOfNotNull("Android ${android.os.Build.VERSION.RELEASE}", android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
             createDocument = { name, mimeType ->
                 documentCreator?.invoke(name, mimeType)?.let { uri ->
                     withContext(Dispatchers.IO) {
@@ -720,24 +719,14 @@ class YMusicApplication : Application() {
         }
     }
 
-    /** Delivers a feedback report as Sentry user feedback; attachments ride the anchor event. */
-    private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = { draft ->
+    /** Sends the app logs as one anonymous Sentry report for the Feedback screen; returns its event id. */
+    private val captureFeedbackReportAction: suspend () -> String? = {
         withContext(Dispatchers.IO) {
             runCatching { logWorker.flush() }
                 .onFailure { rootLogger.fork("feedback").log(Logger.Level.WARN, "log flush before feedback failed", it) }
-            val logs = logWorker.filePaths().map { path ->
-                val name = path.substringAfterLast('/').substringAfterLast('\\')
-                io.sentry.kotlin.multiplatform.Attachment(path, name, "text/plain")
-            }
-            sendSentryFeedback(
-                comments = draft.message,
-                name = draft.name,
-                email = draft.email,
-                attachments = logs + draft.attachments.mapNotNull { f ->
-                    f.bytes?.let { b ->
-                        f.contentType?.let { type -> io.sentry.kotlin.multiplatform.Attachment(b, f.filename, type) }
-                            ?: io.sentry.kotlin.multiplatform.Attachment(b, f.filename)
-                    }
+            captureFeedbackReport(
+                logWorker.filePaths().map { path ->
+                    io.sentry.kotlin.multiplatform.Attachment(path, path.substringAfterLast('/'), "text/plain")
                 },
             )
         }

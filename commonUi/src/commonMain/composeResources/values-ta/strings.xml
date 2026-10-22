@@ -230,17 +230,31 @@
     <string name="settings_licenses_intro">YMusic GNU GPL v3.0 இன் கீழ் ஓப்பன் சோர்ஸ் ஆகும். இதில் இந்தக் கூறுகள் அடங்கும்:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">எது பழுதானது அல்லது நீங்கள் என்ன பார்க்க விரும்புகிறீர்கள் என்று எங்களுக்குச் சொல்லுங்கள். ஸ்கிரீன்ஷாட்கள் அல்லது லாக் கோப்புகள் உதவும்.</string>
-    <string name="feedback_message_label">என்ன நடந்தது?</string>
-    <string name="feedback_name_label">பெயர் (விருப்பத்தேர்வு)</string>
-    <string name="feedback_email_label">மின்னஞ்சல் (விருப்பத்தேர்வு)</string>
-    <string name="feedback_attach">கோப்புகளை இணை</string>
-    <string name="feedback_send">அனுப்பு</string>
-    <string name="feedback_sent">கருத்து அனுப்பப்பட்டது — நன்றி!</string>
-    <string name="feedback_send_failed">கருத்தை அனுப்ப முடியவில்லை — மீண்டும் முயலவும்</string>
-    <string name="feedback_attach_failed">தேர்ந்தெடுத்த கோப்பைப் படிக்க முடியவில்லை — அது இணைக்கப்படவில்லை</string>
-    <string name="feedback_file_too_large">“%1$s” இணைக்க மிகப் பெரியது (அதிகபட்சம் 10 MB)</string>
-    <string name="cd_remove_attachment">இணைப்பை அகற்று</string>
+    <string name="feedback_intro">என்ன தவறு நடந்தது அல்லது நீங்கள் எதைப் பார்க்க விரும்புகிறீர்கள் என்பதை GitHub-இல் அல்லது மின்னஞ்சலில் சொல்லுங்கள். உங்கள் பதிவுகளைக் கண்டறிந்து பதிலளிக்க, கீழே உள்ள உங்கள் அநாமதேயத் தகவலைச் சேர்க்கவும்.</string>
+    <string name="feedback_info_title">அநாமதேயத் தகவல்</string>
+    <string name="feedback_copy">நகலெடு</string>
+    <string name="feedback_copied">நகலெடுக்கப்பட்டது</string>
+    <string name="feedback_device_id">சாதன ID</string>
+    <string name="feedback_app">ஆப்ஸ்</string>
+    <string name="feedback_engine">இன்ஜின்</string>
+    <string name="feedback_language">மொழி</string>
+    <string name="feedback_info_note">பெயர், மின்னஞ்சல், கணக்கு எதுவும் இல்லை — இந்த ID-களும் இந்த ஆப்ஸின் பதிவுகளும் மட்டுமே.</string>
+    <string name="feedback_github_title">GitHub-இல் சிக்கலைத் திற</string>
+    <string name="feedback_github_hint">பொதுவானது. பிழைகள் மற்றும் யோசனைகளுக்குச் சிறந்தது — மற்றவர்கள் பின்தொடர்ந்து சேர்க்கலாம்.</string>
+    <string name="feedback_email_title">%1$s-க்கு மின்னஞ்சல் அனுப்பு</string>
+    <string name="feedback_email_hint">தனிப்பட்டது. கணக்கு அல்லது தனிப்பட்ட கேள்விகளுக்குச் சிறந்தது.</string>
+    <string name="feedback_email_subject">YMusic கருத்து</string>
+    <string name="feedback_prefilled_note">இரண்டும் தகவல் ஏற்கெனவே நிரப்பப்பட்ட நிலையில் திறக்கும். அது இல்லையெனில் ஒட்டவும் — அது இல்லாமல் எங்களால் உதவ முடியாது.</string>
+    <string name="feedback_reports_off_title">அநாமதேய அறிக்கைகள் முடக்கப்பட்டுள்ளன</string>
+    <string name="feedback_reports_off_message">உங்கள் சிக்கலை ஆராய இந்த ஆப்ஸின் பதிவுகள் தேவை. தொடர் என்பதைத் தட்டினால், YMusic அநாமதேய அறிக்கைகளை மீண்டும் இயக்கிப் பதிவுகளை அனுப்பும்.</string>
+    <string name="feedback_reports_off_note">பெயர், மின்னஞ்சல், கணக்கு எதுவும் அனுப்பப்படாது. அமைப்புகளில் அறிக்கைகளை மீண்டும் முடக்கலாம்.</string>
+    <string name="feedback_continue">தொடர்</string>
+    <string name="feedback_sentry_link">அல்லது Sentry வழியாக</string>
+    <string name="feedback_sentry_title">Sentry வழியாக அனுப்பு</string>
+    <string name="feedback_sentry_label">என்ன நடந்தது?</string>
+    <string name="feedback_sentry_note">உங்கள் அநாமதேயத் தகவல் இணைக்கப்பட்டுள்ளது. இங்கிருந்து அனுப்பப்படும் செய்திகளுக்கு எங்களால் பதிலளிக்க முடியாது, பதில் வேண்டுமெனில் GitHub அல்லது மின்னஞ்சலைப் பயன்படுத்தவும்.</string>
+    <string name="feedback_sentry_send">அனுப்பு</string>
+    <string name="feedback_sentry_sent">Sentry வழியாக அனுப்பப்பட்டது. நன்றி!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">மெனு</string>

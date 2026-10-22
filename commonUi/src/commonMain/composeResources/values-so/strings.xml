@@ -230,17 +230,31 @@
     <string name="settings_licenses_intro">YMusic waa tixraac furan oo hoos yimaada GNU GPL v3.0. Wuxuu ka kooban yahay qaybahan:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Noo sheeg waxa jabay ama waxa aad jeclaan lahayd inaad aragto. Sawirro shaashadeed ama faylal log ah way caawiyaan.</string>
-    <string name="feedback_message_label">Maxaa dhacay?</string>
-    <string name="feedback_name_label">Magaca (ikhtiyaari)</string>
-    <string name="feedback_email_label">Email (ikhtiyaari)</string>
-    <string name="feedback_attach">Ku lifaaq faylal</string>
-    <string name="feedback_send">Dir</string>
-    <string name="feedback_sent">Warcelinta waa la diray — mahadsanid!</string>
-    <string name="feedback_send_failed">Warcelinta lama diri karo — fadlan markale isku day</string>
-    <string name="feedback_attach_failed">Faylka la doortay lama akhrin karo — lama lifaaqin</string>
-    <string name="feedback_file_too_large">“%1$s” aad buu u weyn yahay in la lifaaqo (ugu badnaan 10 MB)</string>
-    <string name="cd_remove_attachment">Ka saar lifaaqa</string>
+    <string name="feedback_intro">Noo sheeg waxa khaldamay ama waxaad jeclaan lahayd inaad aragto, GitHub ama iimayl. Ku dar xogtaada qarsoon ee hoose si aan u helno diiwaannadaada oo aan kuugu jawaabno.</string>
+    <string name="feedback_info_title">Macluumaad qarsoodi ah</string>
+    <string name="feedback_copy">Koobiyee</string>
+    <string name="feedback_copied">Waa la koobiyeeyay</string>
+    <string name="feedback_device_id">Aqoonsiga Qalabka</string>
+    <string name="feedback_app">App</string>
+    <string name="feedback_engine">Matoor</string>
+    <string name="feedback_language">Luuqad</string>
+    <string name="feedback_info_note">Magac, iimayl ama akoon ma jiro — kaliya aqoonsiyadan iyo diiwaannada app-kan.</string>
+    <string name="feedback_github_title">Ka fur arrin GitHub</string>
+    <string name="feedback_github_hint">Dadweyne. Ugu fiican cilladaha iyo fikradaha — kuwo kale ayaa raaci kara oo ku dari kara.</string>
+    <string name="feedback_email_title">Iimayl u dir %1$s</string>
+    <string name="feedback_email_hint">Gaar ah. Ugu fiican su’aalaha akoonka ama kuwa shakhsiga ah.</string>
+    <string name="feedback_email_subject">Jawaab-celin YMusic</string>
+    <string name="feedback_prefilled_note">Labaduba waxay ku furmaan macluumaadka oo horay loo buuxiyay. Haddii uu maqan yahay, ku dheji — la’aantiis kuma caawin karno.</string>
+    <string name="feedback_reports_off_title">Warbixinnada qarsoodiga ah way dansan yihiin</string>
+    <string name="feedback_reports_off_message">Si aan u baarno dhibaatadaada waxaan u baahanahay diiwaannada app-kan. Taabo Sii wad, YMusic waxay dib u shidaysaa warbixinnada qarsoodiga ah oo diraysaa diiwaannada.</string>
+    <string name="feedback_reports_off_note">Magac, iimayl ama akoon lama diro. Waxaad mar kale ka dami kartaa warbixinnada Fadhiga.</string>
+    <string name="feedback_continue">Sii wad</string>
+    <string name="feedback_sentry_link">ama adigoo isticmaalaya Sentry</string>
+    <string name="feedback_sentry_title">Ku dir Sentry</string>
+    <string name="feedback_sentry_label">Maxaa dhacay?</string>
+    <string name="feedback_sentry_note">Xogtaada qarsoon waa lagu lifaaqay. Ma ka jawaabi karno fariimaha halkan laga diro, markaa isticmaal GitHub ama iimayl haddii aad jawaab rabto.</string>
+    <string name="feedback_sentry_send">Dir</string>
+    <string name="feedback_sentry_sent">Waxaa lagu diray Sentry. Mahadsanid!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Shaxda</string>

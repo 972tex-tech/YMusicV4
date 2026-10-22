@@ -231,17 +231,31 @@
     <string name="settings_licenses_intro">YMusic je otvorenog koda pod licencom GNU GPL v3.0. Uključuje ove komponente:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Recite nam što ne radi ili što biste željeli vidjeti. Snimke zaslona ili datoteke zapisnika pomažu.</string>
-    <string name="feedback_message_label">Što se dogodilo?</string>
-    <string name="feedback_name_label">Ime (nije obavezno)</string>
-    <string name="feedback_email_label">E-pošta (nije obavezno)</string>
-    <string name="feedback_attach">Priloži datoteke</string>
-    <string name="feedback_send">Pošalji</string>
-    <string name="feedback_sent">Povratne informacije poslane — hvala!</string>
-    <string name="feedback_send_failed">Slanje nije uspjelo — pokušajte ponovno</string>
-    <string name="feedback_attach_failed">Odabrana datoteka nije pročitana — nije priložena</string>
-    <string name="feedback_file_too_large">„%1$s” je prevelika za prilaganje (maks. 10 MB)</string>
-    <string name="cd_remove_attachment">Ukloni privitak</string>
+    <string name="feedback_intro">Recite nam što je pošlo po zlu ili što biste htjeli vidjeti, na GitHubu ili e-poštom. Priložite svoje anonimne podatke u nastavku kako bismo pronašli vaše zapise i odgovorili.</string>
+    <string name="feedback_info_title">Anonimni podaci</string>
+    <string name="feedback_copy">Kopiraj</string>
+    <string name="feedback_copied">Kopirano</string>
+    <string name="feedback_device_id">ID uređaja</string>
+    <string name="feedback_app">Aplikacija</string>
+    <string name="feedback_engine">Mehanizam</string>
+    <string name="feedback_language">Jezik</string>
+    <string name="feedback_info_note">Bez imena, e-pošte ili računa — samo ovi ID-ovi i zapisnici ove aplikacije.</string>
+    <string name="feedback_github_title">Otvori prijavu na GitHubu</string>
+    <string name="feedback_github_hint">Javno. Najbolje za pogreške i ideje — drugi je mogu pratiti i nadopuniti.</string>
+    <string name="feedback_email_title">Pošalji e-poštu na %1$s</string>
+    <string name="feedback_email_hint">Privatno. Najbolje za pitanja o računu ili osobna pitanja.</string>
+    <string name="feedback_email_subject">Povratne informacije za YMusic</string>
+    <string name="feedback_prefilled_note">Obje mogućnosti otvaraju se s već ispunjenim podacima. Ako nedostaju, zalijepite ih — bez njih ne možemo pomoći.</string>
+    <string name="feedback_reports_off_title">Anonimna izvješća su isključena</string>
+    <string name="feedback_reports_off_message">Da bismo istražili vaš problem, trebaju nam zapisnici ove aplikacije. Dodirnite Nastavi i YMusic će ponovno uključiti anonimna izvješća i poslati zapisnike.</string>
+    <string name="feedback_reports_off_note">Ne šalje se ime, e-pošta ni račun. Izvješća možete ponovno isključiti u Postavkama.</string>
+    <string name="feedback_continue">Nastavi</string>
+    <string name="feedback_sentry_link">ili putem Sentryja</string>
+    <string name="feedback_sentry_title">Pošalji putem Sentryja</string>
+    <string name="feedback_sentry_label">Što se dogodilo?</string>
+    <string name="feedback_sentry_note">Vaši anonimni podaci su priloženi. Na poruke poslane odavde ne možemo odgovoriti, pa koristite GitHub ili e-poštu ako želite odgovor.</string>
+    <string name="feedback_sentry_send">Pošalji</string>
+    <string name="feedback_sentry_sent">Poslano putem Sentryja. Hvala!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Izbornik</string>

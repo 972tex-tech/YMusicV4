@@ -230,17 +230,31 @@
     <string name="settings_licenses_intro">YMusic යනු GNU GPL v3.0 යටතේ ඇති විවෘත මූලාශ්‍ර යෙදුමකි. එයට මෙම සංරචක ඇතුළත් වේ:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">කැඩුණු දේ හෝ ඔබ දැකීමට කැමති දේ අපට කියන්න. තිර රූ හෝ ලොග් ගොනු උපකාරී වේ.</string>
-    <string name="feedback_message_label">සිදු වූයේ කුමක්ද?</string>
-    <string name="feedback_name_label">නම (විකල්ප)</string>
-    <string name="feedback_email_label">ඊමේල් (විකල්ප)</string>
-    <string name="feedback_attach">ගොනු අමුණන්න</string>
-    <string name="feedback_send">යවන්න</string>
-    <string name="feedback_sent">ප්‍රතිපෝෂණ යවන ලදී — ස්තූතියි!</string>
-    <string name="feedback_send_failed">ප්‍රතිපෝෂණ යැවිය නොහැකි විය — නැවත උත්සාහ කරන්න</string>
-    <string name="feedback_attach_failed">තෝරාගත් ගොනුව කියවිය නොහැකි විය — එය අමුණා නැත</string>
-    <string name="feedback_file_too_large">“%1$s” අමුණීමට විශාල වැඩියි (උපරිම 10 MB)</string>
-    <string name="cd_remove_attachment">ඇමුණුම ඉවත් කරන්න</string>
+    <string name="feedback_intro">වැරදුණේ කුමක්ද නැතහොත් ඔබ දැකීමට කැමති දේ GitHub හි හෝ ඊමේල් මගින් අපට කියන්න. අපට ඔබගේ ලොග සොයා පිළිතුරු දීමට පහත ඔබගේ නිර්නාමික තොරතුරු ඇතුළත් කරන්න.</string>
+    <string name="feedback_info_title">නිර්නාමික තොරතුරු</string>
+    <string name="feedback_copy">පිටපත් කරන්න</string>
+    <string name="feedback_copied">පිටපත් කළා</string>
+    <string name="feedback_device_id">උපාංග ID</string>
+    <string name="feedback_app">යෙදුම</string>
+    <string name="feedback_engine">එන්ජිම</string>
+    <string name="feedback_language">භාෂාව</string>
+    <string name="feedback_info_note">නමක්, ඊමේලයක් හෝ ගිණුමක් නැත — මෙම ID සහ මෙම යෙදුමේ ලොග පමණි.</string>
+    <string name="feedback_github_title">GitHub හි ගැටලුවක් විවෘත කරන්න</string>
+    <string name="feedback_github_hint">පොදු. දෝෂ සහ අදහස් සඳහා හොඳම — අනෙක් අයට අනුගමනය කර එකතු කළ හැක.</string>
+    <string name="feedback_email_title">%1$s වෙත ඊමේල් කරන්න</string>
+    <string name="feedback_email_hint">පෞද්ගලික. ගිණුම් හෝ පෞද්ගලික ප්‍රශ්න සඳහා හොඳම.</string>
+    <string name="feedback_email_subject">YMusic ප්‍රතිපෝෂණ</string>
+    <string name="feedback_prefilled_note">දෙකම තොරතුරු දැනටමත් පුරවා විවෘත වේ. එය නොමැති නම් අලවන්න — එය නොමැතිව අපට උදව් කළ නොහැක.</string>
+    <string name="feedback_reports_off_title">නිර්නාමික වාර්තා අක්‍රියයි</string>
+    <string name="feedback_reports_off_message">ඔබේ ගැටලුව සොයා බැලීමට අපට මෙම යෙදුමේ ලොග අවශ්‍යයි. ඉදිරියට යන්න තට්ටු කරන්න, YMusic නිර්නාමික වාර්තා නැවත සක්‍රිය කර ලොග යවයි.</string>
+    <string name="feedback_reports_off_note">නමක්, ඊමේලයක් හෝ ගිණුමක් යවනු නොලැබේ. සැකසීම් තුළ ඔබට නැවත වාර්තා අක්‍රිය කළ හැක.</string>
+    <string name="feedback_continue">ඉදිරියට යන්න</string>
+    <string name="feedback_sentry_link">නැතහොත් Sentry හරහා</string>
+    <string name="feedback_sentry_title">Sentry හරහා යවන්න</string>
+    <string name="feedback_sentry_label">මොකද වුණේ?</string>
+    <string name="feedback_sentry_note">ඔබගේ නිර්නාමික තොරතුරු අමුණා ඇත. මෙතැනින් යවන පණිවිඩවලට අපට පිළිතුරු දිය නොහැක, එබැවින් පිළිතුරක් අවශ්‍ය නම් GitHub හෝ ඊමේල් භාවිත කරන්න.</string>
+    <string name="feedback_sentry_send">යවන්න</string>
+    <string name="feedback_sentry_sent">Sentry හරහා යවන ලදී. ස්තූතියි!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">මෙනුව</string>

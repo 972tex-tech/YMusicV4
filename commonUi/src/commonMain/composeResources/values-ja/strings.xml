@@ -229,17 +229,31 @@
     <string name="settings_licenses_intro">YMusic は GNU GPL v3.0 のもとで公開されているオープンソースです。以下のコンポーネントを含みます：</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">不具合やご要望をお聞かせください。スクリーンショットやログファイルがあると助かります。</string>
-    <string name="feedback_message_label">何が起きましたか？</string>
-    <string name="feedback_name_label">名前（任意）</string>
-    <string name="feedback_email_label">メールアドレス（任意）</string>
-    <string name="feedback_attach">ファイルを添付</string>
-    <string name="feedback_send">送信</string>
-    <string name="feedback_sent">フィードバックを送信しました。ありがとうございます！</string>
-    <string name="feedback_send_failed">フィードバックを送信できませんでした — もう一度お試しください</string>
-    <string name="feedback_attach_failed">選択したファイルを読み込めなかったため、添付されませんでした</string>
-    <string name="feedback_file_too_large">「%1$s」は大きすぎて添付できません（最大 10 MB）</string>
-    <string name="cd_remove_attachment">添付ファイルを削除</string>
+    <string name="feedback_intro">不具合やご要望を GitHub またはメールでお知らせください。ログを確認して返信できるよう、下の匿名情報を添えてください。</string>
+    <string name="feedback_info_title">匿名情報</string>
+    <string name="feedback_copy">コピー</string>
+    <string name="feedback_copied">コピーしました</string>
+    <string name="feedback_device_id">デバイス ID</string>
+    <string name="feedback_app">アプリ</string>
+    <string name="feedback_engine">エンジン</string>
+    <string name="feedback_language">言語</string>
+    <string name="feedback_info_note">名前・メールアドレス・アカウントは含まれません。含まれるのはこれらの ID とこのアプリのログだけです。</string>
+    <string name="feedback_github_title">GitHub で Issue を作成</string>
+    <string name="feedback_github_hint">公開。バグやアイデアに最適 — 他のユーザーもフォローや追記ができます。</string>
+    <string name="feedback_email_title">%1$s にメール</string>
+    <string name="feedback_email_hint">非公開。アカウントや個人的なご質問に最適です。</string>
+    <string name="feedback_email_subject">YMusic へのフィードバック</string>
+    <string name="feedback_prefilled_note">どちらも情報が入力済みの状態で開きます。入っていない場合は貼り付けてください — この情報がないとサポートできません。</string>
+    <string name="feedback_reports_off_title">匿名レポートがオフです</string>
+    <string name="feedback_reports_off_message">問題を調べるには、このアプリのログが必要です。「続行」をタップすると、YMusic が匿名レポートを再びオンにしてログを送信します。</string>
+    <string name="feedback_reports_off_note">名前・メールアドレス・アカウントは送信されません。レポートは設定からいつでも再びオフにできます。</string>
+    <string name="feedback_continue">続行</string>
+    <string name="feedback_sentry_link">または Sentry で送信</string>
+    <string name="feedback_sentry_title">Sentry で送信</string>
+    <string name="feedback_sentry_label">何が起きましたか？</string>
+    <string name="feedback_sentry_note">匿名情報が添付されます。ここから送られたメッセージには返信できません。返信をご希望の場合は GitHub またはメールをご利用ください。</string>
+    <string name="feedback_sentry_send">送信</string>
+    <string name="feedback_sentry_sent">Sentry で送信しました。ありがとうございます！</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">メニュー</string>

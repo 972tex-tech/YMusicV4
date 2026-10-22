@@ -230,17 +230,31 @@
     <string name="settings_licenses_intro">YMusic is oopbron onder die GNU GPL v3.0. Dit sluit hierdie komponente in:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Vertel ons wat gebreek het of wat jy graag wil sien. Skermkiekies of loglêers help.</string>
-    <string name="feedback_message_label">Wat het gebeur?</string>
-    <string name="feedback_name_label">Naam (opsioneel)</string>
-    <string name="feedback_email_label">E-pos (opsioneel)</string>
-    <string name="feedback_attach">Heg lêers aan</string>
-    <string name="feedback_send">Stuur</string>
-    <string name="feedback_sent">Terugvoer gestuur — dankie!</string>
-    <string name="feedback_send_failed">Kon nie terugvoer stuur nie — probeer asseblief weer</string>
-    <string name="feedback_attach_failed">Kon nie die gekose lêer lees nie — dit is nie aangeheg nie</string>
-    <string name="feedback_file_too_large">“%1$s” is te groot om aan te heg (maks. 10 MB)</string>
-    <string name="cd_remove_attachment">Verwyder aanhegsel</string>
+    <string name="feedback_intro">Vertel ons wat verkeerd geloop het of wat jy graag wil sien, op GitHub of per e-pos. Sluit jou anonieme inligting hieronder in sodat ons jou logs kan vind en antwoord.</string>
+    <string name="feedback_info_title">Anonieme inligting</string>
+    <string name="feedback_copy">Kopieer</string>
+    <string name="feedback_copied">Gekopieer</string>
+    <string name="feedback_device_id">Toestel-ID</string>
+    <string name="feedback_app">Toep</string>
+    <string name="feedback_engine">Enjin</string>
+    <string name="feedback_language">Taal</string>
+    <string name="feedback_info_note">Geen naam, e-pos of rekening nie — slegs hierdie ID’s en hierdie toep se logs.</string>
+    <string name="feedback_github_title">Maak ’n kwessie op GitHub oop</string>
+    <string name="feedback_github_hint">Publiek. Die beste vir foute en idees — ander kan dit volg en byvoeg.</string>
+    <string name="feedback_email_title">E-pos %1$s</string>
+    <string name="feedback_email_hint">Privaat. Die beste vir rekening- of persoonlike vrae.</string>
+    <string name="feedback_email_subject">YMusic-terugvoer</string>
+    <string name="feedback_prefilled_note">Albei maak oop met die inligting reeds ingevul. As dit ontbreek, plak dit in — sonder dit kan ons nie help nie.</string>
+    <string name="feedback_reports_off_title">Anonieme verslae is af</string>
+    <string name="feedback_reports_off_message">Om na jou probleem te kyk, het ons hierdie toep se logs nodig. Tik Gaan voort en YMusic skakel anonieme verslae weer aan en stuur die logs.</string>
+    <string name="feedback_reports_off_note">Geen naam, e-pos of rekening word gestuur nie. Jy kan verslae weer in Instellings afskakel.</string>
+    <string name="feedback_continue">Gaan voort</string>
+    <string name="feedback_sentry_link">of via Sentry</string>
+    <string name="feedback_sentry_title">Stuur via Sentry</string>
+    <string name="feedback_sentry_label">Wat het gebeur?</string>
+    <string name="feedback_sentry_note">Jou anonieme inligting is aangeheg. Ons kan nie op boodskappe wat hier gestuur word antwoord nie, gebruik dus GitHub of e-pos as jy ’n antwoord wil hê.</string>
+    <string name="feedback_sentry_send">Stuur</string>
+    <string name="feedback_sentry_sent">Gestuur via Sentry. Dankie!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Kieslys</string>

@@ -230,17 +230,31 @@
     <string name="settings_licenses_intro">YMusic GNU GPL v3.0 હેઠળ ઓપન સોર્સ છે. તેમાં આ ઘટકો શામેલ છે:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">શું તૂટ્યું અથવા તમે શું જોવા માંગો છો તે અમને જણાવો. સ્ક્રીનશૉટ અથવા લૉગ ફાઇલો મદદરૂપ છે.</string>
-    <string name="feedback_message_label">શું થયું?</string>
-    <string name="feedback_name_label">નામ (વૈકલ્પિક)</string>
-    <string name="feedback_email_label">ઇમેઇલ (વૈકલ્પિક)</string>
-    <string name="feedback_attach">ફાઇલો જોડો</string>
-    <string name="feedback_send">મોકલો</string>
-    <string name="feedback_sent">પ્રતિસાદ મોકલ્યો — આભાર!</string>
-    <string name="feedback_send_failed">પ્રતિસાદ મોકલી શકાયો નહીં — કૃપા કરીને ફરી પ્રયાસ કરો</string>
-    <string name="feedback_attach_failed">પસંદ કરેલી ફાઇલ વાંચી શકાઈ નહીં — તે જોડાઈ નથી</string>
-    <string name="feedback_file_too_large">“%1$s” જોડવા માટે ખૂબ મોટી છે (મહત્તમ 10 MB)</string>
-    <string name="cd_remove_attachment">જોડાણ દૂર કરો</string>
+    <string name="feedback_intro">શું ખોટું થયું અથવા તમે શું જોવા માંગો છો તે GitHub પર અથવા ઇમેઇલ દ્વારા અમને જણાવો. નીચેની તમારી અનામી માહિતી સામેલ કરો જેથી અમે તમારા લૉગ શોધી જવાબ આપી શકીએ.</string>
+    <string name="feedback_info_title">અનામી માહિતી</string>
+    <string name="feedback_copy">કૉપિ કરો</string>
+    <string name="feedback_copied">કૉપિ થયું</string>
+    <string name="feedback_device_id">ડિવાઇસ ID</string>
+    <string name="feedback_app">ઍપ</string>
+    <string name="feedback_engine">એન્જિન</string>
+    <string name="feedback_language">ભાષા</string>
+    <string name="feedback_info_note">કોઈ નામ, ઇમેઇલ કે એકાઉન્ટ નહીં — ફક્ત આ ID અને આ ઍપના લૉગ.</string>
+    <string name="feedback_github_title">GitHub પર ઇશ્યૂ ખોલો</string>
+    <string name="feedback_github_hint">જાહેર. બગ અને વિચારો માટે શ્રેષ્ઠ — અન્ય લોકો તેને અનુસરી અને ઉમેરી શકે છે.</string>
+    <string name="feedback_email_title">%1$s પર ઇમેઇલ કરો</string>
+    <string name="feedback_email_hint">ખાનગી. એકાઉન્ટ અથવા વ્યક્તિગત પ્રશ્નો માટે શ્રેષ્ઠ.</string>
+    <string name="feedback_email_subject">YMusic પ્રતિસાદ</string>
+    <string name="feedback_prefilled_note">બંને માહિતી પહેલેથી ભરેલી સાથે ખૂલે છે. જો તે ખૂટતી હોય, તો તેને પેસ્ટ કરો — તેના વિના અમે મદદ કરી શકતા નથી.</string>
+    <string name="feedback_reports_off_title">અનામી રિપોર્ટ બંધ છે</string>
+    <string name="feedback_reports_off_message">તમારી સમસ્યા તપાસવા માટે અમને આ ઍપના લૉગની જરૂર છે. ચાલુ રાખો પર ટૅપ કરો અને YMusic અનામી રિપોર્ટ ફરી ચાલુ કરીને લૉગ મોકલશે.</string>
+    <string name="feedback_reports_off_note">કોઈ નામ, ઇમેઇલ કે એકાઉન્ટ મોકલવામાં આવતું નથી. તમે સેટિંગ્સમાં રિપોર્ટ ફરીથી બંધ કરી શકો છો.</string>
+    <string name="feedback_continue">ચાલુ રાખો</string>
+    <string name="feedback_sentry_link">અથવા Sentry દ્વારા</string>
+    <string name="feedback_sentry_title">Sentry દ્વારા મોકલો</string>
+    <string name="feedback_sentry_label">શું થયું?</string>
+    <string name="feedback_sentry_note">તમારી અનામી માહિતી જોડેલી છે. અહીંથી મોકલેલા સંદેશાઓનો અમે જવાબ આપી શકતા નથી, તેથી જવાબ જોઈતો હોય તો GitHub અથવા ઇમેઇલનો ઉપયોગ કરો.</string>
+    <string name="feedback_sentry_send">મોકલો</string>
+    <string name="feedback_sentry_sent">Sentry દ્વારા મોકલાયું. આભાર!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">મેનુ</string>

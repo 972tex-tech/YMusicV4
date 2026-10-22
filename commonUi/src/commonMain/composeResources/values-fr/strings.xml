@@ -231,17 +231,31 @@
     <string name="settings_licenses_intro">YMusic est open source sous licence GNU GPL v3.0. Il inclut ces composants :</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Dites-nous ce qui ne marche pas ou ce que vous aimeriez voir. Captures d'écran et fichiers journaux sont utiles.</string>
-    <string name="feedback_message_label">Que s'est-il passé ?</string>
-    <string name="feedback_name_label">Nom (facultatif)</string>
-    <string name="feedback_email_label">E-mail (facultatif)</string>
-    <string name="feedback_attach">Joindre des fichiers</string>
-    <string name="feedback_send">Envoyer</string>
-    <string name="feedback_sent">Commentaire envoyé — merci !</string>
-    <string name="feedback_send_failed">Impossible d'envoyer le commentaire — veuillez réessayer</string>
-    <string name="feedback_attach_failed">Impossible de lire le fichier sélectionné — il n'a pas été joint</string>
-    <string name="feedback_file_too_large">« %1$s » est trop volumineux pour être joint (10 Mo max.)</string>
-    <string name="cd_remove_attachment">Supprimer la pièce jointe</string>
+    <string name="feedback_intro">Dites-nous ce qui ne marche pas ou ce que vous aimeriez voir, sur GitHub ou par e-mail. Joignez vos infos anonymes ci-dessous pour que nous retrouvions vos journaux et vous répondions.</string>
+    <string name="feedback_info_title">Infos anonymes</string>
+    <string name="feedback_copy">Copier</string>
+    <string name="feedback_copied">Copié</string>
+    <string name="feedback_device_id">ID de l’appareil</string>
+    <string name="feedback_app">App</string>
+    <string name="feedback_engine">Moteur</string>
+    <string name="feedback_language">Langue</string>
+    <string name="feedback_info_note">Ni nom, ni e-mail, ni compte — seulement ces ID et les journaux de cette app.</string>
+    <string name="feedback_github_title">Ouvrir un ticket sur GitHub</string>
+    <string name="feedback_github_hint">Public. Idéal pour les bugs et les idées — d’autres peuvent suivre et compléter.</string>
+    <string name="feedback_email_title">Écrire à %1$s</string>
+    <string name="feedback_email_hint">Privé. Idéal pour les questions de compte ou personnelles.</string>
+    <string name="feedback_email_subject">Avis sur YMusic</string>
+    <string name="feedback_prefilled_note">Les deux s’ouvrent avec les infos déjà remplies. Si elles manquent, collez-les — sans elles, nous ne pouvons pas vous aider.</string>
+    <string name="feedback_reports_off_title">Les rapports anonymes sont désactivés</string>
+    <string name="feedback_reports_off_message">Pour étudier votre problème, nous avons besoin des journaux de cette app. Appuyez sur Continuer : YMusic réactivera les rapports anonymes et enverra les journaux.</string>
+    <string name="feedback_reports_off_note">Aucun nom, e-mail ni compte n’est envoyé. Vous pouvez désactiver à nouveau les rapports dans les Paramètres.</string>
+    <string name="feedback_continue">Continuer</string>
+    <string name="feedback_sentry_link">ou via Sentry</string>
+    <string name="feedback_sentry_title">Envoyer via Sentry</string>
+    <string name="feedback_sentry_label">Que s’est-il passé ?</string>
+    <string name="feedback_sentry_note">Vos infos anonymes sont jointes. Nous ne pouvons pas répondre aux messages envoyés d’ici : utilisez GitHub ou l’e-mail si vous souhaitez une réponse.</string>
+    <string name="feedback_sentry_send">Envoyer</string>
+    <string name="feedback_sentry_sent">Envoyé via Sentry. Merci !</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menu</string>

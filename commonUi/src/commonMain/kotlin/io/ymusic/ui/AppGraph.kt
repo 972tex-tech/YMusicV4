@@ -183,17 +183,15 @@ class AppGraph(
      */
     val downloads: io.ymusic.download.DownloadService? = null,
     /**
-     * Delivers a user feedback report to the crash-reporting backend (Sentry user feedback in the
-     * shells). Null hides Settings' "Send feedback" entry entirely — e.g. a build with no DSN, or a
-     * platform without the telemetry module.
+     * Sends the app logs as one anonymous report (Sentry in the shells) and returns its id, which a
+     * message sent from the Feedback section links to; null when nothing was sent. Null drops the
+     * reports-off dialog and the message option from the Feedback section.
      */
-    val sendFeedback: (suspend (FeedbackDraft) -> Unit)? = null,
-    /**
-     * The OS file picker for feedback attachments, reading each picked file's bytes (an over-limit
-     * file comes back with null bytes — see [FeedbackFile]). Null hides the attach button while the
-     * rest of the feedback form still works.
-     */
-    val pickFeedbackFiles: (suspend () -> List<FeedbackFile>)? = null,
+    val captureFeedbackReport: (suspend () -> String?)? = null,
+    /** Sends a message typed in the Feedback section along with the report it belongs to; null hides that option. */
+    val sendFeedbackMessage: ((reportId: String, message: String) -> Unit)? = null,
+    /** The OS and CPU for the Feedback section's info (e.g. "Android 16 · arm64-v8a"); null omits them. */
+    val platformInfo: String? = null,
     /** The OS "save as" picker: a sink into the chosen file (the caller closes it), null when canceled.
      *  Null hides playlist backup. */
     val createDocument: (suspend (suggestedName: String, mimeType: String) -> okio.Sink?)? = null,

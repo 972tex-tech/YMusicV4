@@ -504,9 +504,6 @@ private fun AppRoot(
         val discoverSessions = remember { mutableMapOf<String, FeedSession>() }
         // YT Music's per-tab feed cache — same lifetime/locale rules as Discover's above.
         val ytMusicSessions = remember { mutableMapOf<YtMusicTab, FeedSession>() }
-        // The Feedback section's draft — lives here so a half-written report survives a section
-        // switch (the section's composable is disposed while another section shows).
-        val feedbackSession = remember { FeedbackSession(graph.logger) }
         // The content locale decides what every feed CONTAINS and the language of its
         // server-composed text — but it lives in the ENGINE, so the app only hears "it changed"
         // ([AppGraph.localeEpoch], bumped by the Settings pickers) and throws the cached pages
@@ -810,6 +807,26 @@ private fun AppRoot(
         val uriHandler = LocalUriHandler.current
         val config by remember(graph) { graph.remoteConfig ?: emptyFlow() }.collectAsState(initial = null)
         var checkingUpdate by remember { mutableStateOf(false) }
+        // Feedback sends the app logs on arrival, so with anonymous reports off it stays closed
+        // until the user agrees in this dialog.
+        var askFeedbackConsent by remember { mutableStateOf(false) }
+        fun openSection(target: AppSection) {
+            val needsConsent = target == AppSection.Feedback && graph.captureFeedbackReport != null &&
+                !graph.settings.flow(AppSettings.crashReports).value
+            if (needsConsent) askFeedbackConsent = true else onSection(target)
+        }
+        if (askFeedbackConsent) {
+            ReportsOffDialog(
+                onContinue = {
+                    askFeedbackConsent = false
+                    scope.launch {
+                        graph.settings.put(AppSettings.crashReports, true)
+                        onSection(AppSection.Feedback)
+                    }
+                },
+                onCancel = { askFeedbackConsent = false },
+            )
+        }
         val premium by graph.premium.collectAsState()
         var updateRecheck by remember { mutableStateOf(0) }
         // The system back gesture/button walks the same path as the in-app back arrows: overlays
@@ -886,7 +903,7 @@ private fun AppRoot(
                                         AppSection.Telegram -> uriHandler.openUri(
                                             (config ?: RemoteConfigData.DEFAULTS).telegramUrl,
                                         )
-                                        else -> onSection(s)
+                                        else -> openSection(s)
                                     }
                                     scope.launch { drawer.close() }
                                 },
@@ -934,7 +951,7 @@ private fun AppRoot(
                             LocalDownloadLauncher provides downloadLauncher,
                             LocalYtPlaylistActions provides ytPlaylistActions,
                             LocalAvailableOffline provides availableOffline,
-                            LocalNavigateToSection provides { onSection(it) },
+                            LocalNavigateToSection provides { openSection(it) },
                             LocalLibraryFolderReveal provides libraryReveal,
                             LocalCaptchaResolver provides captchaResolver,
                             LocalSignInResolver provides signInResolver,
@@ -1132,9 +1149,7 @@ private fun AppRoot(
                                                     signedIn = signedIn,
                                                     onLogin = openLogin,
                                                 )
-                                                AppSection.Feedback ->
-                                                    if (graph.sendFeedback != null) FeedbackScreen(graph, feedbackSession, onDismiss = { onSection(AppSection.Discover) })
-                                                    else ComingSoon(section)
+                                                AppSection.Feedback -> FeedbackScreen(graph, onDismiss = { onSection(AppSection.Discover) })
                                                 AppSection.Catalogue ->
                                                     if (catalogue != null) catalogue() else ComingSoon(section)
                                                 else -> ComingSoon(section)

@@ -232,17 +232,31 @@
     <string name="settings_licenses_intro">YMusic je open source pod licencí GNU GPL v3.0. Obsahuje tyto komponenty:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Napište nám, co se rozbilo nebo co byste chtěli vidět. Pomohou snímky obrazovky nebo soubory logů.</string>
-    <string name="feedback_message_label">Co se stalo?</string>
-    <string name="feedback_name_label">Jméno (nepovinné)</string>
-    <string name="feedback_email_label">E-mail (nepovinné)</string>
-    <string name="feedback_attach">Přiložit soubory</string>
-    <string name="feedback_send">Odeslat</string>
-    <string name="feedback_sent">Zpětná vazba odeslána — děkujeme!</string>
-    <string name="feedback_send_failed">Zpětnou vazbu se nepodařilo odeslat — zkuste to znovu</string>
-    <string name="feedback_attach_failed">Vybraný soubor se nepodařilo přečíst — nebyl přiložen</string>
-    <string name="feedback_file_too_large">„%1$s“ je příliš velký na přiložení (max. 10 MB)</string>
-    <string name="cd_remove_attachment">Odebrat přílohu</string>
+    <string name="feedback_intro">Napište nám, co se pokazilo nebo co byste rádi viděli, na GitHubu nebo e-mailem. Přiložte své anonymní údaje níže, abychom našli vaše logy a mohli odpovědět.</string>
+    <string name="feedback_info_title">Anonymní údaje</string>
+    <string name="feedback_copy">Kopírovat</string>
+    <string name="feedback_copied">Zkopírováno</string>
+    <string name="feedback_device_id">ID zařízení</string>
+    <string name="feedback_app">Aplikace</string>
+    <string name="feedback_engine">Engine</string>
+    <string name="feedback_language">Jazyk</string>
+    <string name="feedback_info_note">Žádné jméno, e‑mail ani účet — jen tato ID a logy této aplikace.</string>
+    <string name="feedback_github_title">Založit issue na GitHubu</string>
+    <string name="feedback_github_hint">Veřejné. Nejlepší pro chyby a nápady — ostatní je mohou sledovat a doplňovat.</string>
+    <string name="feedback_email_title">Napsat na %1$s</string>
+    <string name="feedback_email_hint">Soukromé. Nejlepší pro dotazy k účtu nebo osobní dotazy.</string>
+    <string name="feedback_email_subject">Zpětná vazba k YMusic</string>
+    <string name="feedback_prefilled_note">Obě možnosti se otevřou s již vyplněnými údaji. Pokud chybí, vložte je — bez nich nemůžeme pomoci.</string>
+    <string name="feedback_reports_off_title">Anonymní hlášení jsou vypnutá</string>
+    <string name="feedback_reports_off_message">Abychom mohli váš problém prošetřit, potřebujeme logy této aplikace. Klepněte na Pokračovat a YMusic anonymní hlášení znovu zapne a logy odešle.</string>
+    <string name="feedback_reports_off_note">Neodesílá se žádné jméno, e‑mail ani účet. Hlášení můžete znovu vypnout v Nastavení.</string>
+    <string name="feedback_continue">Pokračovat</string>
+    <string name="feedback_sentry_link">nebo přes Sentry</string>
+    <string name="feedback_sentry_title">Odeslat přes Sentry</string>
+    <string name="feedback_sentry_label">Co se stalo?</string>
+    <string name="feedback_sentry_note">Vaše anonymní údaje jsou přiloženy. Na zprávy odeslané odsud nemůžeme odpovědět, takže pokud chcete odpověď, použijte GitHub nebo e-mail.</string>
+    <string name="feedback_sentry_send">Odeslat</string>
+    <string name="feedback_sentry_sent">Odesláno přes Sentry. Děkujeme!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Nabídka</string>

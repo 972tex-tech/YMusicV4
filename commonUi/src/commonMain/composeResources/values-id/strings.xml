@@ -229,17 +229,31 @@
     <string name="settings_licenses_intro">YMusic adalah open source di bawah GNU GPL v3.0. Aplikasi ini menyertakan komponen berikut:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Beri tahu kami apa yang rusak atau apa yang ingin Anda lihat. Tangkapan layar atau file log sangat membantu.</string>
-    <string name="feedback_message_label">Apa yang terjadi?</string>
-    <string name="feedback_name_label">Nama (opsional)</string>
-    <string name="feedback_email_label">Email (opsional)</string>
-    <string name="feedback_attach">Lampirkan file</string>
-    <string name="feedback_send">Kirim</string>
-    <string name="feedback_sent">Masukan terkirim — terima kasih!</string>
-    <string name="feedback_send_failed">Tidak dapat mengirim masukan — coba lagi</string>
-    <string name="feedback_attach_failed">Tidak dapat membaca file yang dipilih — file tidak dilampirkan</string>
-    <string name="feedback_file_too_large">“%1$s” terlalu besar untuk dilampirkan (maks. 10 MB)</string>
-    <string name="cd_remove_attachment">Hapus lampiran</string>
+    <string name="feedback_intro">Beri tahu kami apa yang bermasalah atau apa yang ingin kamu lihat, di GitHub atau lewat email. Sertakan info anonim di bawah agar kami bisa menemukan log-mu dan membalas.</string>
+    <string name="feedback_info_title">Info anonim</string>
+    <string name="feedback_copy">Salin</string>
+    <string name="feedback_copied">Disalin</string>
+    <string name="feedback_device_id">ID Perangkat</string>
+    <string name="feedback_app">Aplikasi</string>
+    <string name="feedback_engine">Mesin</string>
+    <string name="feedback_language">Bahasa</string>
+    <string name="feedback_info_note">Tanpa nama, email, atau akun — hanya ID ini dan log aplikasi ini.</string>
+    <string name="feedback_github_title">Buka issue di GitHub</string>
+    <string name="feedback_github_hint">Publik. Paling cocok untuk bug dan ide — orang lain bisa mengikuti dan menambahkan.</string>
+    <string name="feedback_email_title">Email ke %1$s</string>
+    <string name="feedback_email_hint">Pribadi. Paling cocok untuk pertanyaan akun atau pribadi.</string>
+    <string name="feedback_email_subject">Masukan YMusic</string>
+    <string name="feedback_prefilled_note">Keduanya terbuka dengan info yang sudah terisi. Jika tidak ada, tempelkan — tanpanya kami tidak bisa membantu.</string>
+    <string name="feedback_reports_off_title">Laporan anonim nonaktif</string>
+    <string name="feedback_reports_off_message">Untuk memeriksa masalah Anda, kami membutuhkan log aplikasi ini. Ketuk Lanjutkan dan YMusic akan mengaktifkan kembali laporan anonim dan mengirim log.</string>
+    <string name="feedback_reports_off_note">Tidak ada nama, email, atau akun yang dikirim. Anda bisa menonaktifkan laporan lagi di Setelan.</string>
+    <string name="feedback_continue">Lanjutkan</string>
+    <string name="feedback_sentry_link">atau lewat Sentry</string>
+    <string name="feedback_sentry_title">Kirim lewat Sentry</string>
+    <string name="feedback_sentry_label">Apa yang terjadi?</string>
+    <string name="feedback_sentry_note">Info anonimmu dilampirkan. Kami tidak bisa membalas pesan yang dikirim dari sini, jadi gunakan GitHub atau email jika kamu ingin jawaban.</string>
+    <string name="feedback_sentry_send">Kirim</string>
+    <string name="feedback_sentry_sent">Terkirim lewat Sentry. Terima kasih!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menu</string>

@@ -115,10 +115,11 @@ import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.bindCrashReporting
+import io.ymusic.telemetry.captureFeedbackReport
 import io.ymusic.telemetry.installSentryDeviceId
 import io.ymusic.telemetry.installSentryEngineVersion
 import io.ymusic.telemetry.installSentryPlayerVersion
-import io.ymusic.telemetry.sendSentryFeedback
+import io.ymusic.telemetry.sendFeedbackMessage
 import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
@@ -144,7 +145,6 @@ import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_close
 import io.ymusic.ui.resources.cd_fullscreen
 import io.ymusic.ui.resources.cd_minimize
-import io.ymusic.ui.resources.feedback_attach
 import io.ymusic.ui.resources.folder_picker_title
 import io.ymusic.ui.resources.playlist_menu_backup
 import io.ymusic.ui.resources.playlist_menu_restore
@@ -902,8 +902,9 @@ private suspend fun buildGraph(settings: AppStoreSettings, session: CookieSessio
         stats = stats,
         api = api,
         remoteConfig = remoteConfig.config,
-        sendFeedback = sendFeedbackAction.takeIf { SENTRY_DSN.isNotEmpty() },
-        pickFeedbackFiles = ::pickFeedbackFiles,
+        captureFeedbackReport = captureFeedbackReportAction.takeIf { SENTRY_DSN.isNotEmpty() },
+        sendFeedbackMessage = ::sendFeedbackMessage.takeIf { SENTRY_DSN.isNotEmpty() },
+        platformInfo = "${System.getProperty("os.name")} ${System.getProperty("os.version")} · ${desktopArch()}",
         createDocument = { name, _ -> pickSaveFile(name)?.let { file -> withContext(Dispatchers.IO) { FileSystem.SYSTEM.sink(file.toOkioPath()) } } },
         openDocument = { _ -> pickOpenFile()?.let { file -> withContext(Dispatchers.IO) { FileSystem.SYSTEM.source(file.toOkioPath()) } } },
         windowResizing = windowResizing,
@@ -1400,42 +1401,16 @@ private fun saveWindowPrefs(size: DpSize, position: WindowPosition) {
     }
 }
 
-/** Delivers a feedback report as Sentry user feedback; attachments ride the anchor event. */
-private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = { draft ->
+/** Sends the app logs as one anonymous Sentry report for the Feedback screen; returns its event id. */
+private val captureFeedbackReportAction: suspend () -> String? = {
     withContext(Dispatchers.IO) {
         runCatching { logWorker.flush() }
             .onFailure { rootLogger.fork("feedback").log(Logger.Level.WARN, "log flush before feedback failed", it) }
-        val logs = logWorker.filePaths().map { path ->
-            val name = path.substringAfterLast('/').substringAfterLast('\\')
-            io.sentry.kotlin.multiplatform.Attachment(path, name, "text/plain")
-        }
-        sendSentryFeedback(
-            comments = draft.message,
-            name = draft.name,
-            email = draft.email,
-            attachments = logs + draft.attachments.mapNotNull { f ->
-                f.bytes?.let { b -> io.sentry.kotlin.multiplatform.Attachment(b, f.filename) }
+        captureFeedbackReport(
+            logWorker.filePaths().map { path ->
+                io.sentry.kotlin.multiplatform.Attachment(path, path.substringAfterLast('/').substringAfterLast('\\'), "text/plain")
             },
         )
-    }
-}
-
-/** Multi-select file pick for feedback attachments; an over-limit file comes back name-only (null
- *  bytes) so the form can refuse it with its name. */
-private suspend fun pickFeedbackFiles(): List<io.ymusic.ui.FeedbackFile> {
-    val title = getString(Res.string.feedback_attach)
-    val picked = withContext(Dispatchers.Main) {
-        val dialog = FileDialog(null as Frame?, title, FileDialog.LOAD)
-        dialog.isMultipleMode = true
-        dialog.isVisible = true
-        dialog.files.toList()
-    }
-    return withContext(Dispatchers.IO) {
-        picked.map { file ->
-            val size = file.length()
-            if (size > io.ymusic.ui.FeedbackFile.MAX_BYTES) io.ymusic.ui.FeedbackFile(file.name, bytes = null, sizeBytes = size)
-            else io.ymusic.ui.FeedbackFile(file.name, file.readBytes())
-        }
     }
 }
 

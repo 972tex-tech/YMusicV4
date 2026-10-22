@@ -2,41 +2,29 @@ package io.ymusic.telemetry
 
 import io.sentry.kotlin.multiplatform.Attachment
 import io.sentry.kotlin.multiplatform.Sentry
+import io.sentry.kotlin.multiplatform.protocol.SentryId
 import io.sentry.kotlin.multiplatform.protocol.UserFeedback
 
 /**
- * Sends a user-authored feedback report as Sentry user feedback: an anchor message event carries
- * the attachments (feedback itself cannot), then the [UserFeedback] links to that event's id. The
- * anchor's message is "Feedback: " + the report's first line, and [fingerprintPolicy] groups one
- * Sentry issue per subject; `report_type:feedback` filters them from the error issues.
- * No-op (empty event id) until Sentry.init ran.
+ * Sends the app logs as one anonymous feedback event and returns its event id, which
+ * [sendFeedbackMessage] links to; a user quoting their Device ID finds it by the device_id tag. No
+ * user feedback item rides it, so it stays out of the feedback inbox; every report groups under one
+ * issue. Null until Sentry.init ran (the SDK hands back the empty id).
  */
-fun sendSentryFeedback(
-    comments: String,
-    name: String? = null,
-    email: String? = null,
-    attachments: List<Attachment> = emptyList(),
-) {
-    val eventId = Sentry.captureMessage(feedbackSubject(comments)) { scope ->
+fun captureFeedbackReport(attachments: List<Attachment>): String? {
+    val eventId = Sentry.captureMessage(FEEDBACK_REPORT_MESSAGE) { scope ->
         scope.setTag(REPORT_TYPE_TAG, REPORT_TYPE_FEEDBACK)
         attachments.forEach(scope::addAttachment)
-    }
-    Sentry.captureUserFeedback(
-        UserFeedback(eventId).also {
-            it.comments = comments
-            it.name = name
-            it.email = email
-        },
-    )
+    }.toString()
+    return eventId.takeUnless { it.all { char -> char == '0' || char == '-' } }
 }
 
-internal fun feedbackSubject(comments: String): String {
-    val firstLine = comments.trim().lineSequence().first().trim()
-    val subject = if (firstLine.length <= SUBJECT_MAX_CHARS) firstLine else firstLine.take(SUBJECT_MAX_CHARS).trimEnd() + "…"
-    return "Feedback: $subject"
+/** A message written in the app, linked to the report [reportId] so it lands in the feedback inbox with its logs. */
+fun sendFeedbackMessage(reportId: String, message: String) {
+    Sentry.captureUserFeedback(UserFeedback(SentryId(reportId)).also { it.comments = message })
 }
 
-private const val SUBJECT_MAX_CHARS = 80
+private const val FEEDBACK_REPORT_MESSAGE = "Feedback: contact report"
 
 internal const val REPORT_TYPE_TAG = "report_type"
 internal const val REPORT_TYPE_FEEDBACK = "feedback"

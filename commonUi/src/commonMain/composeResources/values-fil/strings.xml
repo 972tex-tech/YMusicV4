@@ -230,17 +230,31 @@
     <string name="settings_licenses_intro">Open source ang YMusic sa ilalim ng GNU GPL v3.0. Kasama rito ang mga component na ito:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Sabihin sa amin kung ano ang nasira o kung ano ang gusto mong makita. Malaking tulong ang mga screenshot o log file.</string>
-    <string name="feedback_message_label">Ano ang nangyari?</string>
-    <string name="feedback_name_label">Pangalan (opsyonal)</string>
-    <string name="feedback_email_label">Email (opsyonal)</string>
-    <string name="feedback_attach">Mag-attach ng mga file</string>
-    <string name="feedback_send">Ipadala</string>
-    <string name="feedback_sent">Naipadala ang feedback — salamat!</string>
-    <string name="feedback_send_failed">Hindi maipadala ang feedback — pakisubukang muli</string>
-    <string name="feedback_attach_failed">Hindi mabasa ang napiling file — hindi ito na-attach</string>
-    <string name="feedback_file_too_large">Masyadong malaki ang “%1$s” para i-attach (max 10 MB)</string>
-    <string name="cd_remove_attachment">Alisin ang attachment</string>
+    <string name="feedback_intro">Sabihin sa amin kung ano ang nagkaproblema o kung ano ang gusto mong makita, sa GitHub o sa email. Isama ang iyong anonymous na impormasyon sa ibaba para mahanap namin ang iyong mga log at makasagot kami.</string>
+    <string name="feedback_info_title">Anonymous na impormasyon</string>
+    <string name="feedback_copy">Kopyahin</string>
+    <string name="feedback_copied">Nakopya na</string>
+    <string name="feedback_device_id">Device ID</string>
+    <string name="feedback_app">App</string>
+    <string name="feedback_engine">Engine</string>
+    <string name="feedback_language">Wika</string>
+    <string name="feedback_info_note">Walang pangalan, email o account — ang mga ID na ito at ang mga log ng app na ito lang.</string>
+    <string name="feedback_github_title">Magbukas ng issue sa GitHub</string>
+    <string name="feedback_github_hint">Pampubliko. Pinakamainam para sa mga bug at ideya — puwedeng sumubaybay at magdagdag ang iba.</string>
+    <string name="feedback_email_title">Mag-email sa %1$s</string>
+    <string name="feedback_email_hint">Pribado. Pinakamainam para sa mga tanong tungkol sa account o personal.</string>
+    <string name="feedback_email_subject">Feedback sa YMusic</string>
+    <string name="feedback_prefilled_note">Pareho silang nagbubukas nang may nakalagay nang impormasyon. Kung wala ito, i-paste ito — hindi kami makakatulong kung wala ito.</string>
+    <string name="feedback_reports_off_title">Naka-off ang mga anonymous na report</string>
+    <string name="feedback_reports_off_message">Para masuri ang problema mo, kailangan namin ang mga log ng app na ito. I-tap ang Magpatuloy at ibabalik ng YMusic ang mga anonymous na report at ipapadala ang mga log.</string>
+    <string name="feedback_reports_off_note">Walang ipinapadalang pangalan, email o account. Puwede mong i-off ulit ang mga report sa Mga setting.</string>
+    <string name="feedback_continue">Magpatuloy</string>
+    <string name="feedback_sentry_link">o sa pamamagitan ng Sentry</string>
+    <string name="feedback_sentry_title">Ipadala sa Sentry</string>
+    <string name="feedback_sentry_label">Ano ang nangyari?</string>
+    <string name="feedback_sentry_note">Kalakip ang iyong anonymous na impormasyon. Hindi kami makakasagot sa mga mensaheng ipinadala rito, kaya gamitin ang GitHub o email kung gusto mo ng sagot.</string>
+    <string name="feedback_sentry_send">Ipadala</string>
+    <string name="feedback_sentry_sent">Naipadala sa Sentry. Salamat!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menu</string>

@@ -231,17 +231,31 @@
     <string name="settings_licenses_intro">YMusic è open source con licenza GNU GPL v3.0. Include questi componenti:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Dicci cosa non funziona o cosa vorresti vedere. Screenshot o file di log sono utili.</string>
-    <string name="feedback_message_label">Cos'è successo?</string>
-    <string name="feedback_name_label">Nome (facoltativo)</string>
-    <string name="feedback_email_label">Email (facoltativa)</string>
-    <string name="feedback_attach">Allega file</string>
-    <string name="feedback_send">Invia</string>
-    <string name="feedback_sent">Feedback inviato — grazie!</string>
-    <string name="feedback_send_failed">Impossibile inviare il feedback — riprova</string>
-    <string name="feedback_attach_failed">Impossibile leggere il file selezionato — non è stato allegato</string>
-    <string name="feedback_file_too_large">“%1$s” è troppo grande da allegare (max 10 MB)</string>
-    <string name="cd_remove_attachment">Rimuovi allegato</string>
+    <string name="feedback_intro">Dicci cosa non ha funzionato o cosa ti piacerebbe vedere, su GitHub o via email. Includi le tue info anonime qui sotto così possiamo trovare i tuoi log e risponderti.</string>
+    <string name="feedback_info_title">Info anonime</string>
+    <string name="feedback_copy">Copia</string>
+    <string name="feedback_copied">Copiato</string>
+    <string name="feedback_device_id">ID dispositivo</string>
+    <string name="feedback_app">App</string>
+    <string name="feedback_engine">Motore</string>
+    <string name="feedback_language">Lingua</string>
+    <string name="feedback_info_note">Nessun nome, email o account — solo questi ID e i log di questa app.</string>
+    <string name="feedback_github_title">Apri una segnalazione su GitHub</string>
+    <string name="feedback_github_hint">Pubblico. Ideale per bug e idee — altri possono seguirla e contribuire.</string>
+    <string name="feedback_email_title">Scrivi a %1$s</string>
+    <string name="feedback_email_hint">Privato. Ideale per domande sull’account o personali.</string>
+    <string name="feedback_email_subject">Feedback su YMusic</string>
+    <string name="feedback_prefilled_note">Entrambi si aprono con le info già compilate. Se mancano, incollale — senza non possiamo aiutarti.</string>
+    <string name="feedback_reports_off_title">I report anonimi sono disattivati</string>
+    <string name="feedback_reports_off_message">Per esaminare il problema ci servono i log di questa app. Tocca Continua e YMusic riattiverà i report anonimi e invierà i log.</string>
+    <string name="feedback_reports_off_note">Non vengono inviati nome, email o account. Puoi disattivare di nuovo i report nelle Impostazioni.</string>
+    <string name="feedback_continue">Continua</string>
+    <string name="feedback_sentry_link">o tramite Sentry</string>
+    <string name="feedback_sentry_title">Invia tramite Sentry</string>
+    <string name="feedback_sentry_label">Cos’è successo?</string>
+    <string name="feedback_sentry_note">Le tue info anonime sono allegate. Non possiamo rispondere ai messaggi inviati da qui, quindi usa GitHub o l’email se vuoi una risposta.</string>
+    <string name="feedback_sentry_send">Invia</string>
+    <string name="feedback_sentry_sent">Inviato tramite Sentry. Grazie!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menu</string>

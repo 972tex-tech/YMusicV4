@@ -232,17 +232,31 @@
     <string name="settings_licenses_intro">YMusic — открытое ПО под лицензией GNU GPL v3.0. В него входят следующие компоненты:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Расскажите, что сломалось или что вы хотели бы увидеть. Скриншоты и файлы логов помогут.</string>
-    <string name="feedback_message_label">Что случилось?</string>
-    <string name="feedback_name_label">Имя (необязательно)</string>
-    <string name="feedback_email_label">Эл. почта (необязательно)</string>
-    <string name="feedback_attach">Прикрепить файлы</string>
-    <string name="feedback_send">Отправить</string>
-    <string name="feedback_sent">Отзыв отправлен — спасибо!</string>
-    <string name="feedback_send_failed">Не удалось отправить отзыв — попробуйте ещё раз</string>
-    <string name="feedback_attach_failed">Не удалось прочитать выбранный файл — он не прикреплён</string>
-    <string name="feedback_file_too_large">«%1$s» слишком большой для прикрепления (макс. 10 МБ)</string>
-    <string name="cd_remove_attachment">Удалить вложение</string>
+    <string name="feedback_intro">Расскажите, что пошло не так или что бы вы хотели видеть, на GitHub или по почте. Приложите анонимные данные ниже, чтобы мы нашли ваши логи и ответили.</string>
+    <string name="feedback_info_title">Анонимные данные</string>
+    <string name="feedback_copy">Копировать</string>
+    <string name="feedback_copied">Скопировано</string>
+    <string name="feedback_device_id">ID устройства</string>
+    <string name="feedback_app">Приложение</string>
+    <string name="feedback_engine">Движок</string>
+    <string name="feedback_language">Язык</string>
+    <string name="feedback_info_note">Никаких имён, адресов почты или аккаунтов — только эти ID и логи этого приложения.</string>
+    <string name="feedback_github_title">Создать issue на GitHub</string>
+    <string name="feedback_github_hint">Публично. Лучше всего для ошибок и идей — другие смогут следить и дополнять.</string>
+    <string name="feedback_email_title">Написать на %1$s</string>
+    <string name="feedback_email_hint">Лично. Лучше всего для вопросов об аккаунте или личных вопросов.</string>
+    <string name="feedback_email_subject">Отзыв о YMusic</string>
+    <string name="feedback_prefilled_note">Оба варианта открываются с уже заполненными данными. Если их нет, вставьте их — без них мы не сможем помочь.</string>
+    <string name="feedback_reports_off_title">Анонимные отчёты выключены</string>
+    <string name="feedback_reports_off_message">Чтобы разобраться в проблеме, нам нужны логи этого приложения. Нажмите «Продолжить», и YMusic снова включит анонимные отчёты и отправит логи.</string>
+    <string name="feedback_reports_off_note">Имя, почта и аккаунт не отправляются. Отчёты можно снова выключить в Настройках.</string>
+    <string name="feedback_continue">Продолжить</string>
+    <string name="feedback_sentry_link">или через Sentry</string>
+    <string name="feedback_sentry_title">Отправить через Sentry</string>
+    <string name="feedback_sentry_label">Что случилось?</string>
+    <string name="feedback_sentry_note">Ваши анонимные данные прикреплены. Мы не можем ответить на сообщения, отправленные отсюда, поэтому, если нужен ответ, используйте GitHub или почту.</string>
+    <string name="feedback_sentry_send">Отправить</string>
+    <string name="feedback_sentry_sent">Отправлено через Sentry. Спасибо!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Меню</string>
