@@ -493,6 +493,8 @@
     <string name="download_save_to">الحفظ في</string>
     <string name="download_location_not_set">غير محدد</string>
     <string name="download_location_read_only">هذا المجلد للقراءة فقط. اختر مجلدًا آخر للتنزيلات</string>
+    <string name="download_location_missing">هذا المجلد لم يعد موجودًا. اختر مجلدًا آخر للتنزيلات</string>
+    <string name="download_location_cannot_create">لا يمكن حفظ الملفات في هذا المجلد. اختر مجلدًا آخر للتنزيلات</string>
     <string name="download_action">تنزيل</string>
     <string name="download_action_detail">تنزيل %1$s · %2$s</string>
     <string name="download_rename">إعادة تسمية الملف</string>

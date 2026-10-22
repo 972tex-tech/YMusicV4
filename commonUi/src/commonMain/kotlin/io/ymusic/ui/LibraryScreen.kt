@@ -247,6 +247,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             // Download location (a Library folder, root or nested) — the Folders tab marks it and its
             // menu re-designates it. Only meaningful when the shell can download.
             val dlScope = rememberCoroutineScope()
+            val snackbar = LocalSnackbar.current
             val downloadLocationRaw by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
             val downloadLocation: String? = downloadLocationRaw.takeIf { graph.downloads != null && it.isNotBlank() }
             val onToggleDownloadLocation: ((MediaStoreBucket) -> Unit)? = if (graph.downloads == null) {
@@ -255,7 +256,11 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 { bucket ->
                     val target = bucket.uri.toString()
                     dlScope.launch {
-                        graph.settings.put(AppSettings.downloadLocation, if (downloadLocationRaw == target) "" else target)
+                        if (downloadLocationRaw == target) {
+                            graph.settings.put(AppSettings.downloadLocation, "")
+                        } else {
+                            assignDownloadFolder(graph, target, snackbar)
+                        }
                     }
                 }
             }

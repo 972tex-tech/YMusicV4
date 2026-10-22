@@ -75,6 +75,7 @@ import io.ymusic.telemetry.sendSentryFeedback
 import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
+import io.ymusic.ui.FolderWriteProblem
 import io.ymusic.ui.ScanResult
 import io.ymusic.ui.YtEngineSabrSpecResolver
 import io.ymusic.ui.bundleConfig
@@ -637,6 +638,7 @@ class YMusicApplication : Application() {
                 checkCallingOrSelfUriPermission(android.net.Uri.parse(uri), Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
                     PackageManager.PERMISSION_GRANTED
             },
+            probeDownloadFolder = { uri -> probeDownloadFolder(android.net.Uri.parse(uri)) },
             rescanLibrary = { folderUri, onProgress -> rescanKnownRoots(shared.mediaStore, folderUri, onProgress) },
             pruneUngrantedFolders = { pruneUngrantedFolders(shared.mediaStore) },
             deleteFromDisk = { item ->
@@ -757,6 +759,47 @@ class YMusicApplication : Application() {
         false
     } catch (e: SecurityException) {
         false
+    }
+
+    /** Creates, writes and deletes a scratch file in [folder] — the steps a finished download takes. */
+    private suspend fun probeDownloadFolder(folder: android.net.Uri): FolderWriteProblem? = withContext(Dispatchers.IO) {
+        val log = rootLogger.fork("download-folder-probe", mapOf("folder" to folder.toString()))
+        if (checkCallingOrSelfUriPermission(folder, Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+            return@withContext FolderWriteProblem.NoPermission
+        }
+        val parent = if (android.provider.DocumentsContract.isDocumentUri(this@YMusicApplication, folder)) {
+            folder
+        } else {
+            android.provider.DocumentsContract.buildDocumentUriUsingTree(folder, android.provider.DocumentsContract.getTreeDocumentId(folder))
+        }
+        val probe = try {
+            android.provider.DocumentsContract.createDocument(contentResolver, parent, "application/octet-stream", ".ymusic-write-test")
+        } catch (e: SecurityException) {
+            log.log(Logger.Level.WARN, "test file refused", e)
+            return@withContext FolderWriteProblem.NoPermission
+        } catch (e: java.io.FileNotFoundException) {
+            log.log(Logger.Level.WARN, "folder gone", e)
+            return@withContext FolderWriteProblem.Missing
+        } catch (e: Exception) {
+            log.log(Logger.Level.WARN, "test file not created", e)
+            return@withContext FolderWriteProblem.CannotCreateFiles
+        } ?: return@withContext FolderWriteProblem.CannotCreateFiles
+        try {
+            contentResolver.openOutputStream(probe)?.use { it.write(0) } ?: return@withContext FolderWriteProblem.CannotCreateFiles
+            null
+        } catch (e: SecurityException) {
+            log.log(Logger.Level.WARN, "test file not writable", e)
+            FolderWriteProblem.NoPermission
+        } catch (e: Exception) {
+            log.log(Logger.Level.WARN, "test file not writable", e)
+            FolderWriteProblem.CannotCreateFiles
+        } finally {
+            try {
+                android.provider.DocumentsContract.deleteDocument(contentResolver, probe)
+            } catch (e: Exception) {
+                log.log(Logger.Level.WARN, "test file left behind", e)
+            }
+        }
     }
 
     /** SAF folder pick + full scan into [store]; returns how it ended, or null when canceled. */

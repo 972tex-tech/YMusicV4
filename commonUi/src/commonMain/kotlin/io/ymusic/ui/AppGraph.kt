@@ -106,6 +106,8 @@ class AppGraph(
     /** Whether the app can write into a folder [libraryFolderPicker] returned; Android checks the SAF grant,
      *  which some providers refuse (read-only). */
     val canWriteFolder: (String) -> Boolean = { true },
+    /** Test-writes (creates, writes, deletes) a file in a would-be download folder; null when that works. */
+    val probeDownloadFolder: suspend (String) -> FolderWriteProblem? = { null },
     /**
      * Re-scans already-added folders in place (no folder pick). [folderUri] null means every library
      * root; otherwise only that folder and its children. Null when the shell can't scan.
