@@ -1249,9 +1249,10 @@ enum class DiscoverTab(val id: Int, val label: StringResource, val icon: ImageVe
 internal fun discoverTabsFor(graph: AppGraph): List<DiscoverTab> =
     DiscoverTab.entries.filter { !graph.guest || (it != DiscoverTab.Account && it != DiscoverTab.TopTracks) }
 
-/** Icon tabs with the 2dp underline indicator; [inline] is the app-bar form (tighter gap, no leading
- *  inset). A single indicator slides between tabs (and leans toward the neighbour by [dragProgress],
- *  −1..1, from the content swipe) instead of the underline snapping tab-to-tab. */
+/** Icon tabs with the 2dp underline indicator; [inline] is the app-bar form (compact icon tabs, short
+ *  underline), otherwise the tabs split the row's width evenly and the underline spans the tab. A single
+ *  indicator slides between tabs (and leans toward the neighbour by [dragProgress], −1..1, from the
+ *  content swipe) instead of the underline snapping tab-to-tab. */
 @Composable
 internal fun DiscoverTabRow(
     selected: DiscoverTab,
@@ -1261,23 +1262,25 @@ internal fun DiscoverTabRow(
     onSelect: (DiscoverTab) -> Unit,
 ) {
     val density = LocalDensity.current
-    // Each tab's centre (in the row's space) so the fixed-width indicator can slide between them.
-    val centers = remember { mutableStateMapOf<DiscoverTab, Dp>() }
-    // Each tab's clickable spans half the icon gap on either side, so the tabs tile the row with no
-    // dead space between them; the leading inset is reduced by that half-gap.
-    val halfGap = (if (inline) 20.dp else 24.dp) / 2
-    Column(Modifier.padding(start = if (inline) 0.dp else 20.dp - halfGap)) {
-        Row {
+    // Each tab's (centre, width) in the row's space so the indicator can slide between them.
+    val bounds = remember { mutableStateMapOf<DiscoverTab, Pair<Dp, Dp>>() }
+    // Inline: each tab's clickable spans half the icon gap on either side, so the tabs tile the row
+    // with no dead space between them.
+    val halfGap = 20.dp / 2
+    Column(if (inline) Modifier else Modifier.fillMaxWidth()) {
+        Row(if (inline) Modifier else Modifier.fillMaxWidth()) {
             tabs.forEach { t ->
                 val active = t == selected
                 Box(
-                    Modifier.onGloballyPositioned { c ->
-                        val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
-                        centers[t] = with(density) { (x + c.size.width / 2f).toDp() }
-                    }
-                        .clip(RoundedCornerShape(10.dp))
+                    (if (inline) Modifier else Modifier.weight(1f))
+                        .onGloballyPositioned { c ->
+                            val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
+                            bounds[t] = with(density) { (x + c.size.width / 2f).toDp() to c.size.width.toDp() }
+                        }
+                        .then(if (inline) Modifier.clip(RoundedCornerShape(10.dp)) else Modifier)
                         .clickable { onSelect(t) }
-                        .padding(horizontal = halfGap, vertical = 8.dp),
+                        .padding(horizontal = if (inline) halfGap else 0.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         t.icon,
@@ -1288,16 +1291,17 @@ internal fun DiscoverTabRow(
                 }
             }
         }
-        val cur = centers[selected]
+        val cur = bounds[selected]
         val i = tabs.indexOf(selected)
-        val neighbor = tabs.getOrNull((i + if (dragProgress > 0f) 1 else -1).coerceIn(0, tabs.lastIndex))?.let { centers[it] }
+        val neighbor = tabs.getOrNull((i + if (dragProgress > 0f) 1 else -1).coerceIn(0, tabs.lastIndex))?.let { bounds[it] }
         val frac = abs(dragProgress) * TabIndicatorDragTravel
-        val targetCenter = if (cur != null && neighbor != null) lerp(cur, neighbor, frac) else cur ?: 0.dp
+        val targetCenter = if (cur != null && neighbor != null) lerp(cur.first, neighbor.first, frac) else cur?.first ?: 0.dp
         val center by animateDpAsState(targetCenter, label = "discoverIndicator")
+        val indicatorWidth = if (inline) DiscoverUnderlineWidth else cur?.second ?: 0.dp
         Box(
             Modifier
-                .offset(x = center - DiscoverUnderlineWidth / 2)
-                .width(DiscoverUnderlineWidth)
+                .offset(x = center - indicatorWidth / 2)
+                .width(indicatorWidth)
                 .height(2.dp)
                 .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
         )
