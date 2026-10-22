@@ -597,6 +597,7 @@ class YMusicApplication : Application() {
                     applicationContext,
                     FileSystem.SYSTEM,
                     File(noBackupFilesDir, "download-work").absolutePath.toPath(),
+                    rootLogger.fork("download-storage"),
                 ),
                 mediaCache = playerCache, // read-only (see YtStreamDownloader): reuse cached playback bytes
                 // Own segment index for SABR resume (byte range per segment), separate from the player cache DB.
