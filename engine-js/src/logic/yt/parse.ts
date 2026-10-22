@@ -993,6 +993,20 @@ function shelfHeader(value: Record<string, unknown>): WireSectionHeader | undefi
   return header;
 }
 
+/** A continuationItemRenderer's token: an owned playlist wraps it in a commandExecutorCommand
+ *  beside a "Reload for updates" popup (verified live 2026-10-22). */
+function continuationEndpointToken(endpoint: unknown): string | undefined {
+  const direct = asString(get(endpoint, "continuationCommand", "token"));
+  if (direct !== undefined) return direct;
+  const commands = get(endpoint, "commandExecutorCommand", "commands");
+  if (!Array.isArray(commands)) return undefined;
+  for (const command of commands) {
+    const token = asString(get(command, "continuationCommand", "token"));
+    if (token !== undefined) return token;
+  }
+  return undefined;
+}
+
 /**
  * Collect a feed page as a list of sections. Serves /browse, /search and /next alike (fresh page or
  * continuation append). A **titled shelf** becomes its own section (header + grid layout); everything
@@ -1183,9 +1197,7 @@ export function collectPage(
       }
       if (key === "continuationItemRenderer") {
         if (continuation === undefined) {
-          continuation = asString(
-            get(value, "continuationEndpoint", "continuationCommand", "token"),
-          );
+          continuation = continuationEndpointToken(get(value, "continuationEndpoint"));
         }
         return true;
       }
