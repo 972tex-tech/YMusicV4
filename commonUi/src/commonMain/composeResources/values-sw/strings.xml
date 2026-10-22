@@ -208,6 +208,7 @@
     <string name="sleep_hours_minutes">Saa %1$d dak %2$d</string>
     <string name="sleep_add_minutes">+Dak %1$d</string>
     <string name="playback_failed">Imeshindikana (%1$s)</string>
+    <string name="playback_botguard_failed">Imeshindwa kukwepa Botguard</string>
 
 
     <!-- Settings -->

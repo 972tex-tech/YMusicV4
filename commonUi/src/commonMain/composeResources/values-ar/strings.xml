@@ -251,6 +251,7 @@
     <string name="playback_folder_access_lost">فقد YMusic إذن الوصول إلى مجلد هذا الملف. أضف المجلد مرة أخرى لتشغيله</string>
     <string name="playback_add_folder_again">إضافة مجلد</string>
     <string name="playback_video_unsupported">لا يستطيع جهازك تشغيل تنسيق الفيديو هذا. اختر جودة أخرى.</string>
+    <string name="playback_botguard_failed">فشل تجاوز Botguard</string>
     <string name="menu_reload_player">إعادة تحميل المشغّل</string>
 
 

@@ -208,6 +208,7 @@
     <string name="sleep_hours_minutes">%1$d ժ %2$d րոպե</string>
     <string name="sleep_add_minutes">+%1$d րոպե</string>
     <string name="playback_failed">Ձախողվեց (%1$s)</string>
+    <string name="playback_botguard_failed">Botguard-ի շրջանցումը ձախողվեց</string>
 
 
     <!-- Settings -->

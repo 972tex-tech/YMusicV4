@@ -207,6 +207,7 @@
     <string name="sleep_hours_minutes">%1$d 小時 %2$d 分鐘</string>
     <string name="sleep_add_minutes">+%1$d 分鐘</string>
     <string name="playback_failed">播放失敗（%1$s）</string>
+    <string name="playback_botguard_failed">Botguard 繞過失敗</string>
 
 
     <!-- Settings -->

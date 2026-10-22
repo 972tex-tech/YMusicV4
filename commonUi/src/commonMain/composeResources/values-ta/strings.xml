@@ -208,6 +208,7 @@
     <string name="sleep_hours_minutes">%1$d மணி %2$d நிமி</string>
     <string name="sleep_add_minutes">+%1$d நிமி</string>
     <string name="playback_failed">தோல்வி (%1$s)</string>
+    <string name="playback_botguard_failed">Botguard தவிர்ப்பு தோல்வியடைந்தது</string>
 
 
     <!-- Settings -->

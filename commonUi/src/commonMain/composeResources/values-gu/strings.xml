@@ -208,6 +208,7 @@
     <string name="sleep_hours_minutes">%1$d કલાક %2$d મિનિટ</string>
     <string name="sleep_add_minutes">+%1$d મિનિટ</string>
     <string name="playback_failed">નિષ્ફળ (%1$s)</string>
+    <string name="playback_botguard_failed">Botguard બાયપાસ નિષ્ફળ</string>
 
 
     <!-- Settings -->

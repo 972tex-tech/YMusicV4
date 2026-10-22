@@ -209,6 +209,7 @@
     <string name="sleep_hours_minutes">%1$d ש' %2$d דק'</string>
     <string name="sleep_add_minutes">+%1$d דק'</string>
     <string name="playback_failed">נכשל (%1$s)</string>
+    <string name="playback_botguard_failed">עקיפת Botguard נכשלה</string>
 
 
     <!-- Settings -->

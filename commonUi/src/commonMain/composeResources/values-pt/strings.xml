@@ -209,6 +209,7 @@
     <string name="sleep_hours_minutes">%1$d h %2$d min</string>
     <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Falhou (%1$s)</string>
+    <string name="playback_botguard_failed">Falha ao contornar o Botguard</string>
 
 
     <!-- Settings -->

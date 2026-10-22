@@ -113,6 +113,9 @@ data class PlayerError(
 
         /** The platform video decoder refused the stream (size or profile beyond the device). */
         const val VIDEO_DECODER_FAILED = "E60064"
+
+        /** googlevideo rejected the session's PO token (StreamProtectionStatus=3). */
+        const val PO_TOKEN_REJECTED = "E60065"
     }
 }
 

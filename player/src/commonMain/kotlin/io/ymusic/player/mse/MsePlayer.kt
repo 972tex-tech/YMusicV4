@@ -674,7 +674,7 @@ class MsePlayer internal constructor(
         if (json.boolOrNull("poRejected") == true) {
             // googlevideo rejected this session's PO token: only a fresh session re-attests.
             tearDownSession("po token rejected")
-            fail(TechnicalException("E60065", "googlevideo rejected the PO token (StreamProtectionStatus=3)"), "po token rejected", needReset = true)
+            fail(TechnicalException(PlayerError.PO_TOKEN_REJECTED, "googlevideo rejected the PO token (StreamProtectionStatus=3)"), "po token rejected", needReset = true)
             return
         }
         _audioSessionId.value = if (hostLive()) videoSurface.audioSessionId() else 0

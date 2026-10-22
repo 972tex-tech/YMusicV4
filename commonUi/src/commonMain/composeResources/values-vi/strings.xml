@@ -246,6 +246,7 @@
     <string name="playback_folder_access_lost">YMusic đã mất quyền truy cập thư mục chứa tệp này. Hãy thêm lại thư mục để phát</string>
     <string name="playback_add_folder_again">Thêm thư mục</string>
     <string name="playback_video_unsupported">Thiết bị của bạn không phát được định dạng video này. Hãy chọn chất lượng khác.</string>
+    <string name="playback_botguard_failed">Vượt Botguard thất bại</string>
     <string name="menu_reload_player">Tải lại trình phát</string>
 
 

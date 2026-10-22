@@ -207,6 +207,7 @@
     <string name="sleep_hours_minutes">%1$d 時間 %2$d 分</string>
     <string name="sleep_add_minutes">+%1$d 分</string>
     <string name="playback_failed">失敗しました（%1$s）</string>
+    <string name="playback_botguard_failed">Botguard の回避に失敗しました</string>
 
 
     <!-- Settings -->

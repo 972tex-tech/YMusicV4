@@ -207,6 +207,7 @@
     <string name="sleep_hours_minutes">%1$d시간 %2$d분</string>
     <string name="sleep_add_minutes">+%1$d분</string>
     <string name="playback_failed">실패(%1$s)</string>
+    <string name="playback_botguard_failed">Botguard 우회 실패</string>
 
 
     <!-- Settings -->

@@ -262,6 +262,7 @@
     <string name="playback_folder_access_lost">YMusic lost access to this folder. Add it again to play this file</string>
     <string name="playback_add_folder_again">Add folder</string>
     <string name="playback_video_unsupported">Your device can't play this video format. Pick another quality.</string>
+    <string name="playback_botguard_failed">Botguard bypass failure</string>
     <string name="menu_reload_player">Reload player</string>
 
 
