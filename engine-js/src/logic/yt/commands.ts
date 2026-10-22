@@ -369,9 +369,12 @@ onAccept(
       // A sort-menu chip (see browseParamsToken): a fresh browse with the sort baked into params.
       // Only the Playlists tab ships a browse-typed sort menu today (Videos/Shorts sort via
       // continuation-typed chips, which keep the Shorts wrap) — so no Shorts mode here.
-      if (channelPath === undefined)
+      const url = asString(args["url"]) ?? "";
+      const q = url.indexOf("?");
+      const browseId = channelPath?.id ?? FEED_BROWSE_IDS[q < 0 ? url : url.slice(0, q)];
+      if (browseId === undefined)
         throw JsEngineErrorImpl.parse("yt/channel sort needs the channel url");
-      fields["browseId"] = channelPath.id;
+      fields["browseId"] = browseId;
       if (sortParams !== "") fields["params"] = sortParams;
     } else if (continuation !== undefined) {
       if (continuation.indexOf(SHORTS_CONT_PREFIX) === 0) {
