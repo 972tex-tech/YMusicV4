@@ -336,9 +336,10 @@ internal fun DesignAppBar(
         ActionIcon(Icons.Default.Menu, stringResource(Res.string.cd_menu), onClick = onMenu)
         AppBarTitle(title, fill = false, reserveWidthOf = titleReserveWidthOf)
         if (inlineContent != null) {
-            Box(Modifier.padding(start = 16.dp)) { inlineContent() }
+            Box(Modifier.weight(1f).padding(start = 16.dp)) { inlineContent() }
+        } else {
+            Box(Modifier.weight(1f))
         }
-        Box(Modifier.weight(1f))
         if (onSearch != null) {
             ActionIcon(Icons.Default.Search, stringResource(Res.string.cd_search), onClick = onSearch)
         }

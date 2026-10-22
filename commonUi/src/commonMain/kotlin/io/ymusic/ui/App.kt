@@ -851,8 +851,8 @@ private fun AppRoot(
             BoxWithConstraints(
                 Modifier.fillMaxSize().safeDrawingPadding(),
             ) {
-                // design/final/home.html: landscape puts the tab row inline in the app bar.
-                val wide = maxWidth > maxHeight && maxWidth >= 600.dp
+                // design/final/home.html: landscape (or any window this wide) puts the tab row inline in the app bar.
+                val wide = maxWidth > maxHeight && maxWidth >= 600.dp || maxWidth >= 650.dp
                 // Fully covering Now Playing is opaque: skip drawing the feed/mini-player under it
                 // (4× GPU overdraw). Draw them again as soon as the sheet peeks so dismiss reveals.
                 val drawShell = !nowPlayingOpen || nowPlayingPeeking
@@ -1249,8 +1249,8 @@ enum class DiscoverTab(val id: Int, val label: StringResource, val icon: ImageVe
 internal fun discoverTabsFor(graph: AppGraph): List<DiscoverTab> =
     DiscoverTab.entries.filter { !graph.guest || (it != DiscoverTab.Account && it != DiscoverTab.TopTracks) }
 
-/** Icon tabs with the 2dp underline indicator; [inline] is the app-bar form (compact icon tabs, short
- *  underline), otherwise the tabs split the row's width evenly and the underline spans the tab. A single
+/** Icon tabs with the 2dp underline indicator spanning the tab; [inline] is the app-bar form (capped-width
+ *  icon tabs), otherwise the tabs split the row's width evenly. A single
  *  indicator slides between tabs (and leans toward the neighbour by [dragProgress], −1..1, from the
  *  content swipe) instead of the underline snapping tab-to-tab. */
 @Composable
@@ -1264,51 +1264,52 @@ internal fun DiscoverTabRow(
     val density = LocalDensity.current
     // Each tab's (centre, width) in the row's space so the indicator can slide between them.
     val bounds = remember { mutableStateMapOf<DiscoverTab, Pair<Dp, Dp>>() }
-    // Inline: each tab's clickable spans half the icon gap on either side, so the tabs tile the row
-    // with no dead space between them.
-    val halfGap = 20.dp / 2
-    Column(if (inline) Modifier else Modifier.fillMaxWidth()) {
-        Row(if (inline) Modifier else Modifier.fillMaxWidth()) {
-            tabs.forEach { t ->
-                val active = t == selected
-                Box(
-                    (if (inline) Modifier else Modifier.weight(1f))
-                        .onGloballyPositioned { c ->
-                            val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
-                            bounds[t] = with(density) { (x + c.size.width / 2f).toDp() to c.size.width.toDp() }
-                        }
-                        .then(if (inline) Modifier.clip(RoundedCornerShape(10.dp)) else Modifier)
-                        .clickable { onSelect(t) }
-                        .padding(horizontal = if (inline) halfGap else 0.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        t.icon,
-                        stringResource(t.label),
-                        Modifier.size(24.dp),
-                        tint = if (active) DesignColors.Accent else DesignColors.InkFaint,
-                    )
+    BoxWithConstraints(if (inline) Modifier else Modifier.fillMaxWidth()) {
+        // Inline: equal tabs tiling the row with no dead space, shrinking from the max when the bar is short.
+        val inlineTabWidth = (maxWidth / tabs.size.coerceAtLeast(1)).coerceAtMost(DiscoverInlineTabMaxWidth)
+        Column(if (inline) Modifier else Modifier.fillMaxWidth()) {
+            Row(if (inline) Modifier else Modifier.fillMaxWidth()) {
+                tabs.forEach { t ->
+                    val active = t == selected
+                    Box(
+                        (if (inline) Modifier.width(inlineTabWidth) else Modifier.weight(1f))
+                            .onGloballyPositioned { c ->
+                                val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
+                                bounds[t] = with(density) { (x + c.size.width / 2f).toDp() to c.size.width.toDp() }
+                            }
+                            .then(if (inline) Modifier.clip(RoundedCornerShape(10.dp)) else Modifier)
+                            .clickable { onSelect(t) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            t.icon,
+                            stringResource(t.label),
+                            Modifier.size(24.dp),
+                            tint = if (active) DesignColors.Accent else DesignColors.InkFaint,
+                        )
+                    }
                 }
             }
+            val cur = bounds[selected]
+            val i = tabs.indexOf(selected)
+            val neighbor = tabs.getOrNull((i + if (dragProgress > 0f) 1 else -1).coerceIn(0, tabs.lastIndex))?.let { bounds[it] }
+            val frac = abs(dragProgress) * TabIndicatorDragTravel
+            val targetCenter = if (cur != null && neighbor != null) lerp(cur.first, neighbor.first, frac) else cur?.first ?: 0.dp
+            val center by animateDpAsState(targetCenter, label = "discoverIndicator")
+            val indicatorWidth = cur?.second ?: 0.dp
+            Box(
+                Modifier
+                    .offset(x = center - indicatorWidth / 2)
+                    .width(indicatorWidth)
+                    .height(2.dp)
+                    .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
+            )
         }
-        val cur = bounds[selected]
-        val i = tabs.indexOf(selected)
-        val neighbor = tabs.getOrNull((i + if (dragProgress > 0f) 1 else -1).coerceIn(0, tabs.lastIndex))?.let { bounds[it] }
-        val frac = abs(dragProgress) * TabIndicatorDragTravel
-        val targetCenter = if (cur != null && neighbor != null) lerp(cur.first, neighbor.first, frac) else cur?.first ?: 0.dp
-        val center by animateDpAsState(targetCenter, label = "discoverIndicator")
-        val indicatorWidth = if (inline) DiscoverUnderlineWidth else cur?.second ?: 0.dp
-        Box(
-            Modifier
-                .offset(x = center - indicatorWidth / 2)
-                .width(indicatorWidth)
-                .height(2.dp)
-                .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
-        )
     }
 }
 
-private val DiscoverUnderlineWidth = 34.dp
+private val DiscoverInlineTabMaxWidth = 88.dp
 
 @Composable
 private fun DiscoverFeed(
