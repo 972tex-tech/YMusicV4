@@ -8,7 +8,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -92,7 +91,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -101,7 +99,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -515,7 +512,7 @@ private fun PortraitNowPlaying(
         }
     }
     // Queue rows sit after the controls item and the sticky header in this list.
-    val dragState = rememberQueueDragState(listState, indexOffset = 2, player)
+    val dragState = rememberReorderDragState(listState, indexOffset = 2) { from, to -> player.move(from, to) }
 
     Column(
         Modifier.fillMaxSize()
@@ -674,7 +671,7 @@ private fun LandscapeNowPlaying(
                 QueueHeader(coordinator, queue.currentIndex, queue.displayTotal, queue.shuffle, queue.loopMode)
                 HorizontalDivider(color = DesignColors.Divider)
                 val queueListState = rememberLazyListState()
-                val dragState = rememberQueueDragState(queueListState, indexOffset = 0, player)
+                val dragState = rememberReorderDragState(queueListState, indexOffset = 0) { from, to -> player.move(from, to) }
                 FollowCurrentQueueItem(queueListState, queue.currentIndex)
                 LazyColumn(state = queueListState, modifier = Modifier.weight(1f)) {
                     itemsIndexed(queue.items) { index, item ->
@@ -1715,116 +1712,13 @@ private suspend fun queueVideoIds(graph: AppGraph, items: List<PlayableItem>): L
     }.distinct()
 }
 
-/**
- * Drag-to-reorder for the queue lists. A drag on a row's handle starts it; rows swap live through
- * `player.move` whenever the dragged row's center crosses a neighbour, and the list autoscrolls
- * while the row is held past either viewport edge. [indexOffset] maps queue indices to lazy-item
- * indices (the portrait list carries the controls item and the sticky header before the rows).
- */
-private class QueueDragState(
-    private val listState: LazyListState,
-    private val indexOffset: Int,
-    private val onMove: (Int, Int) -> Unit,
-) {
-    var draggingIndex by mutableStateOf<Int?>(null)
-        private set
-    var dragOffset by mutableFloatStateOf(0f)
-        private set
-
-    /** Pixels the dragged row overhangs the viewport — the autoscroll loop's speed input. */
-    var autoscroll by mutableFloatStateOf(0f)
-        private set
-
-    fun start(index: Int) {
-        draggingIndex = index
-        dragOffset = 0f
-    }
-
-    fun drag(deltaY: Float) {
-        dragOffset += deltaY
-        swapIfCrossed()
-        val info = draggedItem() ?: return
-        val layout = listState.layoutInfo
-        val top = info.offset + dragOffset
-        val bottom = top + info.size
-        autoscroll = when {
-            bottom > layout.viewportEndOffset -> bottom - layout.viewportEndOffset
-            top < layout.viewportStartOffset -> top - layout.viewportStartOffset
-            else -> 0f
-        }
-    }
-
-    /** The autoscroll loop reports what the list scrolled; keeps the row under the pointer. */
-    fun scrolledBy(consumed: Float) {
-        dragOffset += consumed
-        swapIfCrossed()
-    }
-
-    /** The list hit its end — stop the loop until the next drag event re-evaluates. */
-    fun stopAutoscroll() {
-        autoscroll = 0f
-    }
-
-    fun end() {
-        draggingIndex = null
-        dragOffset = 0f
-        autoscroll = 0f
-    }
-
-    private fun draggedItem() = draggingIndex?.let { dragged ->
-        listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == dragged + indexOffset }
-    }
-
-    private fun swapIfCrossed() {
-        val from = draggingIndex ?: return
-        val info = draggedItem() ?: return
-        val center = info.offset + dragOffset + info.size / 2f
-        val target = listState.layoutInfo.visibleItemsInfo.firstOrNull {
-            it.index != info.index && it.index >= indexOffset &&
-                center >= it.offset && center < it.offset + it.size
-        } ?: return
-        onMove(from, target.index - indexOffset)
-        // The moved row is laid out at the target's old slot next frame; fold the base-position
-        // change into the translation so it stays under the pointer.
-        dragOffset += info.offset - target.offset
-        draggingIndex = target.index - indexOffset
-    }
-}
-
-@Composable
-private fun rememberQueueDragState(
-    listState: LazyListState,
-    indexOffset: Int,
-    player: io.ymusic.player.Player,
-): QueueDragState {
-    val state = remember(listState, player) {
-        QueueDragState(listState, indexOffset) { from, to -> player.move(from, to) }
-    }
-    LaunchedEffect(state) {
-        while (true) {
-            snapshotFlow { state.autoscroll }.first { it != 0f }
-            while (state.autoscroll != 0f) {
-                val step = (state.autoscroll * 0.12f).coerceIn(-24f, 24f)
-                val consumed = listState.scrollBy(step)
-                if (consumed == 0f) {
-                    state.stopAutoscroll()
-                    break
-                }
-                state.scrolledBy(consumed)
-                withFrameNanos {}
-            }
-        }
-    }
-    return state
-}
-
 @Composable
 private fun QueueRow(
     coordinator: PlaybackCoordinator,
     index: Int,
     item: io.ymusic.player.PlayableItem,
     current: Boolean,
-    dragState: QueueDragState,
+    dragState: ReorderDragState,
     large: Boolean = false,
 ) {
     val dragging = dragState.draggingIndex == index
@@ -1867,7 +1761,7 @@ private fun QueueRowContent(
     index: Int,
     item: io.ymusic.player.PlayableItem,
     current: Boolean,
-    dragState: QueueDragState,
+    dragState: ReorderDragState,
     large: Boolean,
     dragging: Boolean,
     swiping: Boolean,
