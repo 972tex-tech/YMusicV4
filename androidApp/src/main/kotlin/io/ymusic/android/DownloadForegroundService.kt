@@ -70,7 +70,14 @@ class DownloadForegroundService : Service() {
     // cancelled with the service, so the posts queued by finish() still land after stopSelf().
     private val notifyLane = CoroutineScope(
         SupervisorJob() + Dispatchers.IO.limitedParallelism(1) +
-            CoroutineExceptionHandler { _, e -> log?.fork("notify")?.captureError(e) },
+            CoroutineExceptionHandler { _, e ->
+                // The system server died; this process goes down with it, so it's not a failure of ours.
+                if (e.cause is android.os.DeadSystemException) {
+                    log?.fork("notify")?.log(Logger.Level.WARN, "system died while posting a notification", e)
+                } else {
+                    log?.fork("notify")?.captureError(e)
+                }
+            },
     )
     private var downloads: DownloadService? = null
     private var imageLoader: ImageLoader? = null
@@ -261,7 +268,7 @@ class DownloadForegroundService : Service() {
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .setContentIntent(openAppIntent())
+            .setContentIntent(openAppIntent)
             .apply {
                 val progress = task.progress
                 when {
@@ -329,7 +336,7 @@ class DownloadForegroundService : Service() {
                 if (permille >= 0) setProgress(1000, permille, false)
                 else setProgress(0, 0, true)
             }
-            .addAction(0, getString(R.string.downloads_pause_all), pauseAllIntent())
+            .addAction(0, getString(R.string.downloads_pause_all), pauseAllIntent)
             .build()
     }
 
@@ -363,7 +370,7 @@ class DownloadForegroundService : Service() {
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .setContentIntent(openAppIntent())
+            .setContentIntent(openAppIntent)
 
     // ---- locks / plumbing ----
 
@@ -396,19 +403,23 @@ class DownloadForegroundService : Service() {
 
     /** Lands on the Download manager. The distinct action keeps this PendingIntent from aliasing
      *  the playback notification's plain launch intent (filterEquals compares actions). */
-    private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
-        this,
-        OPEN_REQUEST_CODE,
-        Intent(this, MainActivity::class.java).setAction(MainActivity.ACTION_OPEN_DOWNLOADS),
-        PendingIntent.FLAG_IMMUTABLE,
-    )
+    private val openAppIntent: PendingIntent by lazy {
+        PendingIntent.getActivity(
+            this,
+            OPEN_REQUEST_CODE,
+            Intent(this, MainActivity::class.java).setAction(MainActivity.ACTION_OPEN_DOWNLOADS),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
 
-    private fun pauseAllIntent(): PendingIntent = PendingIntent.getService(
-        this,
-        PAUSE_REQUEST_CODE,
-        Intent(this, DownloadForegroundService::class.java).setAction(ACTION_PAUSE_ALL),
-        PendingIntent.FLAG_IMMUTABLE,
-    )
+    private val pauseAllIntent: PendingIntent by lazy {
+        PendingIntent.getService(
+            this,
+            PAUSE_REQUEST_CODE,
+            Intent(this, DownloadForegroundService::class.java).setAction(ACTION_PAUSE_ALL),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
