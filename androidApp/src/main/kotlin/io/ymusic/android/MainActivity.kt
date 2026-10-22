@@ -559,7 +559,7 @@ class MainActivity : FragmentActivity() {
     private inline fun guardPip(block: () -> Unit) {
         try {
             block()
-        } catch (e: IllegalStateException) {
+        } catch (e: RuntimeException) {
             pipSupported = false
             (application as YMusicApplication).rootLogger.fork("pip")
                 .log(kmpcommon.log.Logger.Level.WARN, "system rejected PiP; disabled for this activity", e)
