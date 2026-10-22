@@ -457,6 +457,7 @@ class YMusicApplication : Application() {
         SystemAudioEffects(this, graph.player, graph.settings, appScope, rootLogger.fork("system-audio-fx")).start()
         widgets.attach(graph)
         graph.pruneUngrantedFolders?.let { prune -> scope.launch { prune() } }
+        scope.launch { StartupCleanups(this@YMusicApplication, graph.settings, rootLogger).run() }
         // Same pattern for downloads: any change that (re)starts work also (re)starts the
         // dataSync foreground host; the service winds itself down when the queue drains. Enqueue
         // and resume are user actions with the app foregrounded, so FGS-start is permitted.
