@@ -26,6 +26,7 @@ import { installWatchNextHarvest } from "./watch_next";
 import { isAudioOnly, setAudioOnly, setYmQuality, ymQuality } from "./audio_only";
 import { isYmLive } from "./live";
 import { channelUrl } from "../yt/parse";
+import { get, textOf } from "../yt/scan";
 import {
   captionTrackRows,
   installCaptionMinter,
@@ -181,6 +182,7 @@ function bindVideoProgress(player: MoviePlayer): void {
  *  onto that node (getPlaybackQuality, setPlaybackQualityRange, …). */
 let boundHtmlMedia: ReturnType<typeof activeHtmlMedia> = null;
 let lastYtPlayerState = -999;
+let lastPlayabilityLog = "";
 
 function onHtmlTimeupdate(): void {
   notifyListen("progress");
@@ -1376,6 +1378,19 @@ class Player {
         out["code"] = code;
         out["message"] =
           playability && playability["reason"] != null ? String(playability["reason"]) : "";
+        const userMessage = playabilityUserMessage(playability);
+        if (userMessage) out["userMessage"] = userMessage;
+        const playabilityLog =
+          "mse playability " +
+          code +
+          " userMessage=" +
+          JSON.stringify(userMessage) +
+          " status=" +
+          JSON.stringify(playability).slice(0, 800);
+        if (playabilityLog !== lastPlayabilityLog) {
+          lastPlayabilityLog = playabilityLog;
+          console.info(playabilityLog);
+        }
         out["canRetry"] = true;
         out["needReset"] =
           code.indexOf("LOGIN") >= 0 ||
@@ -1634,4 +1649,41 @@ onCaptionsChanged(notifyCatalog);
 
 function notifyListen(kind: ListenKind): void {
   if (listenHook) listenHook(kind);
+}
+
+/** YouTube's own words for a playability verdict, as its player shows them: the headline over its
+ *  detail, e.g. "Video unavailable" / "This video is private". The error screen comes in two layouts
+ *  (the legacy message renderer's reason/subreason, the interstitial view model's title/description);
+ *  without one, the bare reason and the status's messages. Already in the viewer's language. */
+function playabilityUserMessage(playability: Record<string, unknown> | null): string {
+  const screen = get(playability, "errorScreen", "playerErrorMessageRenderer");
+  const interstitial = get(
+    playability,
+    "errorScreen",
+    "playerInterstitialRenderer",
+    "content",
+    "interstitialViewModel",
+  );
+  const bareReason = get(playability, "reason");
+  const headline =
+    nonBlank(textOf(get(screen, "reason"))) ??
+    nonBlank(textOf(get(interstitial, "title"))) ??
+    nonBlank(typeof bareReason === "string" ? bareReason : undefined);
+  const messages = get(playability, "messages");
+  const detail =
+    nonBlank(textOf(get(screen, "subreason"))) ??
+    nonBlank(textOf(get(interstitial, "description"))) ??
+    nonBlank(
+      Array.isArray(messages)
+        ? messages.filter((m): m is string => typeof m === "string").join("\n")
+        : undefined,
+    );
+  const lines: string[] = [];
+  if (headline) lines.push(headline);
+  if (detail && detail !== headline) lines.push(detail);
+  return lines.join("\n");
+}
+
+function nonBlank(text: string | undefined): string | undefined {
+  return text && text.trim() !== "" ? text : undefined;
 }
