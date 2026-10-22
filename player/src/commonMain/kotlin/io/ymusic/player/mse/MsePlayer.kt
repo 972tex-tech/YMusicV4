@@ -758,6 +758,7 @@ class MsePlayer internal constructor(
                 PlayerError(
                     json.stringOrNull("code") ?: "E60033",
                     json.stringOrNull("message"),
+                    userMessage = json.stringOrNull("userMessage")?.takeIf { it.isNotBlank() },
                     canRetry = json.boolOrNull("canRetry") ?: true,
                     needReset = json.boolOrNull("needReset") ?: false,
                 ),
