@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 4.0.11
 
 ### NEW
 - Arrange your own playlist's songs: a Manual sort opens a dialog to drag, remove, and stack songs at the top with Move to top ([#28](https://github.com/ymusic-io/YMusicV4/issues/28), [36fedbc2e](https://github.com/ymusic-io/YMusicV4/commit/36fedbc2e112c468588dfa0abf2b2a7718ed1605))
@@ -20,6 +20,7 @@
 - Android: crash entering picture-in-picture on some phones ([a91f2951b](https://github.com/ymusic-io/YMusicV4/commit/a91f2951bc5b903bb0f418668552d3850bad0b2a))
 - Android: the app could freeze on some phones while updating the playback notification ([6ec2ca6ef](https://github.com/ymusic-io/YMusicV4/commit/6ec2ca6ef15c49a07a60ce1574148299f17fe9c6))
 - With shuffle on, a song added with Play next got shuffled away; queued songs now play next, in the order added ([#24](https://github.com/ymusic-io/YMusicV4/issues/24), [4331d57ae](https://github.com/ymusic-io/YMusicV4/commit/4331d57aede4cb148e3a8d243447fca055ec7ee4))
+- Android: swiping from the left edge opened the menu only on Discover's Home tab; elsewhere it also went back ([834a9560b](https://github.com/ymusic-io/YMusicV4/commit/834a9560be660fb11fc6613fd84ee207097ff443))
 - Right-to-left languages: the tab underline sat under the wrong tab, and dragging the seek bar moved it the opposite way ([#26](https://github.com/ymusic-io/YMusicV4/issues/26), [9389db323](https://github.com/ymusic-io/YMusicV4/commit/9389db323789636fb63c394e5ac4fb1728a66535), [80872090b](https://github.com/ymusic-io/YMusicV4/commit/80872090b3d7e2d035d0ba66ebb57b8ef9226cc5))
 
 ### IMPROVED
