@@ -1493,17 +1493,19 @@ private fun SeekSlider(
     val skipSegments by player.skipSegments.collectAsState()
     val queue by player.queue.collectAsState()
     val streamed = queue.currentItem !is PlayableItem.LocalMedia
-    SlimSeekBar(
-        fraction = if (durationMs > 0) progress.positionMs.toFloat() / durationMs else 0f,
-        bufferedFraction = if (streamed && durationMs > 0) progress.bufferedPositionMs.toFloat() / durationMs else 0f,
-        bufferedColor = bufferedColor,
-        enabled = progress.seekable && durationMs > 0,
-        onSeek = { f -> player.seekTo((f * durationMs).toLong()) },
-        onScrub = { f -> onScrubMs?.invoke(if (f == null || durationMs <= 0) null else (f * durationMs).toLong()) },
-        trackColor = trackColor,
-        skipFractions = skipSegmentFractions(skipSegments, durationMs),
-        modifier = Modifier.fillMaxWidth(),
-    )
+    MediaLtr {
+        SlimSeekBar(
+            fraction = if (durationMs > 0) progress.positionMs.toFloat() / durationMs else 0f,
+            bufferedFraction = if (streamed && durationMs > 0) progress.bufferedPositionMs.toFloat() / durationMs else 0f,
+            bufferedColor = bufferedColor,
+            enabled = progress.seekable && durationMs > 0,
+            onSeek = { f -> player.seekTo((f * durationMs).toLong()) },
+            onScrub = { f -> onScrubMs?.invoke(if (f == null || durationMs <= 0) null else (f * durationMs).toLong()) },
+            trackColor = trackColor,
+            skipFractions = skipSegmentFractions(skipSegments, durationMs),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 /** rewind · prev · [play circle] · next · forward. Dark-on-white by default; the video overlay
@@ -1532,7 +1534,7 @@ private fun Dp.evenPx(): Dp {
     return ((value * density / 2).roundToInt() * 2 / density).dp
 }
 
-/** Media controls stay left-to-right in RTL locales, matching the seek bar's direction of time. */
+/** Media controls and the seek bar stay left-to-right in RTL locales: time runs left to right. */
 @Composable
 private fun MediaLtr(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr, content = content)
