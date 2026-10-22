@@ -110,7 +110,13 @@ internal class MediaScannerEngine(
                 // A single media file: index it directly — into [intoBucket] if the caller named one, else
                 // as an orphan until a folder scan adopts it.
                 is DocumentInfo.File -> scanFile(folder, progress, intoBucket)
-                is DocumentInfo.Missing -> {} // nothing to scan (also the no-op provider's path)
+                // Gone or no longer readable: a known folder's rows become tombstones (a later pick revives them).
+                is DocumentInfo.Missing -> store.findBucketByUri(folder.uri)?.let { bucket ->
+                    if (!bucket.excluded) {
+                        store.deleteBucket(bucket.id)
+                        progress.update { it.copy(deleted = it.deleted + 1) }
+                    }
+                }
             }
             forward.cancelAndJoin() // stop the forwarder before the authoritative final send
             send(progress.value) // guaranteed final snapshot (also the empty terminal for a no-op root)

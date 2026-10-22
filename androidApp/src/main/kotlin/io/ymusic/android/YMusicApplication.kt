@@ -740,9 +740,10 @@ class YMusicApplication : Application() {
     }
 
     /** Whether the document at [uri] is still there. A vanished file, or one under a vanished folder, comes
-     *  back as FileNotFoundException / IllegalArgumentException("Missing file for …"), zero rows, or a null
-     *  cursor (DocumentsProvider.query swallows its FileNotFoundException) — but null also means the provider
-     *  is unreachable, which proves nothing. Any other failure counts as present, so the delete is attempted. */
+     *  back as FileNotFoundException / IllegalArgumentException("Missing file for …") / IllegalStateException
+     *  ("File has no filepath"), zero rows, or a null cursor (DocumentsProvider.query swallows its
+     *  FileNotFoundException) — but null also means the provider is unreachable, which proves nothing. A
+     *  document we may no longer read (SecurityException) counts as gone too: its row is cleared either way. */
     private fun documentExists(uri: android.net.Uri): Boolean = try {
         contentResolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
             ?.use { it.count > 0 }
@@ -750,6 +751,10 @@ class YMusicApplication : Application() {
     } catch (e: java.io.FileNotFoundException) {
         false
     } catch (e: IllegalArgumentException) {
+        false
+    } catch (e: IllegalStateException) {
+        false
+    } catch (e: SecurityException) {
         false
     }
 
