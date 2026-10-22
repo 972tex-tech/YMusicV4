@@ -54,7 +54,7 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
   keeps placeholder boxes).
 
 - **Localization** — **localized** via compose-resources: every user-facing string lives in
-  `commonMain/composeResources/values*/strings.xml` (en base + vi + ar; plurals + `%1$s` args; brand marks
+  `commonMain/composeResources/values*/strings.xml` (en base + ~50 locales — add every new key to ALL `values-*` files; plurals + `%1$s` args; brand marks
   untranslated by omission — missing keys fall back to base) — never hardcode UI text (dev-only CatalogueScreen
   exempt).
   - The `AppSettings.uiLanguage` setting drives `applyUiLocale` (expect/actual; JVM/Android set the default locale,
