@@ -3,7 +3,6 @@ package io.ymusic.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -54,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ymusic.download.StillProcessingException
@@ -570,6 +570,7 @@ private fun FeedSections(
         val layout = feedLayoutFor(maxWidth)
         val columns = if (layout != FeedLayout.Grid) 1 else gridColumnsFor(maxWidth)
         val wide = layout == FeedLayout.WideList
+        val compactTitle = feedCompactTitleFor(maxWidth)
         val listState = hoistedListState ?: rememberLazyListState()
         // Report scroll to the shell (which lifts the app bar); the feed doesn't touch the bar itself.
         TrackScroll { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
@@ -603,6 +604,7 @@ private fun FeedSections(
                     columns = columns,
                     metrics = metrics,
                     wide = wide,
+                    compactTitle = compactTitle,
                     expanded = expanded[index] ?: !section.collapsible,
                     onToggle = { expanded[index] = !(expanded[index] ?: !section.collapsible) },
                     coordinator = coordinator,
@@ -638,6 +640,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     columns: Int,
     metrics: GridMetrics,
     wide: Boolean,
+    compactTitle: Boolean,
     expanded: Boolean,
     onToggle: () -> Unit,
     coordinator: PlaybackCoordinator,
@@ -654,7 +657,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                 onToggle = if (section.collapsible) onToggle else null,
                 onCta = when {
                     section.header?.ctaAction == YtSectionHeader.CTA_PLAY_ALL -> {
-                        { coordinator.playAll(section.items) }
+                        { coordinator.playAll(section.items, shuffle = false) }
                     }
                     deeplink != null && onDeeplink != null -> {
                         { onDeeplink(deeplink, section.header?.title) }
@@ -700,6 +703,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                 actions = itemActions(item, coordinator),
                 onClick = itemClick(item, section, coordinator, onOpen, onPlayItem),
                 wide = wide,
+                compactTitle = compactTitle,
             )
         }
     } else {
@@ -857,21 +861,27 @@ private fun FeedSortMenu(options: List<YtChip>, modifier: Modifier = Modifier, o
     var open by remember { mutableStateOf(false) }
     val current = options.firstOrNull { it.selected } ?: options.first()
     Box(modifier) {
-        Row(
-            Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .clickable { open = true }
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.Sort,
-                stringResource(Res.string.cd_sort),
-                Modifier.size(16.dp),
-                tint = DesignColors.InkSoft,
-            )
-            Text(current.title, style = TextStyle(fontSize = 12.5.sp, color = DesignColors.Ink), maxLines = 1)
+        ChipTapArea({ open = true }) { indication ->
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .then(indication)
+                    .chipPadding(leadingIcon = true),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Sort,
+                    stringResource(Res.string.cd_sort),
+                    Modifier.size(16.dp),
+                    tint = DesignColors.InkSoft,
+                )
+                Text(
+                    current.title,
+                    style = TextStyle(fontSize = ChipTextSize, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
+                    maxLines = 1,
+                )
+            }
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             options.forEach { option ->
@@ -895,17 +905,19 @@ private fun FeedSortMenu(options: List<YtChip>, modifier: Modifier = Modifier, o
 /** One feed filter pill; [onClick] null = a non-interactive label in the same style. */
 @Composable
 fun FeedChip(title: String, selected: Boolean, onClick: (() -> Unit)?) {
-    Text(
-        title,
-        style = TextStyle(fontSize = 12.sp, color = if (selected) Color.White else DesignColors.InkSoft),
-        maxLines = 1,
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) DesignColors.Accent else Color.Transparent)
-            .border(1.dp, if (selected) DesignColors.Accent else DesignColors.Outline, RoundedCornerShape(999.dp))
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
-    )
+    ChipTapArea(onClick) { indication ->
+        Text(
+            title,
+            style = TextStyle(fontSize = ChipTextSize, color = if (selected) Color.White else DesignColors.InkSoft),
+            maxLines = 1,
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(if (selected) DesignColors.Accent else Color.Transparent)
+                .border(1.dp, if (selected) DesignColors.Accent else DesignColors.Outline, RoundedCornerShape(999.dp))
+                .then(indication)
+                .chipPadding(),
+        )
+    }
 }
 
 /**
@@ -932,13 +944,16 @@ internal fun rankMusicFirst(items: List<YtFeedItem>): List<YtFeedItem> {
 /** The three feed layout bands a surface width falls into. */
 internal enum class FeedLayout { SquareList, WideList, Grid }
 
-/** The ONE place the feed breakpoints live: square list under 380dp, 16:9 list to 469dp, then the
+/** The ONE place the feed breakpoints live: square list under 320dp, 16:9 list to 469dp, then the
  *  grid ([gridColumnsFor] columns). */
 internal fun feedLayoutFor(width: androidx.compose.ui.unit.Dp): FeedLayout = when {
-    width < 380.dp -> FeedLayout.SquareList
+    width < 320.dp -> FeedLayout.SquareList
     width < 470.dp -> FeedLayout.WideList
     else -> FeedLayout.Grid
 }
+
+/** Feed list rows under 380dp use [ListTitleCompactStyle]. */
+internal fun feedCompactTitleFor(width: androidx.compose.ui.unit.Dp): Boolean = width < 380.dp
 
 /** Max-item-width model: the FEWEST columns (≥2) keeping every card ≤ [GRID_CARD_MAX_WIDTH], with
  *  the gutter between columns counted. Cards shrink toward the next column, never past the max. */

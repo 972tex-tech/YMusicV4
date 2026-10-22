@@ -243,7 +243,10 @@
     <string name="playback_unavailable">Video này không khả dụng</string>
     <string name="playback_retry_later">Hiện không thể phát video này. Hãy thử lại sau</string>
     <string name="playback_file_missing">Tệp này không còn trên thiết bị của bạn</string>
+    <string name="playback_folder_access_lost">YMusic đã mất quyền truy cập thư mục chứa tệp này. Hãy thêm lại thư mục để phát</string>
+    <string name="playback_add_folder_again">Thêm thư mục</string>
     <string name="playback_video_unsupported">Thiết bị của bạn không phát được định dạng video này. Hãy chọn chất lượng khác.</string>
+    <string name="playback_botguard_failed">Vượt Botguard thất bại</string>
     <string name="menu_reload_player">Tải lại trình phát</string>
 
 
@@ -270,17 +273,31 @@
     <string name="settings_versions_engine">EngineJs %1$s</string>
     <string name="settings_versions_player">PlayerJs %1$s</string>
     <string name="settings_licenses_intro">YMusic là phần mềm mã nguồn mở theo giấy phép GNU GPL v3.0. Ứng dụng bao gồm các thành phần sau:</string>
-    <string name="feedback_hint">Cho chúng tôi biết lỗi bạn gặp hoặc điều bạn muốn thấy. Ảnh chụp màn hình hoặc tệp log sẽ rất hữu ích.</string>
-    <string name="feedback_message_label">Điều gì đã xảy ra?</string>
-    <string name="feedback_name_label">Tên (không bắt buộc)</string>
-    <string name="feedback_email_label">Email (không bắt buộc)</string>
-    <string name="feedback_attach">Đính kèm tệp</string>
-    <string name="feedback_send">Gửi</string>
-    <string name="feedback_sent">Đã gửi phản hồi — cảm ơn bạn!</string>
-    <string name="feedback_send_failed">Không gửi được phản hồi — vui lòng thử lại</string>
-    <string name="feedback_attach_failed">Không đọc được tệp đã chọn — tệp chưa được đính kèm</string>
-    <string name="feedback_file_too_large">“%1$s” quá lớn để đính kèm (tối đa 10 MB)</string>
-    <string name="cd_remove_attachment">Xóa tệp đính kèm</string>
+    <string name="feedback_intro">Hãy cho chúng tôi biết điều gì bị lỗi hoặc bạn muốn có thêm gì, qua GitHub hoặc email. Hãy kèm thông tin ẩn danh bên dưới để chúng tôi tìm nhật ký của bạn và phản hồi.</string>
+    <string name="feedback_info_title">Thông tin ẩn danh</string>
+    <string name="feedback_copy">Sao chép</string>
+    <string name="feedback_copied">Đã sao chép</string>
+    <string name="feedback_device_id">Mã thiết bị</string>
+    <string name="feedback_app">Ứng dụng</string>
+    <string name="feedback_engine">Engine</string>
+    <string name="feedback_language">Ngôn ngữ</string>
+    <string name="feedback_info_note">Không có tên, email hay tài khoản — chỉ các mã này và nhật ký của ứng dụng.</string>
+    <string name="feedback_github_title">Mở issue trên GitHub</string>
+    <string name="feedback_github_hint">Công khai. Phù hợp nhất cho lỗi và ý tưởng — người khác có thể theo dõi và bổ sung.</string>
+    <string name="feedback_email_title">Gửi email tới %1$s</string>
+    <string name="feedback_email_hint">Riêng tư. Phù hợp nhất cho câu hỏi về tài khoản hoặc cá nhân.</string>
+    <string name="feedback_email_subject">Góp ý YMusic</string>
+    <string name="feedback_prefilled_note">Cả hai đều mở với thông tin đã được điền sẵn. Nếu thiếu, hãy dán vào — không có nó chúng tôi không thể hỗ trợ.</string>
+    <string name="feedback_reports_off_title">Báo cáo ẩn danh đang tắt</string>
+    <string name="feedback_reports_off_message">Để xem xét sự cố của bạn, chúng tôi cần nhật ký của ứng dụng. Nhấn Tiếp tục, YMusic sẽ bật lại báo cáo ẩn danh và gửi nhật ký.</string>
+    <string name="feedback_reports_off_note">Không gửi tên, email hay tài khoản. Bạn có thể tắt báo cáo lại trong Cài đặt.</string>
+    <string name="feedback_continue">Tiếp tục</string>
+    <string name="feedback_sentry_link">hoặc gửi qua Sentry</string>
+    <string name="feedback_sentry_title">Gửi qua Sentry</string>
+    <string name="feedback_sentry_label">Đã xảy ra chuyện gì?</string>
+    <string name="feedback_sentry_note">Thông tin ẩn danh của bạn được đính kèm. Chúng tôi không thể trả lời tin nhắn gửi từ đây, nên hãy dùng GitHub hoặc email nếu bạn muốn được phản hồi.</string>
+    <string name="feedback_sentry_send">Gửi</string>
+    <string name="feedback_sentry_sent">Đã gửi qua Sentry. Cảm ơn bạn!</string>
 
     <string name="cd_menu">Menu</string>
     <string name="cd_search">Tìm kiếm</string>
@@ -486,6 +503,8 @@
     <string name="download_save_to">Lưu vào</string>
     <string name="download_location_not_set">Chưa chọn</string>
     <string name="download_location_read_only">Thư mục này chỉ cho phép đọc. Hãy chọn thư mục khác để tải xuống</string>
+    <string name="download_location_missing">Thư mục này không còn tồn tại. Hãy chọn thư mục khác để tải xuống</string>
+    <string name="download_location_cannot_create">Không thể lưu tệp vào thư mục này. Hãy chọn thư mục khác để tải xuống</string>
     <string name="download_action">Tải xuống</string>
     <string name="download_action_detail">Tải %1$s · %2$s</string>
     <string name="download_rename">Đổi tên tệp</string>
@@ -667,4 +686,13 @@
     <string name="playlists_empty_title">Chưa có danh sách phát</string>
     <string name="playlists_empty_desc">Chuyển danh sách phát từ ứng dụng nghe nhạc khác sang, hoặc khôi phục bản sao lưu.</string>
     <string name="playlists_empty_restore">Khôi phục bản sao lưu</string>
+    <string name="sort_manual">Thủ công</string>
+    <string name="arrange_songs">Sắp xếp bài hát</string>
+    <string name="arrange_stacking">Xếp chồng · %1$d</string>
+    <string name="cd_reset_stacking">Đặt lại xếp chồng</string>
+    <string name="cd_move_to_top">Đưa lên đầu</string>
+    <string name="dialog_undo">Hoàn tác</string>
+    <string name="dialog_save">Lưu</string>
+    <string name="upgraded_message">YMusic đã được cập nhật lên %1$s</string>
+    <string name="upgraded_view_changelog">Xem nhật ký thay đổi</string>
 </resources>

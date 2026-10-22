@@ -27,8 +27,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.ymusic.player.SkipSegment
 import kotlin.math.roundToInt
@@ -86,26 +88,29 @@ fun SlimSeekBar(
     val buffered = bufferedFraction.coerceIn(0f, 1f)
     val seek = rememberUpdatedState(onSeek)
     val scrub = rememberUpdatedState(onScrub)
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    // Pointer x is physical; the fill grows from the start edge.
+    fun fractionAt(x: Float, width: Int) = ((if (rtl) width - x else x) / width).coerceIn(0f, 1f)
     Box(
         modifier
             .height(barHeight)
             .onSizeChanged { widthPx = it.width }
-            .pointerInput(enabled) {
+            .pointerInput(enabled, rtl) {
                 if (!enabled) return@pointerInput
-                detectTapGestures { offset -> seek.value((offset.x / size.width).coerceIn(0f, 1f)) }
+                detectTapGestures { offset -> seek.value(fractionAt(offset.x, size.width)) }
             }
-            .pointerInput(enabled) {
+            .pointerInput(enabled, rtl) {
                 if (!enabled) return@pointerInput
                 detectHorizontalDragGestures(
                     onDragStart = { offset ->
-                        val f = (offset.x / size.width).coerceIn(0f, 1f)
+                        val f = fractionAt(offset.x, size.width)
                         dragging = f
                         scrub.value?.invoke(f)
                         VideoOverlayNative.scrubbing = true
                         VideoOverlayNative.show()
                     },
                     onHorizontalDrag = { change, _ ->
-                        val f = (change.position.x / size.width).coerceIn(0f, 1f)
+                        val f = fractionAt(change.position.x, size.width)
                         dragging = f
                         scrub.value?.invoke(f)
                     },
@@ -133,8 +138,10 @@ fun SlimSeekBar(
                 .drawWithContent {
                     drawContent()
                     skipFractions.forEach { (begin, end) ->
-                        val left = size.width * begin.coerceIn(0f, 1f)
-                        val right = size.width * end.coerceIn(0f, 1f)
+                        val startPx = size.width * begin.coerceIn(0f, 1f)
+                        val endPx = size.width * end.coerceIn(0f, 1f)
+                        val left = if (rtl) size.width - endPx else startPx
+                        val right = if (rtl) size.width - startPx else endPx
                         if (right > left) {
                             drawRect(
                                 skipColor,

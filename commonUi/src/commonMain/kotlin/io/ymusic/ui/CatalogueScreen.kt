@@ -68,8 +68,8 @@ fun CatalogueScreen(modifier: Modifier = Modifier) {
         val width = maxWidth
         val height = maxHeight
         val windowClass = when (feedLayoutFor(width)) {
-            FeedLayout.SquareList -> "square list (<380)"
-            FeedLayout.WideList -> "16:9 list (380–469)"
+            FeedLayout.SquareList -> "square list (<320)"
+            FeedLayout.WideList -> "16:9 list (320–469)"
             FeedLayout.Grid -> "grid (≥470)"
         }
         Column(Modifier.fillMaxSize()) {
@@ -136,13 +136,13 @@ private fun CatalogueList() {
             SectionHeader(YtSectionHeader(title = "Collapsible"), collapsed = collapsed, onToggle = { collapsed = !collapsed })
         }
 
-        item { CatLabel("FeedListItem — square list form (<380dp) · video · live · playlist · channel") }
+        item { CatLabel("FeedListItem — square list form (<320dp) · video · live · playlist · channel") }
         item { FeedListItem(mockVideo, mockActions, onClick = {}) }
         item { FeedListItem(mockLive, mockActions, onClick = {}) }
         item { FeedListItem(mockPlaylist, mockActions, onClick = {}) }
         item { FeedListItem(mockChannel, ItemActions(emptyList()), onClick = {}) }
 
-        item { CatLabel("FeedListItem wide — 16:9 list form (380–469dp)") }
+        item { CatLabel("FeedListItem wide — 16:9 list form (320–469dp)") }
         item { FeedListItem(mockVideo, mockActions, onClick = {}, wide = true) }
         item { FeedListItem(mockPlaylist, mockActions, onClick = {}, wide = true) }
 

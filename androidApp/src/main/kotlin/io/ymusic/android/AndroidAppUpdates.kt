@@ -103,7 +103,8 @@ class AndroidAppUpdates(
 
     override val blockedReason: StringResource? = null
 
-    private val downloadDir = File(context.cacheDir, "update")
+    // Not cacheDir: the system may clear it between download and install.
+    private val downloadDir = File(context.filesDir, "update")
 
     /** What the user asked for before being sent to grant the install permission: install, or download. */
     @Volatile private var installAfterPermission = false
@@ -211,6 +212,10 @@ class AndroidAppUpdates(
                 } else if (error is DownloadMismatchException) {
                     log?.captureError(error, "update ${update.versionCode} failed verification")
                     set(release, UpdateDownload.Failed("E91011"))
+                } else if (error is javax.net.ssl.SSLHandshakeException) {
+                    // The device doesn't trust the host (stale root store, wrong clock, intercepting network).
+                    log?.log(Logger.Level.WARN, "downloading update ${update.versionCode} failed: untrusted TLS", error)
+                    set(release, UpdateDownload.Failed("E91014"))
                 } else {
                     log?.captureError(error, "downloading update ${update.versionCode} failed")
                     set(release, UpdateDownload.Failed("E91012"))
@@ -242,7 +247,11 @@ class AndroidAppUpdates(
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Exception) {
-                log?.captureError(error, "installing update ${update.versionCode} failed")
+                if (isDeviceInstallBlock(error)) {
+                    log?.log(Logger.Level.WARN, "device refused installing update ${update.versionCode}", error)
+                } else {
+                    log?.captureError(error, "installing update ${update.versionCode} failed")
+                }
                 set(update.release, UpdateDownload.Failed("E91013"))
             }
         }
@@ -291,6 +300,17 @@ class AndroidAppUpdates(
         // API 24-25 have no per-app grant, only the global "Unknown sources" switch.
         @Suppress("DEPRECATION")
         Settings.Secure.getInt(context.contentResolver, Settings.Secure.INSTALL_NON_MARKET_APPS, 0) == 1
+    }
+
+    /** Device state the app can't change; the official-site link the dialog offers is the way out. */
+    private fun isDeviceInstallBlock(error: Exception): Boolean = when (error) {
+        // Installed on adopted/SD storage the session can't move: "Cannot automatically move … to internal storage".
+        is java.io.IOException -> error.message?.startsWith("Cannot automatically move") == true
+        // "Can't install packages while in secure FRP", device-policy restrictions.
+        is SecurityException -> true
+        // The system handed back a null installer session (IPackageInstallerSession.openWrite on null).
+        is NullPointerException -> error.stackTrace.any { it.className.startsWith("android.content.pm.PackageInstaller") }
+        else -> false
     }
 
     private fun commit(apk: File) {

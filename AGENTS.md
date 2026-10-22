@@ -28,7 +28,7 @@ Each module has a one-line summary here; deeper detail lives in the module's own
 - **`:yt-media`** — pure-Kotlin googlevideo SABR/UMP protocol + the download logic and player cache built on it; knows nothing about WebView/JS/player — everything per video is fed in as plain data (`SabrStreamSpec`). → [`yt-media/README.md`](yt-media/README.md)
 - **`:download`** — the offline Download Manager: task queue + store over `:media-store`, SABR downloads via `:yt-media`, ffmpeg mux via `:kmpFfmpeg` (audio-only stays raw m4a, no ffmpeg).
 - **`:image-loader`** — our own simple Compose image loader: everything is a fetcher (network on DiskLruCache, file, custom schemes), view-size scaled decode, memory LRU + optional scaled disk cache, LIFO concurrency gate, `AsyncImage`. → [`image-loader/README.md`](image-loader/README.md)
-- **`:commonUi`** — the shared Compose Multiplatform app UI (drawer nav, Discover feed/search, Library, mini-player + Now Playing, settings) over `AppGraph`; localized en/vi/ar via compose-resources — NEVER hardcode UI text. → [`commonUi/README.md`](commonUi/README.md)
+- **`:commonUi`** — the shared Compose Multiplatform app UI (drawer nav, Discover feed/search, Library, mini-player + Now Playing, settings) over `AppGraph`; localized into every `values-*` locale via compose-resources — NEVER hardcode UI text; a new string goes into ALL locales. → [`commonUi/README.md`](commonUi/README.md)
 - **`:desktopApp`** — the JVM desktop product shell (`./gradlew :desktopApp:run`): MSE YouTube + ffmpeg local engines, file-backed media store + scanner. → [`desktopApp/README.md`](desktopApp/README.md)
 - **`:androidApp`** — the Android product shell (plain AGP 9 application module) booting the shared `App` over ExoPlayer + MSE YouTube (WebView is login + cookie store). → [`androidApp/README.md`](androidApp/README.md)
 - **`iosApp`** *(not a Gradle module — the Xcode shell)* — the iOS product shell: SwiftUI `@main` hosting the same shared Compose `App` from the `:commonUi` framework, over AVFoundation local + MSE YouTube engines. → [`iosApp/README.md`](iosApp/README.md)
@@ -79,6 +79,9 @@ When the user asks **why** / **what** / **how** / **wtf is** (explain a path, a 
 
 ### I/O
 - **Choose carefully between ByteArray and okio Source/Sink — streams by default, ByteArray only when a platform API forces it.** A `ByteArray` in a signature means the whole payload sits in the heap at once; a `Source`/`Sink` bounds memory to a segment and composes (file, network, cache entry, adapter). Legitimate ByteArray sites carry a justification comment naming the forcing API (e.g. Skia's bytes-only codec). This applies to interfaces most of all — an interface typed `ByteArray` forces every implementation to buffer.
+
+### Moving app data
+When an on-disk location (app dir, cache dir, database file, prefs file) moves from A to B, don't forget to clean up A — like a database migration.
 
 ### Common mistakes
 - Don't use `Char.isLetterOrDigit` to check for `[a-zA-Z0-9]` — it includes non-ASCII letters like `'β'.isLetterOrDigit() == true`.

@@ -208,6 +208,7 @@
     <string name="sleep_hours_minutes">%1$d h %2$d min</string>
     <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Huts egin du (%1$s)</string>
+    <string name="playback_botguard_failed">Botguard saihesteak huts egin du</string>
 
 
     <!-- Settings -->
@@ -230,17 +231,31 @@
     <string name="settings_licenses_intro">YMusic kode irekikoa da GNU GPL v3.0 lizentziapean. Osagai hauek ditu:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Esaguzu zer hautsi den edo zer ikusi nahiko zenukeen. Pantaila-argazkiek edo erregistro-fitxategiek laguntzen dute.</string>
-    <string name="feedback_message_label">Zer gertatu da?</string>
-    <string name="feedback_name_label">Izena (aukerakoa)</string>
-    <string name="feedback_email_label">Helbide elektronikoa (aukerakoa)</string>
-    <string name="feedback_attach">Erantsi fitxategiak</string>
-    <string name="feedback_send">Bidali</string>
-    <string name="feedback_sent">Iritzia bidali da — eskerrik asko!</string>
-    <string name="feedback_send_failed">Ezin izan da iritzia bidali — saiatu berriro</string>
-    <string name="feedback_attach_failed">Ezin izan da hautatutako fitxategia irakurri — ez da erantsi</string>
-    <string name="feedback_file_too_large">"%1$s" handiegia da eransteko (gehienez 10 MB)</string>
-    <string name="cd_remove_attachment">Kendu eranskina</string>
+    <string name="feedback_intro">Esaiguzu zer joan den gaizki edo zer ikusi nahiko zenukeen, GitHub-en edo posta elektronikoz. Gehitu beheko zure informazio anonimoa zure erregistroak aurkitu eta erantzun ahal izateko.</string>
+    <string name="feedback_info_title">Informazio anonimoa</string>
+    <string name="feedback_copy">Kopiatu</string>
+    <string name="feedback_copied">Kopiatuta</string>
+    <string name="feedback_device_id">Gailuaren IDa</string>
+    <string name="feedback_app">Aplikazioa</string>
+    <string name="feedback_engine">Motorra</string>
+    <string name="feedback_language">Hizkuntza</string>
+    <string name="feedback_info_note">Izenik, helbide elektronikorik edo konturik ez — ID hauek eta aplikazio honen erregistroak soilik.</string>
+    <string name="feedback_github_title">Ireki arazo bat GitHub-en</string>
+    <string name="feedback_github_hint">Publikoa. Akatsetarako eta ideietarako onena — beste batzuek jarraitu eta gehitu dezakete.</string>
+    <string name="feedback_email_title">Bidali mezua helbide honetara: %1$s</string>
+    <string name="feedback_email_hint">Pribatua. Kontuari buruzko galderetarako edo galdera pertsonaletarako onena.</string>
+    <string name="feedback_email_subject">YMusic-i buruzko iritzia</string>
+    <string name="feedback_prefilled_note">Biak informazioa beteta dutela irekitzen dira. Falta bada, itsatsi — hura gabe ezin dizugu lagundu.</string>
+    <string name="feedback_reports_off_title">Txosten anonimoak desaktibatuta daude</string>
+    <string name="feedback_reports_off_message">Zure arazoa aztertzeko aplikazio honen erregistroak behar ditugu. Sakatu Jarraitu, eta YMusic-ek txosten anonimoak berriro aktibatu eta erregistroak bidaliko ditu.</string>
+    <string name="feedback_reports_off_note">Ez da izenik, helbide elektronikorik edo konturik bidaltzen. Txostenak berriro desaktiba ditzakezu Ezarpenetan.</string>
+    <string name="feedback_continue">Jarraitu</string>
+    <string name="feedback_sentry_link">edo Sentry bidez</string>
+    <string name="feedback_sentry_title">Bidali Sentry bidez</string>
+    <string name="feedback_sentry_label">Zer gertatu da?</string>
+    <string name="feedback_sentry_note">Zure informazio anonimoa erantsita dago. Hemendik bidalitako mezuei ezin diegu erantzun; erabili GitHub edo posta elektronikoa erantzuna nahi baduzu.</string>
+    <string name="feedback_sentry_send">Bidali</string>
+    <string name="feedback_sentry_sent">Sentry bidez bidali da. Eskerrik asko!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menua</string>
@@ -537,4 +552,13 @@
     <string name="menu_details_comments">Xehetasunak eta iruzkinak</string>
     <string name="menu_speed_pitch">Abiadura eta tonua</string>
     <string name="link_open_failed">Ezin da ireki: %1$s</string>
+    <string name="sort_manual">Eskuz</string>
+    <string name="arrange_songs">Antolatu abestiak</string>
+    <string name="arrange_stacking">Pilatzen · %1$d</string>
+    <string name="cd_reset_stacking">Berrezarri pilaketa</string>
+    <string name="cd_move_to_top">Eraman goiko aldera</string>
+    <string name="dialog_undo">Desegin</string>
+    <string name="dialog_save">Gorde</string>
+    <string name="upgraded_message">YMusic %1$s bertsiora eguneratu da</string>
+    <string name="upgraded_view_changelog">Ikusi aldaketak</string>
 </resources>

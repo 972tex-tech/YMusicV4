@@ -142,7 +142,7 @@ class PlaybackService : MediaLibraryService() {
         sessionOwner = this
         session = MediaLibrarySession.Builder(this, pending, LibraryCallback())
             .setId("playback-${++sessionCount}")
-            .setSessionActivity(sessionActivityIntent())
+            .setSessionActivity(sessionActivityIntent)
             // Artwork through the shared app ImageLoader (https + art://, UI-shared caches)
             // instead of media3's DataSource loader, which knows neither art:// nor our caches.
             // CacheBitmapLoader memoizes the current artwork; our loader stays out of the LRU.
@@ -690,8 +690,8 @@ class PlaybackService : MediaLibraryService() {
             .setContentTitle(item?.displayTitle ?: getString(R.string.app_name))
             .setContentText(contentText)
             .setSubText(subText)
-            .setContentIntent(sessionActivityIntent())
-            .setDeleteIntent(dismissIntent())
+            .setContentIntent(sessionActivityIntent)
+            .setDeleteIntent(dismissIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setOnlyAlertOnce(true)
@@ -718,7 +718,7 @@ class PlaybackService : MediaLibraryService() {
                     .setMediaSession(MediaSessionCompat.Token.fromToken(s.platformToken))
                     .setShowActionsInCompactView(0, 1, 2)
                     .setShowCancelButton(true)
-                    .setCancelButtonIntent(dismissIntent()),
+                    .setCancelButtonIntent(dismissIntent),
             )
         }
         val artUrl = item?.displayThumbnailUrl
@@ -752,29 +752,33 @@ class PlaybackService : MediaLibraryService() {
         )
     }
 
-    private fun sessionActivityIntent(): PendingIntent = PendingIntent.getActivity(
-        this,
-        0,
-        Intent(this, MainActivity::class.java),
-        PendingIntent.FLAG_IMMUTABLE,
-    )
+    private val sessionActivityIntent: PendingIntent by lazy {
+        PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+    }
 
-    private fun dismissIntent(): PendingIntent = PendingIntent.getService(
-        this,
-        DISMISS_REQUEST_CODE,
-        Intent(this, PlaybackService::class.java).setAction(ACTION_DISMISS),
-        PendingIntent.FLAG_IMMUTABLE,
-    )
+    private val dismissIntent: PendingIntent by lazy {
+        PendingIntent.getService(
+            this,
+            DISMISS_REQUEST_CODE,
+            Intent(this, PlaybackService::class.java).setAction(ACTION_DISMISS),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    // PendingIntent.get* is a binder call (OEM hooks can stall it), and the notification is rebuilt on every status change.
+    private val mediaButtonIntents = HashMap<Int, PendingIntent>()
 
     /** A notification action as a media-button press — super.onStartCommand routes it to the session. */
-    private fun mediaButtonIntent(keyCode: Int): PendingIntent = PendingIntent.getService(
-        this,
-        keyCode,
-        Intent(Intent.ACTION_MEDIA_BUTTON)
-            .setClass(this, PlaybackService::class.java)
-            .putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, keyCode)),
-        PendingIntent.FLAG_IMMUTABLE,
-    )
+    private fun mediaButtonIntent(keyCode: Int): PendingIntent = mediaButtonIntents.getOrPut(keyCode) {
+        PendingIntent.getService(
+            this,
+            keyCode,
+            Intent(Intent.ACTION_MEDIA_BUTTON)
+                .setClass(this, PlaybackService::class.java)
+                .putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, keyCode)),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {

@@ -208,6 +208,7 @@
     <string name="sleep_hours_minutes">%1$d മണിക്കൂർ %2$d മിനിറ്റ്</string>
     <string name="sleep_add_minutes">+%1$d മിനിറ്റ്</string>
     <string name="playback_failed">പരാജയപ്പെട്ടു (%1$s)</string>
+    <string name="playback_botguard_failed">Botguard ബൈപാസ് പരാജയപ്പെട്ടു</string>
 
 
     <!-- Settings -->
@@ -230,17 +231,31 @@
     <string name="settings_licenses_intro">YMusic GNU GPL v3.0 പ്രകാരം ഓപ്പൺ സോഴ്‌സ് ആണ്. ഇതിൽ ഈ ഘടകങ്ങൾ ഉൾപ്പെടുന്നു:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">എന്താണ് തകരാറിലായതെന്നോ നിങ്ങൾ എന്ത് കാണാൻ ആഗ്രഹിക്കുന്നുവെന്നോ ഞങ്ങളോട് പറയൂ. സ്ക്രീൻഷോട്ടുകളോ ലോഗ് ഫയലുകളോ സഹായിക്കും.</string>
-    <string name="feedback_message_label">എന്താണ് സംഭവിച്ചത്?</string>
-    <string name="feedback_name_label">പേര് (ഓപ്ഷണൽ)</string>
-    <string name="feedback_email_label">ഇമെയിൽ (ഓപ്ഷണൽ)</string>
-    <string name="feedback_attach">ഫയലുകൾ അറ്റാച്ച് ചെയ്യുക</string>
-    <string name="feedback_send">അയയ്ക്കുക</string>
-    <string name="feedback_sent">ഫീഡ്‌ബാക്ക് അയച്ചു — നന്ദി!</string>
-    <string name="feedback_send_failed">ഫീഡ്‌ബാക്ക് അയയ്ക്കാനായില്ല — വീണ്ടും ശ്രമിക്കുക</string>
-    <string name="feedback_attach_failed">തിരഞ്ഞെടുത്ത ഫയൽ വായിക്കാനായില്ല — അത് അറ്റാച്ച് ചെയ്തിട്ടില്ല</string>
-    <string name="feedback_file_too_large">“%1$s” അറ്റാച്ച് ചെയ്യാൻ വളരെ വലുതാണ് (പരമാവധി 10 MB)</string>
-    <string name="cd_remove_attachment">അറ്റാച്ച്മെന്റ് നീക്കം ചെയ്യുക</string>
+    <string name="feedback_intro">എന്താണ് തകരാറിലായതെന്നോ നിങ്ങൾ എന്താണ് കാണാൻ ആഗ്രഹിക്കുന്നതെന്നോ GitHub-ലോ ഇമെയിലിലോ ഞങ്ങളെ അറിയിക്കൂ. നിങ്ങളുടെ ലോഗുകൾ കണ്ടെത്തി മറുപടി നൽകാൻ താഴെയുള്ള അജ്ഞാത വിവരങ്ങൾ ഉൾപ്പെടുത്തുക.</string>
+    <string name="feedback_info_title">അജ്ഞാത വിവരങ്ങൾ</string>
+    <string name="feedback_copy">പകർത്തുക</string>
+    <string name="feedback_copied">പകർത്തി</string>
+    <string name="feedback_device_id">ഉപകരണ ID</string>
+    <string name="feedback_app">ആപ്പ്</string>
+    <string name="feedback_engine">എഞ്ചിൻ</string>
+    <string name="feedback_language">ഭാഷ</string>
+    <string name="feedback_info_note">പേരോ ഇമെയിലോ അക്കൗണ്ടോ ഇല്ല — ഈ ID-കളും ഈ ആപ്പിന്റെ ലോഗുകളും മാത്രം.</string>
+    <string name="feedback_github_title">GitHub-ൽ ഒരു ഇഷ്യൂ തുറക്കുക</string>
+    <string name="feedback_github_hint">പൊതുവായത്. ബഗുകൾക്കും ആശയങ്ങൾക്കും മികച്ചത് — മറ്റുള്ളവർക്ക് പിന്തുടരാനും ചേർക്കാനും കഴിയും.</string>
+    <string name="feedback_email_title">%1$s-ലേക്ക് ഇമെയിൽ അയയ്ക്കുക</string>
+    <string name="feedback_email_hint">സ്വകാര്യം. അക്കൗണ്ട് അല്ലെങ്കിൽ വ്യക്തിപരമായ ചോദ്യങ്ങൾക്ക് മികച്ചത്.</string>
+    <string name="feedback_email_subject">YMusic ഫീഡ്‌ബാക്ക്</string>
+    <string name="feedback_prefilled_note">രണ്ടും വിവരങ്ങൾ മുൻകൂട്ടി പൂരിപ്പിച്ചാണ് തുറക്കുന്നത്. ഇല്ലെങ്കിൽ, അത് ഒട്ടിക്കുക — അതില്ലാതെ ഞങ്ങൾക്ക് സഹായിക്കാനാവില്ല.</string>
+    <string name="feedback_reports_off_title">അജ്ഞാത റിപ്പോർട്ടുകൾ ഓഫാണ്</string>
+    <string name="feedback_reports_off_message">നിങ്ങളുടെ പ്രശ്നം പരിശോധിക്കാൻ ഈ ആപ്പിന്റെ ലോഗുകൾ ആവശ്യമാണ്. തുടരുക ടാപ്പ് ചെയ്യുക, YMusic അജ്ഞാത റിപ്പോർട്ടുകൾ വീണ്ടും ഓണാക്കി ലോഗുകൾ അയയ്ക്കും.</string>
+    <string name="feedback_reports_off_note">പേരോ ഇമെയിലോ അക്കൗണ്ടോ അയയ്ക്കില്ല. ക്രമീകരണങ്ങളിൽ റിപ്പോർട്ടുകൾ വീണ്ടും ഓഫാക്കാം.</string>
+    <string name="feedback_continue">തുടരുക</string>
+    <string name="feedback_sentry_link">അല്ലെങ്കിൽ Sentry വഴി</string>
+    <string name="feedback_sentry_title">Sentry വഴി അയയ്ക്കുക</string>
+    <string name="feedback_sentry_label">എന്താണ് സംഭവിച്ചത്?</string>
+    <string name="feedback_sentry_note">നിങ്ങളുടെ അജ്ഞാത വിവരങ്ങൾ അറ്റാച്ച് ചെയ്തിട്ടുണ്ട്. ഇവിടെ നിന്ന് അയയ്ക്കുന്ന സന്ദേശങ്ങൾക്ക് ഞങ്ങൾക്ക് മറുപടി നൽകാനാവില്ല, മറുപടി വേണമെങ്കിൽ GitHub അല്ലെങ്കിൽ ഇമെയിൽ ഉപയോഗിക്കുക.</string>
+    <string name="feedback_sentry_send">അയയ്ക്കുക</string>
+    <string name="feedback_sentry_sent">Sentry വഴി അയച്ചു. നന്ദി!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">മെനു</string>
@@ -537,4 +552,13 @@
     <string name="menu_details_comments">വിശദാംശങ്ങളും കമന്റുകളും</string>
     <string name="menu_speed_pitch">വേഗതയും പിച്ചും</string>
     <string name="link_open_failed">തുറക്കാനാകുന്നില്ല: %1$s</string>
+    <string name="sort_manual">മാനുവൽ</string>
+    <string name="arrange_songs">ഗാനങ്ങൾ ക്രമീകരിക്കുക</string>
+    <string name="arrange_stacking">അടുക്കുന്നു · %1$d</string>
+    <string name="cd_reset_stacking">അടുക്കൽ പുനഃസജ്ജമാക്കുക</string>
+    <string name="cd_move_to_top">മുകളിലേക്ക് നീക്കുക</string>
+    <string name="dialog_undo">പഴയപടിയാക്കുക</string>
+    <string name="dialog_save">സംരക്ഷിക്കുക</string>
+    <string name="upgraded_message">YMusic %1$s-ലേക്ക് അപ്‌ഡേറ്റ് ചെയ്‌തു</string>
+    <string name="upgraded_view_changelog">മാറ്റങ്ങൾ കാണുക</string>
 </resources>

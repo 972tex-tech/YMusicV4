@@ -208,6 +208,7 @@
     <string name="sleep_hours_minutes">%1$d u %2$d min</string>
     <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Mislukt (%1$s)</string>
+    <string name="playback_botguard_failed">Omzeilen van Botguard mislukt</string>
 
 
     <!-- Settings -->
@@ -230,17 +231,31 @@
     <string name="settings_licenses_intro">YMusic is open source onder de GNU GPL v3.0. Het bevat deze componenten:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Vertel ons wat er stuk is of wat je graag zou zien. Screenshots of logbestanden helpen.</string>
-    <string name="feedback_message_label">Wat is er gebeurd?</string>
-    <string name="feedback_name_label">Naam (optioneel)</string>
-    <string name="feedback_email_label">E-mail (optioneel)</string>
-    <string name="feedback_attach">Bestanden bijvoegen</string>
-    <string name="feedback_send">Versturen</string>
-    <string name="feedback_sent">Feedback verstuurd — bedankt!</string>
-    <string name="feedback_send_failed">Kan feedback niet versturen — probeer het opnieuw</string>
-    <string name="feedback_attach_failed">Kan het geselecteerde bestand niet lezen — het is niet bijgevoegd</string>
-    <string name="feedback_file_too_large">'%1$s' is te groot om bij te voegen (max. 10 MB)</string>
-    <string name="cd_remove_attachment">Bijlage verwijderen</string>
+    <string name="feedback_intro">Vertel ons wat er misging of wat je graag zou zien, op GitHub of per e-mail. Voeg je anonieme info hieronder toe zodat we je logs kunnen vinden en kunnen antwoorden.</string>
+    <string name="feedback_info_title">Anonieme info</string>
+    <string name="feedback_copy">Kopiëren</string>
+    <string name="feedback_copied">Gekopieerd</string>
+    <string name="feedback_device_id">Apparaat-ID</string>
+    <string name="feedback_app">App</string>
+    <string name="feedback_engine">Engine</string>
+    <string name="feedback_language">Taal</string>
+    <string name="feedback_info_note">Geen naam, e-mail of account — alleen deze ID’s en de logs van deze app.</string>
+    <string name="feedback_github_title">Een issue openen op GitHub</string>
+    <string name="feedback_github_hint">Openbaar. Het beste voor bugs en ideeën — anderen kunnen meelezen en aanvullen.</string>
+    <string name="feedback_email_title">E-mail naar %1$s</string>
+    <string name="feedback_email_hint">Privé. Het beste voor vragen over je account of persoonlijke vragen.</string>
+    <string name="feedback_email_subject">YMusic-feedback</string>
+    <string name="feedback_prefilled_note">Beide openen met de info al ingevuld. Ontbreekt die, plak hem dan — zonder kunnen we niet helpen.</string>
+    <string name="feedback_reports_off_title">Anonieme rapporten staan uit</string>
+    <string name="feedback_reports_off_message">Om je probleem te onderzoeken hebben we de logs van deze app nodig. Tik op Doorgaan en YMusic zet anonieme rapporten weer aan en verstuurt de logs.</string>
+    <string name="feedback_reports_off_note">Er wordt geen naam, e-mail of account verstuurd. Je kunt rapporten in Instellingen weer uitzetten.</string>
+    <string name="feedback_continue">Doorgaan</string>
+    <string name="feedback_sentry_link">of via Sentry</string>
+    <string name="feedback_sentry_title">Versturen via Sentry</string>
+    <string name="feedback_sentry_label">Wat is er gebeurd?</string>
+    <string name="feedback_sentry_note">Je anonieme info is bijgevoegd. Op berichten die je hier verstuurt kunnen we niet antwoorden, dus gebruik GitHub of e-mail als je een antwoord wilt.</string>
+    <string name="feedback_sentry_send">Versturen</string>
+    <string name="feedback_sentry_sent">Verstuurd via Sentry. Bedankt!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menu</string>
@@ -537,4 +552,13 @@
     <string name="menu_details_comments">Details en reacties</string>
     <string name="menu_speed_pitch">Snelheid en toonhoogte</string>
     <string name="link_open_failed">Kan niet openen: %1$s</string>
+    <string name="sort_manual">Handmatig</string>
+    <string name="arrange_songs">Nummers ordenen</string>
+    <string name="arrange_stacking">Stapelen · %1$d</string>
+    <string name="cd_reset_stacking">Stapelen resetten</string>
+    <string name="cd_move_to_top">Naar boven verplaatsen</string>
+    <string name="dialog_undo">Ongedaan maken</string>
+    <string name="dialog_save">Opslaan</string>
+    <string name="upgraded_message">YMusic is bijgewerkt naar %1$s</string>
+    <string name="upgraded_view_changelog">Wijzigingen bekijken</string>
 </resources>

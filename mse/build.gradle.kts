@@ -58,7 +58,11 @@ fun registerMseNativeLib(targetName: String): TaskProvider<Exec> {
     val ffmpeg = ffmpegIosPrefix(targetName)
     val qjsInc = rootProject.projectDir.resolve("quickjs/native")
     val task = tasks.register<Exec>(taskName) {
-        doFirst { out.mkdirs() }
+        // `*.o` / `ar r` would otherwise pick up a previous variant's objects (stub vs ffmpeg).
+        doFirst {
+            out.deleteRecursively()
+            out.mkdirs()
+        }
         inputs.dir(mseNativeSrc)
         if (ffmpeg != null) {
             inputs.dir(File(ffmpeg, "include"))

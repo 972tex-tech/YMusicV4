@@ -85,12 +85,12 @@ class LibraryPlaylistTest {
                 waitUntilAtLeastOneExists(hasText("Chill"), 5_000)
                 onNodeWithText("Chill").performClick()
                 waitUntilAtLeastOneExists(hasText("MySong"), 5_000)
-                // A user playlist carries a "Last added" sort control; a system playlist doesn't.
-                onNodeWithText("Last added").assertIsDisplayed()
+                // A user playlist carries a sort control, on its manual order by default; a system playlist doesn't.
+                onNodeWithText("Manual").assertIsDisplayed()
                 onNodeWithContentDescription("Back").performClick()
                 waitUntilAtLeastOneExists(hasText("Top tracks"), 5_000)
                 onNodeWithText("Top tracks").performClick()
-                waitUntilDoesNotExist(hasText("Last added"), 5_000)
+                waitUntilDoesNotExist(hasText("Manual"), 5_000)
             }
         } finally {
             runBlocking { engines.close() }

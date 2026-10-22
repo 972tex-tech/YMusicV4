@@ -89,7 +89,7 @@ data class PlaybackConfig(
 
 /**
  * A recoverable classification the caller can surface — a [CodedError] with a stable `E6xxxx` player
- * code, or a well-known category ([FILE_MISSING]). [message] is developer detail (the backend's own error text) — log material, never shown.
+ * code, or a well-known category ([FILE_MISSING], [FOLDER_ACCESS_LOST]). [message] is developer detail (the backend's own error text) — log material, never shown.
  *
  * [canRetry]/[needReset] mirror the legacy `PlayerState.Error` flags: [canRetry] = a fresh
  * [MediaEngine.load] of the same source may succeed (false = don't offer retry — e.g. no engine for
@@ -108,8 +108,14 @@ data class PlayerError(
         /** A local item's file is gone from storage (deleted/moved since the scan) — never retryable. */
         const val FILE_MISSING = "file_missing"
 
+        /** The app no longer holds the storage grant for a local item's folder (Android SAF) — re-adding the folder fixes it. */
+        const val FOLDER_ACCESS_LOST = "folder_access_lost"
+
         /** The platform video decoder refused the stream (size or profile beyond the device). */
         const val VIDEO_DECODER_FAILED = "E60064"
+
+        /** googlevideo rejected the session's PO token (StreamProtectionStatus=3). */
+        const val PO_TOKEN_REJECTED = "E60065"
     }
 }
 

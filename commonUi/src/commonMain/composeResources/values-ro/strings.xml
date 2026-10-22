@@ -209,6 +209,7 @@
     <string name="sleep_hours_minutes">%1$d h %2$d min</string>
     <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Eșuat (%1$s)</string>
+    <string name="playback_botguard_failed">Ocolirea Botguard a eșuat</string>
 
 
     <!-- Settings -->
@@ -231,17 +232,31 @@
     <string name="settings_licenses_intro">YMusic este open source sub licența GNU GPL v3.0. Include aceste componente:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Spune-ne ce nu funcționează sau ce ți-ar plăcea să vezi. Capturile de ecran sau fișierele jurnal ajută.</string>
-    <string name="feedback_message_label">Ce s-a întâmplat?</string>
-    <string name="feedback_name_label">Nume (opțional)</string>
-    <string name="feedback_email_label">E-mail (opțional)</string>
-    <string name="feedback_attach">Atașează fișiere</string>
-    <string name="feedback_send">Trimite</string>
-    <string name="feedback_sent">Feedback trimis — mulțumim!</string>
-    <string name="feedback_send_failed">Feedbackul nu a putut fi trimis — încearcă din nou</string>
-    <string name="feedback_attach_failed">Fișierul selectat nu a putut fi citit — nu a fost atașat</string>
-    <string name="feedback_file_too_large">„%1$s” este prea mare pentru a fi atașat (max. 10 MB)</string>
-    <string name="cd_remove_attachment">Elimină atașamentul</string>
+    <string name="feedback_intro">Spune-ne ce nu a mers sau ce ți-ai dori să vezi, pe GitHub sau prin e-mail. Include informațiile tale anonime de mai jos ca să găsim jurnalele tale și să-ți răspundem.</string>
+    <string name="feedback_info_title">Informații anonime</string>
+    <string name="feedback_copy">Copiază</string>
+    <string name="feedback_copied">Copiat</string>
+    <string name="feedback_device_id">ID dispozitiv</string>
+    <string name="feedback_app">Aplicație</string>
+    <string name="feedback_engine">Motor</string>
+    <string name="feedback_language">Limbă</string>
+    <string name="feedback_info_note">Fără nume, e-mail sau cont — doar aceste ID-uri și jurnalele acestei aplicații.</string>
+    <string name="feedback_github_title">Deschide o problemă pe GitHub</string>
+    <string name="feedback_github_hint">Public. Ideal pentru erori și idei — alții pot urmări și adăuga.</string>
+    <string name="feedback_email_title">Scrie la %1$s</string>
+    <string name="feedback_email_hint">Privat. Ideal pentru întrebări despre cont sau personale.</string>
+    <string name="feedback_email_subject">Feedback YMusic</string>
+    <string name="feedback_prefilled_note">Ambele se deschid cu informațiile deja completate. Dacă lipsesc, lipește-le — fără ele nu te putem ajuta.</string>
+    <string name="feedback_reports_off_title">Rapoartele anonime sunt dezactivate</string>
+    <string name="feedback_reports_off_message">Ca să investigăm problema, avem nevoie de jurnalele acestei aplicații. Atinge Continuă și YMusic reactivează rapoartele anonime și trimite jurnalele.</string>
+    <string name="feedback_reports_off_note">Nu se trimite niciun nume, e-mail sau cont. Poți dezactiva din nou rapoartele în Setări.</string>
+    <string name="feedback_continue">Continuă</string>
+    <string name="feedback_sentry_link">sau prin Sentry</string>
+    <string name="feedback_sentry_title">Trimite prin Sentry</string>
+    <string name="feedback_sentry_label">Ce s-a întâmplat?</string>
+    <string name="feedback_sentry_note">Informațiile tale anonime sunt atașate. Nu putem răspunde mesajelor trimise de aici, așa că folosește GitHub sau e-mailul dacă vrei un răspuns.</string>
+    <string name="feedback_sentry_send">Trimite</string>
+    <string name="feedback_sentry_sent">Trimis prin Sentry. Mulțumim!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Meniu</string>
@@ -542,4 +557,13 @@
     <string name="menu_details_comments">Detalii și comentarii</string>
     <string name="menu_speed_pitch">Viteză și tonalitate</string>
     <string name="link_open_failed">Nu se poate deschide: %1$s</string>
+    <string name="sort_manual">Manual</string>
+    <string name="arrange_songs">Aranjează melodiile</string>
+    <string name="arrange_stacking">Stivuire · %1$d</string>
+    <string name="cd_reset_stacking">Resetează stivuirea</string>
+    <string name="cd_move_to_top">Mută sus</string>
+    <string name="dialog_undo">Anulează</string>
+    <string name="dialog_save">Salvează</string>
+    <string name="upgraded_message">YMusic a fost actualizat la %1$s</string>
+    <string name="upgraded_view_changelog">Vezi modificările</string>
 </resources>

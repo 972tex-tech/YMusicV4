@@ -209,6 +209,7 @@
     <string name="sleep_hours_minutes">%1$d ч %2$d мин</string>
     <string name="sleep_add_minutes">+%1$d мин</string>
     <string name="playback_failed">Неуспело (%1$s)</string>
+    <string name="playback_botguard_failed">Заобилажење Botguard-а није успело</string>
 
 
     <!-- Settings -->
@@ -231,17 +232,31 @@
     <string name="settings_licenses_intro">YMusic је отвореног кода под лиценцом GNU GPL v3.0. Обухвата следеће компоненте:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Реците нам шта не ради или шта бисте волели да видите. Снимци екрана или лог датотеке помажу.</string>
-    <string name="feedback_message_label">Шта се догодило?</string>
-    <string name="feedback_name_label">Име (опционално)</string>
-    <string name="feedback_email_label">Имејл (опционално)</string>
-    <string name="feedback_attach">Приложи датотеке</string>
-    <string name="feedback_send">Пошаљи</string>
-    <string name="feedback_sent">Повратне информације су послате — хвала!</string>
-    <string name="feedback_send_failed">Слање повратних информација није успело — покушајте поново</string>
-    <string name="feedback_attach_failed">Изабрана датотека не може да се прочита — није приложена</string>
-    <string name="feedback_file_too_large">„%1$s“ је превелика за прилагање (макс. 10 MB)</string>
-    <string name="cd_remove_attachment">Уклони прилог</string>
+    <string name="feedback_intro">Реците нам шта је пошло наопако или шта бисте волели да видите, на GitHub-у или имејлом. Приложите своје анонимне податке испод да бисмо пронашли ваше логове и одговорили.</string>
+    <string name="feedback_info_title">Анонимни подаци</string>
+    <string name="feedback_copy">Копирај</string>
+    <string name="feedback_copied">Копирано</string>
+    <string name="feedback_device_id">ID уређаја</string>
+    <string name="feedback_app">Апликација</string>
+    <string name="feedback_engine">Механизам</string>
+    <string name="feedback_language">Језик</string>
+    <string name="feedback_info_note">Без имена, имејла или налога — само ови ID-ови и логови ове апликације.</string>
+    <string name="feedback_github_title">Отвори пријаву на GitHub-у</string>
+    <string name="feedback_github_hint">Јавно. Најбоље за грешке и идеје — други могу да прате и допуњују.</string>
+    <string name="feedback_email_title">Пошаљи имејл на %1$s</string>
+    <string name="feedback_email_hint">Приватно. Најбоље за питања о налогу или лична питања.</string>
+    <string name="feedback_email_subject">Повратне информације за YMusic</string>
+    <string name="feedback_prefilled_note">Обе опције се отварају са већ попуњеним подацима. Ако недостају, налепите их — без њих не можемо да помогнемо.</string>
+    <string name="feedback_reports_off_title">Анонимни извештаји су искључени</string>
+    <string name="feedback_reports_off_message">Да бисмо истражили проблем, потребни су нам логови ове апликације. Додирните Настави и YMusic ће поново укључити анонимне извештаје и послати логове.</string>
+    <string name="feedback_reports_off_note">Не шаље се име, имејл ни налог. Извештаје можете поново да искључите у Подешавањима.</string>
+    <string name="feedback_continue">Настави</string>
+    <string name="feedback_sentry_link">или преко Sentry-ја</string>
+    <string name="feedback_sentry_title">Пошаљи преко Sentry-ја</string>
+    <string name="feedback_sentry_label">Шта се догодило?</string>
+    <string name="feedback_sentry_note">Ваши анонимни подаци су приложени. На поруке послате одавде не можемо да одговоримо, па користите GitHub или имејл ако желите одговор.</string>
+    <string name="feedback_sentry_send">Пошаљи</string>
+    <string name="feedback_sentry_sent">Послато преко Sentry-ја. Хвала!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Мени</string>
@@ -542,4 +557,13 @@
     <string name="menu_details_comments">Детаљи и коментари</string>
     <string name="menu_speed_pitch">Брзина и висина тона</string>
     <string name="link_open_failed">Није могуће отворити: %1$s</string>
+    <string name="sort_manual">Ручно</string>
+    <string name="arrange_songs">Распореди песме</string>
+    <string name="arrange_stacking">Слагање · %1$d</string>
+    <string name="cd_reset_stacking">Поништи слагање</string>
+    <string name="cd_move_to_top">Премести на врх</string>
+    <string name="dialog_undo">Опозови</string>
+    <string name="dialog_save">Сачувај</string>
+    <string name="upgraded_message">YMusic је ажуриран на %1$s</string>
+    <string name="upgraded_view_changelog">Погледај измене</string>
 </resources>

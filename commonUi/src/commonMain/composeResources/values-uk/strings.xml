@@ -210,6 +210,7 @@
     <string name="sleep_hours_minutes">%1$d год %2$d хв</string>
     <string name="sleep_add_minutes">+%1$d хв</string>
     <string name="playback_failed">Помилка (%1$s)</string>
+    <string name="playback_botguard_failed">Не вдалося обійти Botguard</string>
 
 
     <!-- Settings -->
@@ -232,17 +233,31 @@
     <string name="settings_licenses_intro">YMusic — відкрите ПЗ за ліцензією GNU GPL v3.0. Воно містить такі компоненти:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Розкажіть, що зламалося або що ви хотіли б побачити. Знімки екрана чи файли журналів допоможуть.</string>
-    <string name="feedback_message_label">Що сталося?</string>
-    <string name="feedback_name_label">Ім’я (необов’язково)</string>
-    <string name="feedback_email_label">Ел. пошта (необов’язково)</string>
-    <string name="feedback_attach">Прикріпити файли</string>
-    <string name="feedback_send">Надіслати</string>
-    <string name="feedback_sent">Відгук надіслано — дякуємо!</string>
-    <string name="feedback_send_failed">Не вдалося надіслати відгук — спробуйте ще раз</string>
-    <string name="feedback_attach_failed">Не вдалося прочитати вибраний файл — його не прикріплено</string>
-    <string name="feedback_file_too_large">«%1$s» завеликий для прикріплення (макс. 10 МБ)</string>
-    <string name="cd_remove_attachment">Видалити вкладення</string>
+    <string name="feedback_intro">Розкажіть, що пішло не так або що ви хотіли б бачити, на GitHub чи поштою. Додайте свої анонімні дані нижче, щоб ми знайшли ваші логи й відповіли.</string>
+    <string name="feedback_info_title">Анонімні дані</string>
+    <string name="feedback_copy">Копіювати</string>
+    <string name="feedback_copied">Скопійовано</string>
+    <string name="feedback_device_id">ID пристрою</string>
+    <string name="feedback_app">Застосунок</string>
+    <string name="feedback_engine">Рушій</string>
+    <string name="feedback_language">Мова</string>
+    <string name="feedback_info_note">Жодних імен, адрес пошти чи облікових записів — лише ці ID та логи цього застосунку.</string>
+    <string name="feedback_github_title">Створити issue на GitHub</string>
+    <string name="feedback_github_hint">Публічно. Найкраще для помилок та ідей — інші зможуть стежити й доповнювати.</string>
+    <string name="feedback_email_title">Написати на %1$s</string>
+    <string name="feedback_email_hint">Приватно. Найкраще для питань щодо облікового запису чи особистих питань.</string>
+    <string name="feedback_email_subject">Відгук про YMusic</string>
+    <string name="feedback_prefilled_note">Обидва варіанти відкриваються з уже заповненими даними. Якщо їх немає, вставте їх — без них ми не зможемо допомогти.</string>
+    <string name="feedback_reports_off_title">Анонімні звіти вимкнено</string>
+    <string name="feedback_reports_off_message">Щоб розібратися з проблемою, нам потрібні логи цього застосунку. Торкніться «Продовжити», і YMusic знову ввімкне анонімні звіти та надішле логи.</string>
+    <string name="feedback_reports_off_note">Ім’я, пошта й обліковий запис не надсилаються. Звіти можна знову вимкнути в Налаштуваннях.</string>
+    <string name="feedback_continue">Продовжити</string>
+    <string name="feedback_sentry_link">або через Sentry</string>
+    <string name="feedback_sentry_title">Надіслати через Sentry</string>
+    <string name="feedback_sentry_label">Що сталося?</string>
+    <string name="feedback_sentry_note">Ваші анонімні дані додано. Ми не можемо відповісти на повідомлення, надіслані звідси, тож якщо потрібна відповідь, скористайтеся GitHub або поштою.</string>
+    <string name="feedback_sentry_send">Надіслати</string>
+    <string name="feedback_sentry_sent">Надіслано через Sentry. Дякуємо!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Меню</string>
@@ -547,4 +562,13 @@
     <string name="menu_details_comments">Опис і коментарі</string>
     <string name="menu_speed_pitch">Швидкість і тон</string>
     <string name="link_open_failed">Не вдається відкрити: %1$s</string>
+    <string name="sort_manual">Вручну</string>
+    <string name="arrange_songs">Упорядкувати треки</string>
+    <string name="arrange_stacking">Стос · %1$d</string>
+    <string name="cd_reset_stacking">Скинути стос</string>
+    <string name="cd_move_to_top">Перемістити вгору</string>
+    <string name="dialog_undo">Скасувати</string>
+    <string name="dialog_save">Зберегти</string>
+    <string name="upgraded_message">YMusic оновлено до %1$s</string>
+    <string name="upgraded_view_changelog">Список змін</string>
 </resources>

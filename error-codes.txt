@@ -93,6 +93,7 @@ E20156 D player/init (or PO-token minter) 20 s deadline hit with BotGuard (inter
 E20157 D player/init 20 s deadline hit with the base.js download the earliest step still running (engine-js logic/player/boot.ts)
 E20158 D player/init (or PO-token minter) 20 s deadline hit with the player storage hydrate the earliest step still running (engine-js logic/player/boot.ts)
 E20159 D player/init (or PO-token minter) 20 s deadline hit with no tracked step running (engine-js logic/player/boot.ts)
+E20160 D edit_playlist answered a non-success status when saving an owned playlist's sort order (engine-js logic/yt/playlistEdit.ts setPlaylistOrder)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 
@@ -101,6 +102,7 @@ E50002 D playlist backup file failed to read (commonUi PlaylistTransferState.ope
 E50003 D device playlists failed to load (commonUi PlaylistTransferState.openImport)
 E50004 D device playlist import failed (commonUi PlaylistTransferState.import)
 E50005 D playlist restore failed to write the store (commonUi PlaylistTransferState.restore)
+E50006 D saving a local playlist's arrangement failed (commonUi ArrangePlaylistDialog)
 
 E60001 D bad media uri — AVURLAsset unopenable (player apple)
 E60002 D timed out preparing the AVPlayerItem (player apple)
@@ -157,3 +159,4 @@ E91004 D desktop update installer failed to run (UpdateService.install)
 E91011 D android update APK's size/sha256 differs from the config entry (AndroidAppUpdates.download)
 E91012 D android update APK download failed (AndroidAppUpdates.download)
 E91013 D android update APK could not be handed to PackageInstaller (AndroidAppUpdates.installAndRestart)
+E91014 D android update APK download failed: the device doesn't trust the host's TLS chain (AndroidAppUpdates.download)

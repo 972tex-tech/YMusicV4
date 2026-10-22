@@ -68,13 +68,15 @@ import io.ymusic.settings.put
 import io.ymusic.telemetry.SentryLogger
 import io.ymusic.telemetry.applyYMusicTelemetry
 import io.ymusic.telemetry.bindCrashReporting
+import io.ymusic.telemetry.captureFeedbackReport
 import io.ymusic.telemetry.installSentryDeviceId
 import io.ymusic.telemetry.installSentryEngineVersion
 import io.ymusic.telemetry.installSentryPlayerVersion
-import io.ymusic.telemetry.sendSentryFeedback
+import io.ymusic.telemetry.sendFeedbackMessage
 import io.ymusic.ui.APP_HTTP_TIMEOUT
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
+import io.ymusic.ui.FolderWriteProblem
 import io.ymusic.ui.ScanResult
 import io.ymusic.ui.YtEngineSabrSpecResolver
 import io.ymusic.ui.bundleConfig
@@ -193,9 +195,6 @@ class YMusicApplication : Application() {
     /** The current Activity's SAF folder pick, registered while it lives. The graph is app-scoped
      *  but a pick needs an Activity; a scan is always user-driven, so one is up when this runs. */
     @Volatile var folderPicker: (suspend () -> Uri?)? = null
-
-    /** The current Activity's feedback-attachment file pick — same lifecycle as [folderPicker]. */
-    @Volatile var feedbackFilePicker: (suspend () -> List<io.ymusic.ui.FeedbackFile>)? = null
 
     /** The current Activity's QR scan — same lifecycle as [folderPicker]. */
     @Volatile var qrScanner: (suspend () -> String?)? = null
@@ -456,6 +455,8 @@ class YMusicApplication : Application() {
         AudioFocusCoordinator(this, graph.player, graph.settings, appScope).start()
         SystemAudioEffects(this, graph.player, graph.settings, appScope, rootLogger.fork("system-audio-fx")).start()
         widgets.attach(graph)
+        graph.pruneUngrantedFolders?.let { prune -> scope.launch { prune() } }
+        scope.launch { StartupCleanups(this@YMusicApplication, graph.settings, rootLogger).run() }
         // Same pattern for downloads: any change that (re)starts work also (re)starts the
         // dataSync foreground host; the service winds itself down when the queue drains. Enqueue
         // and resume are user actions with the app foregrounded, so FGS-start is permitted.
@@ -594,6 +595,7 @@ class YMusicApplication : Application() {
                     applicationContext,
                     FileSystem.SYSTEM,
                     File(noBackupFilesDir, "download-work").absolutePath.toPath(),
+                    rootLogger.fork("download-storage"),
                 ),
                 mediaCache = playerCache, // read-only (see YtStreamDownloader): reuse cached playback bytes
                 // Own segment index for SABR resume (byte range per segment), separate from the player cache DB.
@@ -635,7 +637,9 @@ class YMusicApplication : Application() {
                 checkCallingOrSelfUriPermission(android.net.Uri.parse(uri), Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
                     PackageManager.PERMISSION_GRANTED
             },
+            probeDownloadFolder = { uri -> probeDownloadFolder(android.net.Uri.parse(uri)) },
             rescanLibrary = { folderUri, onProgress -> rescanKnownRoots(shared.mediaStore, folderUri, onProgress) },
+            pruneUngrantedFolders = { pruneUngrantedFolders(shared.mediaStore) },
             deleteFromDisk = { item ->
                 withContext(Dispatchers.IO) {
                     val uri = android.net.Uri.parse(item.uri.toString())
@@ -670,8 +674,9 @@ class YMusicApplication : Application() {
                 fn(title, subtitle)
             },
             downloads = downloadService,
-            sendFeedback = sendFeedbackAction.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },
-            pickFeedbackFiles = { feedbackFilePicker?.invoke() ?: emptyList() },
+            captureFeedbackReport = captureFeedbackReportAction.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },
+            sendFeedbackMessage = ::sendFeedbackMessage.takeIf { BuildConfig.SENTRY_DSN.isNotEmpty() },
+            platformInfo = listOfNotNull("Android ${android.os.Build.VERSION.RELEASE}", android.os.Build.SUPPORTED_ABIS.firstOrNull()).joinToString(" · "),
             createDocument = { name, mimeType ->
                 documentCreator?.invoke(name, mimeType)?.let { uri ->
                     withContext(Dispatchers.IO) {
@@ -714,33 +719,24 @@ class YMusicApplication : Application() {
         }
     }
 
-    /** Delivers a feedback report as Sentry user feedback; attachments ride the anchor event. */
-    private val sendFeedbackAction: suspend (io.ymusic.ui.FeedbackDraft) -> Unit = { draft ->
+    /** Sends the app logs as one anonymous Sentry report for the Feedback screen; returns its event id. */
+    private val captureFeedbackReportAction: suspend () -> String? = {
         withContext(Dispatchers.IO) {
             runCatching { logWorker.flush() }
                 .onFailure { rootLogger.fork("feedback").log(Logger.Level.WARN, "log flush before feedback failed", it) }
-            val logs = logWorker.filePaths().map { path ->
-                val name = path.substringAfterLast('/').substringAfterLast('\\')
-                io.sentry.kotlin.multiplatform.Attachment(path, name, "text/plain")
-            }
-            sendSentryFeedback(
-                comments = draft.message,
-                name = draft.name,
-                email = draft.email,
-                attachments = logs + draft.attachments.mapNotNull { f ->
-                    f.bytes?.let { b ->
-                        f.contentType?.let { type -> io.sentry.kotlin.multiplatform.Attachment(b, f.filename, type) }
-                            ?: io.sentry.kotlin.multiplatform.Attachment(b, f.filename)
-                    }
+            captureFeedbackReport(
+                logWorker.filePaths().map { path ->
+                    io.sentry.kotlin.multiplatform.Attachment(path, path.substringAfterLast('/'), "text/plain")
                 },
             )
         }
     }
 
     /** Whether the document at [uri] is still there. A vanished file, or one under a vanished folder, comes
-     *  back as FileNotFoundException / IllegalArgumentException("Missing file for …"), zero rows, or a null
-     *  cursor (DocumentsProvider.query swallows its FileNotFoundException) — but null also means the provider
-     *  is unreachable, which proves nothing. Any other failure counts as present, so the delete is attempted. */
+     *  back as FileNotFoundException / IllegalArgumentException("Missing file for …") / IllegalStateException
+     *  ("File has no filepath"), zero rows, or a null cursor (DocumentsProvider.query swallows its
+     *  FileNotFoundException) — but null also means the provider is unreachable, which proves nothing. A
+     *  document we may no longer read (SecurityException) counts as gone too: its row is cleared either way. */
     private fun documentExists(uri: android.net.Uri): Boolean = try {
         contentResolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
             ?.use { it.count > 0 }
@@ -749,6 +745,51 @@ class YMusicApplication : Application() {
         false
     } catch (e: IllegalArgumentException) {
         false
+    } catch (e: IllegalStateException) {
+        false
+    } catch (e: SecurityException) {
+        false
+    }
+
+    /** Creates, writes and deletes a scratch file in [folder] — the steps a finished download takes. */
+    private suspend fun probeDownloadFolder(folder: android.net.Uri): FolderWriteProblem? = withContext(Dispatchers.IO) {
+        val log = rootLogger.fork("download-folder-probe", mapOf("folder" to folder.toString()))
+        if (checkCallingOrSelfUriPermission(folder, Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+            return@withContext FolderWriteProblem.NoPermission
+        }
+        val parent = if (android.provider.DocumentsContract.isDocumentUri(this@YMusicApplication, folder)) {
+            folder
+        } else {
+            android.provider.DocumentsContract.buildDocumentUriUsingTree(folder, android.provider.DocumentsContract.getTreeDocumentId(folder))
+        }
+        val probe = try {
+            android.provider.DocumentsContract.createDocument(contentResolver, parent, "application/octet-stream", ".ymusic-write-test")
+        } catch (e: SecurityException) {
+            log.log(Logger.Level.WARN, "test file refused", e)
+            return@withContext FolderWriteProblem.NoPermission
+        } catch (e: java.io.FileNotFoundException) {
+            log.log(Logger.Level.WARN, "folder gone", e)
+            return@withContext FolderWriteProblem.Missing
+        } catch (e: Exception) {
+            log.log(Logger.Level.WARN, "test file not created", e)
+            return@withContext FolderWriteProblem.CannotCreateFiles
+        } ?: return@withContext FolderWriteProblem.CannotCreateFiles
+        try {
+            contentResolver.openOutputStream(probe)?.use { it.write(0) } ?: return@withContext FolderWriteProblem.CannotCreateFiles
+            null
+        } catch (e: SecurityException) {
+            log.log(Logger.Level.WARN, "test file not writable", e)
+            FolderWriteProblem.NoPermission
+        } catch (e: Exception) {
+            log.log(Logger.Level.WARN, "test file not writable", e)
+            FolderWriteProblem.CannotCreateFiles
+        } finally {
+            try {
+                android.provider.DocumentsContract.deleteDocument(contentResolver, probe)
+            } catch (e: Exception) {
+                log.log(Logger.Level.WARN, "test file left behind", e)
+            }
+        }
     }
 
     /** SAF folder pick + full scan into [store]; returns how it ended, or null when canceled. */
@@ -776,6 +817,23 @@ class YMusicApplication : Application() {
             roots.map { it.uri }
         }
         return scanUris(store, uris, onProgress)
+    }
+
+    /** Soft-deletes each Library root whose SAF tree grant is gone (revoked, or restored from a backup made on
+     *  another install); picking the folder again re-grants it and the scan revives its rows. */
+    private suspend fun pruneUngrantedFolders(store: BetterMediaStore) {
+        val ungranted = withContext(Dispatchers.IO) {
+            store.childBuckets(null).filter { bucket ->
+                val uri = android.net.Uri.parse(bucket.uri.toString())
+                uri.scheme == "content" &&
+                    checkCallingOrSelfUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) != PackageManager.PERMISSION_GRANTED
+            }
+        }
+        for (bucket in ungranted) {
+            rootLogger.fork("library-grants", mapOf("bucket" to bucket.uri.toString()))
+                .log(Logger.Level.WARN, "folder grant lost; soft-deleting its library rows")
+            store.deleteBucket(bucket.id)
+        }
     }
 
     /** Scans each root [uris] into [store] via SAF + the bundled ffmpeg (content:// proxied over ymix),

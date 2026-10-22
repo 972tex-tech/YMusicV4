@@ -497,7 +497,7 @@ internal class PlayerImpl(
     private fun shufflePickLandsUnloaded(): Boolean {
         val state = more ?: return false
         val total = state.totalCount ?: return false
-        if (!controller.state.shuffle || !state.hasMore || state.loading || state.error != null) return false
+        if (!controller.state.shuffle || controller.hasUpNext || !state.hasMore || state.loading || state.error != null) return false
         val unloaded = total - controller.state.items.size
         if (unloaded <= 0) return false
         return random.nextInt(controller.unplayedCount() + unloaded) < unloaded

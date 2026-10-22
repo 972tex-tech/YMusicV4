@@ -24,8 +24,8 @@ class LiveVideoException(videoId: String?) : Exception("live video ${videoId.orE
     }
 }
 
-/** A live stream that just ended: YouTube is still processing its replay, which lists formats with no
- *  `lastModified`/`contentLength` until it finishes. A well-known category ([code] `"processing"`); a later
+/** YouTube is still processing the video (typically a just-ended live stream's replay), so its formats have
+ *  no `lastModified`/`contentLength` yet. A well-known category ([code] `"processing"`); a later
  *  retry succeeds. */
 class StillProcessingException(videoId: String?) : Exception("post-live replay still processing ${videoId.orEmpty()}"), CodedError {
     override val code: String = CODE
@@ -80,7 +80,6 @@ class DownloadOptions(
         fun parse(playerResponseJson: String, ffmpegAvailable: Boolean, mp3SourceBitrate: Boolean = false): DownloadOptions {
             val data = json.parseToJsonElement(playerResponseJson).jsonObject
             val details = data.objectOrNull("videoDetails")
-            if (details?.boolOrNull("isLive") == true) throw LiveVideoException(details.stringOrNull("videoId"))
             val streaming = data.objectOrNull("streamingData")
                 ?: throw TechnicalException("E70041", "download options: no streamingData")
             SabrSpecBuilder.checkProcessed(data, streaming)

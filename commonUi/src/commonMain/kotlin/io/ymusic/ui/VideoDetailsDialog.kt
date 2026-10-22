@@ -750,9 +750,7 @@ private fun CommentRow(
 private fun OwnCommentMenu(state: VideoDetailsState, comment: YtComment) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), Modifier.size(18.dp), tint = DesignColors.InkSecondary)
-        }
+        ActionIcon(Icons.Default.MoreVert, stringResource(Res.string.cd_more), tint = DesignColors.InkSecondary) { open = true }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             if (comment.editToken != null) {
                 DropdownMenuItem(

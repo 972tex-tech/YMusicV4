@@ -1,135 +1,126 @@
 package io.ymusic.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.Clipboard
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.NativeClipboard
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
-import androidx.compose.ui.test.waitUntilDoesNotExist
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.embeddedEngineJsSource
+import io.ymusic.settings.AppSettings
+import io.ymusic.settings.flow
+import io.ymusic.settings.put
+import kotlinx.coroutines.runBlocking
+import java.awt.datatransfer.DataFlavor
 import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The drawer's Feedback section: composing a report with attachments hands ONE [FeedbackDraft] to
- *  the shell's sender; an over-limit pick is refused with a message instead of attached. */
-@OptIn(ExperimentalTestApi::class)
+/** The drawer's Feedback section: with reports off it asks first; Continue turns them on, and the
+ *  logs go out only on Copy or a contact row, once per visit; Cancel leaves without sending. */
+@OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
 class FeedbackScreenTest {
 
     private fun engines() =
         DynamicEngineManager(CannedHttp { _, _ -> throw UnsupportedOperationException() }, appVersion = 1, jsSource = embeddedEngineJsSource())
 
+    private class RecordingClipboard : Clipboard {
+        var text: String? = null
+        override val nativeClipboard: NativeClipboard get() = throw UnsupportedOperationException()
+        override suspend fun getClipEntry(): ClipEntry? = null
+        override suspend fun setClipEntry(clipEntry: ClipEntry?) {
+            text = clipEntry?.nativeClipEntry?.let { (it as java.awt.datatransfer.Transferable).getTransferData(DataFlavor.stringFlavor) as String }
+        }
+    }
+
+    private class RecordingUriHandler : UriHandler {
+        val opened = mutableListOf<String>()
+        override fun openUri(uri: String) {
+            opened += uri
+        }
+    }
+
     @Test
-    fun composing_and_sending_a_report_delivers_one_draft() {
+    fun copy_or_a_contact_row_sends_the_logs_once() {
         Locale.setDefault(Locale.ENGLISH)
-        var sent: FeedbackDraft? = null
-        val snackbars = mutableListOf<String>()
-        val session = FeedbackSession(parentLog = null)
+        var captures = 0
+        val graph = AppGraph(
+            engines = engines(),
+            player = StubPlayer(),
+            playerSurface = {},
+            captureFeedbackReport = {
+                captures++
+                "5ec086b24c2d4982b85a056ee39ef5ae"
+            },
+        )
+        runBlocking { graph.settings.put(AppSettings.crashReports, false) }
+        val clipboard = RecordingClipboard()
+        val uriHandler = RecordingUriHandler()
+        runComposeUiTest {
+            setContent {
+                CompositionLocalProvider(LocalClipboard provides clipboard, LocalUriHandler provides uriHandler) {
+                    FeedbackScreen(graph, onDismiss = {})
+                }
+            }
+            waitUntilAtLeastOneExists(hasText("Anonymous reports are off"), 5_000)
+            assertEquals(0, captures, "nothing is sent before the user agrees")
+            onNodeWithText("Continue").performClick()
+
+            waitUntilAtLeastOneExists(hasText("Copy"), 5_000)
+            waitForIdle()
+            assertTrue(graph.settings.flow(AppSettings.crashReports).value)
+            assertEquals(null, clipboard.text, "arriving copies nothing")
+            assertEquals(0, captures, "arriving sends nothing")
+
+            onNodeWithText("Copy").performClick()
+            waitUntil(timeoutMillis = 5_000) { clipboard.text != null && captures > 0 }
+            assertTrue("Device ID: " in clipboard.text!!, "copied: ${clipboard.text}")
+
+            onNodeWithText("Open an issue on GitHub").performClick()
+            onNodeWithText("Email contact@ymusic.io").performClick()
+            waitUntil(timeoutMillis = 5_000) { uriHandler.opened.size == 2 }
+            waitForIdle()
+            assertEquals(1, captures, "one report per visit")
+        }
+    }
+
+    @Test
+    fun cancel_leaves_without_sending() {
+        Locale.setDefault(Locale.ENGLISH)
+        var captures = 0
         var dismissed = false
         val graph = AppGraph(
             engines = engines(),
             player = StubPlayer(),
             playerSurface = {},
-            sendFeedback = { sent = it },
-            pickFeedbackFiles = {
-                listOf(
-                    FeedbackFile("log.txt", bytes = "hello".encodeToByteArray()),
-                    // Over the cap: name-only, must be refused with a message.
-                    FeedbackFile("huge.bin", bytes = null, sizeBytes = FeedbackFile.MAX_BYTES + 1),
-                )
+            captureFeedbackReport = {
+                captures++
+                null
             },
         )
+        runBlocking { graph.settings.put(AppSettings.crashReports, false) }
         runComposeUiTest {
             setContent {
-                CompositionLocalProvider(LocalSnackbar provides { snackbars.add(it) }) {
-                    FeedbackScreen(graph, session, onDismiss = { dismissed = true })
+                CompositionLocalProvider(LocalClipboard provides RecordingClipboard()) {
+                    FeedbackScreen(graph, onDismiss = { dismissed = true })
                 }
             }
-            // Fields in declaration order: message, name, email.
-            onAllNodes(hasSetTextAction())[0].performTextInput("The app broke")
-            onAllNodes(hasSetTextAction())[2].performTextInput("jane@example.com")
-
-            onNodeWithText("Attach files").performClick()
-            waitUntilAtLeastOneExists(hasText("log.txt"), 5_000)
-            onNodeWithText("huge.bin").assertDoesNotExist()
-            assertTrue(snackbars.any { "huge.bin" in it }, "oversized pick should be refused with a message: $snackbars")
-
-            onNodeWithText("SEND").performClick()
-            waitUntil(timeoutMillis = 5_000) { sent != null }
-            val draft = sent!!
-            assertEquals("The app broke", draft.message)
-            assertEquals(null, draft.name)
-            assertEquals("jane@example.com", draft.email)
-            assertEquals(listOf("log.txt"), draft.attachments.map { it.filename })
-            assertTrue(snackbars.any { "thank you" in it }, "sent confirmation expected: $snackbars")
-            // The report resets for a fresh one; the sender identity stays.
-            waitUntil(timeoutMillis = 5_000) { session.message.isEmpty() && session.attachments.isEmpty() }
-            assertEquals("jane@example.com", session.email)
-            assertTrue(dismissed, "a sent report closes the screen")
-        }
-    }
-
-    @Test
-    fun removing_an_attachment_keeps_it_out_of_the_draft() {
-        Locale.setDefault(Locale.ENGLISH)
-        var sent: FeedbackDraft? = null
-        val graph = AppGraph(
-            engines = engines(),
-            player = StubPlayer(),
-            playerSurface = {},
-            sendFeedback = { sent = it },
-            pickFeedbackFiles = { listOf(FeedbackFile("shot.png", bytes = byteArrayOf(1, 2, 3))) },
-        )
-        runComposeUiTest {
-            setContent {
-                CompositionLocalProvider(LocalSnackbar provides {}) {
-                    FeedbackScreen(graph, FeedbackSession(parentLog = null), onDismiss = {})
-                }
-            }
-            onAllNodes(hasSetTextAction())[0].performTextInput("Report")
-            onNodeWithText("Attach files").performClick()
-            waitUntilAtLeastOneExists(hasText("shot.png"), 5_000)
-            onNodeWithContentDescription("Remove attachment").performClick()
-            waitUntilDoesNotExist(hasText("shot.png"), timeoutMillis = 5_000)
-
-            onNodeWithText("SEND").performClick()
-            waitUntil(timeoutMillis = 5_000) { sent != null }
-            assertEquals(emptyList(), sent!!.attachments)
-        }
-    }
-
-    @Test
-    fun feedback_section_shows_the_form_only_when_the_shell_can_send() {
-        Locale.setDefault(Locale.ENGLISH)
-        val engines = engines()
-        val withSender = AppGraph(
-            engines = engines,
-            player = StubPlayer(),
-            playerSurface = {},
-            sendFeedback = {},
-        )
-        runComposeUiTest {
-            setContent { App(withSender, mutableStateOf(AppSection.Feedback)) }
-            waitUntilAtLeastOneExists(hasText("What happened?"), 20_000)
-        }
-        val withoutSender = AppGraph(
-            engines = engines,
-            player = StubPlayer(),
-            playerSurface = {},
-        )
-        runComposeUiTest {
-            setContent { App(withoutSender, mutableStateOf(AppSection.Feedback)) }
-            // No sender → the section still exists but only announces itself as coming later.
-            waitUntilAtLeastOneExists(hasText("coming", substring = true), 20_000)
-            onNodeWithText("What happened?").assertDoesNotExist()
+            waitUntilAtLeastOneExists(hasText("Anonymous reports are off"), 5_000)
+            onNodeWithText("Cancel").performClick()
+            waitUntil(timeoutMillis = 5_000) { dismissed }
+            assertEquals(0, captures)
+            assertFalse(graph.settings.flow(AppSettings.crashReports).value)
         }
     }
 }

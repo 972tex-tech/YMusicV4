@@ -3,8 +3,10 @@ package io.ymusic.ios
 import io.ymusic.settings.StringBackedSettingsStore
 import io.ymusic.ui.PlaybackAudioOnlyKey
 import io.ymusic.ui.PlaybackEqKey
+import io.ymusic.ui.PlaybackLoopModeKey
 import io.ymusic.ui.PlaybackPitchKey
 import io.ymusic.ui.PlaybackQualitySettingKey
+import io.ymusic.ui.PlaybackShuffleKey
 import io.ymusic.ui.PlaybackSpeedKey
 import io.ymusic.ui.PlaybackVolumeKey
 import platform.Foundation.NSUserDefaults
@@ -36,12 +38,15 @@ internal class IosSettingsStore(
             "playerCache.maxMb",
             "telemetry.lastLoadedEngineJsVer",
             "telemetry.lastLoadedPlayerJsVer",
+            "update.lastRunVersionCode",
             PlaybackQualitySettingKey,
             PlaybackAudioOnlyKey,
             PlaybackVolumeKey,
             PlaybackSpeedKey,
             PlaybackPitchKey,
             PlaybackEqKey,
+            PlaybackShuffleKey,
+            PlaybackLoopModeKey,
         )
     }
 }
