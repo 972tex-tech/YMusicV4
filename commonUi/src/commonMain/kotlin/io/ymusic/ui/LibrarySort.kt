@@ -103,7 +103,8 @@ internal fun SortBar(
 /** The sort control: a chip naming the current key (tap → menu) + a direction toggle. Picking the
  *  current key in the menu flips direction; picking another selects it ascending. With [onArrange], the
  *  option at [manualIndex] is the list's manual order: picking it selects it and opens the arranger,
- *  and while it is selected an edit icon (which also opens it) replaces the direction toggle. */
+ *  and while it is selected an edit icon (which also opens it) replaces the direction toggle; that menu
+ *  shows no check marks. */
 @Composable
 internal fun SortControl(
     labels: List<StringResource>,
@@ -135,9 +136,11 @@ internal fun SortControl(
                 labels.forEachIndexed { i, label ->
                     DropdownMenuItem(
                         text = { Text(stringResource(label)) },
-                        leadingIcon = {
-                            if (i == state.index && i != manualIndex) {
-                                Icon(Icons.Default.Check, null, Modifier.size(18.dp), tint = DesignColors.Accent)
+                        leadingIcon = if (onArrange != null) {
+                            null
+                        } else {
+                            {
+                                if (i == state.index) Icon(Icons.Default.Check, null, Modifier.size(18.dp), tint = DesignColors.Accent)
                             }
                         },
                         onClick = {
