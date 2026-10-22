@@ -28,9 +28,17 @@ internal fun guessMimeType(name: String): String {
     return AUDIO_EXTENSIONS[ext] ?: VIDEO_EXTENSIONS[ext] ?: "application/octet-stream"
 }
 
+// Providers type playlists as audio/* (audio/x-mpegurl, audio/x-scpls) and ffmpeg probes them, but they aren't media.
+private val PLAYLIST_EXTENSIONS = setOf("m3u", "m3u8", "pls", "xspf", "wpl", "asx", "cue")
+private val PLAYLIST_MIME_TYPES = setOf(
+    "audio/x-mpegurl", "audio/mpegurl", "application/x-mpegurl", "application/vnd.apple.mpegurl",
+    "audio/x-scpls", "application/xspf+xml", "application/vnd.ms-wpl", "video/x-ms-asf", "application/x-cue",
+)
+
 /** True when a document looks like a media file the scanner should index. */
 internal fun isMediaFile(name: String, mimeType: String): Boolean {
-    if (mimeType.startsWith("audio/") || mimeType.startsWith("video/")) return true
     val ext = extensionOf(name)
+    if (ext in PLAYLIST_EXTENSIONS || mimeType.lowercase() in PLAYLIST_MIME_TYPES) return false
+    if (mimeType.startsWith("audio/") || mimeType.startsWith("video/")) return true
     return ext in AUDIO_EXTENSIONS || ext in VIDEO_EXTENSIONS
 }
