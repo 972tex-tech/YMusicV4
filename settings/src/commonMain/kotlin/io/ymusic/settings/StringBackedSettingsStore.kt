@@ -16,8 +16,12 @@ abstract class StringBackedSettingsStore : SettingsStore {
     private val data = MutableStateFlow<Map<String, String>>(emptyMap())
     private val writeMutex = Mutex()
 
+    final override var startedEmpty = true
+        private set
+
     protected fun seed(values: Map<String, String>) {
         data.value = values
+        startedEmpty = values.isEmpty()
     }
 
     override fun string(key: String, default: String): StateFlow<String> = MappedStateFlow(data) { it[key] ?: default }

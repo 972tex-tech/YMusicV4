@@ -38,6 +38,7 @@ internal class IosSettingsStore(
             "playerCache.maxMb",
             "telemetry.lastLoadedEngineJsVer",
             "telemetry.lastLoadedPlayerJsVer",
+            "update.lastRunVersionCode",
             PlaybackQualitySettingKey,
             PlaybackAudioOnlyKey,
             PlaybackVolumeKey,
