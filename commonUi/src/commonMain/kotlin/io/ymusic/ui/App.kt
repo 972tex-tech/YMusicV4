@@ -1295,8 +1295,9 @@ internal fun DiscoverTabRow(
     onSelect: (DiscoverTab) -> Unit,
 ) {
     val density = LocalDensity.current
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     // Each tab's (centre, width) in the row's space so the indicator can slide between them.
-    val bounds = remember { mutableStateMapOf<DiscoverTab, Pair<Dp, Dp>>() }
+    val bounds = remember(rtl) { mutableStateMapOf<DiscoverTab, Pair<Dp, Dp>>() }
     BoxWithConstraints(if (inline) Modifier else Modifier.fillMaxWidth()) {
         // Inline: equal tabs tiling the row with no dead space, shrinking from the max when the bar is short.
         val inlineTabWidth = (maxWidth / tabs.size.coerceAtLeast(1)).coerceAtMost(DiscoverInlineTabMaxWidth)
@@ -1307,8 +1308,11 @@ internal fun DiscoverTabRow(
                     Box(
                         (if (inline) Modifier.width(inlineTabWidth) else Modifier.weight(1f))
                             .onGloballyPositioned { c ->
-                                val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
-                                bounds[t] = with(density) { (x + c.size.width / 2f).toDp() to c.size.width.toDp() }
+                                val parent = c.parentLayoutCoordinates
+                                val center = (parent?.localPositionOf(c)?.x ?: 0f) + c.size.width / 2f
+                                // Start-relative, as Modifier.offset mirrors in RTL.
+                                val x = if (rtl && parent != null) parent.size.width - center else center
+                                bounds[t] = with(density) { x.toDp() to c.size.width.toDp() }
                             }
                             .then(if (inline) Modifier.clip(RoundedCornerShape(10.dp)) else Modifier)
                             .clickable { onSelect(t) }

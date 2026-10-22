@@ -229,8 +229,9 @@ internal fun <T : Any> UnderlineTabRow(
 ) {
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     // Each tab's (offset, width) in the row's own space — the sliding indicator reads the selected one.
-    val bounds = remember { mutableStateMapOf<T, Pair<Dp, Dp>>() }
+    val bounds = remember(rtl) { mutableStateMapOf<T, Pair<Dp, Dp>>() }
     HorizontalOverflowBox(scrollState) {
         Column(
             Modifier
@@ -245,7 +246,10 @@ internal fun <T : Any> UnderlineTabRow(
                     Box(
                         Modifier
                             .onGloballyPositioned { c ->
-                                val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
+                                val parent = c.parentLayoutCoordinates
+                                val left = parent?.localPositionOf(c)?.x ?: 0f
+                                // Start-relative, as Modifier.offset mirrors in RTL.
+                                val x = if (rtl && parent != null) parent.size.width - left - c.size.width else left
                                 bounds[t] = with(density) { x.toDp() to c.size.width.toDp() }
                             }
                             .clickable { onSelect(t) },
