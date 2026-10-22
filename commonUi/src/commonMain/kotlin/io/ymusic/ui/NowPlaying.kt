@@ -1029,7 +1029,8 @@ private fun CaptionToggle(player: io.ymusic.player.Player, offTint: Color, iconS
 /** Engine track kind for YouTube auto-translate languages (clones of a source track, one per language). */
 private const val AUTO_TRANSLATE_KIND = "asrt"
 
-/** A playback failure for the user: a known category, else "Playback failed (code)". */
+/** A playback failure for the user: a known category, the text the source gave for it (YouTube's own words
+ *  for a playability verdict), else our message for the verdict, else "Playback failed (code)". */
 internal fun playerErrorText(error: io.ymusic.player.PlayerError): UiText = when {
     error.code == CAPTCHA_CODE -> UiText.Resource(Res.string.error_captcha)
     error.code == "network" -> UiText.Resource(Res.string.error_network)
@@ -1037,7 +1038,7 @@ internal fun playerErrorText(error: io.ymusic.player.PlayerError): UiText = when
     error.code == io.ymusic.player.PlayerError.FILE_MISSING -> UiText.Resource(Res.string.playback_file_missing)
     error.code == io.ymusic.player.PlayerError.FOLDER_ACCESS_LOST -> UiText.Resource(Res.string.playback_folder_access_lost)
     error.code == io.ymusic.player.PlayerError.VIDEO_DECODER_FAILED -> UiText.Resource(Res.string.playback_video_unsupported)
-    else -> when (error.playability()) {
+    else -> error.userMessage?.let(UiText::Plain) ?: when (error.playability()) {
         Playability.SignInRequired -> UiText.Resource(Res.string.playback_sign_in_required)
         Playability.Unavailable -> UiText.Resource(Res.string.playback_unavailable)
         Playability.RetryLater -> UiText.Resource(Res.string.playback_retry_later)
