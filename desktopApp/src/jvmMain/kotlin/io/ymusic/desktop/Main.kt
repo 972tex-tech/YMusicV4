@@ -124,6 +124,7 @@ import io.ymusic.ui.App
 import io.ymusic.ui.AppGraph
 import io.ymusic.ui.AppHttpClients
 import io.ymusic.ui.CatalogueScreen
+import io.ymusic.ui.FolderWriteProblem
 import io.ymusic.ui.IncomingLinks
 import io.ymusic.ui.ScanResult
 import io.ymusic.ui.VideoOverlayNative
@@ -858,6 +859,8 @@ private suspend fun buildGraph(settings: AppStoreSettings, session: CookieSessio
         ),
         scanLibraryFolder = { onProgress -> scanPickedFolder(mediaStore, onProgress) },
         libraryFolderPicker = { pickAndRegisterFolder(mediaStore) },
+        canWriteFolder = { uri -> File(Uri.parse(uri).path.toString()).let { it.isDirectory && it.canWrite() } },
+        probeDownloadFolder = { uri -> probeDownloadFolder(File(Uri.parse(uri).path.toString())) },
         rescanLibrary = { folderUri, onProgress -> rescanKnownRoots(mediaStore, folderUri, onProgress) },
         deleteFromDisk = { item ->
             withContext(Dispatchers.IO) {
@@ -1261,6 +1264,40 @@ private suspend fun pickAndRegisterFolder(store: BetterMediaStore): String? {
     val uri = UriBuilder().scheme("file").authority("").path(picked.absolutePath).build()
     store.upsertBucket(BucketDraft(uri = uri, name = picked.name))
     return uri.toString()
+}
+
+/** Creates, writes and deletes a scratch file in [folder] — the steps a finished download takes. */
+private suspend fun probeDownloadFolder(folder: File): FolderWriteProblem? = withContext(Dispatchers.IO) {
+    val log = rootLogger.fork("download-folder-probe", mapOf("folder" to folder.path))
+    if (!folder.isDirectory) return@withContext FolderWriteProblem.Missing
+    val probe = try {
+        java.nio.file.Files.createTempFile(folder.toPath(), ".ymusic-write-test", null)
+    } catch (e: java.nio.file.AccessDeniedException) {
+        log.log(Logger.Level.WARN, "test file refused", e)
+        return@withContext FolderWriteProblem.NoPermission
+    } catch (e: java.nio.file.NoSuchFileException) {
+        log.log(Logger.Level.WARN, "folder gone", e)
+        return@withContext FolderWriteProblem.Missing
+    } catch (e: Exception) {
+        log.log(Logger.Level.WARN, "test file not created", e)
+        return@withContext FolderWriteProblem.CannotCreateFiles
+    }
+    try {
+        java.nio.file.Files.write(probe, byteArrayOf(0))
+        null
+    } catch (e: java.nio.file.AccessDeniedException) {
+        log.log(Logger.Level.WARN, "test file not writable", e)
+        FolderWriteProblem.NoPermission
+    } catch (e: Exception) {
+        log.log(Logger.Level.WARN, "test file not writable", e)
+        FolderWriteProblem.CannotCreateFiles
+    } finally {
+        try {
+            java.nio.file.Files.deleteIfExists(probe)
+        } catch (e: Exception) {
+            log.log(Logger.Level.WARN, "test file left behind", e)
+        }
+    }
 }
 
 /** Re-scans [folderUri] (and its children) in place, or every already-added root when null. */
