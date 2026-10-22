@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+### NEW
+- Arrange your own playlist's songs: a Manual sort opens a dialog to drag, remove, and stack songs at the top with Move to top ([#28](https://github.com/ymusic-io/YMusicV4/issues/28), [36fedbc2e](https://github.com/ymusic-io/YMusicV4/commit/36fedbc2e112c468588dfa0abf2b2a7718ed1605))
+- Swipe a song in the Now Playing queue to the right to remove it ([#28](https://github.com/ymusic-io/YMusicV4/issues/28), [ab2ca58ed](https://github.com/ymusic-io/YMusicV4/commit/ab2ca58ed0b92e87f2755ef7dbb0daa390cdc515))
+- "YMusic updated" notice on the first launch after an update, with a link to the changelog ([c6fe6aeea](https://github.com/ymusic-io/YMusicV4/commit/c6fe6aeea7a4c8cde71651786e6b5446be4cc611))
+- Feedback: reach us on GitHub or by email quoting your anonymous Device ID, which finds the app logs sent with it, or send a message straight from the app ([0793283a4](https://github.com/ymusic-io/YMusicV4/commit/0793283a44f137d4583f26d43e345b03bb1d0ef3))
+
+### FIXED
+- "Load more" in your own YouTube playlist stopped after the first 100 videos ([#17](https://github.com/ymusic-io/YMusicV4/issues/17), [9a123a519](https://github.com/ymusic-io/YMusicV4/commit/9a123a519b6800960572e8b347288daba3f91622))
+- Sort chips on your YouTube library pages (e.g. Playlists) failed ([ad07107ee](https://github.com/ymusic-io/YMusicV4/commit/ad07107eecbb82262ad67741f829e70bd9b3fccb))
+- Android: every download failed with an error code when the download folder couldn't be reached; it now asks to choose the folder again ([f163a0ba3](https://github.com/ymusic-io/YMusicV4/commit/f163a0ba3af21eb33ba7bb37e173fe412269081d))
+- Android 10: downloads failed into a folder holding more than about 1000 files ([1de8fca59](https://github.com/ymusic-io/YMusicV4/commit/1de8fca59f8fb4127794834b56590eec2045b192))
+- Android: installing a downloaded update could fail because the system cleared the APK ([36c5f8bf0](https://github.com/ymusic-io/YMusicV4/commit/36c5f8bf0e902857bf605e4f923502f24d659c47))
+- Library folders that were deleted, became unreadable or lost their access kept showing their songs ([3f420c5de](https://github.com/ymusic-io/YMusicV4/commit/3f420c5deafad4318251f8c017c5fb6db13bbdd5), [4ff5a730a](https://github.com/ymusic-io/YMusicV4/commit/4ff5a730a2a1b89d7a62b68d18c63fcd9b8d841e))
+- Android: .m3u/.m3u8 playlist files showed up as songs and crashed when played ([25f654ec1](https://github.com/ymusic-io/YMusicV4/commit/25f654ec105c500c81e5f9064114ed81684b3c27))
+- Downloading some videos that YouTube was still processing failed with an error code ([4a0fe952f](https://github.com/ymusic-io/YMusicV4/commit/4a0fe952f9bb13f427e9cb25f845b40dd685332f))
+- Android: crash entering picture-in-picture on some phones ([a91f2951b](https://github.com/ymusic-io/YMusicV4/commit/a91f2951bc5b903bb0f418668552d3850bad0b2a))
+- Android: the app could freeze on some phones while updating the playback notification ([6ec2ca6ef](https://github.com/ymusic-io/YMusicV4/commit/6ec2ca6ef15c49a07a60ce1574148299f17fe9c6))
+- With shuffle on, a song added with Play next got shuffled away; queued songs now play next, in the order added ([#24](https://github.com/ymusic-io/YMusicV4/issues/24), [4331d57ae](https://github.com/ymusic-io/YMusicV4/commit/4331d57aede4cb148e3a8d243447fca055ec7ee4))
+- Right-to-left languages: the tab underline sat under the wrong tab, and dragging the seek bar moved it the opposite way ([#26](https://github.com/ymusic-io/YMusicV4/issues/26), [9389db323](https://github.com/ymusic-io/YMusicV4/commit/9389db323789636fb63c394e5ac4fb1728a66535), [80872090b](https://github.com/ymusic-io/YMusicV4/commit/80872090b3d7e2d035d0ba66ebb57b8ef9226cc5))
+
+### IMPROVED
+- A video that can't play shows YouTube's own reason, in your language (e.g. "Video unavailable · This video is private") ([ee007fb5e..9bf684382](https://github.com/ymusic-io/YMusicV4/compare/6ec2ca6ef15c49a07a60ce1574148299f17fe9c6...9bf6843823d9200c4e7d4b8b9237e93d2847e50a))
+- A song from a Library folder the app lost access to says so and offers to add the folder again ([3b0cbe825..63b6518a5](https://github.com/ymusic-io/YMusicV4/compare/1ccdd1f0b066130a50a9fe13751fdab7411b94d7...63b6518a508fde89dd17219892ac758aad51b6d6))
+- Choosing a download folder checks that files can be saved there, and says why not ([d3c13f487..a42bf0cb6](https://github.com/ymusic-io/YMusicV4/compare/c065b2c42bebb02257e6d3f529f3d2623ce3d947...a42bf0cb69947863fa365146382d9af80032378d))
+- Discover tabs sit next to the title on any window at least 650dp wide, and fill the row evenly on phones ([#12](https://github.com/ymusic-io/YMusicV4/issues/12), [cd86791f8](https://github.com/ymusic-io/YMusicV4/commit/cd86791f8fe07da13644a77e2e9a0baa9fe9b6ac), [d61271f42](https://github.com/ymusic-io/YMusicV4/commit/d61271f428e3623a0c3bfa5017117766bde93033))
+- Larger account menu rows in Discover's Library ([1de85f565](https://github.com/ymusic-io/YMusicV4/commit/1de85f565b769987f0a0355649abca086732b96a))
+- A YouTube video blocked by the bot check says "Botguard bypass failure" instead of a bare error code ([58196378f](https://github.com/ymusic-io/YMusicV4/commit/58196378fc7c4d2410f16c419799106d3cfa946c))
+
 ## 4.0.10
 
 ### NEW
