@@ -253,6 +253,9 @@ class AppGraph(
      */
     val pip = PipCoordinator(player, settings)
 
+    /** Per process, so the notice outlives an activity recreation. */
+    internal val upgradeNotice by lazy { UpgradeNotice(settings, appVersionCode) }
+
     /** One per process — a second instance double-captures playback failures and double-credits watch time.
      *  Lazy: its collectors start at once and must only see a fully constructed graph. */
     val playback by lazy {

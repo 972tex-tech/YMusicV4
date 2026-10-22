@@ -710,4 +710,6 @@
     <string name="cd_move_to_top">Move to top</string>
     <string name="dialog_undo">Undo</string>
     <string name="dialog_save">Save</string>
+    <string name="upgraded_message">YMusic updated to %1$s</string>
+    <string name="upgraded_view_changelog">View changelog</string>
 </resources>

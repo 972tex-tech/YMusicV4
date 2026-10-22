@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">ಮೇಲಕ್ಕೆ ಸರಿಸಿ</string>
     <string name="dialog_undo">ರದ್ದುಮಾಡಿ</string>
     <string name="dialog_save">ಉಳಿಸಿ</string>
+    <string name="upgraded_message">YMusic ಅನ್ನು %1$s ಗೆ ನವೀಕರಿಸಲಾಗಿದೆ</string>
+    <string name="upgraded_view_changelog">ಬದಲಾವಣೆಗಳನ್ನು ವೀಕ್ಷಿಸಿ</string>
 </resources>

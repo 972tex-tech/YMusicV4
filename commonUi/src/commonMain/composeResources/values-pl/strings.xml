@@ -554,4 +554,6 @@
     <string name="cd_move_to_top">Przenieś na górę</string>
     <string name="dialog_undo">Cofnij</string>
     <string name="dialog_save">Zapisz</string>
+    <string name="upgraded_message">YMusic zaktualizowano do %1$s</string>
+    <string name="upgraded_view_changelog">Zobacz listę zmian</string>
 </resources>

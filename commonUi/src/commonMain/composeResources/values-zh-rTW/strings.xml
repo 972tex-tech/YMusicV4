@@ -539,4 +539,6 @@
     <string name="cd_move_to_top">移至頂端</string>
     <string name="dialog_undo">復原</string>
     <string name="dialog_save">儲存</string>
+    <string name="upgraded_message">YMusic 已更新至 %1$s</string>
+    <string name="upgraded_view_changelog">查看更新紀錄</string>
 </resources>

@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">En üste taşı</string>
     <string name="dialog_undo">Geri al</string>
     <string name="dialog_save">Kaydet</string>
+    <string name="upgraded_message">YMusic %1$s sürümüne güncellendi</string>
+    <string name="upgraded_view_changelog">Değişiklikleri gör</string>
 </resources>

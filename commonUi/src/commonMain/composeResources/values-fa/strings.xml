@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">انتقال به بالا</string>
     <string name="dialog_undo">واگرد</string>
     <string name="dialog_save">ذخیره</string>
+    <string name="upgraded_message">YMusic به نسخهٔ %1$s به‌روز شد</string>
+    <string name="upgraded_view_changelog">مشاهدهٔ تغییرات</string>
 </resources>

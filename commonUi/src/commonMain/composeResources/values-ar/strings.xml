@@ -696,4 +696,6 @@
     <string name="cd_move_to_top">نقل إلى الأعلى</string>
     <string name="dialog_undo">تراجع</string>
     <string name="dialog_save">حفظ</string>
+    <string name="upgraded_message">تم تحديث YMusic إلى %1$s</string>
+    <string name="upgraded_view_changelog">عرض سجل التغييرات</string>
 </resources>

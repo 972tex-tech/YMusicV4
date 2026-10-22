@@ -539,4 +539,6 @@
     <string name="cd_move_to_top">Pindahkan ke atas</string>
     <string name="dialog_undo">Urungkan</string>
     <string name="dialog_save">Simpan</string>
+    <string name="upgraded_message">YMusic diperbarui ke %1$s</string>
+    <string name="upgraded_view_changelog">Lihat catatan perubahan</string>
 </resources>

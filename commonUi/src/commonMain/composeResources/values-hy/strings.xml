@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">Տեղափոխել վերև</string>
     <string name="dialog_undo">Հետարկել</string>
     <string name="dialog_save">Պահել</string>
+    <string name="upgraded_message">YMusic-ը թարմացվեց %1$s տարբերակի</string>
+    <string name="upgraded_view_changelog">Դիտել փոփոխությունները</string>
 </resources>

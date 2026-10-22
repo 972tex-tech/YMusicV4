@@ -549,4 +549,6 @@
     <string name="cd_move_to_top">Mută sus</string>
     <string name="dialog_undo">Anulează</string>
     <string name="dialog_save">Salvează</string>
+    <string name="upgraded_message">YMusic a fost actualizat la %1$s</string>
+    <string name="upgraded_view_changelog">Vezi modificările</string>
 </resources>

@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">Премести най-горе</string>
     <string name="dialog_undo">Отмени</string>
     <string name="dialog_save">Запази</string>
+    <string name="upgraded_message">YMusic е обновено до %1$s</string>
+    <string name="upgraded_view_changelog">Вижте промените</string>
 </resources>

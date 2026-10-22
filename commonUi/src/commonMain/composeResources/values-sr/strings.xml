@@ -549,4 +549,6 @@
     <string name="cd_move_to_top">Премести на врх</string>
     <string name="dialog_undo">Опозови</string>
     <string name="dialog_save">Сачувај</string>
+    <string name="upgraded_message">YMusic је ажуриран на %1$s</string>
+    <string name="upgraded_view_changelog">Погледај измене</string>
 </resources>

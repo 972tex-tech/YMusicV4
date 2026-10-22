@@ -549,4 +549,6 @@
     <string name="cd_move_to_top">Mover arriba del todo</string>
     <string name="dialog_undo">Deshacer</string>
     <string name="dialog_save">Guardar</string>
+    <string name="upgraded_message">YMusic se ha actualizado a la %1$s</string>
+    <string name="upgraded_view_changelog">Ver novedades</string>
 </resources>

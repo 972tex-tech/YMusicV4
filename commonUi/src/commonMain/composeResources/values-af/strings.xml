@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">Skuif na bo</string>
     <string name="dialog_undo">Ontdoen</string>
     <string name="dialog_save">Stoor</string>
+    <string name="upgraded_message">YMusic is opgedateer na %1$s</string>
+    <string name="upgraded_view_changelog">Bekyk veranderinglys</string>
 </resources>

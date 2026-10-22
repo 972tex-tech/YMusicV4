@@ -549,4 +549,6 @@
     <string name="cd_move_to_top">Mou a dalt de tot</string>
     <string name="dialog_undo">Desfés</string>
     <string name="dialog_save">Desa</string>
+    <string name="upgraded_message">YMusic s'ha actualitzat a la %1$s</string>
+    <string name="upgraded_view_changelog">Mostra els canvis</string>
 </resources>

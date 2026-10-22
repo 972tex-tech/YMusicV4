@@ -539,4 +539,6 @@
     <string name="cd_move_to_top">맨 위로 이동</string>
     <string name="dialog_undo">실행취소</string>
     <string name="dialog_save">저장</string>
+    <string name="upgraded_message">YMusic이 %1$s(으)로 업데이트되었습니다</string>
+    <string name="upgraded_view_changelog">변경 내역 보기</string>
 </resources>

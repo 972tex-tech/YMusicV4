@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">Nach oben verschieben</string>
     <string name="dialog_undo">Rückgängig</string>
     <string name="dialog_save">Speichern</string>
+    <string name="upgraded_message">YMusic wurde auf %1$s aktualisiert</string>
+    <string name="upgraded_view_changelog">Änderungen ansehen</string>
 </resources>

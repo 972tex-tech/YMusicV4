@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">U dhaqaaji xagga sare</string>
     <string name="dialog_undo">Ka noqo</string>
     <string name="dialog_save">Kaydi</string>
+    <string name="upgraded_message">YMusic waxaa loo cusboonaysiiyay %1$s</string>
+    <string name="upgraded_view_changelog">Eeg isbeddelada</string>
 </resources>

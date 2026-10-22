@@ -554,4 +554,6 @@
     <string name="cd_move_to_top">Přesunout nahoru</string>
     <string name="dialog_undo">Zpět</string>
     <string name="dialog_save">Uložit</string>
+    <string name="upgraded_message">YMusic byl aktualizován na %1$s</string>
+    <string name="upgraded_view_changelog">Zobrazit seznam změn</string>
 </resources>

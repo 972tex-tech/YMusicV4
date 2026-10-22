@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">Áthelyezés a tetejére</string>
     <string name="dialog_undo">Visszavonás</string>
     <string name="dialog_save">Mentés</string>
+    <string name="upgraded_message">A YMusic frissült erre: %1$s</string>
+    <string name="upgraded_view_changelog">Változások megtekintése</string>
 </resources>

@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">Μετακίνηση στην κορυφή</string>
     <string name="dialog_undo">Αναίρεση</string>
     <string name="dialog_save">Αποθήκευση</string>
+    <string name="upgraded_message">Το YMusic ενημερώθηκε στην έκδοση %1$s</string>
+    <string name="upgraded_view_changelog">Προβολή αλλαγών</string>
 </resources>

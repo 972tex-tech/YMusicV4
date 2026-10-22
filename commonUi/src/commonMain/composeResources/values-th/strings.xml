@@ -539,4 +539,6 @@
     <string name="cd_move_to_top">ย้ายไปบนสุด</string>
     <string name="dialog_undo">เลิกทำ</string>
     <string name="dialog_save">บันทึก</string>
+    <string name="upgraded_message">อัปเดต YMusic เป็น %1$s แล้ว</string>
+    <string name="upgraded_view_changelog">ดูบันทึกการเปลี่ยนแปลง</string>
 </resources>

@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">Liiguta üles</string>
     <string name="dialog_undo">Võta tagasi</string>
     <string name="dialog_save">Salvesta</string>
+    <string name="upgraded_message">YMusic uuendati versioonile %1$s</string>
+    <string name="upgraded_view_changelog">Vaata muudatusi</string>
 </resources>

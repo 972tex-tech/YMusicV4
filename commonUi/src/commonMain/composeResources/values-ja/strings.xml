@@ -539,4 +539,6 @@
     <string name="cd_move_to_top">一番上へ移動</string>
     <string name="dialog_undo">元に戻す</string>
     <string name="dialog_save">保存</string>
+    <string name="upgraded_message">YMusic を %1$s にアップデートしました</string>
+    <string name="upgraded_view_changelog">変更履歴を見る</string>
 </resources>

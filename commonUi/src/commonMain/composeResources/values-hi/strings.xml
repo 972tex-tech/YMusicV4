@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">सबसे ऊपर ले जाएं</string>
     <string name="dialog_undo">पूर्ववत करें</string>
     <string name="dialog_save">सहेजें</string>
+    <string name="upgraded_message">YMusic %1$s पर अपडेट हो गया</string>
+    <string name="upgraded_view_changelog">बदलाव देखें</string>
 </resources>

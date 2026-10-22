@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">Hamisha juu</string>
     <string name="dialog_undo">Tendua</string>
     <string name="dialog_save">Hifadhi</string>
+    <string name="upgraded_message">YMusic imesasishwa hadi %1$s</string>
+    <string name="upgraded_view_changelog">Angalia mabadiliko</string>
 </resources>

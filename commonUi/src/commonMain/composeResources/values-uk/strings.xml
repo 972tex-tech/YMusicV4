@@ -554,4 +554,6 @@
     <string name="cd_move_to_top">Перемістити вгору</string>
     <string name="dialog_undo">Скасувати</string>
     <string name="dialog_save">Зберегти</string>
+    <string name="upgraded_message">YMusic оновлено до %1$s</string>
+    <string name="upgraded_view_changelog">Список змін</string>
 </resources>

@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">Eraman goiko aldera</string>
     <string name="dialog_undo">Desegin</string>
     <string name="dialog_save">Gorde</string>
+    <string name="upgraded_message">YMusic %1$s bertsiora eguneratu da</string>
+    <string name="upgraded_view_changelog">Ikusi aldaketak</string>
 </resources>

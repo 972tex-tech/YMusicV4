@@ -544,4 +544,6 @@
     <string name="cd_move_to_top">Ilipat sa itaas</string>
     <string name="dialog_undo">I-undo</string>
     <string name="dialog_save">I-save</string>
+    <string name="upgraded_message">Na-update ang YMusic sa %1$s</string>
+    <string name="upgraded_view_changelog">Tingnan ang changelog</string>
 </resources>
