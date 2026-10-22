@@ -63,6 +63,7 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.ClosedCaptionOff
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Equalizer
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.GraphicEq
@@ -77,8 +78,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -93,6 +97,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -1822,16 +1827,61 @@ private fun QueueRow(
     dragState: QueueDragState,
     large: Boolean = false,
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
     val dragging = dragState.draggingIndex == index
+    val swipeState = rememberSwipeToDismissBoxState()
+    val currentIndex by rememberUpdatedState(index)
+    // Rows are keyed by position: once the swiped row is gone its slot shows the next item, so the
+    // state must be back at Settled in the same frame.
+    LaunchedEffect(swipeState.currentValue) {
+        if (swipeState.currentValue != SwipeToDismissBoxValue.Settled) {
+            coordinator.player.removeAt(currentIndex)
+            swipeState.snapTo(SwipeToDismissBoxValue.Settled)
+        }
+    }
+    SwipeToDismissBox(
+        swipeState,
+        backgroundContent = {
+            if (swipeState.dismissDirection != SwipeToDismissBoxValue.Settled) {
+                Box(
+                    Modifier.fillMaxSize().background(DesignColors.SurfaceDim).padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Icon(Icons.Outlined.Delete, null, Modifier.size(20.dp), tint = DesignColors.InkSecondary)
+                }
+            }
+        },
+        modifier = Modifier
+            .zIndex(if (dragging) 1f else 0f)
+            .graphicsLayer { translationY = if (dragging) dragState.dragOffset else 0f },
+        enableDismissFromEndToStart = false,
+        gesturesEnabled = dragState.draggingIndex == null,
+    ) {
+        val swiping = swipeState.dismissDirection != SwipeToDismissBoxValue.Settled
+        QueueRowContent(coordinator, index, item, current, dragState, large, dragging, swiping)
+    }
+}
+
+@Composable
+private fun QueueRowContent(
+    coordinator: PlaybackCoordinator,
+    index: Int,
+    item: io.ymusic.player.PlayableItem,
+    current: Boolean,
+    dragState: QueueDragState,
+    large: Boolean,
+    dragging: Boolean,
+    swiping: Boolean,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
-            .zIndex(if (dragging) 1f else 0f)
-            .graphicsLayer { translationY = if (dragging) dragState.dragOffset else 0f }
             .then(
-                if (dragging) Modifier.shadow(4.dp).background(DesignColors.SurfaceElevated)
-                else Modifier,
+                when {
+                    dragging -> Modifier.shadow(4.dp).background(DesignColors.SurfaceElevated)
+                    swiping -> Modifier.background(DesignColors.Surface)
+                    else -> Modifier
+                },
             )
             .clickable { coordinator.player.playAt(index) }
             .padding(horizontal = 16.dp, vertical = if (large) 10.dp else 8.dp),
