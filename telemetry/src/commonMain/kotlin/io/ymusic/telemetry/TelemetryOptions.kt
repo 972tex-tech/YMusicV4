@@ -73,6 +73,8 @@ internal fun fingerprintPolicy(event: SentryEvent): SentryEvent {
     return event
 }
 
+private const val DEVICE_ID_TAG = "device_id"
+
 private val SITE_CODE = Regex("""E\d{5}""")
 
 private val NEXT_PROCESS_REPORTS = setOf("ApplicationNotResponding", "SIGSEGV", "SIGABRT", "SIGBUS", "SIGILL", "SIGFPE", "SIGTRAP")
@@ -80,7 +82,11 @@ private val NEXT_PROCESS_REPORTS = setOf("ApplicationNotResponding", "SIGSEGV", 
 /** Attach the anonymous stable device id to every event this process sends (crash grouping across
  *  sessions, "how many devices" triage). No-op until Sentry.init ran. */
 fun installSentryDeviceId(id: String) {
-    Sentry.configureScope { scope -> scope.setContext("DEVICE_ID", id) }
+    Sentry.configureScope { scope ->
+        scope.setContext("DEVICE_ID", id)
+        // A tag too: contexts aren't searchable, and a user quotes this id on GitHub or by email.
+        scope.setTag(DEVICE_ID_TAG, id)
+    }
 }
 
 /** Attach the RUNNING engine-js bundle's self-declared revision to every event — set at start and
