@@ -547,4 +547,11 @@
     <string name="menu_details_comments">Podrobnosti a komentáre</string>
     <string name="menu_speed_pitch">Rýchlosť a výška tónu</string>
     <string name="link_open_failed">Nedá sa otvoriť: %1$s</string>
+    <string name="sort_manual">Ručne</string>
+    <string name="arrange_songs">Usporiadať skladby</string>
+    <string name="arrange_stacking">Skladanie · %1$d</string>
+    <string name="cd_reset_stacking">Zrušiť skladanie</string>
+    <string name="cd_move_to_top">Presunúť nahor</string>
+    <string name="dialog_undo">Späť</string>
+    <string name="dialog_save">Uložiť</string>
 </resources>

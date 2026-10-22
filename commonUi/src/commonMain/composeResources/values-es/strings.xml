@@ -542,4 +542,11 @@
     <string name="menu_details_comments">Detalles y comentarios</string>
     <string name="menu_speed_pitch">Velocidad y tono</string>
     <string name="link_open_failed">No se puede abrir: %1$s</string>
+    <string name="sort_manual">Manual</string>
+    <string name="arrange_songs">Ordenar canciones</string>
+    <string name="arrange_stacking">Apilando · %1$d</string>
+    <string name="cd_reset_stacking">Restablecer apilado</string>
+    <string name="cd_move_to_top">Mover arriba del todo</string>
+    <string name="dialog_undo">Deshacer</string>
+    <string name="dialog_save">Guardar</string>
 </resources>

@@ -537,4 +537,11 @@
     <string name="menu_details_comments">විස්තර සහ අදහස්</string>
     <string name="menu_speed_pitch">වේගය සහ තාරතාව</string>
     <string name="link_open_failed">විවෘත කළ නොහැක: %1$s</string>
+    <string name="sort_manual">අතින්</string>
+    <string name="arrange_songs">ගීත සකසන්න</string>
+    <string name="arrange_stacking">ගොඩගැසීම · %1$d</string>
+    <string name="cd_reset_stacking">ගොඩගැසීම යළි සකසන්න</string>
+    <string name="cd_move_to_top">ඉහළට ගෙන යන්න</string>
+    <string name="dialog_undo">පසුගමනය</string>
+    <string name="dialog_save">සුරකින්න</string>
 </resources>

@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Մանրամասներ և մեկնաբանություններ</string>
     <string name="menu_speed_pitch">Արագություն և տոն</string>
     <string name="link_open_failed">Հնարավոր չէ բացել՝ %1$s</string>
+    <string name="sort_manual">Ձեռքով</string>
+    <string name="arrange_songs">Դասավորել երգերը</string>
+    <string name="arrange_stacking">Կուտակում · %1$d</string>
+    <string name="cd_reset_stacking">Զրոյացնել կուտակումը</string>
+    <string name="cd_move_to_top">Տեղափոխել վերև</string>
+    <string name="dialog_undo">Հետարկել</string>
+    <string name="dialog_save">Պահել</string>
 </resources>

@@ -537,4 +537,11 @@
     <string name="menu_details_comments">વિગતો અને ટિપ્પણીઓ</string>
     <string name="menu_speed_pitch">ઝડપ અને પિચ</string>
     <string name="link_open_failed">ખોલી શકાતું નથી: %1$s</string>
+    <string name="sort_manual">મેન્યુઅલ</string>
+    <string name="arrange_songs">ગીતો ગોઠવો</string>
+    <string name="arrange_stacking">સ્ટેકિંગ · %1$d</string>
+    <string name="cd_reset_stacking">સ્ટેકિંગ રીસેટ કરો</string>
+    <string name="cd_move_to_top">ટોચ પર ખસેડો</string>
+    <string name="dialog_undo">પૂર્વવત્ કરો</string>
+    <string name="dialog_save">સાચવો</string>
 </resources>

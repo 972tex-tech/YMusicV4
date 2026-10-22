@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Részletek és hozzászólások</string>
     <string name="menu_speed_pitch">Sebesség és hangmagasság</string>
     <string name="link_open_failed">Nem nyitható meg: %1$s</string>
+    <string name="sort_manual">Kézi</string>
+    <string name="arrange_songs">Dalok rendezése</string>
+    <string name="arrange_stacking">Halmozás · %1$d</string>
+    <string name="cd_reset_stacking">Halmozás visszaállítása</string>
+    <string name="cd_move_to_top">Áthelyezés a tetejére</string>
+    <string name="dialog_undo">Visszavonás</string>
+    <string name="dialog_save">Mentés</string>
 </resources>

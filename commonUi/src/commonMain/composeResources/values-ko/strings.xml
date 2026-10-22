@@ -532,4 +532,11 @@
     <string name="menu_details_comments">세부정보 및 댓글</string>
     <string name="menu_speed_pitch">속도 및 음높이</string>
     <string name="link_open_failed">열 수 없음: %1$s</string>
+    <string name="sort_manual">수동</string>
+    <string name="arrange_songs">노래 정렬</string>
+    <string name="arrange_stacking">쌓는 중 · %1$d</string>
+    <string name="cd_reset_stacking">쌓기 초기화</string>
+    <string name="cd_move_to_top">맨 위로 이동</string>
+    <string name="dialog_undo">실행취소</string>
+    <string name="dialog_save">저장</string>
 </resources>

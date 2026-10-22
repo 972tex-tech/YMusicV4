@@ -537,4 +537,11 @@
     <string name="menu_details_comments">വിശദാംശങ്ങളും കമന്റുകളും</string>
     <string name="menu_speed_pitch">വേഗതയും പിച്ചും</string>
     <string name="link_open_failed">തുറക്കാനാകുന്നില്ല: %1$s</string>
+    <string name="sort_manual">മാനുവൽ</string>
+    <string name="arrange_songs">ഗാനങ്ങൾ ക്രമീകരിക്കുക</string>
+    <string name="arrange_stacking">അടുക്കുന്നു · %1$d</string>
+    <string name="cd_reset_stacking">അടുക്കൽ പുനഃസജ്ജമാക്കുക</string>
+    <string name="cd_move_to_top">മുകളിലേക്ക് നീക്കുക</string>
+    <string name="dialog_undo">പഴയപടിയാക്കുക</string>
+    <string name="dialog_save">സംരക്ഷിക്കുക</string>
 </resources>

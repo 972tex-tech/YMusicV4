@@ -537,4 +537,11 @@
     <string name="menu_details_comments">جزئیات و نظرات</string>
     <string name="menu_speed_pitch">سرعت و زیر و بمی</string>
     <string name="link_open_failed">باز نمی‌شود: %1$s</string>
+    <string name="sort_manual">دستی</string>
+    <string name="arrange_songs">مرتب‌سازی آهنگ‌ها</string>
+    <string name="arrange_stacking">انباشت · %1$d</string>
+    <string name="cd_reset_stacking">بازنشانی انباشت</string>
+    <string name="cd_move_to_top">انتقال به بالا</string>
+    <string name="dialog_undo">واگرد</string>
+    <string name="dialog_save">ذخیره</string>
 </resources>

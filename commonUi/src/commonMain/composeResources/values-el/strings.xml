@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Λεπτομέρειες και σχόλια</string>
     <string name="menu_speed_pitch">Ταχύτητα και τονικότητα</string>
     <string name="link_open_failed">Δεν είναι δυνατό το άνοιγμα: %1$s</string>
+    <string name="sort_manual">Χειροκίνητα</string>
+    <string name="arrange_songs">Τακτοποίηση τραγουδιών</string>
+    <string name="arrange_stacking">Στοίβαξη · %1$d</string>
+    <string name="cd_reset_stacking">Επαναφορά στοίβαξης</string>
+    <string name="cd_move_to_top">Μετακίνηση στην κορυφή</string>
+    <string name="dialog_undo">Αναίρεση</string>
+    <string name="dialog_save">Αποθήκευση</string>
 </resources>

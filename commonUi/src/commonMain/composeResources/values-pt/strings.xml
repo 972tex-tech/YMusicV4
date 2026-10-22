@@ -542,4 +542,11 @@
     <string name="menu_details_comments">Detalhes e comentários</string>
     <string name="menu_speed_pitch">Velocidade e tom</string>
     <string name="link_open_failed">Não foi possível abrir: %1$s</string>
+    <string name="sort_manual">Manual</string>
+    <string name="arrange_songs">Organizar músicas</string>
+    <string name="arrange_stacking">Empilhando · %1$d</string>
+    <string name="cd_reset_stacking">Redefinir empilhamento</string>
+    <string name="cd_move_to_top">Mover para o topo</string>
+    <string name="dialog_undo">Desfazer</string>
+    <string name="dialog_save">Salvar</string>
 </resources>

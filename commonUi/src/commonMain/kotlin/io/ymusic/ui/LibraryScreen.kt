@@ -151,6 +151,7 @@ import io.ymusic.ui.resources.shuffle_all
 import io.ymusic.ui.resources.sort_date_added
 import io.ymusic.ui.resources.sort_date_created
 import io.ymusic.ui.resources.sort_last_added
+import io.ymusic.ui.resources.sort_manual
 import io.ymusic.ui.resources.sort_name
 import io.ymusic.ui.resources.sort_type
 import io.ymusic.ui.resources.unknown_album
@@ -669,13 +670,17 @@ private val playlistSortOptions = listOf(
     SortOption(Res.string.sort_date_created, compareBy { it.first.createdAt }),
 )
 
-/** The songs inside a USER playlist: by when they were added to the playlist (default — matches the
- *  order they were appended in) or by name. The system playlists (Recent play / Top tracks) keep their
- *  intrinsic order and offer no sort. */
+/** The songs inside a USER playlist: the playlist's own order (default; [PLAYLIST_MANUAL_SORT], set in
+ *  the arrange dialog), by when they were added, or by name. The system playlists (Recent play / Top
+ *  tracks) keep their intrinsic order and offer no sort. */
 private val playlistSongSortOptions = listOf(
     SortOption<PlaylistItemDetail>(Res.string.sort_last_added, compareBy { it.addedAt }),
     SortOption(Res.string.sort_name, compareBy { it.mediaItem.title.lowercase() }),
+    SortOption(Res.string.sort_manual, { _, _ -> 0 }, directional = false),
 )
+
+/** Last, so the indices 4.0.10 persisted under "playlist.songs" keep their meaning. */
+private const val PLAYLIST_MANUAL_SORT = 2
 
 /** Artist / album / genre groups (name + member songs); "date created" = the group's earliest add. */
 private val groupSortOptions = listOf(
@@ -905,7 +910,7 @@ private fun PlaylistsTab(
     // kept as PlaylistItemDetail so it can be sorted by addedAt as well as by title.
     var systemSongs by remember { mutableStateOf<List<MediaStoreItem>?>(null) }
     var userItems by remember { mutableStateOf<List<PlaylistItemDetail>?>(null) }
-    val playlistSongSort = rememberSortState("playlist.songs", graph.settings)
+    val playlistSongSort = rememberSortState("playlist.songs", graph.settings, defaultIndex = PLAYLIST_MANUAL_SORT)
     // Create/rename/delete don't emit itemsChanges, so the outer content tick won't reload the list —
     // bump this after any playlist mutation to reload playlists() + counts.
     var refreshTick by remember { mutableStateOf(0) }
@@ -953,6 +958,7 @@ private fun PlaylistsTab(
     var showCreate by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Playlist?>(null) }
     var deleting by remember { mutableStateOf<Playlist?>(null) }
+    var arranging by remember { mutableStateOf(false) }
     if (showCreate) {
         PlaylistNameDialog(
             title = stringResource(Res.string.playlist_create_title),
@@ -1019,10 +1025,20 @@ private fun PlaylistsTab(
                 onBack = { selected = null },
                 trailing = {
                     if (songs.isNotEmpty()) ShuffleAllButton(songs, coordinator)
-                    if (isUser) SortControl(playlistSongSortOptions.map { it.label }, playlistSongSort)
+                    if (isUser) {
+                        SortControl(
+                            playlistSongSortOptions.map { it.label },
+                            playlistSongSort,
+                            manualIndex = PLAYLIST_MANUAL_SORT,
+                            onArrange = { arranging = true },
+                        )
+                    }
                 },
             )
         }
+    }
+    if (arranging && open != null && isUser) {
+        ArrangePlaylistDialog(store, open.first, userItems.orEmpty(), graph.logger, onDismiss = { arranging = false })
     }
     // A user playlist offers "Remove from playlist" on each song row; Top tracks offers "Remove"
     // (drops the watch-time row). Other system lists and the playlist index have neither.

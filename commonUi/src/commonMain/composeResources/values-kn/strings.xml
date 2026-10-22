@@ -537,4 +537,11 @@
     <string name="menu_details_comments">ವಿವರಗಳು ಮತ್ತು ಕಾಮೆಂಟ್‌ಗಳು</string>
     <string name="menu_speed_pitch">ವೇಗ ಮತ್ತು ಪಿಚ್</string>
     <string name="link_open_failed">ತೆರೆಯಲು ಸಾಧ್ಯವಿಲ್ಲ: %1$s</string>
+    <string name="sort_manual">ಹಸ್ತಚಾಲಿತ</string>
+    <string name="arrange_songs">ಹಾಡುಗಳನ್ನು ಜೋಡಿಸಿ</string>
+    <string name="arrange_stacking">ಪೇರಿಸುವಿಕೆ · %1$d</string>
+    <string name="cd_reset_stacking">ಪೇರಿಸುವಿಕೆಯನ್ನು ಮರುಹೊಂದಿಸಿ</string>
+    <string name="cd_move_to_top">ಮೇಲಕ್ಕೆ ಸರಿಸಿ</string>
+    <string name="dialog_undo">ರದ್ದುಮಾಡಿ</string>
+    <string name="dialog_save">ಉಳಿಸಿ</string>
 </resources>

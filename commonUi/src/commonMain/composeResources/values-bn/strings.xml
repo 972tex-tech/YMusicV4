@@ -537,4 +537,11 @@
     <string name="menu_details_comments">বিবরণ ও মন্তব্য</string>
     <string name="menu_speed_pitch">গতি ও পিচ</string>
     <string name="link_open_failed">খোলা যাচ্ছে না: %1$s</string>
+    <string name="sort_manual">ম্যানুয়াল</string>
+    <string name="arrange_songs">গান সাজান</string>
+    <string name="arrange_stacking">স্তূপ · %1$d</string>
+    <string name="cd_reset_stacking">স্তূপ রিসেট করুন</string>
+    <string name="cd_move_to_top">শীর্ষে সরান</string>
+    <string name="dialog_undo">পূর্বাবস্থায় ফেরান</string>
+    <string name="dialog_save">সংরক্ষণ করুন</string>
 </resources>

@@ -669,4 +669,11 @@
     <string name="playlists_empty_title">Chưa có danh sách phát</string>
     <string name="playlists_empty_desc">Chuyển danh sách phát từ ứng dụng nghe nhạc khác sang, hoặc khôi phục bản sao lưu.</string>
     <string name="playlists_empty_restore">Khôi phục bản sao lưu</string>
+    <string name="sort_manual">Thủ công</string>
+    <string name="arrange_songs">Sắp xếp bài hát</string>
+    <string name="arrange_stacking">Xếp chồng · %1$d</string>
+    <string name="cd_reset_stacking">Đặt lại xếp chồng</string>
+    <string name="cd_move_to_top">Đưa lên đầu</string>
+    <string name="dialog_undo">Hoàn tác</string>
+    <string name="dialog_save">Lưu</string>
 </resources>

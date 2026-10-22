@@ -532,4 +532,11 @@
     <string name="menu_details_comments">Butiran dan ulasan</string>
     <string name="menu_speed_pitch">Kelajuan dan pic</string>
     <string name="link_open_failed">Tidak dapat membuka: %1$s</string>
+    <string name="sort_manual">Manual</string>
+    <string name="arrange_songs">Susun lagu</string>
+    <string name="arrange_stacking">Menyusun · %1$d</string>
+    <string name="cd_reset_stacking">Tetapkan semula susunan</string>
+    <string name="cd_move_to_top">Alih ke atas</string>
+    <string name="dialog_undo">Buat asal</string>
+    <string name="dialog_save">Simpan</string>
 </resources>

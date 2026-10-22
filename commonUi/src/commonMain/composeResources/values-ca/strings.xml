@@ -542,4 +542,11 @@
     <string name="menu_details_comments">Detalls i comentaris</string>
     <string name="menu_speed_pitch">Velocitat i to</string>
     <string name="link_open_failed">No es pot obrir: %1$s</string>
+    <string name="sort_manual">Manual</string>
+    <string name="arrange_songs">Ordena les cançons</string>
+    <string name="arrange_stacking">Apilant · %1$d</string>
+    <string name="cd_reset_stacking">Restableix l'apilament</string>
+    <string name="cd_move_to_top">Mou a dalt de tot</string>
+    <string name="dialog_undo">Desfés</string>
+    <string name="dialog_save">Desa</string>
 </resources>

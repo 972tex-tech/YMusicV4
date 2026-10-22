@@ -689,4 +689,11 @@
     <string name="playlists_empty_title">لا توجد قوائم تشغيل بعد</string>
     <string name="playlists_empty_desc">انقل قوائم التشغيل من تطبيق موسيقى آخر، أو استعد نسخة احتياطية.</string>
     <string name="playlists_empty_restore">استعادة نسخة احتياطية</string>
+    <string name="sort_manual">يدوي</string>
+    <string name="arrange_songs">ترتيب الأغاني</string>
+    <string name="arrange_stacking">تكديس · %1$d</string>
+    <string name="cd_reset_stacking">إعادة ضبط التكديس</string>
+    <string name="cd_move_to_top">نقل إلى الأعلى</string>
+    <string name="dialog_undo">تراجع</string>
+    <string name="dialog_save">حفظ</string>
 </resources>

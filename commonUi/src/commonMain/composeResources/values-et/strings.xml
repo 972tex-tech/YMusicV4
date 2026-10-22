@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Üksikasjad ja kommentaarid</string>
     <string name="menu_speed_pitch">Kiirus ja helikõrgus</string>
     <string name="link_open_failed">Ei saa avada: %1$s</string>
+    <string name="sort_manual">Käsitsi</string>
+    <string name="arrange_songs">Korralda laulud</string>
+    <string name="arrange_stacking">Virnastamine · %1$d</string>
+    <string name="cd_reset_stacking">Lähtesta virnastamine</string>
+    <string name="cd_move_to_top">Liiguta üles</string>
+    <string name="dialog_undo">Võta tagasi</string>
+    <string name="dialog_save">Salvesta</string>
 </resources>

@@ -542,4 +542,11 @@
     <string name="menu_details_comments">Detalii și comentarii</string>
     <string name="menu_speed_pitch">Viteză și tonalitate</string>
     <string name="link_open_failed">Nu se poate deschide: %1$s</string>
+    <string name="sort_manual">Manual</string>
+    <string name="arrange_songs">Aranjează melodiile</string>
+    <string name="arrange_stacking">Stivuire · %1$d</string>
+    <string name="cd_reset_stacking">Resetează stivuirea</string>
+    <string name="cd_move_to_top">Mută sus</string>
+    <string name="dialog_undo">Anulează</string>
+    <string name="dialog_save">Salvează</string>
 </resources>

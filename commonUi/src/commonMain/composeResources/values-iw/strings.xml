@@ -542,4 +542,11 @@
     <string name="menu_details_comments">פרטים ותגובות</string>
     <string name="menu_speed_pitch">מהירות וגובה צליל</string>
     <string name="link_open_failed">לא ניתן לפתוח: %1$s</string>
+    <string name="sort_manual">ידני</string>
+    <string name="arrange_songs">סידור שירים</string>
+    <string name="arrange_stacking">ערימה · %1$d</string>
+    <string name="cd_reset_stacking">איפוס הערימה</string>
+    <string name="cd_move_to_top">העברה לראש</string>
+    <string name="dialog_undo">ביטול</string>
+    <string name="dialog_save">שמירה</string>
 </resources>

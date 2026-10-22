@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Xehetasunak eta iruzkinak</string>
     <string name="menu_speed_pitch">Abiadura eta tonua</string>
     <string name="link_open_failed">Ezin da ireki: %1$s</string>
+    <string name="sort_manual">Eskuz</string>
+    <string name="arrange_songs">Antolatu abestiak</string>
+    <string name="arrange_stacking">Pilatzen · %1$d</string>
+    <string name="cd_reset_stacking">Berrezarri pilaketa</string>
+    <string name="cd_move_to_top">Eraman goiko aldera</string>
+    <string name="dialog_undo">Desegin</string>
+    <string name="dialog_save">Gorde</string>
 </resources>

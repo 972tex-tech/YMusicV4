@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Details en reacties</string>
     <string name="menu_speed_pitch">Snelheid en toonhoogte</string>
     <string name="link_open_failed">Kan niet openen: %1$s</string>
+    <string name="sort_manual">Handmatig</string>
+    <string name="arrange_songs">Nummers ordenen</string>
+    <string name="arrange_stacking">Stapelen · %1$d</string>
+    <string name="cd_reset_stacking">Stapelen resetten</string>
+    <string name="cd_move_to_top">Naar boven verplaatsen</string>
+    <string name="dialog_undo">Ongedaan maken</string>
+    <string name="dialog_save">Opslaan</string>
 </resources>

@@ -102,6 +102,7 @@ E50002 D playlist backup file failed to read (commonUi PlaylistTransferState.ope
 E50003 D device playlists failed to load (commonUi PlaylistTransferState.openImport)
 E50004 D device playlist import failed (commonUi PlaylistTransferState.import)
 E50005 D playlist restore failed to write the store (commonUi PlaylistTransferState.restore)
+E50006 - saving a local playlist's arrangement failed (commonUi ArrangePlaylistDialog)
 
 E60001 D bad media uri — AVURLAsset unopenable (player apple)
 E60002 D timed out preparing the AVPlayerItem (player apple)

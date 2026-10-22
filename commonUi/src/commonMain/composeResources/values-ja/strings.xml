@@ -532,4 +532,11 @@
     <string name="menu_details_comments">詳細とコメント</string>
     <string name="menu_speed_pitch">速度とピッチ</string>
     <string name="link_open_failed">開けません: %1$s</string>
+    <string name="sort_manual">手動</string>
+    <string name="arrange_songs">曲を並べ替え</string>
+    <string name="arrange_stacking">積み上げ中 · %1$d</string>
+    <string name="cd_reset_stacking">積み上げをリセット</string>
+    <string name="cd_move_to_top">一番上へ移動</string>
+    <string name="dialog_undo">元に戻す</string>
+    <string name="dialog_save">保存</string>
 </resources>

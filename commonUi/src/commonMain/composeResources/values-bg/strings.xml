@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Подробности и коментари</string>
     <string name="menu_speed_pitch">Скорост и тон</string>
     <string name="link_open_failed">Не може да се отвори: %1$s</string>
+    <string name="sort_manual">Ръчно</string>
+    <string name="arrange_songs">Подреди песните</string>
+    <string name="arrange_stacking">Натрупване · %1$d</string>
+    <string name="cd_reset_stacking">Нулирай натрупването</string>
+    <string name="cd_move_to_top">Премести най-горе</string>
+    <string name="dialog_undo">Отмени</string>
+    <string name="dialog_save">Запази</string>
 </resources>

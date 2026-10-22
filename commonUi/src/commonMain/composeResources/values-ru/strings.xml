@@ -547,4 +547,11 @@
     <string name="menu_details_comments">Описание и комментарии</string>
     <string name="menu_speed_pitch">Скорость и тон</string>
     <string name="link_open_failed">Не удаётся открыть: %1$s</string>
+    <string name="sort_manual">Вручную</string>
+    <string name="arrange_songs">Упорядочить треки</string>
+    <string name="arrange_stacking">Стопка · %1$d</string>
+    <string name="cd_reset_stacking">Сбросить стопку</string>
+    <string name="cd_move_to_top">Переместить наверх</string>
+    <string name="dialog_undo">Отменить</string>
+    <string name="dialog_save">Сохранить</string>
 </resources>

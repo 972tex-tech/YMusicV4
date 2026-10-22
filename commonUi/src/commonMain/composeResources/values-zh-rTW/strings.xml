@@ -532,4 +532,11 @@
     <string name="menu_details_comments">詳細資料和留言</string>
     <string name="menu_speed_pitch">速度和音高</string>
     <string name="link_open_failed">無法開啟：%1$s</string>
+    <string name="sort_manual">手動</string>
+    <string name="arrange_songs">排列歌曲</string>
+    <string name="arrange_stacking">堆疊中 · %1$d</string>
+    <string name="cd_reset_stacking">重設堆疊</string>
+    <string name="cd_move_to_top">移至頂端</string>
+    <string name="dialog_undo">復原</string>
+    <string name="dialog_save">儲存</string>
 </resources>

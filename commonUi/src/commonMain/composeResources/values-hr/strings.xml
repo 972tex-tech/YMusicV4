@@ -542,4 +542,11 @@
     <string name="menu_details_comments">Detalji i komentari</string>
     <string name="menu_speed_pitch">Brzina i visina tona</string>
     <string name="link_open_failed">Nije moguće otvoriti: %1$s</string>
+    <string name="sort_manual">Ručno</string>
+    <string name="arrange_songs">Posloži pjesme</string>
+    <string name="arrange_stacking">Slaganje · %1$d</string>
+    <string name="cd_reset_stacking">Poništi slaganje</string>
+    <string name="cd_move_to_top">Premjesti na vrh</string>
+    <string name="dialog_undo">Poništi</string>
+    <string name="dialog_save">Spremi</string>
 </resources>

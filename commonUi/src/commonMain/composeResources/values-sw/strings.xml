@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Maelezo na maoni</string>
     <string name="menu_speed_pitch">Kasi na kiimbo</string>
     <string name="link_open_failed">Imeshindwa kufungua: %1$s</string>
+    <string name="sort_manual">Mwenyewe</string>
+    <string name="arrange_songs">Panga nyimbo</string>
+    <string name="arrange_stacking">Kurundika · %1$d</string>
+    <string name="cd_reset_stacking">Weka upya mrundikano</string>
+    <string name="cd_move_to_top">Hamisha juu</string>
+    <string name="dialog_undo">Tendua</string>
+    <string name="dialog_save">Hifadhi</string>
 </resources>

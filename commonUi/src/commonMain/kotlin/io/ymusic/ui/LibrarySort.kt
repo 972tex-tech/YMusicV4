@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -36,6 +37,7 @@ import io.ymusic.settings.SettingsStore
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.arrange_songs
 import io.ymusic.ui.resources.cd_sort
 import io.ymusic.ui.resources.cd_sort_ascending
 import io.ymusic.ui.resources.cd_sort_descending
@@ -43,8 +45,9 @@ import kotlinx.coroutines.flow.drop
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-/** One sort choice: a localized [label] and the ascending [comparator] it sorts by. */
-internal class SortOption<T>(val label: StringResource, val comparator: Comparator<T>)
+/** One sort choice: a localized [label] and the ascending [comparator] it sorts by. A non-[directional]
+ *  option (a list's own manual order) ignores the direction toggle. */
+internal class SortOption<T>(val label: StringResource, val comparator: Comparator<T>, val directional: Boolean = true)
 
 /** The selected sort option (index into a tab's options) + direction, persisted per list. */
 internal class SortState(index: Int = 0, descending: Boolean = false) {
@@ -52,25 +55,26 @@ internal class SortState(index: Int = 0, descending: Boolean = false) {
     var descending by mutableStateOf(descending)
 
     fun <T> sort(items: List<T>, options: List<SortOption<T>>): List<T> {
-        val sorted = items.sortedWith(options.getOrElse(index) { options.first() }.comparator)
-        return if (descending) sorted.asReversed() else sorted
+        val option = options.getOrElse(index) { options.first() }
+        val sorted = items.sortedWith(option.comparator)
+        return if (descending && option.directional) sorted.asReversed() else sorted
     }
 
     fun encode(): String = "$index,${if (descending) 1 else 0}"
 
     companion object {
-        fun decode(raw: String): SortState {
+        fun decode(raw: String, defaultIndex: Int = 0): SortState {
             val parts = raw.split(',')
-            val index = parts.getOrNull(0)?.toIntOrNull()?.takeIf { it >= 0 } ?: return SortState()
+            val index = parts.getOrNull(0)?.toIntOrNull()?.takeIf { it >= 0 } ?: return SortState(defaultIndex)
             return SortState(index, parts.getOrNull(1) == "1")
         }
     }
 }
 
 @Composable
-internal fun rememberSortState(id: String, settings: SettingsStore): SortState {
+internal fun rememberSortState(id: String, settings: SettingsStore, defaultIndex: Int = 0): SortState {
     val setting = remember(id) { AppSettings.librarySort(id) }
-    val state = remember(id, settings) { SortState.decode(settings.flow(setting).value) }
+    val state = remember(id, settings) { SortState.decode(settings.flow(setting).value, defaultIndex) }
     LaunchedEffect(state) {
         snapshotFlow { state.encode() }.drop(1).collect { settings.put(setting, it) }
     }
@@ -97,9 +101,17 @@ internal fun SortBar(
 }
 
 /** The sort control: a chip naming the current key (tap → menu) + a direction toggle. Picking the
- *  current key in the menu flips direction; picking another selects it ascending. */
+ *  current key in the menu flips direction; picking another selects it ascending. With [onArrange], the
+ *  option at [manualIndex] is the list's manual order: picking it selects it and opens the arranger,
+ *  and while it is selected an edit icon (which also opens it) replaces the direction toggle. */
 @Composable
-internal fun SortControl(labels: List<StringResource>, state: SortState) {
+internal fun SortControl(
+    labels: List<StringResource>,
+    state: SortState,
+    manualIndex: Int = -1,
+    onArrange: (() -> Unit)? = null,
+) {
+    val manual = onArrange != null && state.index == manualIndex
     var open by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box {
@@ -124,14 +136,22 @@ internal fun SortControl(labels: List<StringResource>, state: SortState) {
                     DropdownMenuItem(
                         text = { Text(stringResource(label)) },
                         leadingIcon = {
-                            if (i == state.index) {
+                            if (i == state.index && i != manualIndex) {
                                 Icon(Icons.Default.Check, null, Modifier.size(18.dp), tint = DesignColors.Accent)
                             }
                         },
                         onClick = {
-                            if (i == state.index) state.descending = !state.descending else {
-                                state.index = i
-                                state.descending = false
+                            when {
+                                onArrange != null && i == manualIndex -> {
+                                    state.index = i
+                                    state.descending = false
+                                    onArrange()
+                                }
+                                i == state.index -> state.descending = !state.descending
+                                else -> {
+                                    state.index = i
+                                    state.descending = false
+                                }
                             }
                             open = false
                         },
@@ -139,10 +159,14 @@ internal fun SortControl(labels: List<StringResource>, state: SortState) {
                 }
             }
         }
-        ActionIcon(
-            if (state.descending) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
-            stringResource(if (state.descending) Res.string.cd_sort_descending else Res.string.cd_sort_ascending),
-            tint = DesignColors.InkSoft,
-        ) { state.descending = !state.descending }
+        if (manual) {
+            ActionIcon(Icons.Outlined.Edit, stringResource(Res.string.arrange_songs), tint = DesignColors.InkSoft) { onArrange?.invoke() }
+        } else {
+            ActionIcon(
+                if (state.descending) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+                stringResource(if (state.descending) Res.string.cd_sort_descending else Res.string.cd_sort_ascending),
+                tint = DesignColors.InkSoft,
+            ) { state.descending = !state.descending }
+        }
     }
 }

@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Details &amp; Kommentare</string>
     <string name="menu_speed_pitch">Tempo &amp; Tonhöhe</string>
     <string name="link_open_failed">Kann nicht geöffnet werden: %1$s</string>
+    <string name="sort_manual">Manuell</string>
+    <string name="arrange_songs">Titel anordnen</string>
+    <string name="arrange_stacking">Stapeln · %1$d</string>
+    <string name="cd_reset_stacking">Stapeln zurücksetzen</string>
+    <string name="cd_move_to_top">Nach oben verschieben</string>
+    <string name="dialog_undo">Rückgängig</string>
+    <string name="dialog_save">Speichern</string>
 </resources>

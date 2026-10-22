@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Ayrıntılar ve yorumlar</string>
     <string name="menu_speed_pitch">Hız ve perde</string>
     <string name="link_open_failed">Açılamıyor: %1$s</string>
+    <string name="sort_manual">Manuel</string>
+    <string name="arrange_songs">Şarkıları düzenle</string>
+    <string name="arrange_stacking">Yığma · %1$d</string>
+    <string name="cd_reset_stacking">Yığmayı sıfırla</string>
+    <string name="cd_move_to_top">En üste taşı</string>
+    <string name="dialog_undo">Geri al</string>
+    <string name="dialog_save">Kaydet</string>
 </resources>

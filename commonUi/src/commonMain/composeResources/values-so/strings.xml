@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Faahfaahin iyo faallooyin</string>
     <string name="menu_speed_pitch">Xawaaraha iyo teembada</string>
     <string name="link_open_failed">Lama furi karo: %1$s</string>
+    <string name="sort_manual">Gacan ku samays</string>
+    <string name="arrange_songs">Habee heesaha</string>
+    <string name="arrange_stacking">Isku-dul-dhigid · %1$d</string>
+    <string name="cd_reset_stacking">Dib u deji isku-dul-dhigidda</string>
+    <string name="cd_move_to_top">U dhaqaaji xagga sare</string>
+    <string name="dialog_undo">Ka noqo</string>
+    <string name="dialog_save">Kaydi</string>
 </resources>

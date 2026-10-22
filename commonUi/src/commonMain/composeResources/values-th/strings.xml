@@ -532,4 +532,11 @@
     <string name="menu_details_comments">รายละเอียดและความคิดเห็น</string>
     <string name="menu_speed_pitch">ความเร็วและระดับเสียง</string>
     <string name="link_open_failed">เปิดไม่ได้: %1$s</string>
+    <string name="sort_manual">กำหนดเอง</string>
+    <string name="arrange_songs">จัดเรียงเพลง</string>
+    <string name="arrange_stacking">กำลังซ้อน · %1$d</string>
+    <string name="cd_reset_stacking">รีเซ็ตการซ้อน</string>
+    <string name="cd_move_to_top">ย้ายไปบนสุด</string>
+    <string name="dialog_undo">เลิกทำ</string>
+    <string name="dialog_save">บันทึก</string>
 </resources>

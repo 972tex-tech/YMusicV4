@@ -547,4 +547,11 @@
     <string name="menu_details_comments">Szczegóły i komentarze</string>
     <string name="menu_speed_pitch">Prędkość i wysokość</string>
     <string name="link_open_failed">Nie można otworzyć: %1$s</string>
+    <string name="sort_manual">Ręcznie</string>
+    <string name="arrange_songs">Uporządkuj utwory</string>
+    <string name="arrange_stacking">Układanie · %1$d</string>
+    <string name="cd_reset_stacking">Resetuj układanie</string>
+    <string name="cd_move_to_top">Przenieś na górę</string>
+    <string name="dialog_undo">Cofnij</string>
+    <string name="dialog_save">Zapisz</string>
 </resources>

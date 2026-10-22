@@ -703,4 +703,11 @@
     <string name="playlists_empty_title">No playlists yet</string>
     <string name="playlists_empty_desc">Bring your playlists over from another music app, or restore a backup.</string>
     <string name="playlists_empty_restore">Restore backup</string>
+    <string name="sort_manual">Manual</string>
+    <string name="arrange_songs">Arrange songs</string>
+    <string name="arrange_stacking">Stacking · %1$d</string>
+    <string name="cd_reset_stacking">Reset stacking</string>
+    <string name="cd_move_to_top">Move to top</string>
+    <string name="dialog_undo">Undo</string>
+    <string name="dialog_save">Save</string>
 </resources>

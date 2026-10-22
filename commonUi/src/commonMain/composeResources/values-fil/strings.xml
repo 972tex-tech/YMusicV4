@@ -537,4 +537,11 @@
     <string name="menu_details_comments">Mga detalye at komento</string>
     <string name="menu_speed_pitch">Bilis at pitch</string>
     <string name="link_open_failed">Hindi mabuksan: %1$s</string>
+    <string name="sort_manual">Manual</string>
+    <string name="arrange_songs">Ayusin ang mga kanta</string>
+    <string name="arrange_stacking">Pagsasalansan · %1$d</string>
+    <string name="cd_reset_stacking">I-reset ang pagsasalansan</string>
+    <string name="cd_move_to_top">Ilipat sa itaas</string>
+    <string name="dialog_undo">I-undo</string>
+    <string name="dialog_save">I-save</string>
 </resources>

@@ -537,4 +537,11 @@
     <string name="menu_details_comments">तपशील आणि टिप्पण्या</string>
     <string name="menu_speed_pitch">वेग आणि पिच</string>
     <string name="link_open_failed">उघडता येत नाही: %1$s</string>
+    <string name="sort_manual">मॅन्युअल</string>
+    <string name="arrange_songs">गाणी मांडा</string>
+    <string name="arrange_stacking">स्टॅकिंग · %1$d</string>
+    <string name="cd_reset_stacking">स्टॅकिंग रीसेट करा</string>
+    <string name="cd_move_to_top">सर्वात वर हलवा</string>
+    <string name="dialog_undo">पूर्ववत करा</string>
+    <string name="dialog_save">जतन करा</string>
 </resources>
