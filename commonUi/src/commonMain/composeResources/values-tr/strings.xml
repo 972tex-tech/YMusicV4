@@ -208,6 +208,7 @@
     <string name="sleep_hours_minutes">%1$d sa %2$d dk</string>
     <string name="sleep_add_minutes">+%1$d dk</string>
     <string name="playback_failed">Başarısız (%1$s)</string>
+    <string name="playback_botguard_failed">Botguard atlatılamadı</string>
 
 
     <!-- Settings -->
@@ -230,17 +231,31 @@
     <string name="settings_licenses_intro">YMusic, GNU GPL v3.0 kapsamında açık kaynaklıdır. Şu bileşenleri içerir:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Neyin bozulduğunu veya ne görmek istediğinizi bize anlatın. Ekran görüntüleri veya günlük dosyaları yardımcı olur.</string>
-    <string name="feedback_message_label">Ne oldu?</string>
-    <string name="feedback_name_label">Ad (isteğe bağlı)</string>
-    <string name="feedback_email_label">E-posta (isteğe bağlı)</string>
-    <string name="feedback_attach">Dosya ekle</string>
-    <string name="feedback_send">Gönder</string>
-    <string name="feedback_sent">Geri bildirim gönderildi — teşekkürler!</string>
-    <string name="feedback_send_failed">Geri bildirim gönderilemedi — lütfen tekrar deneyin</string>
-    <string name="feedback_attach_failed">Seçilen dosya okunamadı — eklenmedi</string>
-    <string name="feedback_file_too_large">“%1$s” eklemek için çok büyük (en fazla 10 MB)</string>
-    <string name="cd_remove_attachment">Eki kaldır</string>
+    <string name="feedback_intro">Neyin ters gittiğini ya da ne görmek istediğini GitHub’da veya e-postayla bize anlat. Günlüklerini bulup yanıt verebilmemiz için aşağıdaki anonim bilgilerini ekle.</string>
+    <string name="feedback_info_title">Anonim bilgiler</string>
+    <string name="feedback_copy">Kopyala</string>
+    <string name="feedback_copied">Kopyalandı</string>
+    <string name="feedback_device_id">Cihaz kimliği</string>
+    <string name="feedback_app">Uygulama</string>
+    <string name="feedback_engine">Motor</string>
+    <string name="feedback_language">Dil</string>
+    <string name="feedback_info_note">Ad, e-posta veya hesap yok — yalnızca bu kimlikler ve bu uygulamanın günlükleri.</string>
+    <string name="feedback_github_title">GitHub’da sorun kaydı aç</string>
+    <string name="feedback_github_hint">Herkese açık. Hatalar ve fikirler için en iyisi — başkaları takip edip ekleme yapabilir.</string>
+    <string name="feedback_email_title">%1$s adresine e-posta gönder</string>
+    <string name="feedback_email_hint">Gizli. Hesap veya kişisel sorular için en iyisi.</string>
+    <string name="feedback_email_subject">YMusic geri bildirimi</string>
+    <string name="feedback_prefilled_note">İkisi de bilgiler önceden doldurulmuş olarak açılır. Eksikse yapıştır — onsuz yardımcı olamayız.</string>
+    <string name="feedback_reports_off_title">Anonim raporlar kapalı</string>
+    <string name="feedback_reports_off_message">Sorununu incelemek için bu uygulamanın günlüklerine ihtiyacımız var. Devam’a dokun; YMusic anonim raporları yeniden açıp günlükleri gönderir.</string>
+    <string name="feedback_reports_off_note">Ad, e-posta veya hesap gönderilmez. Raporları Ayarlar’dan yeniden kapatabilirsin.</string>
+    <string name="feedback_continue">Devam</string>
+    <string name="feedback_sentry_link">veya Sentry ile</string>
+    <string name="feedback_sentry_title">Sentry ile gönder</string>
+    <string name="feedback_sentry_label">Ne oldu?</string>
+    <string name="feedback_sentry_note">Anonim bilgilerin ekli. Buradan gönderilen mesajlara yanıt veremiyoruz; yanıt istiyorsan GitHub veya e-posta kullan.</string>
+    <string name="feedback_sentry_send">Gönder</string>
+    <string name="feedback_sentry_sent">Sentry ile gönderildi. Teşekkürler!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menü</string>
@@ -537,4 +552,13 @@
     <string name="menu_details_comments">Ayrıntılar ve yorumlar</string>
     <string name="menu_speed_pitch">Hız ve perde</string>
     <string name="link_open_failed">Açılamıyor: %1$s</string>
+    <string name="sort_manual">Manuel</string>
+    <string name="arrange_songs">Şarkıları düzenle</string>
+    <string name="arrange_stacking">Yığma · %1$d</string>
+    <string name="cd_reset_stacking">Yığmayı sıfırla</string>
+    <string name="cd_move_to_top">En üste taşı</string>
+    <string name="dialog_undo">Geri al</string>
+    <string name="dialog_save">Kaydet</string>
+    <string name="upgraded_message">YMusic %1$s sürümüne güncellendi</string>
+    <string name="upgraded_view_changelog">Değişiklikleri gör</string>
 </resources>

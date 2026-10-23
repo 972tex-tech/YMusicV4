@@ -190,19 +190,62 @@ export function parseSearchChipToken(token: string): { query: string; params?: s
   return out;
 }
 
-// A channel sort-menu chip's "token" (opaque to the app): the sort re-BROWSES the channel with
-// fresh params (the sort is baked into them) — there is no server continuation. yt/channel
-// decodes it and takes the browseId from the round-tripped url.
-const CHANNEL_SORT_PREFIX = "ychp1:";
+// A browse-typed chip's "token" (opaque to the app): the chip re-BROWSES the page with fresh
+// params (a channel sort, a playlist's Videos/Shorts filter; empty = none) — there is no server
+// continuation. yt/channel and yt/playlist decode it and take the browseId from the round-tripped url.
+const BROWSE_PARAMS_PREFIX = "ychp1:";
 
-export function channelSortToken(params: string): string {
-  return CHANNEL_SORT_PREFIX + params;
+export function browseParamsToken(params: string): string {
+  return BROWSE_PARAMS_PREFIX + params;
 }
 
-/** Decode a [channelSortToken]; null for any other (server) continuation string. */
-export function parseChannelSortToken(token: string): string | null {
-  if (token.indexOf(CHANNEL_SORT_PREFIX) !== 0) return null;
-  return token.slice(CHANNEL_SORT_PREFIX.length);
+/** Decode a [browseParamsToken]; null for any other (server) continuation string. */
+export function parseBrowseParamsToken(token: string): string | null {
+  if (token.indexOf(BROWSE_PARAMS_PREFIX) !== 0) return null;
+  return token.slice(BROWSE_PARAMS_PREFIX.length);
+}
+
+// An owned playlist's sort-menu option (opaque to the app): YouTube sorts by SAVING the playlist's
+// order (edit_playlist ACTION_SET_PLAYLIST_VIDEO_ORDER), then the list is re-browsed — there is no
+// server continuation. "<playlistId>:<order>:<params>"; yt/playlist decodes it.
+const PLAYLIST_ORDER_PREFIX = "yplo1:";
+
+export function playlistOrderToken(playlistId: string, order: number, params: string): string {
+  return PLAYLIST_ORDER_PREFIX + playlistId + ":" + order + ":" + params;
+}
+
+/** The [playlistOrderToken] of the first ACTION_SET_PLAYLIST_VIDEO_ORDER edit under [node]. */
+function playlistOrderTokenIn(node: unknown): string | undefined {
+  let token: string | undefined;
+  walk(node, (k, v) => {
+    if (token !== undefined) return true;
+    if (k !== "playlistEditEndpoint" || !isObj(v)) return;
+    const order = get(v, "actions", 0, "playlistVideoOrder");
+    const playlistId = asString(v["playlistId"]);
+    if (
+      get(v, "actions", 0, "action") === "ACTION_SET_PLAYLIST_VIDEO_ORDER" &&
+      typeof order === "number" &&
+      playlistId !== undefined
+    ) {
+      token = playlistOrderToken(playlistId, order, asString(v["params"]) ?? "");
+    }
+    return true;
+  });
+  return token;
+}
+
+/** Decode a [playlistOrderToken]; null for any other continuation string. */
+export function parsePlaylistOrderToken(
+  token: string,
+): { playlistId: string; order: number; params: string } | null {
+  if (token.indexOf(PLAYLIST_ORDER_PREFIX) !== 0) return null;
+  const parts = token.slice(PLAYLIST_ORDER_PREFIX.length).split(":");
+  const playlistId = parts[0];
+  const order = Number(parts[1]);
+  if (parts.length !== 3 || playlistId === undefined || playlistId === "" || !(order >= 0)) {
+    return null;
+  }
+  return { playlistId: playlistId, order: order, params: parts[2] ?? "" };
 }
 
 // The engine-fabricated Mix continuation (opaque to the app): an infinite playlist panel pages by
@@ -950,6 +993,20 @@ function shelfHeader(value: Record<string, unknown>): WireSectionHeader | undefi
   return header;
 }
 
+/** A continuationItemRenderer's token: an owned playlist wraps it in a commandExecutorCommand
+ *  beside a "Reload for updates" popup (verified live 2026-10-22). */
+function continuationEndpointToken(endpoint: unknown): string | undefined {
+  const direct = asString(get(endpoint, "continuationCommand", "token"));
+  if (direct !== undefined) return direct;
+  const commands = get(endpoint, "commandExecutorCommand", "commands");
+  if (!Array.isArray(commands)) return undefined;
+  for (const command of commands) {
+    const token = asString(get(command, "continuationCommand", "token"));
+    if (token !== undefined) return token;
+  }
+  return undefined;
+}
+
 /**
  * Collect a feed page as a list of sections. Serves /browse, /search and /next alike (fresh page or
  * continuation append). A **titled shelf** becomes its own section (header + grid layout); everything
@@ -964,6 +1021,8 @@ export function collectPage(
   const shortsMode = opts !== undefined && opts.shorts === true;
   const sections: WireSection[] = [];
   const chips: WireChip[] = [];
+  const sort: WireChip[] = [];
+  const sheetSort: WireChip[] = [];
   const filterGroups: WireFilterGroup[] = [];
   const pageTabs: WirePageTab[] = [];
   let panelHeader: WirePageHeader | undefined;
@@ -1028,16 +1087,23 @@ export function collectPage(
       }
       // The channel Playlists tab's sort menu (verified live 2026-07-23): a browse-typed control —
       // each entry re-browses the channel with fresh params — surfaced as chips with the params
-      // wrapped as an engine-private token (see channelSortToken; yt/channel decodes it).
+      // wrapped as an engine-private token (see browseParamsToken; yt/channel decodes it).
       if (key === "sortFilterSubMenuRenderer") {
         if (isObj(value) && Array.isArray(value["subMenuItems"])) {
           for (const entry of value["subMenuItems"]) {
             const title = asString(get(entry, "title"));
             if (title === undefined) continue;
             const chip: WireChip = { "title": title };
-            const params = asString(get(entry, "navigationEndpoint", "browseEndpoint", "params"));
-            if (params !== undefined) chip["token"] = channelSortToken(params);
             if (get(entry, "selected") === true) chip["selected"] = true;
+            // An owned playlist's Sort menu (verified live 2026-10-20): each entry saves the order.
+            const orderToken = playlistOrderTokenIn(entry);
+            if (orderToken !== undefined) {
+              chip["token"] = orderToken;
+              sort.push(chip);
+              continue;
+            }
+            const params = asString(get(entry, "navigationEndpoint", "browseEndpoint", "params"));
+            if (params !== undefined) chip["token"] = browseParamsToken(params);
             chips.push(chip);
           }
         }
@@ -1045,15 +1111,35 @@ export function collectPage(
       }
       // The migrated chip generation (channel Videos/Shorts sort bar: Latest/Popular/Oldest,
       // verified live 2026-07-23): richGridRenderer.header.chipBarViewModel.chips[].chipViewModel,
-      // token under tapCommand.innertubeCommand.continuationCommand.
+      // token under tapCommand.innertubeCommand.continuationCommand. A playlist's All/Videos/Shorts
+      // bar (verified live 2026-10-20) is browse-typed instead: browseEndpoint.params, none on All.
       if (key === "chipViewModel") {
+        // An owned playlist's sort chip (verified live 2026-10-20) opens a sheet of order options —
+        // the ones YouTube's web app sends; the legacy Sort menu is the fallback.
+        const sheet = get(value, "tapCommand", "innertubeCommand", "showSheetCommand");
+        if (sheet !== undefined) {
+          walk(sheet, (k, v) => {
+            if (k !== "listItemViewModel" || !isObj(v)) return;
+            const title = asString(get(v, "title", "content"));
+            const token = playlistOrderTokenIn(v);
+            if (title !== undefined && token !== undefined) {
+              const chip: WireChip = { "title": title, "token": token };
+              if (v["isSelected"] === true) chip["selected"] = true;
+              sheetSort.push(chip);
+            }
+            return true;
+          });
+          return true;
+        }
         if (isObj(value)) {
           const title = asString(value["text"]);
           if (title !== undefined) {
             const chip: WireChip = { "title": title };
-            const token = asString(
-              get(value, "tapCommand", "innertubeCommand", "continuationCommand", "token"),
-            );
+            const command = get(value, "tapCommand", "innertubeCommand");
+            const browse = get(command, "browseEndpoint");
+            const token =
+              asString(get(command, "continuationCommand", "token")) ??
+              (isObj(browse) ? browseParamsToken(asString(browse["params"]) ?? "") : undefined);
             if (token !== undefined) chip["token"] = token;
             if (value["selected"] === true) chip["selected"] = true;
             chips.push(chip);
@@ -1111,9 +1197,7 @@ export function collectPage(
       }
       if (key === "continuationItemRenderer") {
         if (continuation === undefined) {
-          continuation = asString(
-            get(value, "continuationEndpoint", "continuationCommand", "token"),
-          );
+          continuation = continuationEndpointToken(get(value, "continuationEndpoint"));
         }
         return true;
       }
@@ -1214,6 +1298,8 @@ export function collectPage(
   if (emptyTitle !== undefined) page["emptyTitle"] = emptyTitle;
   if (emptyMessage !== undefined) page["emptyMessage"] = emptyMessage;
   if (chips.length > 0) page["chips"] = chips;
+  const sortMenu = sheetSort.length > 0 ? sheetSort : sort;
+  if (sortMenu.length > 0) page["sort"] = sortMenu;
   if (filterGroups.length > 0) page["filterGroups"] = filterGroups;
   if (pageTabs.length > 0) page["pageTabs"] = pageTabs;
   const pageHeader = pageHeaderOf(root["header"]) ?? panelHeader;

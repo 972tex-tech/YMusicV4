@@ -208,6 +208,7 @@
     <string name="sleep_hours_minutes">Saa %1$d dak %2$d</string>
     <string name="sleep_add_minutes">+Dak %1$d</string>
     <string name="playback_failed">Imeshindikana (%1$s)</string>
+    <string name="playback_botguard_failed">Imeshindwa kukwepa Botguard</string>
 
 
     <!-- Settings -->
@@ -230,17 +231,31 @@
     <string name="settings_licenses_intro">YMusic ni programu huria chini ya GNU GPL v3.0. Inajumuisha vipengele hivi:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Tuambie kilichoharibika au ungependa kuona nini. Picha za skrini au faili za kumbukumbu husaidia.</string>
-    <string name="feedback_message_label">Nini kimetokea?</string>
-    <string name="feedback_name_label">Jina (si lazima)</string>
-    <string name="feedback_email_label">Barua pepe (si lazima)</string>
-    <string name="feedback_attach">Ambatisha faili</string>
-    <string name="feedback_send">Tuma</string>
-    <string name="feedback_sent">Maoni yametumwa — asante!</string>
-    <string name="feedback_send_failed">Imeshindwa kutuma maoni — tafadhali jaribu tena</string>
-    <string name="feedback_attach_failed">Imeshindwa kusoma faili uliyochagua — haijaambatishwa</string>
-    <string name="feedback_file_too_large">“%1$s” ni kubwa mno kuambatishwa (kikomo MB 10)</string>
-    <string name="cd_remove_attachment">Ondoa kiambatisho</string>
+    <string name="feedback_intro">Tuambie kilichoharibika au unachotaka kuona, kwenye GitHub au kwa barua pepe. Jumuisha maelezo yako yasiyo na jina hapa chini ili tupate kumbukumbu zako na tukujibu.</string>
+    <string name="feedback_info_title">Maelezo bila kujulikana</string>
+    <string name="feedback_copy">Nakili</string>
+    <string name="feedback_copied">Imenakiliwa</string>
+    <string name="feedback_device_id">Kitambulisho cha Kifaa</string>
+    <string name="feedback_app">Programu</string>
+    <string name="feedback_engine">Injini</string>
+    <string name="feedback_language">Lugha</string>
+    <string name="feedback_info_note">Hakuna jina, barua pepe wala akaunti — vitambulisho hivi tu na kumbukumbu za programu hii.</string>
+    <string name="feedback_github_title">Fungua suala kwenye GitHub</string>
+    <string name="feedback_github_hint">Hadharani. Bora kwa hitilafu na mawazo — wengine wanaweza kufuatilia na kuongeza.</string>
+    <string name="feedback_email_title">Tuma barua pepe kwa %1$s</string>
+    <string name="feedback_email_hint">Faragha. Bora kwa maswali ya akaunti au ya binafsi.</string>
+    <string name="feedback_email_subject">Maoni kuhusu YMusic</string>
+    <string name="feedback_prefilled_note">Zote mbili hufunguka maelezo yakiwa tayari yamejazwa. Yakikosekana, yabandike — bila hayo hatuwezi kusaidia.</string>
+    <string name="feedback_reports_off_title">Ripoti zisizojulikana zimezimwa</string>
+    <string name="feedback_reports_off_message">Ili kuchunguza tatizo lako tunahitaji kumbukumbu za programu hii. Gusa Endelea na YMusic itawasha tena ripoti zisizojulikana na kutuma kumbukumbu.</string>
+    <string name="feedback_reports_off_note">Hakuna jina, barua pepe wala akaunti inayotumwa. Unaweza kuzima ripoti tena kwenye Mipangilio.</string>
+    <string name="feedback_continue">Endelea</string>
+    <string name="feedback_sentry_link">au kupitia Sentry</string>
+    <string name="feedback_sentry_title">Tuma kupitia Sentry</string>
+    <string name="feedback_sentry_label">Nini kilitokea?</string>
+    <string name="feedback_sentry_note">Maelezo yako yasiyo na jina yameambatishwa. Hatuwezi kujibu ujumbe uliotumwa kutoka hapa, kwa hivyo tumia GitHub au barua pepe ikiwa unataka jibu.</string>
+    <string name="feedback_sentry_send">Tuma</string>
+    <string name="feedback_sentry_sent">Imetumwa kupitia Sentry. Asante!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menyu</string>
@@ -537,4 +552,13 @@
     <string name="menu_details_comments">Maelezo na maoni</string>
     <string name="menu_speed_pitch">Kasi na kiimbo</string>
     <string name="link_open_failed">Imeshindwa kufungua: %1$s</string>
+    <string name="sort_manual">Mwenyewe</string>
+    <string name="arrange_songs">Panga nyimbo</string>
+    <string name="arrange_stacking">Kurundika · %1$d</string>
+    <string name="cd_reset_stacking">Weka upya mrundikano</string>
+    <string name="cd_move_to_top">Hamisha juu</string>
+    <string name="dialog_undo">Tendua</string>
+    <string name="dialog_save">Hifadhi</string>
+    <string name="upgraded_message">YMusic imesasishwa hadi %1$s</string>
+    <string name="upgraded_view_changelog">Angalia mabadiliko</string>
 </resources>

@@ -167,19 +167,21 @@ private fun LabelValue(label: String, value: String) {
 @Composable
 private fun RateChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(999.dp)
-    Text(
-        label,
-        style = TextStyle(
-            fontSize = 12.sp,
-            color = if (selected) Color.White else DesignColors.InkSoft,
-        ),
-        modifier = Modifier
-            .clip(shape)
-            .background(if (selected) DesignColors.Accent else Color.Transparent)
-            .border(1.dp, if (selected) DesignColors.Accent else DesignColors.Outline, shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
-    )
+    ChipTapArea(onClick) { indication ->
+        Text(
+            label,
+            style = TextStyle(
+                fontSize = ChipTextSize,
+                color = if (selected) Color.White else DesignColors.InkSoft,
+            ),
+            modifier = Modifier
+                .clip(shape)
+                .background(if (selected) DesignColors.Accent else Color.Transparent)
+                .border(1.dp, if (selected) DesignColors.Accent else DesignColors.Outline, shape)
+                .then(indication)
+                .chipPadding(),
+        )
+    }
 }
 
 @Composable

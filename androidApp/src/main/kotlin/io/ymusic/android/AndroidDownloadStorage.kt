@@ -1,6 +1,7 @@
 package io.ymusic.android
 
 import android.content.Context
+import android.database.sqlite.SQLiteException
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.system.Os
@@ -8,6 +9,7 @@ import android.system.OsConstants
 import io.ymusic.download.DefaultDownloadStorage
 import io.ymusic.download.DownloadFileNames
 import io.ymusic.download.DownloadFolderAccessException
+import kmpcommon.log.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okio.FileSystem
@@ -25,6 +27,7 @@ class AndroidDownloadStorage(
     private val context: Context,
     fileSystem: FileSystem,
     scratchDir: Path,
+    private val logger: Logger?,
 ) : DefaultDownloadStorage(fileSystem, scratchDir) {
 
     override suspend fun publishToUri(
@@ -53,6 +56,13 @@ class AndroidDownloadStorage(
             // ExternalStorageProvider's own wording when File.createNewFile() refuses the path it picked.
             if (e.message?.startsWith("Failed to touch") == true) throw DownloadFolderAccessException(destinationFolder.toString(), e)
             throw e
+        } catch (e: IllegalArgumentException) {
+            // "Unknown authority …": the storage provider isn't reachable for this tree.
+            if (e.message?.startsWith("Unknown authority") == true) throw DownloadFolderAccessException(destinationFolder.toString(), e)
+            throw e
+        } catch (e: NullPointerException) {
+            // Thrown provider-side (a null ContentProviderClient inside ExternalStorageProvider).
+            throw DownloadFolderAccessException(destinationFolder.toString(), e)
         } ?: error("SAF createDocument failed in $destinationFolder")
         try {
             resolver.openOutputStream(child)?.use { out ->
@@ -76,11 +86,19 @@ class AndroidDownloadStorage(
         child.toString()
     }
 
+    /** Empty when the provider can't list the folder (Android 10's Downloads provider overflows SQLite's
+     *  variable limit past ~1000 files): createDocument then resolves a clash itself as "name (1).ext". */
     private fun childNames(parent: Uri): Set<String> {
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
         val names = mutableSetOf<String>()
-        context.contentResolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { cursor ->
-            while (cursor.moveToNext()) cursor.getString(0)?.let(names::add)
+        try {
+            context.contentResolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { cursor ->
+                while (cursor.moveToNext()) cursor.getString(0)?.let(names::add)
+            }
+        } catch (e: SQLiteException) {
+            logger?.fork("child-names", mapOf("folder" to parent.toString()))
+                ?.log(Logger.Level.WARN, "provider can't list the folder; leaving name clashes to it", e)
+            return emptySet()
         }
         return names
     }

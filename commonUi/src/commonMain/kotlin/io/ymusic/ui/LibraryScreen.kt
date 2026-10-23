@@ -44,11 +44,11 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,12 +72,14 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.model.MediaStoreBucket
@@ -145,9 +147,11 @@ import io.ymusic.ui.resources.playlist_top_tracks
 import io.ymusic.ui.resources.playlist_top_tracks_desc
 import io.ymusic.ui.resources.queue_last
 import io.ymusic.ui.resources.queue_next
+import io.ymusic.ui.resources.shuffle_all
 import io.ymusic.ui.resources.sort_date_added
 import io.ymusic.ui.resources.sort_date_created
 import io.ymusic.ui.resources.sort_last_added
+import io.ymusic.ui.resources.sort_manual
 import io.ymusic.ui.resources.sort_name
 import io.ymusic.ui.resources.sort_type
 import io.ymusic.ui.resources.unknown_album
@@ -243,6 +247,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             // Download location (a Library folder, root or nested) — the Folders tab marks it and its
             // menu re-designates it. Only meaningful when the shell can download.
             val dlScope = rememberCoroutineScope()
+            val snackbar = LocalSnackbar.current
             val downloadLocationRaw by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
             val downloadLocation: String? = downloadLocationRaw.takeIf { graph.downloads != null && it.isNotBlank() }
             val onToggleDownloadLocation: ((MediaStoreBucket) -> Unit)? = if (graph.downloads == null) {
@@ -251,7 +256,11 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 { bucket ->
                     val target = bucket.uri.toString()
                     dlScope.launch {
-                        graph.settings.put(AppSettings.downloadLocation, if (downloadLocationRaw == target) "" else target)
+                        if (downloadLocationRaw == target) {
+                            graph.settings.put(AppSettings.downloadLocation, "")
+                        } else {
+                            assignDownloadFolder(graph, target, snackbar)
+                        }
                     }
                 }
             }
@@ -338,10 +347,17 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                     EmptyState(stringResource(Res.string.library_no_songs), onReload = null)
                                 } else {
                                     val sort = rememberSortState("songs", graph.settings)
+                                    val songs = sort.sort(loaded.songs, songSortOptions)
                                     SongList(
-                                        sort.sort(loaded.songs, songSortOptions),
+                                        songs,
                                         coordinator,
-                                        header = { SortBar(songSortOptions.map { it.label }, sort) },
+                                        header = {
+                                            SortBar(songSortOptions.map { it.label }, sort) {
+                                                LibraryChip(stringResource(Res.string.shuffle_all), selected = false, icon = Icons.Default.Shuffle) {
+                                                    coordinator.playLocal(songs, songs.indices.random(), shuffle = true)
+                                                }
+                                            }
+                                        },
                                     )
                                 }
                                 LibraryTab.Artists -> if (loaded.songs.isEmpty()) {
@@ -544,10 +560,10 @@ private fun FoldersTab(
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(columns),
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
+                        contentPadding = PaddingValues(start = LibraryGridPadding, end = LibraryGridPadding, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                         state = folderGridState,
                     ) {
-                        item(span = { GridItemSpan(maxLineSpan) }) { header() }
+                        item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.bleedGridPadding()) { header() } }
                         items(sortedFolders, key = { "b${it.id}" }) { bucket ->
                             LibraryGridCard(
                                 icon = Icons.Default.Folder,
@@ -565,7 +581,7 @@ private fun FoldersTab(
                             key = { sortedItems[it.first()].id },
                             span = { GridItemSpan(maxLineSpan) },
                         ) { group ->
-                            Row(Modifier.fillMaxWidth()) {
+                            Row(Modifier.bleedGridPadding()) {
                                 group.forEach { i ->
                                     Box(Modifier.weight(1f)) { SongRow(sortedItems[i], coordinator) { coordinator.playLocal(sortedItems, i) } }
                                 }
@@ -596,6 +612,16 @@ private fun FoldersTab(
 /** The width at/above which the Library's browse grids appear (below it, a single-column list). The
  *  Library sets its own breakpoint rather than borrowing the Discover video feed's. */
 internal val LibraryGridMinWidth = 480.dp
+
+/** A library grid's side padding; with a card's own 6dp it puts card content on the 16dp inset. */
+internal val LibraryGridPadding = 10.dp
+
+/** Full width plus [LibraryGridPadding] on each side, for a full-span grid row that carries its own 16dp inset. */
+private fun Modifier.bleedGridPadding(): Modifier = layout { measurable, constraints ->
+    val bleed = LibraryGridPadding.roundToPx()
+    val placeable = measurable.measure(constraints.offset(horizontal = 2 * bleed))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-bleed, 0) }
+}
 
 /** The fixed height of a tab's sub-toolbar band — the sort/scan/breadcrumb toolbar and the drill-down
  *  back-row all use it, with their content vertically centered, so any element's center sits at the
@@ -649,13 +675,17 @@ private val playlistSortOptions = listOf(
     SortOption(Res.string.sort_date_created, compareBy { it.first.createdAt }),
 )
 
-/** The songs inside a USER playlist: by when they were added to the playlist (default — matches the
- *  order they were appended in) or by name. The system playlists (Recent play / Top tracks) keep their
- *  intrinsic order and offer no sort. */
+/** The songs inside a USER playlist: the playlist's own order (default; [PLAYLIST_MANUAL_SORT], set in
+ *  the arrange dialog), by when they were added, or by name. The system playlists (Recent play / Top
+ *  tracks) keep their intrinsic order and offer no sort. */
 private val playlistSongSortOptions = listOf(
     SortOption<PlaylistItemDetail>(Res.string.sort_last_added, compareBy { it.addedAt }),
     SortOption(Res.string.sort_name, compareBy { it.mediaItem.title.lowercase() }),
+    SortOption(Res.string.sort_manual, { _, _ -> 0 }, directional = false),
 )
+
+/** Last, so the indices 4.0.10 persisted under "playlist.songs" keep their meaning. */
+private const val PLAYLIST_MANUAL_SORT = 2
 
 /** Artist / album / genre groups (name + member songs); "date created" = the group's earliest add. */
 private val groupSortOptions = listOf(
@@ -885,7 +915,7 @@ private fun PlaylistsTab(
     // kept as PlaylistItemDetail so it can be sorted by addedAt as well as by title.
     var systemSongs by remember { mutableStateOf<List<MediaStoreItem>?>(null) }
     var userItems by remember { mutableStateOf<List<PlaylistItemDetail>?>(null) }
-    val playlistSongSort = rememberSortState("playlist.songs", graph.settings)
+    val playlistSongSort = rememberSortState("playlist.songs", graph.settings, defaultIndex = PLAYLIST_MANUAL_SORT)
     // Create/rename/delete don't emit itemsChanges, so the outer content tick won't reload the list —
     // bump this after any playlist mutation to reload playlists() + counts.
     var refreshTick by remember { mutableStateOf(0) }
@@ -933,6 +963,7 @@ private fun PlaylistsTab(
     var showCreate by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Playlist?>(null) }
     var deleting by remember { mutableStateOf<Playlist?>(null) }
+    var arranging by remember { mutableStateOf(false) }
     if (showCreate) {
         PlaylistNameDialog(
             title = stringResource(Res.string.playlist_create_title),
@@ -974,20 +1005,6 @@ private fun PlaylistsTab(
     val open = selected
     val isUser = open != null && open.first > 0
     val sort = rememberSortState("playlists", graph.settings)
-    // The first item is always the header — the list-level toolbar, or the drill-down back-row. Both
-    // use the same row padding/height, so it stays put across the drill-in. A user playlist carries a
-    // sort control at the same end position as the list-level toolbar's (system playlists carry none).
-    val header: @Composable () -> Unit = {
-        if (open == null) {
-            PlaylistsToolbar(sort, transferMenu) { showCreate = true }
-        } else {
-            DrillDownHeader(
-                open.second,
-                onBack = { selected = null },
-                trailing = if (isUser) ({ SortControl(playlistSongSortOptions.map { it.label }, playlistSongSort) }) else null,
-            )
-        }
-    }
     // Level content: system playlists (shown at once) + user playlists at the list level; the opened
     // playlist's songs at the detail level (user playlists sorted by the detail sort control).
     val entries: List<PlaylistEntry> =
@@ -1000,6 +1017,33 @@ private fun PlaylistsTab(
         open == null -> emptyList()
         isUser -> playlistSongSort.sort(userItems.orEmpty(), playlistSongSortOptions).map { it.mediaItem }
         else -> systemSongs.orEmpty()
+    }
+    // The first item is always the header — the list-level toolbar, or the drill-down back-row. Both
+    // use the same row padding/height, so it stays put across the drill-in. A user playlist carries a
+    // sort control at the same end position as the list-level toolbar's (system playlists carry none).
+    val header: @Composable () -> Unit = {
+        if (open == null) {
+            PlaylistsToolbar(sort, transferMenu) { showCreate = true }
+        } else {
+            DrillDownHeader(
+                open.second,
+                onBack = { selected = null },
+                trailing = {
+                    if (songs.isNotEmpty()) ShuffleAllButton(songs, coordinator)
+                    if (isUser) {
+                        SortControl(
+                            playlistSongSortOptions.map { it.label },
+                            playlistSongSort,
+                            manualIndex = PLAYLIST_MANUAL_SORT,
+                            onArrange = { arranging = true },
+                        )
+                    }
+                },
+            )
+        }
+    }
+    if (arranging && open != null && isUser) {
+        ArrangePlaylistDialog(store, open.first, userItems.orEmpty(), graph.logger, onDismiss = { arranging = false })
     }
     // A user playlist offers "Remove from playlist" on each song row; Top tracks offers "Remove"
     // (drops the watch-time row). Other system lists and the playlist index have neither.
@@ -1026,10 +1070,10 @@ private fun PlaylistsTab(
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
+                    contentPadding = PaddingValues(start = LibraryGridPadding, end = LibraryGridPadding, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                     state = gridState,
                 ) {
-                    item(span = { GridItemSpan(maxLineSpan) }) { header() }
+                    item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.bleedGridPadding()) { header() } }
                     if (open == null) {
                         items(entries, key = { it.id }) { entry ->
                             PlaylistCard(entry, onOpen = { selected = it }, onRename = { renaming = it }, onDelete = { deleting = it })
@@ -1042,7 +1086,7 @@ private fun PlaylistsTab(
                             key = { songs[it.first()].id },
                             span = { GridItemSpan(maxLineSpan) },
                         ) { group ->
-                            Row(Modifier.fillMaxWidth()) {
+                            Row(Modifier.bleedGridPadding()) {
                                 group.forEach { i -> Box(Modifier.weight(1f)) { SongRow(songs[i], coordinator) { coordinator.playLocal(songs, i) } } }
                                 repeat(perRow - group.size) { Spacer(Modifier.weight(1f)) }
                             }
@@ -1321,21 +1365,23 @@ private val OpenPlaylistSaver = listSaver<Pair<Long, String>?, Any>(
 
 /** The outlined chip from the mockup's quick-action row (`.qa .q`). */
 @Composable
-internal fun LibraryChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        label,
-        style = TextStyle(
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (selected) Color.White else DesignColors.Ink,
-        ),
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) DesignColors.Accent else Color.Transparent)
-            .border(1.dp, if (selected) DesignColors.Accent else DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 7.dp),
-    )
+internal fun LibraryChip(label: String, selected: Boolean, icon: ImageVector? = null, onClick: () -> Unit) {
+    val content = if (selected) Color.White else DesignColors.Ink
+    ChipTapArea(onClick) { indication ->
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(if (selected) DesignColors.Accent else Color.Transparent)
+                .border(1.dp, if (selected) DesignColors.Accent else DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
+                .then(indication)
+                .chipPadding(leadingIcon = icon != null),
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space4),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) Icon(icon, null, Modifier.size(16.dp), tint = content)
+            Text(label, style = TextStyle(fontSize = ChipTextSize, fontWeight = FontWeight.Medium, color = content))
+        }
+    }
 }
 
 /** The Library's tab row — the shared [UnderlineTabRow] (2dp sliding underline) with text labels. */
@@ -1351,19 +1397,21 @@ private fun LibraryTabRow(selected: LibraryTab, dragProgress: Float, onSelect: (
 @Composable
 private fun ScanPill(scan: ScanAction, controller: ScanController, label: String) {
     val count = controller.scanned
-    Text(
-        when {
-            controller.running && count != null -> stringResource(Res.string.library_scanning_count, count)
-            controller.running -> stringResource(Res.string.library_scanning)
-            else -> label
-        },
-        style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
-            .clickable(enabled = !controller.running) { controller.start(scan) }
-            .padding(horizontal = 13.dp, vertical = 7.dp),
-    )
+    ChipTapArea({ controller.start(scan) }, enabled = !controller.running) { indication ->
+        Text(
+            when {
+                controller.running && count != null -> stringResource(Res.string.library_scanning_count, count)
+                controller.running -> stringResource(Res.string.library_scanning)
+                else -> label
+            },
+            style = TextStyle(fontSize = ChipTextSize, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(999.dp))
+                .then(indication)
+                .chipPadding(),
+        )
+    }
 }
 
 /** The Folders tab toolbar: add-folder pill + rescan on the left, sort on the right. Any side may
@@ -1395,20 +1443,12 @@ private fun FoldersToolbar(
 @Composable
 private fun RescanButton(rescan: ScanAction, controller: ScanController) {
     if (controller.running) {
-        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(Modifier.size(20.dp))
         }
     } else {
-        IconButton(
-            onClick = { controller.start(rescan) },
-            modifier = Modifier.size(32.dp),
-        ) {
-            Icon(
-                Icons.Default.Refresh,
-                contentDescription = stringResource(Res.string.library_rescan),
-                modifier = Modifier.size(19.dp),
-                tint = DesignColors.InkSoft,
-            )
+        ActionIcon(Icons.Default.Refresh, stringResource(Res.string.library_rescan), tint = DesignColors.InkSoft) {
+            controller.start(rescan)
         }
     }
 }
@@ -1546,6 +1586,9 @@ private fun GroupedList(
     val selected = group
     // Both levels sort: the group list by [groupSortOptions], a group's songs by [songSortOptions] —
     // the detail's control sits at the same end position as the list-level one, so it doesn't jump.
+    val entries: List<Pair<String, List<MediaStoreItem>>> = if (selected == null) sort.sort(grouped, groupSortOptions) else emptyList()
+    val groupSongs: List<MediaStoreItem> =
+        if (selected != null) songSort.sort(grouped.firstOrNull { it.first == selected }?.second.orEmpty(), songSortOptions) else emptyList()
     val header: @Composable () -> Unit = {
         if (selected == null) {
             SortBar(groupSortOptions.map { it.label }, sort)
@@ -1553,13 +1596,13 @@ private fun GroupedList(
             DrillDownHeader(
                 selected,
                 onBack = { group = null },
-                trailing = { SortControl(songSortOptions.map { it.label }, songSort) },
+                trailing = {
+                    if (groupSongs.isNotEmpty()) ShuffleAllButton(groupSongs, coordinator)
+                    SortControl(songSortOptions.map { it.label }, songSort)
+                },
             )
         }
     }
-    val entries: List<Pair<String, List<MediaStoreItem>>> = if (selected == null) sort.sort(grouped, groupSortOptions) else emptyList()
-    val groupSongs: List<MediaStoreItem> =
-        if (selected != null) songSort.sort(grouped.firstOrNull { it.first == selected }?.second.orEmpty(), songSortOptions) else emptyList()
 
     TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -1702,21 +1745,12 @@ private fun LibraryGridCard(
 @Composable
 internal fun DrillDownHeader(title: String, onBack: () -> Unit, trailing: (@Composable () -> Unit)? = null) {
     Row(
-        // The 21dp arrow is centred in a 32dp button, so it sits ~5.5dp in from the button's edge.
-        // Pull the row's start in by that much (16 − 5.5 ≈ 11) so the arrow GLYPH lines up with the
-        // list items' 16dp content inset; the button's larger tap area just reaches a little further left.
-        modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 11.dp, end = 8.dp),
+        // The 24dp arrow sits 4dp inside its 32dp button; a 12dp start puts the glyph on the 16dp content inset.
+        modifier = Modifier.fillMaxWidth().height(LibrarySubToolbarHeight).padding(start = 12.dp, end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                stringResource(Res.string.cd_back),
-                Modifier.size(21.dp),
-                tint = DesignColors.InkSoft,
-            )
-        }
+        ActionIcon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(Res.string.cd_back), hitSize = 32.dp, tint = DesignColors.InkSoft, onClick = onBack)
         Text(
             title,
             style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
@@ -1727,6 +1761,14 @@ internal fun DrillDownHeader(title: String, onBack: () -> Unit, trailing: (@Comp
             modifier = Modifier.weight(1f),
         )
         trailing?.invoke()
+    }
+}
+
+/** Plays [songs] shuffled from a random one — the icon-only twin of the Songs tab's Shuffle all chip. */
+@Composable
+private fun ShuffleAllButton(songs: List<MediaStoreItem>, coordinator: PlaybackCoordinator) {
+    ActionIcon(Icons.Default.Shuffle, stringResource(Res.string.shuffle_all), tint = DesignColors.InkSoft) {
+        coordinator.playLocal(songs, songs.indices.random(), shuffle = true)
     }
 }
 

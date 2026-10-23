@@ -248,7 +248,10 @@
     <string name="playback_unavailable">هذا الفيديو غير متاح</string>
     <string name="playback_retry_later">يتعذّر تشغيل هذا الفيديو الآن. حاول مرة أخرى لاحقًا</string>
     <string name="playback_file_missing">لم يعد هذا الملف موجودًا على جهازك</string>
+    <string name="playback_folder_access_lost">فقد YMusic إذن الوصول إلى مجلد هذا الملف. أضف المجلد مرة أخرى لتشغيله</string>
+    <string name="playback_add_folder_again">إضافة مجلد</string>
     <string name="playback_video_unsupported">لا يستطيع جهازك تشغيل تنسيق الفيديو هذا. اختر جودة أخرى.</string>
+    <string name="playback_botguard_failed">فشل تجاوز Botguard</string>
     <string name="menu_reload_player">إعادة تحميل المشغّل</string>
 
 
@@ -275,17 +278,31 @@
     <string name="settings_versions_engine">EngineJs %1$s</string>
     <string name="settings_versions_player">PlayerJs %1$s</string>
     <string name="settings_licenses_intro">‏YMusic مفتوح المصدر بموجب رخصة GNU GPL v3.0، ويتضمن المكوّنات التالية:</string>
-    <string name="feedback_hint">أخبرنا بما تعطّل أو بما تودّ رؤيته. لقطات الشاشة أو ملفات السجلّ مفيدة.</string>
-    <string name="feedback_message_label">ماذا حدث؟</string>
-    <string name="feedback_name_label">الاسم (اختياري)</string>
-    <string name="feedback_email_label">البريد الإلكتروني (اختياري)</string>
-    <string name="feedback_attach">إرفاق ملفات</string>
-    <string name="feedback_send">إرسال</string>
-    <string name="feedback_sent">تم إرسال الملاحظات — شكرًا لك!</string>
-    <string name="feedback_send_failed">تعذّر إرسال الملاحظات — يُرجى المحاولة مرة أخرى</string>
-    <string name="feedback_attach_failed">تعذّرت قراءة الملف المحدد — لم يتم إرفاقه</string>
-    <string name="feedback_file_too_large">‏«%1$s» أكبر من أن يُرفَق (الحد الأقصى 10 ميغابايت)</string>
-    <string name="cd_remove_attachment">إزالة المرفق</string>
+    <string name="feedback_intro">أخبرنا بما حدث من خطأ أو بما تودّ رؤيته، عبر GitHub أو البريد الإلكتروني. أرفق معلوماتك المجهولة أدناه حتى نجد سجلاتك ونرد عليك.</string>
+    <string name="feedback_info_title">معلومات مجهولة الهوية</string>
+    <string name="feedback_copy">نسخ</string>
+    <string name="feedback_copied">تم النسخ</string>
+    <string name="feedback_device_id">معرّف الجهاز</string>
+    <string name="feedback_app">التطبيق</string>
+    <string name="feedback_engine">المحرك</string>
+    <string name="feedback_language">اللغة</string>
+    <string name="feedback_info_note">لا اسم ولا بريد إلكتروني ولا حساب — فقط هذه المعرّفات وسجلات هذا التطبيق.</string>
+    <string name="feedback_github_title">فتح مشكلة على GitHub</string>
+    <string name="feedback_github_hint">عام. الأفضل للأخطاء والأفكار — يمكن للآخرين متابعتها والإضافة إليها.</string>
+    <string name="feedback_email_title">مراسلة %1$s</string>
+    <string name="feedback_email_hint">خاص. الأفضل لأسئلة الحساب أو الأسئلة الشخصية.</string>
+    <string name="feedback_email_subject">ملاحظات YMusic</string>
+    <string name="feedback_prefilled_note">كلاهما يُفتح والمعلومات مُعبّأة مسبقًا. إن لم تكن موجودة، الصقها — لا يمكننا المساعدة بدونها.</string>
+    <string name="feedback_reports_off_title">التقارير المجهولة الهوية متوقفة</string>
+    <string name="feedback_reports_off_message">لفحص مشكلتك نحتاج إلى سجلات هذا التطبيق. انقر على متابعة وسيعيد YMusic تشغيل التقارير المجهولة الهوية ويرسل السجلات.</string>
+    <string name="feedback_reports_off_note">لا يُرسل أي اسم أو بريد إلكتروني أو حساب. يمكنك إيقاف التقارير مجددًا من الإعدادات.</string>
+    <string name="feedback_continue">متابعة</string>
+    <string name="feedback_sentry_link">أو عبر Sentry</string>
+    <string name="feedback_sentry_title">إرسال عبر Sentry</string>
+    <string name="feedback_sentry_label">ماذا حدث؟</string>
+    <string name="feedback_sentry_note">معلوماتك المجهولة مرفقة. لا يمكننا الرد على الرسائل المرسلة من هنا، لذا استخدم GitHub أو البريد الإلكتروني إن أردت ردًا.</string>
+    <string name="feedback_sentry_send">إرسال</string>
+    <string name="feedback_sentry_sent">أُرسلت عبر Sentry. شكرًا لك!</string>
 
     <string name="cd_menu">القائمة</string>
     <string name="cd_search">بحث</string>
@@ -491,6 +508,8 @@
     <string name="download_save_to">الحفظ في</string>
     <string name="download_location_not_set">غير محدد</string>
     <string name="download_location_read_only">هذا المجلد للقراءة فقط. اختر مجلدًا آخر للتنزيلات</string>
+    <string name="download_location_missing">هذا المجلد لم يعد موجودًا. اختر مجلدًا آخر للتنزيلات</string>
+    <string name="download_location_cannot_create">لا يمكن حفظ الملفات في هذا المجلد. اختر مجلدًا آخر للتنزيلات</string>
     <string name="download_action">تنزيل</string>
     <string name="download_action_detail">تنزيل %1$s · %2$s</string>
     <string name="download_rename">إعادة تسمية الملف</string>
@@ -687,4 +706,13 @@
     <string name="playlists_empty_title">لا توجد قوائم تشغيل بعد</string>
     <string name="playlists_empty_desc">انقل قوائم التشغيل من تطبيق موسيقى آخر، أو استعد نسخة احتياطية.</string>
     <string name="playlists_empty_restore">استعادة نسخة احتياطية</string>
+    <string name="sort_manual">يدوي</string>
+    <string name="arrange_songs">ترتيب الأغاني</string>
+    <string name="arrange_stacking">تكديس · %1$d</string>
+    <string name="cd_reset_stacking">إعادة ضبط التكديس</string>
+    <string name="cd_move_to_top">نقل إلى الأعلى</string>
+    <string name="dialog_undo">تراجع</string>
+    <string name="dialog_save">حفظ</string>
+    <string name="upgraded_message">تم تحديث YMusic إلى %1$s</string>
+    <string name="upgraded_view_changelog">عرض سجل التغييرات</string>
 </resources>

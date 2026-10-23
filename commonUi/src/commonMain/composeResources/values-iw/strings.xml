@@ -209,6 +209,7 @@
     <string name="sleep_hours_minutes">%1$d ש' %2$d דק'</string>
     <string name="sleep_add_minutes">+%1$d דק'</string>
     <string name="playback_failed">נכשל (%1$s)</string>
+    <string name="playback_botguard_failed">עקיפת Botguard נכשלה</string>
 
 
     <!-- Settings -->
@@ -231,17 +232,31 @@
     <string name="settings_licenses_intro">YMusic היא תוכנת קוד פתוח ברישיון GNU GPL v3.0. היא כוללת את הרכיבים הבאים:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">ספר לנו מה נשבר או מה היית רוצה לראות. צילומי מסך או קובצי לוג יעזרו.</string>
-    <string name="feedback_message_label">מה קרה?</string>
-    <string name="feedback_name_label">שם (לא חובה)</string>
-    <string name="feedback_email_label">אימייל (לא חובה)</string>
-    <string name="feedback_attach">צרף קבצים</string>
-    <string name="feedback_send">שליחה</string>
-    <string name="feedback_sent">המשוב נשלח — תודה!</string>
-    <string name="feedback_send_failed">לא ניתן לשלוח את המשוב — נסה שוב</string>
-    <string name="feedback_attach_failed">לא ניתן לקרוא את הקובץ שנבחר — הוא לא צורף</string>
-    <string name="feedback_file_too_large">“%1$s” גדול מדי לצירוף (עד 10 MB)</string>
-    <string name="cd_remove_attachment">הסר קובץ מצורף</string>
+    <string name="feedback_intro">ספרו לנו מה השתבש או מה הייתם רוצים לראות, ב־GitHub או באימייל. צרפו את המידע האנונימי שלכם שלמטה כדי שנוכל למצוא את היומנים שלכם ולהשיב.</string>
+    <string name="feedback_info_title">מידע אנונימי</string>
+    <string name="feedback_copy">העתקה</string>
+    <string name="feedback_copied">הועתק</string>
+    <string name="feedback_device_id">מזהה מכשיר</string>
+    <string name="feedback_app">אפליקציה</string>
+    <string name="feedback_engine">מנוע</string>
+    <string name="feedback_language">שפה</string>
+    <string name="feedback_info_note">בלי שם, אימייל או חשבון — רק המזהים האלה והיומנים של האפליקציה.</string>
+    <string name="feedback_github_title">פתיחת issue ב-GitHub</string>
+    <string name="feedback_github_hint">ציבורי. הכי מתאים לבאגים ולרעיונות — אחרים יכולים לעקוב ולהוסיף.</string>
+    <string name="feedback_email_title">שליחת אימייל אל %1$s</string>
+    <string name="feedback_email_hint">פרטי. הכי מתאים לשאלות על החשבון או לשאלות אישיות.</string>
+    <string name="feedback_email_subject">משוב על YMusic</string>
+    <string name="feedback_prefilled_note">שתי האפשרויות נפתחות עם המידע כבר ממולא. אם הוא חסר, הדביקו אותו — בלעדיו לא נוכל לעזור.</string>
+    <string name="feedback_reports_off_title">הדוחות האנונימיים כבויים</string>
+    <string name="feedback_reports_off_message">כדי לבדוק את הבעיה אנחנו צריכים את היומנים של האפליקציה. הקישו על המשך ו-YMusic יפעיל מחדש את הדוחות האנונימיים וישלח את היומנים.</string>
+    <string name="feedback_reports_off_note">לא נשלחים שם, אימייל או חשבון. אפשר לכבות שוב את הדוחות בהגדרות.</string>
+    <string name="feedback_continue">המשך</string>
+    <string name="feedback_sentry_link">או דרך Sentry</string>
+    <string name="feedback_sentry_title">שליחה דרך Sentry</string>
+    <string name="feedback_sentry_label">מה קרה?</string>
+    <string name="feedback_sentry_note">המידע האנונימי שלכם מצורף. איננו יכולים להשיב להודעות שנשלחות מכאן, לכן השתמשו ב־GitHub או באימייל אם תרצו תשובה.</string>
+    <string name="feedback_sentry_send">שליחה</string>
+    <string name="feedback_sentry_sent">נשלח דרך Sentry. תודה!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">תפריט</string>
@@ -542,4 +557,13 @@
     <string name="menu_details_comments">פרטים ותגובות</string>
     <string name="menu_speed_pitch">מהירות וגובה צליל</string>
     <string name="link_open_failed">לא ניתן לפתוח: %1$s</string>
+    <string name="sort_manual">ידני</string>
+    <string name="arrange_songs">סידור שירים</string>
+    <string name="arrange_stacking">ערימה · %1$d</string>
+    <string name="cd_reset_stacking">איפוס הערימה</string>
+    <string name="cd_move_to_top">העברה לראש</string>
+    <string name="dialog_undo">ביטול</string>
+    <string name="dialog_save">שמירה</string>
+    <string name="upgraded_message">YMusic עודכן לגרסה %1$s</string>
+    <string name="upgraded_view_changelog">הצגת רשימת השינויים</string>
 </resources>

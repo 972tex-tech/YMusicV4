@@ -43,10 +43,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarData
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -502,9 +507,6 @@ private fun AppRoot(
         val discoverSessions = remember { mutableMapOf<String, FeedSession>() }
         // YT Music's per-tab feed cache — same lifetime/locale rules as Discover's above.
         val ytMusicSessions = remember { mutableMapOf<YtMusicTab, FeedSession>() }
-        // The Feedback section's draft — lives here so a half-written report survives a section
-        // switch (the section's composable is disposed while another section shows).
-        val feedbackSession = remember { FeedbackSession(graph.logger) }
         // The content locale decides what every feed CONTAINS and the language of its
         // server-composed text — but it lives in the ENGINE, so the app only hears "it changed"
         // ([AppGraph.localeEpoch], bumped by the Settings pickers) and throws the cached pages
@@ -808,6 +810,26 @@ private fun AppRoot(
         val uriHandler = LocalUriHandler.current
         val config by remember(graph) { graph.remoteConfig ?: emptyFlow() }.collectAsState(initial = null)
         var checkingUpdate by remember { mutableStateOf(false) }
+        // Feedback sends the app logs on arrival, so with anonymous reports off it stays closed
+        // until the user agrees in this dialog.
+        var askFeedbackConsent by remember { mutableStateOf(false) }
+        fun openSection(target: AppSection) {
+            val needsConsent = target == AppSection.Feedback && graph.captureFeedbackReport != null &&
+                !graph.settings.flow(AppSettings.crashReports).value
+            if (needsConsent) askFeedbackConsent = true else onSection(target)
+        }
+        if (askFeedbackConsent) {
+            ReportsOffDialog(
+                onContinue = {
+                    askFeedbackConsent = false
+                    scope.launch {
+                        graph.settings.put(AppSettings.crashReports, true)
+                        onSection(AppSection.Feedback)
+                    }
+                },
+                onCancel = { askFeedbackConsent = false },
+            )
+        }
         val premium by graph.premium.collectAsState()
         var updateRecheck by remember { mutableStateOf(0) }
         // The system back gesture/button walks the same path as the in-app back arrows: overlays
@@ -846,16 +868,14 @@ private fun AppRoot(
         Box(
             Modifier.fillMaxSize()
                 .then(if (desktopLayoutHole) Modifier else Modifier.background(DesignColors.Surface))
-                .drawerEdgeGestureExclusion(
-                    !drawer.isOpen && !nowPlayingOpen && layers.isEmpty() &&
-                        section == AppSection.Discover && discoverTab == DiscoverTab.Home,
-                ),
+                // Every screen that shows the drawer's Menu button (nothing pushed) takes the edge swipe.
+                .drawerEdgeGestureExclusion(!drawer.isOpen && !nowPlayingOpen && layers.isEmpty()),
         ) {
             BoxWithConstraints(
                 Modifier.fillMaxSize().safeDrawingPadding(),
             ) {
-                // design/final/home.html: landscape puts the tab row inline in the app bar.
-                val wide = maxWidth > maxHeight && maxWidth >= 600.dp
+                // design/final/home.html: landscape (or any window this wide) puts the tab row inline in the app bar.
+                val wide = maxWidth > maxHeight && maxWidth >= 600.dp || maxWidth >= 650.dp
                 // Fully covering Now Playing is opaque: skip drawing the feed/mini-player under it
                 // (4× GPU overdraw). Draw them again as soon as the sheet peeks so dismiss reveals.
                 val drawShell = !nowPlayingOpen || nowPlayingPeeking
@@ -884,7 +904,7 @@ private fun AppRoot(
                                         AppSection.Telegram -> uriHandler.openUri(
                                             (config ?: RemoteConfigData.DEFAULTS).telegramUrl,
                                         )
-                                        else -> onSection(s)
+                                        else -> openSection(s)
                                     }
                                     scope.launch { drawer.close() }
                                 },
@@ -932,7 +952,7 @@ private fun AppRoot(
                             LocalDownloadLauncher provides downloadLauncher,
                             LocalYtPlaylistActions provides ytPlaylistActions,
                             LocalAvailableOffline provides availableOffline,
-                            LocalNavigateToSection provides { onSection(it) },
+                            LocalNavigateToSection provides { openSection(it) },
                             LocalLibraryFolderReveal provides libraryReveal,
                             LocalCaptchaResolver provides captchaResolver,
                             LocalSignInResolver provides signInResolver,
@@ -1131,9 +1151,7 @@ private fun AppRoot(
                                                     signedIn = signedIn,
                                                     onLogin = openLogin,
                                                 )
-                                                AppSection.Feedback ->
-                                                    if (graph.sendFeedback != null) FeedbackScreen(graph, feedbackSession, onDismiss = { onSection(AppSection.Discover) })
-                                                    else ComingSoon(section)
+                                                AppSection.Feedback -> FeedbackScreen(graph, onDismiss = { onSection(AppSection.Discover) })
                                                 AppSection.Catalogue ->
                                                     if (catalogue != null) catalogue() else ComingSoon(section)
                                                 else -> ComingSoon(section)
@@ -1177,6 +1195,7 @@ private fun AppRoot(
                     }
                 }
                 UpdateDialog(graph, recheck = updateRecheck)
+                UpgradeSnackbar(graph, snackbarHostState)
                 if (checkingUpdate) {
                     CheckUpdateDialog(graph) { found ->
                         checkingUpdate = false
@@ -1232,9 +1251,21 @@ private fun AppRoot(
                 SnackbarHost(
                     snackbarHostState,
                     Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = snackbarLift),
-                )
+                ) { data -> SwipeableSnackbar(data) }
             }
         }
+    }
+}
+
+/** A snackbar the user can swipe away, either direction. */
+@Composable
+private fun SwipeableSnackbar(data: SnackbarData) {
+    key(data) {
+        val swipeState = rememberSwipeToDismissBoxState()
+        LaunchedEffect(swipeState.currentValue) {
+            if (swipeState.currentValue != SwipeToDismissBoxValue.Settled) data.dismiss()
+        }
+        SwipeToDismissBox(swipeState, backgroundContent = {}) { Snackbar(data) }
     }
 }
 
@@ -1253,9 +1284,10 @@ enum class DiscoverTab(val id: Int, val label: StringResource, val icon: ImageVe
 internal fun discoverTabsFor(graph: AppGraph): List<DiscoverTab> =
     DiscoverTab.entries.filter { !graph.guest || (it != DiscoverTab.Account && it != DiscoverTab.TopTracks) }
 
-/** Icon tabs with the 2dp underline indicator; [inline] is the app-bar form (tighter gap, no leading
- *  inset). A single indicator slides between tabs (and leans toward the neighbour by [dragProgress],
- *  −1..1, from the content swipe) instead of the underline snapping tab-to-tab. */
+/** Icon tabs with the 2dp underline indicator spanning the tab; [inline] is the app-bar form (capped-width
+ *  icon tabs), otherwise the tabs split the row's width evenly. A single
+ *  indicator slides between tabs (and leans toward the neighbour by [dragProgress], −1..1, from the
+ *  content swipe) instead of the underline snapping tab-to-tab. */
 @Composable
 internal fun DiscoverTabRow(
     selected: DiscoverTab,
@@ -1265,53 +1297,58 @@ internal fun DiscoverTabRow(
     onSelect: (DiscoverTab) -> Unit,
 ) {
     val density = LocalDensity.current
-    // Each tab's centre (in the row's space) so the fixed-width indicator can slide between them.
-    val centers = remember { mutableStateMapOf<DiscoverTab, Dp>() }
-    // The tab's padding is INSIDE its clickable, so press/hover fills a square around the icon
-    // instead of hugging the glyph's own width. The row's spacing and leading inset are reduced by
-    // that padding, which keeps the icons drawn exactly where they were.
-    Column(Modifier.padding(start = if (inline) 0.dp else 20.dp - TabTouchPadding)) {
-        Row(horizontalArrangement = Arrangement.spacedBy((if (inline) 20.dp else 24.dp) - TabTouchPadding * 2)) {
-            tabs.forEach { t ->
-                val active = t == selected
-                Box(
-                    Modifier.onGloballyPositioned { c ->
-                        val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
-                        centers[t] = with(density) { (x + c.size.width / 2f).toDp() }
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    // Each tab's (centre, width) in the row's space so the indicator can slide between them.
+    val bounds = remember(rtl) { mutableStateMapOf<DiscoverTab, Pair<Dp, Dp>>() }
+    BoxWithConstraints(if (inline) Modifier else Modifier.fillMaxWidth()) {
+        // Inline: equal tabs tiling the row with no dead space, shrinking from the max when the bar is short.
+        val inlineTabWidth = (maxWidth / tabs.size.coerceAtLeast(1)).coerceAtMost(DiscoverInlineTabMaxWidth)
+        Column(if (inline) Modifier else Modifier.fillMaxWidth()) {
+            Row(if (inline) Modifier else Modifier.fillMaxWidth()) {
+                tabs.forEach { t ->
+                    val active = t == selected
+                    Box(
+                        (if (inline) Modifier.width(inlineTabWidth) else Modifier.weight(1f))
+                            .onGloballyPositioned { c ->
+                                val parent = c.parentLayoutCoordinates
+                                val center = (parent?.localPositionOf(c)?.x ?: 0f) + c.size.width / 2f
+                                // Start-relative, as Modifier.offset mirrors in RTL.
+                                val x = if (rtl && parent != null) parent.size.width - center else center
+                                bounds[t] = with(density) { x.toDp() to c.size.width.toDp() }
+                            }
+                            .then(if (inline) Modifier.clip(RoundedCornerShape(10.dp)) else Modifier)
+                            .clickable { onSelect(t) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            t.icon,
+                            stringResource(t.label),
+                            Modifier.size(24.dp),
+                            tint = if (active) DesignColors.Accent else DesignColors.InkFaint,
+                        )
                     }
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { onSelect(t) }
-                        .padding(TabTouchPadding),
-                ) {
-                    Icon(
-                        t.icon,
-                        stringResource(t.label),
-                        Modifier.size(22.dp),
-                        tint = if (active) DesignColors.Accent else DesignColors.InkFaint,
-                    )
                 }
             }
+            val cur = bounds[selected]
+            val i = tabs.indexOf(selected)
+            val neighbor = tabs.getOrNull((i + if (dragProgress > 0f) 1 else -1).coerceIn(0, tabs.lastIndex))?.let { bounds[it] }
+            val frac = abs(dragProgress) * TabIndicatorDragTravel
+            val targetCenter = if (cur != null && neighbor != null) lerp(cur.first, neighbor.first, frac) else cur?.first ?: 0.dp
+            val center by animateDpAsState(targetCenter, label = "discoverIndicator")
+            val indicatorWidth = cur?.second ?: 0.dp
+            Box(
+                Modifier
+                    .offset(x = center - indicatorWidth / 2)
+                    .width(indicatorWidth)
+                    .height(2.dp)
+                    .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
+            )
         }
-        val cur = centers[selected]
-        val i = tabs.indexOf(selected)
-        val neighbor = tabs.getOrNull((i + if (dragProgress > 0f) 1 else -1).coerceIn(0, tabs.lastIndex))?.let { centers[it] }
-        val frac = abs(dragProgress) * TabIndicatorDragTravel
-        val targetCenter = if (cur != null && neighbor != null) lerp(cur, neighbor, frac) else cur ?: 0.dp
-        val center by animateDpAsState(targetCenter, label = "discoverIndicator")
-        Box(
-            Modifier
-                .offset(x = center - DiscoverUnderlineWidth / 2)
-                .width(DiscoverUnderlineWidth)
-                .height(2.dp)
-                .background(DesignColors.Accent, RoundedCornerShape(2.dp)),
-        )
     }
 }
 
-private val DiscoverUnderlineWidth = 34.dp
-
-/** Breathing room around a Discover tab icon — the press/hover surface, not a visual gap. */
-private val TabTouchPadding = 7.dp
+private val DiscoverInlineTabMaxWidth = 88.dp
 
 @Composable
 private fun DiscoverFeed(

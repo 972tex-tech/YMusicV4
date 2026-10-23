@@ -298,6 +298,7 @@ private suspend fun buildIosGraph(container: UIView): AppGraph {
         appVersion = appVersionName,
         appVersionName = appVersionName,
         appVersionCode = appVersionCode,
+        platformInfo = "iOS ${UIDevice.currentDevice.systemVersion}",
         runningBundles = runningBundles,
         stats = stats,
         api = api,

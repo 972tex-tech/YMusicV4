@@ -229,8 +229,9 @@ internal fun <T : Any> UnderlineTabRow(
 ) {
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     // Each tab's (offset, width) in the row's own space — the sliding indicator reads the selected one.
-    val bounds = remember { mutableStateMapOf<T, Pair<Dp, Dp>>() }
+    val bounds = remember(rtl) { mutableStateMapOf<T, Pair<Dp, Dp>>() }
     HorizontalOverflowBox(scrollState) {
         Column(
             Modifier
@@ -245,7 +246,10 @@ internal fun <T : Any> UnderlineTabRow(
                     Box(
                         Modifier
                             .onGloballyPositioned { c ->
-                                val x = c.parentLayoutCoordinates?.localPositionOf(c)?.x ?: 0f
+                                val parent = c.parentLayoutCoordinates
+                                val left = parent?.localPositionOf(c)?.x ?: 0f
+                                // Start-relative, as Modifier.offset mirrors in RTL.
+                                val x = if (rtl && parent != null) parent.size.width - left - c.size.width else left
                                 bounds[t] = with(density) { x.toDp() to c.size.width.toDp() }
                             }
                             .clickable { onSelect(t) },
@@ -289,14 +293,14 @@ internal fun TabLabel(text: String, active: Boolean) {
     )
 }
 
-/** The bars' shared metrics row. Horizontal paddings/gaps shave the ActionIcon hit-inset (5dp) so
+/** The bars' shared metrics row. Horizontal paddings/gaps shave the ActionIcon hit-inset (8dp) so
  *  the glyphs keep the mockups' 16dp margins; vertical paddings are the mockup values unshaved
  *  (5/7dp, top +1 standing in for the under-status-bar margin) because the title and the search
  *  pill carry no inset — shaving the bottom made non-icon content sit visibly low in the bar. */
 @Composable
 internal fun AppBarRow(content: @Composable RowScope.() -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 11.dp, end = 11.dp, top = 6.dp, bottom = 7.dp),
+        Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 7.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
@@ -336,16 +340,17 @@ internal fun DesignAppBar(
         ActionIcon(Icons.Default.Menu, stringResource(Res.string.cd_menu), onClick = onMenu)
         AppBarTitle(title, fill = false, reserveWidthOf = titleReserveWidthOf)
         if (inlineContent != null) {
-            Box(Modifier.padding(start = 16.dp)) { inlineContent() }
+            Box(Modifier.weight(1f).padding(start = 16.dp)) { inlineContent() }
+        } else {
+            Box(Modifier.weight(1f))
         }
-        Box(Modifier.weight(1f))
         if (onSearch != null) {
             ActionIcon(Icons.Default.Search, stringResource(Res.string.cd_search), onClick = onSearch)
         }
     }
 }
 
-/** The search input bar: back · pill field (`.sfield`: gray pill, 13.5sp text, clear ✕ while
+/** The search input bar: back · pill field (`.sfield`: 40dp gray pill, 15sp text, clear ✕ while
  *  non-empty). [autoFocus] off for showcase hosting (the catalogue). */
 @Composable
 internal fun SearchInputBar(
@@ -362,27 +367,28 @@ internal fun SearchInputBar(
         Row(
             Modifier
                 .weight(1f)
+                .height(40.dp)
                 .clip(RoundedCornerShape(999.dp))
                 .background(DesignColors.FieldPill)
-                .padding(start = 13.dp, end = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                // The ✕'s own 8dp inset is the trailing padding while it shows.
+                .padding(start = 16.dp, end = if (value.text.isEmpty()) 16.dp else 0.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BasicTextField(
                 value = value,
                 onValueChange = onValue,
                 singleLine = true,
-                textStyle = TextStyle(fontSize = 13.5.sp, color = DesignColors.Ink),
+                textStyle = TextStyle(fontSize = 15.sp, color = DesignColors.Ink),
                 cursorBrush = SolidColor(DesignColors.Accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { onSubmit(value.text) }),
-                modifier = Modifier.weight(1f).padding(vertical = 8.dp).focusRequester(focusRequester),
+                modifier = Modifier.weight(1f).fillMaxHeight().focusRequester(focusRequester),
                 decorationBox = { inner ->
-                    Box {
+                    Box(Modifier.fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
                         if (value.text.isEmpty()) {
                             Text(
                                 placeholder,
-                                style = TextStyle(fontSize = 13.5.sp, color = DesignColors.InkFaint),
+                                style = TextStyle(fontSize = 15.sp, color = DesignColors.InkFaint),
                                 maxLines = 1,
                             )
                         }
@@ -394,8 +400,6 @@ internal fun SearchInputBar(
                 ActionIcon(
                     Icons.Default.Close,
                     stringResource(Res.string.cd_clear),
-                    iconSize = 16.dp,
-                    hitSize = 28.dp,
                     tint = DesignColors.InkSecondary,
                     onClick = { onValue(TextFieldValue("")) },
                 )

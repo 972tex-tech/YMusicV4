@@ -74,10 +74,16 @@ internal class QueueController(private val random: Random = Random.Default) {
     /** Indices into [QueueState.items] in the order they played; last element is the current item. */
     private val played = mutableListOf<Int>()
 
+    /** Indices queued by [addNext], played in order before any shuffle pick; a jump, move or remove clears it. */
+    private val upNext = mutableListOf<Int>()
+
+    val hasUpNext: Boolean get() = upNext.isNotEmpty()
+
     fun setQueue(items: List<PlayableItem>, playIndex: Int, queueId: String? = null) {
         val index = if (items.isEmpty()) -1 else playIndex.coerceIn(0, items.lastIndex)
         state = state.copy(items = items, currentIndex = index, queueId = queueId.takeIf { index >= 0 })
         played.clear()
+        upNext.clear()
         if (index >= 0) played += index
     }
 
@@ -98,6 +104,7 @@ internal class QueueController(private val random: Random = Random.Default) {
     /** Jump to [index]. False if out of bounds. */
     fun moveTo(index: Int): Boolean {
         if (index !in state.items.indices) return false
+        upNext.clear()
         advanceTo(index)
         return true
     }
@@ -111,6 +118,7 @@ internal class QueueController(private val random: Random = Random.Default) {
         val items = state.items
         if (items.isEmpty()) return null
         if (!userInitiated && state.loopMode == LoopMode.One) return state.currentIndex
+        upNext.firstOrNull()?.let { return it }
         return if (state.shuffle) peekShuffled() else nextLinear()
     }
 
@@ -165,7 +173,11 @@ internal class QueueController(private val random: Random = Random.Default) {
     }
 
     fun addNext(newItems: List<PlayableItem>) {
-        add(newItems, at = if (state.currentIndex >= 0) state.currentIndex + 1 else null)
+        if (newItems.isEmpty()) return
+        if (state.currentIndex < 0) return add(newItems)
+        val at = (upNext.lastOrNull() ?: state.currentIndex) + 1
+        add(newItems, at)
+        upNext += newItems.indices.map { at + it }
     }
 
     /** Removes [at]; true when the removed item was the current one (the caller must reload/stop). */
@@ -173,6 +185,7 @@ internal class QueueController(private val random: Random = Random.Default) {
         if (at !in state.items.indices) return false
         val wasCurrent = at == state.currentIndex
         val items = state.items.toMutableList().also { it.removeAt(at) }
+        upNext.clear()
         played.removeAll { it == at }
         remap { i -> if (i > at) i - 1 else i }
         val newCurrent = when {
@@ -192,6 +205,7 @@ internal class QueueController(private val random: Random = Random.Default) {
         if (from !in state.items.indices || to !in state.items.indices || from == to) return
         val items = state.items.toMutableList()
         items.add(to, items.removeAt(from))
+        upNext.clear()
         val shift = { i: Int ->
             when {
                 i == from -> to
@@ -240,10 +254,12 @@ internal class QueueController(private val random: Random = Random.Default) {
     fun clear() {
         state = state.copy(items = emptyList(), currentIndex = -1, queueId = null)
         played.clear()
+        upNext.clear()
     }
 
     private fun advanceTo(index: Int) {
         state = state.copy(currentIndex = index)
+        upNext.remove(index)
         if (played.isEmpty() || played.last() != index) played += index
     }
 
@@ -268,5 +284,6 @@ internal class QueueController(private val random: Random = Random.Default) {
 
     private fun remap(shift: (Int) -> Int) {
         for (i in played.indices) played[i] = shift(played[i])
+        for (i in upNext.indices) upNext[i] = shift(upNext[i])
     }
 }

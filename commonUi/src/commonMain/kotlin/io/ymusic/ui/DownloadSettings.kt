@@ -25,6 +25,8 @@ import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
+import io.ymusic.ui.resources.download_location_cannot_create
+import io.ymusic.ui.resources.download_location_missing
 import io.ymusic.ui.resources.download_location_not_set
 import io.ymusic.ui.resources.download_location_prompt_message
 import io.ymusic.ui.resources.download_location_prompt_not_now
@@ -35,6 +37,7 @@ import io.ymusic.ui.resources.settings_mp3_source_bitrate
 import io.ymusic.ui.resources.settings_mp3_source_bitrate_hint
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
@@ -102,12 +105,27 @@ internal fun rememberDownloadLocationName(graph: AppGraph): String? {
 internal suspend fun pickDownloadFolder(graph: AppGraph, snackbar: (String) -> Unit): Boolean {
     val pick = graph.libraryFolderPicker ?: return false
     val uri = pick() ?: return false // canceled
-    if (!graph.canWriteFolder(uri)) {
-        snackbar(getString(Res.string.download_location_read_only))
+    return assignDownloadFolder(graph, uri, snackbar)
+}
+
+/** Why a folder can't hold downloads, from [AppGraph.probeDownloadFolder]'s test write. */
+enum class FolderWriteProblem { NoPermission, Missing, CannotCreateFiles }
+
+/** Makes [uri] the download location after a test write into it succeeds; otherwise tells the user why not. */
+internal suspend fun assignDownloadFolder(graph: AppGraph, uri: String, snackbar: (String) -> Unit): Boolean {
+    val problem = graph.probeDownloadFolder(uri)
+    if (problem != null) {
+        snackbar(getString(problem.message()))
         return false
     }
     graph.settings.put(AppSettings.downloadLocation, uri)
     return true
+}
+
+private fun FolderWriteProblem.message(): StringResource = when (this) {
+    FolderWriteProblem.NoPermission -> Res.string.download_location_read_only
+    FolderWriteProblem.Missing -> Res.string.download_location_missing
+    FolderWriteProblem.CannotCreateFiles -> Res.string.download_location_cannot_create
 }
 
 /**
@@ -120,7 +138,7 @@ internal suspend fun hasUsableDownloadLocation(graph: AppGraph): Boolean {
     val loc = graph.settings.flow(AppSettings.downloadLocation).value
     if (loc.isBlank()) return false
     val bucket = store.findBucketByUri(Uri.parse(loc)) ?: return false
-    return !bucket.excluded
+    return !bucket.excluded && graph.canWriteFolder(loc)
 }
 
 /**
@@ -141,7 +159,10 @@ internal fun DefaultDownloadLocationPrompt(graph: AppGraph) {
         mediaStore.bucketsChanges().collect {
             val roots = mediaStore.childBuckets(null)
             val locationUnset = graph.settings.flow(AppSettings.downloadLocation).value.isBlank()
-            if (previous == 0 && roots.isNotEmpty() && locationUnset) candidate = roots.first()
+            // Only offer a folder that passes the test write; the user didn't ask, so a failure stays silent.
+            if (previous == 0 && roots.isNotEmpty() && locationUnset) {
+                roots.first().takeIf { graph.probeDownloadFolder(it.uri.toString()) == null }?.let { candidate = it }
+            }
             previous = roots.size
         }
     }

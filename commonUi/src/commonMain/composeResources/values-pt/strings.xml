@@ -209,6 +209,7 @@
     <string name="sleep_hours_minutes">%1$d h %2$d min</string>
     <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Falhou (%1$s)</string>
+    <string name="playback_botguard_failed">Falha ao contornar o Botguard</string>
 
 
     <!-- Settings -->
@@ -231,17 +232,31 @@
     <string name="settings_licenses_intro">O YMusic é de código aberto sob a GNU GPL v3.0. Ele inclui estes componentes:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Conte para a gente o que quebrou ou o que você gostaria de ver. Capturas de tela ou arquivos de log ajudam.</string>
-    <string name="feedback_message_label">O que aconteceu?</string>
-    <string name="feedback_name_label">Nome (opcional)</string>
-    <string name="feedback_email_label">E-mail (opcional)</string>
-    <string name="feedback_attach">Anexar arquivos</string>
-    <string name="feedback_send">Enviar</string>
-    <string name="feedback_sent">Feedback enviado — obrigado!</string>
-    <string name="feedback_send_failed">Não foi possível enviar o feedback — tente novamente</string>
-    <string name="feedback_attach_failed">Não foi possível ler o arquivo selecionado — ele não foi anexado</string>
-    <string name="feedback_file_too_large">“%1$s” é grande demais para anexar (máx. 10 MB)</string>
-    <string name="cd_remove_attachment">Remover anexo</string>
+    <string name="feedback_intro">Conte-nos o que deu errado ou o que gostaria de ver, no GitHub ou por e-mail. Inclua suas informações anônimas abaixo para que possamos encontrar seus registros e responder.</string>
+    <string name="feedback_info_title">Informações anônimas</string>
+    <string name="feedback_copy">Copiar</string>
+    <string name="feedback_copied">Copiado</string>
+    <string name="feedback_device_id">ID do dispositivo</string>
+    <string name="feedback_app">App</string>
+    <string name="feedback_engine">Mecanismo</string>
+    <string name="feedback_language">Idioma</string>
+    <string name="feedback_info_note">Sem nome, e-mail ou conta — só estes IDs e os registros deste app.</string>
+    <string name="feedback_github_title">Abrir uma issue no GitHub</string>
+    <string name="feedback_github_hint">Público. Ideal para bugs e ideias — outras pessoas podem acompanhar e contribuir.</string>
+    <string name="feedback_email_title">Enviar e-mail para %1$s</string>
+    <string name="feedback_email_hint">Privado. Ideal para perguntas sobre a conta ou pessoais.</string>
+    <string name="feedback_email_subject">Feedback do YMusic</string>
+    <string name="feedback_prefilled_note">Ambos abrem com as informações já preenchidas. Se estiverem faltando, cole-as — sem elas não conseguimos ajudar.</string>
+    <string name="feedback_reports_off_title">Os relatórios anônimos estão desativados</string>
+    <string name="feedback_reports_off_message">Para investigar seu problema, precisamos dos registros deste app. Toque em Continuar e o YMusic reativará os relatórios anônimos e enviará os registros.</string>
+    <string name="feedback_reports_off_note">Nenhum nome, e-mail ou conta é enviado. Você pode desativar os relatórios de novo em Configurações.</string>
+    <string name="feedback_continue">Continuar</string>
+    <string name="feedback_sentry_link">ou pelo Sentry</string>
+    <string name="feedback_sentry_title">Enviar pelo Sentry</string>
+    <string name="feedback_sentry_label">O que aconteceu?</string>
+    <string name="feedback_sentry_note">Suas informações anônimas vão anexadas. Não conseguimos responder às mensagens enviadas por aqui, então use o GitHub ou o e-mail se quiser uma resposta.</string>
+    <string name="feedback_sentry_send">Enviar</string>
+    <string name="feedback_sentry_sent">Enviado pelo Sentry. Obrigado!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menu</string>
@@ -542,4 +557,13 @@
     <string name="menu_details_comments">Detalhes e comentários</string>
     <string name="menu_speed_pitch">Velocidade e tom</string>
     <string name="link_open_failed">Não foi possível abrir: %1$s</string>
+    <string name="sort_manual">Manual</string>
+    <string name="arrange_songs">Organizar músicas</string>
+    <string name="arrange_stacking">Empilhando · %1$d</string>
+    <string name="cd_reset_stacking">Redefinir empilhamento</string>
+    <string name="cd_move_to_top">Mover para o topo</string>
+    <string name="dialog_undo">Desfazer</string>
+    <string name="dialog_save">Salvar</string>
+    <string name="upgraded_message">YMusic atualizado para %1$s</string>
+    <string name="upgraded_view_changelog">Ver novidades</string>
 </resources>

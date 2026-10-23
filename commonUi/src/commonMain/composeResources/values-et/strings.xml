@@ -208,6 +208,7 @@
     <string name="sleep_hours_minutes">%1$d h %2$d min</string>
     <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Ebaõnnestus (%1$s)</string>
+    <string name="playback_botguard_failed">Botguardi möödumine ebaõnnestus</string>
 
 
     <!-- Settings -->
@@ -230,17 +231,31 @@
     <string name="settings_licenses_intro">YMusic on avatud lähtekoodiga litsentsi GNU GPL v3.0 alusel. See sisaldab järgmisi komponente:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Kirjuta, mis katki läks või mida sooviksid näha. Ekraanipildid või logifailid aitavad.</string>
-    <string name="feedback_message_label">Mis juhtus?</string>
-    <string name="feedback_name_label">Nimi (valikuline)</string>
-    <string name="feedback_email_label">E-post (valikuline)</string>
-    <string name="feedback_attach">Lisa failid</string>
-    <string name="feedback_send">Saada</string>
-    <string name="feedback_sent">Tagasiside saadetud — aitäh!</string>
-    <string name="feedback_send_failed">Tagasisidet ei õnnestunud saata — proovi uuesti</string>
-    <string name="feedback_attach_failed">Valitud faili ei õnnestunud lugeda — seda ei lisatud</string>
-    <string name="feedback_file_too_large">„%1$s” on lisamiseks liiga suur (max 10 MB)</string>
-    <string name="cd_remove_attachment">Eemalda manus</string>
+    <string name="feedback_intro">Kirjuta meile, mis läks valesti või mida sooviksid näha, GitHubis või e-postiga. Lisa allolev anonüümne teave, et leiaksime sinu logid ja saaksime vastata.</string>
+    <string name="feedback_info_title">Anonüümne teave</string>
+    <string name="feedback_copy">Kopeeri</string>
+    <string name="feedback_copied">Kopeeritud</string>
+    <string name="feedback_device_id">Seadme ID</string>
+    <string name="feedback_app">Rakendus</string>
+    <string name="feedback_engine">Mootor</string>
+    <string name="feedback_language">Keel</string>
+    <string name="feedback_info_note">Ei nime, e-posti ega kontot — ainult need ID-d ja selle rakenduse logid.</string>
+    <string name="feedback_github_title">Ava probleem GitHubis</string>
+    <string name="feedback_github_hint">Avalik. Sobib kõige paremini vigade ja ideede jaoks — teised saavad seda jälgida ja täiendada.</string>
+    <string name="feedback_email_title">Kirjuta aadressile %1$s</string>
+    <string name="feedback_email_hint">Privaatne. Sobib kõige paremini konto- või isiklike küsimuste jaoks.</string>
+    <string name="feedback_email_subject">YMusicu tagasiside</string>
+    <string name="feedback_prefilled_note">Mõlemad avanevad juba täidetud teabega. Kui see puudub, kleepige see — ilma selleta me aidata ei saa.</string>
+    <string name="feedback_reports_off_title">Anonüümsed aruanded on välja lülitatud</string>
+    <string name="feedback_reports_off_message">Teie probleemi uurimiseks vajame selle rakenduse logisid. Puudutage Jätka ja YMusic lülitab anonüümsed aruanded uuesti sisse ning saadab logid.</string>
+    <string name="feedback_reports_off_note">Nime, e-posti ega kontot ei saadeta. Aruanded saate sätetes uuesti välja lülitada.</string>
+    <string name="feedback_continue">Jätka</string>
+    <string name="feedback_sentry_link">või Sentry kaudu</string>
+    <string name="feedback_sentry_title">Saada Sentry kaudu</string>
+    <string name="feedback_sentry_label">Mis juhtus?</string>
+    <string name="feedback_sentry_note">Sinu anonüümne teave on lisatud. Siit saadetud sõnumitele me vastata ei saa, seega kasuta vastuse saamiseks GitHubi või e-posti.</string>
+    <string name="feedback_sentry_send">Saada</string>
+    <string name="feedback_sentry_sent">Saadetud Sentry kaudu. Aitäh!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menüü</string>
@@ -537,4 +552,13 @@
     <string name="menu_details_comments">Üksikasjad ja kommentaarid</string>
     <string name="menu_speed_pitch">Kiirus ja helikõrgus</string>
     <string name="link_open_failed">Ei saa avada: %1$s</string>
+    <string name="sort_manual">Käsitsi</string>
+    <string name="arrange_songs">Korralda laulud</string>
+    <string name="arrange_stacking">Virnastamine · %1$d</string>
+    <string name="cd_reset_stacking">Lähtesta virnastamine</string>
+    <string name="cd_move_to_top">Liiguta üles</string>
+    <string name="dialog_undo">Võta tagasi</string>
+    <string name="dialog_save">Salvesta</string>
+    <string name="upgraded_message">YMusic uuendati versioonile %1$s</string>
+    <string name="upgraded_view_changelog">Vaata muudatusi</string>
 </resources>

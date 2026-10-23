@@ -7,6 +7,7 @@ import { HttpRequest } from "../../protocol/http";
 import { innertubeJson } from "./innertube";
 import { hostLogger } from "../../protocol/logger";
 import type { JsLogger } from "../../protocol/logger";
+import { setPlaylistOrder } from "./playlistEdit";
 import { trendingMusicPage } from "./charts";
 import { applyLocaleCookie, invalidateAppLanguage, pulledAppLanguage } from "./cookies";
 import {
@@ -29,12 +30,13 @@ import {
   isMixPlaylist,
   mixSeedVideoId,
   mixToken,
-  parseChannelSortToken,
+  parseBrowseParamsToken,
   parseMixToken,
+  parsePlaylistOrderToken,
   parseSearchChipToken,
   rankSearchItems,
 } from "./parse";
-import { asString, get } from "./scan";
+import { asString, get, isObj, walk } from "./scan";
 import type { WireFeedItem, WireFeedPage, WireLocales, WireSuggest } from "./wire";
 
 function putIfString(
@@ -216,6 +218,7 @@ onAccept(
 // them on the watch page — so /next with (seed videoId, playlistId, start-radio params) returns the
 // playlist panel, and only that section belongs on the detail page (the response also carries the
 // watch page's related videos). An infinite panel pages through the engine's own mixToken.
+// A VL browse parses Shorts as items: the Shorts filter chip serves nothing else.
 onAccept(
   "yt/playlist",
   commandHandler(async (src, out) => {
@@ -259,29 +262,66 @@ onAccept(
         await writePage(out, page);
         return;
       }
-      await writePage(out, await browsePage({ "continuation": continuation }, log));
-      return;
+      if (
+        parseBrowseParamsToken(continuation) === null &&
+        parsePlaylistOrderToken(continuation) === null
+      ) {
+        await writePage(out, await playlistBrowse({ "continuation": continuation }, log));
+        return;
+      }
     }
     const url = asString(args["url"]);
     if (url === undefined) throw JsEngineErrorImpl.parse("yt/playlist needs url or continuation");
     const query = urlQuery(url);
     const list = query["list"];
     if (list === undefined) throw JsEngineErrorImpl.parse("yt/playlist url has no list: " + url);
+    const fields: Record<string, unknown> = {
+      "browseId": list.indexOf("VL") === 0 ? list : "VL" + list,
+    };
+    const order = continuation !== undefined ? parsePlaylistOrderToken(continuation) : null;
+    if (order !== null) {
+      await setPlaylistOrder(order.playlistId, order.order, order.params, log);
+      await writePage(out, await playlistBrowse(fields, log));
+      return;
+    }
+    const filterParams = continuation !== undefined ? parseBrowseParamsToken(continuation) : null;
+    if (filterParams !== null) {
+      // A filter chip (see browseParamsToken): the list re-browsed with the filter in params.
+      if (filterParams !== "") fields["params"] = filterParams;
+      await writePage(out, await playlistBrowse(fields, log));
+      return;
+    }
     if (isMixPlaylist(list)) {
-      const fields: Record<string, unknown> = { "playlistId": list, "params": "wAEB" };
+      const nextFields: Record<string, unknown> = { "playlistId": list, "params": "wAEB" };
       const seed = query["v"] ?? mixSeedVideoId(list);
-      if (seed !== undefined) fields["videoId"] = seed;
-      const page = collectPage(await innertubeJson("next", fields, log));
+      if (seed !== undefined) nextFields["videoId"] = seed;
+      const page = collectPage(await innertubeJson("next", nextFields, log));
       page["sections"] = page["sections"].slice(0, 1);
       await writePage(out, page);
       return;
     }
-    await writePage(
-      out,
-      await browsePage({ "browseId": list.indexOf("VL") === 0 ? list : "VL" + list }, log),
-    );
+    await writePage(out, await playlistBrowse(fields, log));
   }),
 );
+
+async function playlistBrowse(
+  fields: Record<string, unknown>,
+  log?: JsLogger,
+): Promise<WireFeedPage> {
+  const root = await innertubeJson("browse", fields, log);
+  // A section-level continuation pages the "related playlists" shelf, not the list's tracks —
+  // only the one inside the item section belongs to the playlist.
+  walk(root["contents"], (key, value) => {
+    if (key !== "sectionListRenderer" || !isObj(value) || !Array.isArray(value["contents"])) return;
+    value["contents"] = value["contents"].filter(
+      (section) =>
+        get(section, "continuationItemViewModel") === undefined &&
+        get(section, "continuationItemRenderer") === undefined,
+    );
+    return true;
+  });
+  return collectPage(root, { shorts: true });
+}
 
 // A channel detail: {"url","continuation"?}, url an engine-composed
 // "/channel/<UC…>[?params=<tab>]" (item urls, tab urls, shelf CTAs all share the shape).
@@ -324,15 +364,18 @@ onAccept(
       return out;
     })();
     const continuation = asString(args["continuation"]);
-    const sortParams = continuation !== undefined ? parseChannelSortToken(continuation) : null;
+    const sortParams = continuation !== undefined ? parseBrowseParamsToken(continuation) : null;
     if (sortParams !== null) {
-      // A sort-menu chip (see channelSortToken): a fresh browse with the sort baked into params.
+      // A sort-menu chip (see browseParamsToken): a fresh browse with the sort baked into params.
       // Only the Playlists tab ships a browse-typed sort menu today (Videos/Shorts sort via
       // continuation-typed chips, which keep the Shorts wrap) — so no Shorts mode here.
-      if (channelPath === undefined)
+      const url = asString(args["url"]) ?? "";
+      const q = url.indexOf("?");
+      const browseId = channelPath?.id ?? FEED_BROWSE_IDS[q < 0 ? url : url.slice(0, q)];
+      if (browseId === undefined)
         throw JsEngineErrorImpl.parse("yt/channel sort needs the channel url");
-      fields["browseId"] = channelPath.id;
-      fields["params"] = sortParams;
+      fields["browseId"] = browseId;
+      if (sortParams !== "") fields["params"] = sortParams;
     } else if (continuation !== undefined) {
       if (continuation.indexOf(SHORTS_CONT_PREFIX) === 0) {
         shortsTab = true;

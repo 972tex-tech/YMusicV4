@@ -15,4 +15,7 @@ interface SettingsStore {
     fun int(key: String, default: Int): StateFlow<Int>
 
     suspend fun putInt(key: String, value: Int)
+
+    /** The store held nothing when it was opened: nothing was ever saved here (a fresh install). */
+    val startedEmpty: Boolean
 }

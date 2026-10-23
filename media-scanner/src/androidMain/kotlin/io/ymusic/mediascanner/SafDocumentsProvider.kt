@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.IOException
 import android.net.Uri as AndroidUri
 
@@ -50,10 +51,22 @@ class SafDocumentsProvider(
                 // to pass) is NOT itself queryable; resolve it to the tree's root document uri.
                 val docUri = asDocumentUri(android)
                 val docKmpUri = if (docUri == android) uri else Uri.parse(docUri.toString())
-                context.contentResolver.query(docUri, projection, null, null, null)?.use { c ->
-                    if (!c.moveToFirst()) return@withContext DocumentInfo.Missing(docKmpUri)
-                    c.toDocumentInfo(docKmpUri)
-                } ?: DocumentInfo.Missing(docKmpUri)
+                try {
+                    context.contentResolver.query(docUri, projection, null, null, null)?.use { c ->
+                        if (!c.moveToFirst()) return@withContext DocumentInfo.Missing(docKmpUri)
+                        c.toDocumentInfo(docKmpUri)
+                    } ?: DocumentInfo.Missing(docKmpUri)
+                } catch (e: SecurityException) {
+                    DocumentInfo.Missing(docKmpUri, permissionDenied = true)
+                } catch (e: FileNotFoundException) {
+                    DocumentInfo.Missing(docKmpUri)
+                } catch (e: IllegalArgumentException) {
+                    // ExternalStorageProvider's "Missing file for …".
+                    DocumentInfo.Missing(docKmpUri)
+                } catch (e: IllegalStateException) {
+                    // "File has no filepath. Could not be found."
+                    DocumentInfo.Missing(docKmpUri)
+                }
             }
             else -> DocumentInfo.Missing(uri)
         }

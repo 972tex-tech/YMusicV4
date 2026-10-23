@@ -208,6 +208,7 @@
     <string name="sleep_hours_minutes">%1$d तास %2$d मिनिटे</string>
     <string name="sleep_add_minutes">+%1$d मिनिटे</string>
     <string name="playback_failed">अयशस्वी (%1$s)</string>
+    <string name="playback_botguard_failed">Botguard बायपास अयशस्वी</string>
 
 
     <!-- Settings -->
@@ -230,17 +231,31 @@
     <string name="settings_licenses_intro">YMusic हे GNU GPL v3.0 अंतर्गत ओपन सोर्स आहे. यात हे घटक समाविष्ट आहेत:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">काय बिघडले किंवा तुम्हाला काय पाहायला आवडेल ते सांगा. स्क्रीनशॉट किंवा लॉग फाइल्स उपयोगी ठरतात.</string>
-    <string name="feedback_message_label">काय झाले?</string>
-    <string name="feedback_name_label">नाव (ऐच्छिक)</string>
-    <string name="feedback_email_label">ईमेल (ऐच्छिक)</string>
-    <string name="feedback_attach">फाइल्स जोडा</string>
-    <string name="feedback_send">पाठवा</string>
-    <string name="feedback_sent">अभिप्राय पाठवला — धन्यवाद!</string>
-    <string name="feedback_send_failed">अभिप्राय पाठवता आला नाही — कृपया पुन्हा प्रयत्न करा</string>
-    <string name="feedback_attach_failed">निवडलेली फाइल वाचता आली नाही — ती जोडली गेली नाही</string>
-    <string name="feedback_file_too_large">“%1$s” जोडण्यासाठी खूप मोठी आहे (कमाल 10 MB)</string>
-    <string name="cd_remove_attachment">जोडलेली फाइल काढा</string>
+    <string name="feedback_intro">काय बिघडले किंवा तुम्हाला काय पाहायला आवडेल ते GitHub वर किंवा ईमेलने आम्हाला सांगा. खालील तुमची निनावी माहिती जोडा, म्हणजे आम्ही तुमचे लॉग शोधून उत्तर देऊ शकू.</string>
+    <string name="feedback_info_title">निनावी माहिती</string>
+    <string name="feedback_copy">कॉपी करा</string>
+    <string name="feedback_copied">कॉपी केले</string>
+    <string name="feedback_device_id">डिव्हाइस ID</string>
+    <string name="feedback_app">अ‍ॅप</string>
+    <string name="feedback_engine">इंजिन</string>
+    <string name="feedback_language">भाषा</string>
+    <string name="feedback_info_note">नाव, ईमेल किंवा खाते नाही — फक्त हे ID आणि या अ‍ॅपचे लॉग.</string>
+    <string name="feedback_github_title">GitHub वर इश्यू उघडा</string>
+    <string name="feedback_github_hint">सार्वजनिक. बग आणि कल्पनांसाठी सर्वोत्तम — इतर लोक फॉलो करू शकतात आणि भर घालू शकतात.</string>
+    <string name="feedback_email_title">%1$s वर ईमेल करा</string>
+    <string name="feedback_email_hint">खाजगी. खाते किंवा वैयक्तिक प्रश्नांसाठी सर्वोत्तम.</string>
+    <string name="feedback_email_subject">YMusic अभिप्राय</string>
+    <string name="feedback_prefilled_note">दोन्ही माहिती आधीच भरलेली असताना उघडतात. ती नसल्यास, पेस्ट करा — तिच्याशिवाय आम्ही मदत करू शकत नाही.</string>
+    <string name="feedback_reports_off_title">निनावी अहवाल बंद आहेत</string>
+    <string name="feedback_reports_off_message">तुमची समस्या तपासण्यासाठी आम्हाला या अ‍ॅपचे लॉग हवे आहेत. सुरू ठेवा वर टॅप करा, YMusic निनावी अहवाल पुन्हा सुरू करून लॉग पाठवेल.</string>
+    <string name="feedback_reports_off_note">कोणतेही नाव, ईमेल किंवा खाते पाठवले जात नाही. सेटिंग्जमध्ये तुम्ही अहवाल पुन्हा बंद करू शकता.</string>
+    <string name="feedback_continue">सुरू ठेवा</string>
+    <string name="feedback_sentry_link">किंवा Sentry द्वारे</string>
+    <string name="feedback_sentry_title">Sentry द्वारे पाठवा</string>
+    <string name="feedback_sentry_label">काय झाले?</string>
+    <string name="feedback_sentry_note">तुमची निनावी माहिती जोडलेली आहे. येथून पाठवलेल्या संदेशांना आम्ही उत्तर देऊ शकत नाही, त्यामुळे उत्तर हवे असल्यास GitHub किंवा ईमेल वापरा.</string>
+    <string name="feedback_sentry_send">पाठवा</string>
+    <string name="feedback_sentry_sent">Sentry द्वारे पाठवले. धन्यवाद!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">मेनू</string>
@@ -537,4 +552,13 @@
     <string name="menu_details_comments">तपशील आणि टिप्पण्या</string>
     <string name="menu_speed_pitch">वेग आणि पिच</string>
     <string name="link_open_failed">उघडता येत नाही: %1$s</string>
+    <string name="sort_manual">मॅन्युअल</string>
+    <string name="arrange_songs">गाणी मांडा</string>
+    <string name="arrange_stacking">स्टॅकिंग · %1$d</string>
+    <string name="cd_reset_stacking">स्टॅकिंग रीसेट करा</string>
+    <string name="cd_move_to_top">सर्वात वर हलवा</string>
+    <string name="dialog_undo">पूर्ववत करा</string>
+    <string name="dialog_save">जतन करा</string>
+    <string name="upgraded_message">YMusic %1$s वर अपडेट झाले</string>
+    <string name="upgraded_view_changelog">बदल पहा</string>
 </resources>

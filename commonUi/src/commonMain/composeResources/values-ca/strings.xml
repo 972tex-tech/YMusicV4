@@ -209,6 +209,7 @@
     <string name="sleep_hours_minutes">%1$d h %2$d min</string>
     <string name="sleep_add_minutes">+%1$d min</string>
     <string name="playback_failed">Error (%1$s)</string>
+    <string name="playback_botguard_failed">Error en evitar el Botguard</string>
 
 
     <!-- Settings -->
@@ -231,17 +232,31 @@
     <string name="settings_licenses_intro">YMusic és de codi obert sota la GNU GPL v3.0. Inclou aquests components:</string>
 
     <!-- Feedback -->
-    <string name="feedback_hint">Explica'ns què no funciona o què t'agradaria veure. Les captures de pantalla o els fitxers de registre ajuden.</string>
-    <string name="feedback_message_label">Què ha passat?</string>
-    <string name="feedback_name_label">Nom (opcional)</string>
-    <string name="feedback_email_label">Correu electrònic (opcional)</string>
-    <string name="feedback_attach">Adjunta fitxers</string>
-    <string name="feedback_send">Envia</string>
-    <string name="feedback_sent">Comentari enviat — gràcies!</string>
-    <string name="feedback_send_failed">No s'ha pogut enviar el comentari — torna-ho a provar</string>
-    <string name="feedback_attach_failed">No s'ha pogut llegir el fitxer seleccionat — no s'ha adjuntat</string>
-    <string name="feedback_file_too_large">«%1$s» és massa gran per adjuntar-lo (màx. 10 MB)</string>
-    <string name="cd_remove_attachment">Treu l'adjunt</string>
+    <string name="feedback_intro">Explica’ns què ha fallat o què t’agradaria veure, a GitHub o per correu. Inclou la teva informació anònima de més avall perquè puguem trobar els teus registres i respondre’t.</string>
+    <string name="feedback_info_title">Informació anònima</string>
+    <string name="feedback_copy">Copia</string>
+    <string name="feedback_copied">Copiat</string>
+    <string name="feedback_device_id">ID del dispositiu</string>
+    <string name="feedback_app">App</string>
+    <string name="feedback_engine">Motor</string>
+    <string name="feedback_language">Idioma</string>
+    <string name="feedback_info_note">Sense nom, correu ni compte — només aquests ID i els registres d’aquesta app.</string>
+    <string name="feedback_github_title">Obre una incidència a GitHub</string>
+    <string name="feedback_github_hint">Pública. Ideal per a errors i idees — altres persones la poden seguir i afegir-hi informació.</string>
+    <string name="feedback_email_title">Envia un correu a %1$s</string>
+    <string name="feedback_email_hint">Privat. Ideal per a preguntes sobre el compte o personals.</string>
+    <string name="feedback_email_subject">Comentaris sobre YMusic</string>
+    <string name="feedback_prefilled_note">Totes dues opcions s’obren amb la informació ja emplenada. Si hi falta, enganxa-la — sense ella no et podem ajudar.</string>
+    <string name="feedback_reports_off_title">Els informes anònims estan desactivats</string>
+    <string name="feedback_reports_off_message">Per investigar el problema necessitem els registres d’aquesta app. Toca Continua i YMusic tornarà a activar els informes anònims i enviarà els registres.</string>
+    <string name="feedback_reports_off_note">No s’envia cap nom, correu ni compte. Pots tornar a desactivar els informes a Configuració.</string>
+    <string name="feedback_continue">Continua</string>
+    <string name="feedback_sentry_link">o a través de Sentry</string>
+    <string name="feedback_sentry_title">Envia a través de Sentry</string>
+    <string name="feedback_sentry_label">Què ha passat?</string>
+    <string name="feedback_sentry_note">S’adjunta la teva informació anònima. No podem respondre els missatges enviats des d’aquí; fes servir GitHub o el correu si vols una resposta.</string>
+    <string name="feedback_sentry_send">Envia</string>
+    <string name="feedback_sentry_sent">Enviat a través de Sentry. Gràcies!</string>
 
     <!-- Accessibility labels (contentDescription only) -->
     <string name="cd_menu">Menú</string>
@@ -542,4 +557,13 @@
     <string name="menu_details_comments">Detalls i comentaris</string>
     <string name="menu_speed_pitch">Velocitat i to</string>
     <string name="link_open_failed">No es pot obrir: %1$s</string>
+    <string name="sort_manual">Manual</string>
+    <string name="arrange_songs">Ordena les cançons</string>
+    <string name="arrange_stacking">Apilant · %1$d</string>
+    <string name="cd_reset_stacking">Restableix l'apilament</string>
+    <string name="cd_move_to_top">Mou a dalt de tot</string>
+    <string name="dialog_undo">Desfés</string>
+    <string name="dialog_save">Desa</string>
+    <string name="upgraded_message">YMusic s'ha actualitzat a la %1$s</string>
+    <string name="upgraded_view_changelog">Mostra els canvis</string>
 </resources>

@@ -1,11 +1,13 @@
 // The viewer's own YouTube playlists (signed in): the add-to-playlist picker (yt/playlist/targets),
-// adding a video (yt/playlist/add) and creating one from videos (yt/playlist/create).
+// adding a video (yt/playlist/add), creating one from videos (yt/playlist/create), and saving an
+// owned playlist's sort order (setPlaylistOrder, yt/playlist's Sort menu).
 // Kotlin twin: yt/YtPlaylistEdit.kt.
 
 import { onAccept } from "../../transport";
 import { JsEngineErrorImpl, commandHandler } from "../../protocol/command";
 import { hostLogger } from "../../protocol/logger";
 import { innertubeJson } from "./innertube";
+import type { JsLogger } from "../../protocol/logger";
 import { REMOVE_TOKEN_PREFIX } from "./parse";
 import { asString, get, isObj, textOf, walk } from "./scan";
 import type { WirePlaylistTarget } from "./wire";
@@ -138,3 +140,19 @@ onAccept(
     await writeJson(out, { "playlistId": playlistId });
   }),
 );
+
+/** Save [playlistId]'s video order — YouTube's Sort menu on an owned playlist does exactly this. */
+export async function setPlaylistOrder(
+  playlistId: string,
+  order: number,
+  params: string,
+  log?: JsLogger,
+): Promise<void> {
+  const fields: Record<string, unknown> = {
+    "playlistId": playlistId,
+    "actions": [{ "action": "ACTION_SET_PLAYLIST_VIDEO_ORDER", "playlistVideoOrder": order }],
+  };
+  if (params !== "") fields["params"] = params;
+  const root = await innertubeJson("browse/edit_playlist", fields, log);
+  requireSucceeded(root, "edit_playlist", "E20160");
+}

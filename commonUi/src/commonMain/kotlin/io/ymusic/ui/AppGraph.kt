@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.imageloader.ImageLoader
 import io.ymusic.mediastore.BetterMediaStore
+import io.ymusic.player.LoopMode
 import io.ymusic.player.Player
 import io.ymusic.remoteconfig.ApiService
 import io.ymusic.remoteconfig.RemoteConfigData
@@ -32,6 +33,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /** The player-quality settings key — public because shell settings stores (iOS NSUserDefaults
  *  seeding) enumerate the keys they persist. */
@@ -41,6 +45,8 @@ const val PlaybackVolumeKey = "player.volume"
 const val PlaybackSpeedKey = "player.speed"
 const val PlaybackPitchKey = "player.pitch"
 const val PlaybackEqKey = "player.eq"
+const val PlaybackShuffleKey = "player.shuffle"
+const val PlaybackLoopModeKey = "player.loopMode"
 
 /** How a shell scan ended; the shared UI renders it as the user-facing summary. */
 sealed interface ScanResult {
@@ -101,11 +107,18 @@ class AppGraph(
     /** Whether the app can write into a folder [libraryFolderPicker] returned; Android checks the SAF grant,
      *  which some providers refuse (read-only). */
     val canWriteFolder: (String) -> Boolean = { true },
+    /** Test-writes (creates, writes, deletes) a file in a would-be download folder; null when that works. */
+    val probeDownloadFolder: suspend (String) -> FolderWriteProblem? = { null },
     /**
      * Re-scans already-added folders in place (no folder pick). [folderUri] null means every library
      * root; otherwise only that folder and its children. Null when the shell can't scan.
      */
     val rescanLibrary: RescanAction? = null,
+    /**
+     * Soft-deletes every Library folder whose storage grant the app no longer holds (Android SAF), so
+     * its items stop showing as playable; re-adding the folder revives them. Null where grants can't be lost.
+     */
+    val pruneUngrantedFolders: (suspend () -> Unit)? = null,
     /**
      * Permanently deletes the item's FILE from storage (okio delete on desktop, SAF
      * DocumentsContract on Android) — the destructive half of the Library's "Remove from disk";
@@ -171,17 +184,15 @@ class AppGraph(
      */
     val downloads: io.ymusic.download.DownloadService? = null,
     /**
-     * Delivers a user feedback report to the crash-reporting backend (Sentry user feedback in the
-     * shells). Null hides Settings' "Send feedback" entry entirely — e.g. a build with no DSN, or a
-     * platform without the telemetry module.
+     * Sends the app logs as one anonymous report (Sentry in the shells) and returns its id, which a
+     * message sent from the Feedback section links to; null when nothing was sent. Null drops the
+     * reports-off dialog and the message option from the Feedback section.
      */
-    val sendFeedback: (suspend (FeedbackDraft) -> Unit)? = null,
-    /**
-     * The OS file picker for feedback attachments, reading each picked file's bytes (an over-limit
-     * file comes back with null bytes — see [FeedbackFile]). Null hides the attach button while the
-     * rest of the feedback form still works.
-     */
-    val pickFeedbackFiles: (suspend () -> List<FeedbackFile>)? = null,
+    val captureFeedbackReport: (suspend () -> String?)? = null,
+    /** Sends a message typed in the Feedback section along with the report it belongs to; null hides that option. */
+    val sendFeedbackMessage: ((reportId: String, message: String) -> Unit)? = null,
+    /** The OS and CPU for the Feedback section's info (e.g. "Android 16 · arm64-v8a"); null omits them. */
+    val platformInfo: String? = null,
     /** The OS "save as" picker: a sink into the chosen file (the caller closes it), null when canceled.
      *  Null hides playlist backup. */
     val createDocument: (suspend (suggestedName: String, mimeType: String) -> okio.Sink?)? = null,
@@ -249,6 +260,9 @@ class AppGraph(
      */
     val pip = PipCoordinator(player, settings)
 
+    /** Per process, so the notice outlives an activity recreation. */
+    internal val upgradeNotice by lazy { UpgradeNotice(settings, appVersionCode) }
+
     /** One per process — a second instance double-captures playback failures and double-credits watch time.
      *  Lazy: its collectors start at once and must only see a fully constructed graph. */
     val playback by lazy {
@@ -261,6 +275,16 @@ class AppGraph(
         playHistory?.takeUnless { guest }?.let {
             PlayAgainRecorder(player, it.playAgain, logger?.fork("play-again"))
                 .start(CoroutineScope(SupervisorJob() + Dispatchers.Default))
+        }
+        // Here, not in App: Android Auto can start playback without the UI ever composing.
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
+            val savedLoop = settings.string(PlaybackLoopModeKey, "").value
+            player.setLoopMode(LoopMode.entries.firstOrNull { it.name == savedLoop } ?: LoopMode.None)
+            player.setShuffle(settings.string(PlaybackShuffleKey, "0").value == "1")
+            player.queue.map { it.shuffle to it.loopMode }.distinctUntilChanged().collect { (shuffle, loop) ->
+                settings.putString(PlaybackShuffleKey, if (shuffle) "1" else "0")
+                settings.putString(PlaybackLoopModeKey, loop.name)
+            }
         }
     }
 

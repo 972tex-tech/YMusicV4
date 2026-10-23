@@ -55,11 +55,13 @@ object SabrSpecBuilder {
                 .objectOrNull("videoDetails")?.stringOrNull("author")?.takeIf { it.isNotBlank() },
         )
 
-    /** @throws StillProcessingException for a just-ended live stream whose replay YouTube hasn't finished processing. */
+    /** @throws LiveVideoException for a stream that is live now.
+     *  @throws StillProcessingException when formats lack `lastModified` (a replay or upload YouTube hasn't finished processing). */
     internal fun checkProcessed(data: JsonObject, streaming: JsonObject) {
-        if (data.objectOrNull("videoDetails")?.boolOrNull("isPostLiveDvr") != true) return
+        val details = data.objectOrNull("videoDetails")
+        if (details?.boolOrNull("isLive") == true) throw LiveVideoException(details.stringOrNull("videoId"))
         if (streaming.objects("adaptiveFormats").any { "lastModified" !in it }) {
-            throw StillProcessingException(data.objectOrNull("videoDetails")?.stringOrNull("videoId"))
+            throw StillProcessingException(details?.stringOrNull("videoId"))
         }
     }
 
