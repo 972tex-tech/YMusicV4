@@ -66,6 +66,15 @@ import io.ymusic.ui.resources.settings_language
 import io.ymusic.ui.resources.settings_licenses
 import io.ymusic.ui.resources.settings_licenses_intro
 import io.ymusic.ui.resources.settings_section_about
+import io.ymusic.ui.resources.settings_background
+import io.ymusic.ui.resources.settings_background_choose
+import io.ymusic.ui.resources.settings_background_custom
+import io.ymusic.ui.resources.settings_background_dim
+import io.ymusic.ui.resources.settings_background_dim_light
+import io.ymusic.ui.resources.settings_background_dim_medium
+import io.ymusic.ui.resources.settings_background_dim_strong
+import io.ymusic.ui.resources.settings_background_none
+import io.ymusic.ui.resources.settings_background_remove
 import io.ymusic.ui.resources.settings_section_appearance
 import io.ymusic.ui.resources.settings_section_content
 import io.ymusic.ui.resources.settings_section_devices
@@ -154,6 +163,26 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
                     scope.launch { graph.settings.put(AppSettings.themeAccent, hex) }
                 },
             )
+            graph.pickBackground?.let { pick ->
+                val background by remember(graph) { graph.settings.string(BackgroundImageSettingKey, "") }.collectAsState()
+                val dim by remember(graph) { graph.settings.string(BackgroundDimSettingKey, DefaultBackgroundDim) }.collectAsState()
+                BackgroundRow(
+                    hasPicture = background.isNotBlank(),
+                    onChoose = {
+                        scope.launch {
+                            val picked = pick() ?: return@launch
+                            graph.settings.putString(BackgroundImageSettingKey, picked)
+                        }
+                    },
+                    onRemove = { scope.launch { graph.settings.putString(BackgroundImageSettingKey, "") } },
+                )
+                if (background.isNotBlank()) {
+                    BackgroundDimRow(
+                        current = dim,
+                        onSelect = { value -> scope.launch { graph.settings.putString(BackgroundDimSettingKey, value) } },
+                    )
+                }
+            }
             LanguageRow(
                 current = uiLanguage.ifBlank { defaultUiLanguageTag() },
                 onSelect = { tag ->
@@ -590,6 +619,79 @@ private fun ThemeRow(current: String, onSelect: (String) -> Unit) {
             )
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                 ThemeOptions.forEach { (value, label) ->
+                    DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = { onSelect(value); open = false })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackgroundRow(hasPicture: Boolean, onChoose: () -> Unit, onRemove: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { open = true }
+            .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(Res.string.settings_background),
+            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            modifier = Modifier.weight(1f),
+        )
+        Box {
+            Text(
+                stringResource(if (hasPicture) Res.string.settings_background_custom else Res.string.settings_background_none),
+                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+            )
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.settings_background_choose)) },
+                    onClick = { onChoose(); open = false },
+                )
+                if (hasPicture) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.settings_background_remove)) },
+                        onClick = { onRemove(); open = false },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private val BackgroundDimOptions: List<Pair<String, StringResource>> = listOf(
+    "0.55" to Res.string.settings_background_dim_light,
+    DefaultBackgroundDim to Res.string.settings_background_dim_medium,
+    "0.88" to Res.string.settings_background_dim_strong,
+)
+
+@Composable
+private fun BackgroundDimRow(current: String, onSelect: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { open = true }
+            .padding(horizontal = DesignSpacing.SettingsRowHorizontal, vertical = DesignSpacing.SettingsRowVertical),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(Res.string.settings_background_dim),
+            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DesignColors.Ink),
+            modifier = Modifier.weight(1f),
+        )
+        Box {
+            Text(
+                stringResource((BackgroundDimOptions.firstOrNull { it.first == current } ?: BackgroundDimOptions[1]).second),
+                style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+            )
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                BackgroundDimOptions.forEach { (value, label) ->
                     DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = { onSelect(value); open = false })
                 }
             }

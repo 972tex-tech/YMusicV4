@@ -205,6 +205,9 @@ class YMusicApplication : Application() {
      *  but a pick needs an Activity; a scan is always user-driven, so one is up when this runs. */
     @Volatile var folderPicker: (suspend () -> Uri?)? = null
 
+    /** The current Activity's background-picture pick — same lifecycle as [folderPicker]. */
+    @Volatile var backgroundPicker: (suspend () -> String?)? = null
+
     /** The current Activity's QR scan — same lifecycle as [folderPicker]. */
     @Volatile var qrScanner: (suspend () -> String?)? = null
 
@@ -658,6 +661,7 @@ class YMusicApplication : Application() {
                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
             },
+            pickBackground = { backgroundPicker?.invoke() },
             scanLibraryFolder = { onProgress -> scanPickedFolder(shared.mediaStore, onProgress) },
             libraryFolderPicker = { pickAndRegisterFolder(shared.mediaStore) },
             canWriteFolder = { uri ->

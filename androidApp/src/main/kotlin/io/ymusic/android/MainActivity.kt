@@ -299,9 +299,77 @@ class MainActivity : FragmentActivity() {
         deferred.await()
     }
 
+    private var pendingBackgroundPick: CompletableDeferred<android.net.Uri?>? = null
+    private val openBackground =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            pendingBackgroundPick?.complete(uri)
+            pendingBackgroundPick = null
+        }
+
+    /** Picks a picture, downsizes it to at most [BACKGROUND_MAX_EDGE] px on its long side and stores
+     *  it under filesDir, so the choice outlives the picker's grant; returns the copy's file uri. */
+    private val pickBackground: suspend () -> String? = {
+        pendingBackgroundPick?.complete(null)
+        val deferred = CompletableDeferred<android.net.Uri?>()
+        pendingBackgroundPick = deferred
+        withContext(Dispatchers.Main) { openBackground.launch("image/*") }
+        val uri = deferred.await()
+        if (uri == null) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                try {
+                    saveBackground(uri)
+                } catch (e: Exception) {
+                    (application as YMusicApplication).rootLogger.fork("background")
+                        .log(kmpcommon.log.Logger.Level.WARN, "background picture save failed: $uri", e)
+                    null
+                }
+            }
+        }
+    }
+
+    private fun saveBackground(uri: android.net.Uri): String {
+        val bitmap = decodeBackground(uri)
+        val dir = java.io.File(filesDir, "background").apply { mkdirs() }
+        val target = java.io.File(dir, "bg-${System.currentTimeMillis()}.jpg")
+        target.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, it) }
+        bitmap.recycle()
+        dir.listFiles()?.filter { it != target }?.forEach { it.delete() }
+        return android.net.Uri.fromFile(target).toString()
+    }
+
+    private fun decodeBackground(uri: android.net.Uri): android.graphics.Bitmap {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            return android.graphics.ImageDecoder.decodeBitmap(
+                android.graphics.ImageDecoder.createSource(contentResolver, uri),
+            ) { decoder, info, _ ->
+                val longEdge = maxOf(info.size.width, info.size.height)
+                if (longEdge > BACKGROUND_MAX_EDGE) {
+                    val ratio = BACKGROUND_MAX_EDGE.toFloat() / longEdge
+                    decoder.setTargetSize(
+                        (info.size.width * ratio).toInt().coerceAtLeast(1),
+                        (info.size.height * ratio).toInt().coerceAtLeast(1),
+                    )
+                }
+                decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+            }
+        }
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > BACKGROUND_MAX_EDGE) sample *= 2
+        val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+        val decoded = contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, options) }
+        return requireNotNull(decoded) { "unreadable picture: $uri" }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         val app = application as YMusicApplication
+        if (app.backgroundPicker === pickBackground) app.backgroundPicker = null
+        pendingBackgroundPick?.complete(null)
+        pendingBackgroundPick = null
         if (app.folderPicker === pickFolder) app.folderPicker = null
         pendingPick?.complete(null)
         pendingPick = null
@@ -343,6 +411,7 @@ class MainActivity : FragmentActivity() {
             )
         }
         (application as YMusicApplication).folderPicker = pickFolder
+        (application as YMusicApplication).backgroundPicker = pickBackground
         (application as YMusicApplication).qrScanner = scanQr
         (application as YMusicApplication).deviceOwnerAuth = confirmOwner
         (application as YMusicApplication).documentCreator = createDocument
@@ -576,6 +645,8 @@ class MainActivity : FragmentActivity() {
     }
 
     companion object {
+        private const val BACKGROUND_MAX_EDGE = 1600
+
         /** Launch intent action landing on the Download manager (the download notifications). */
         const val ACTION_OPEN_DOWNLOADS = "io.ymusic.android.action.OPEN_DOWNLOADS"
 

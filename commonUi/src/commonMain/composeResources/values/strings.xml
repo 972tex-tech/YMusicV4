@@ -291,6 +291,15 @@
     <string name="settings_theme_torii">Torii Dusk (plum and rose)</string>
     <string name="settings_theme_gold">Delta Gold (black and gold)</string>
     <string name="settings_accent_color">Accent color</string>
+    <string name="settings_background">Background picture</string>
+    <string name="settings_background_none">None</string>
+    <string name="settings_background_custom">Custom picture</string>
+    <string name="settings_background_choose">Choose picture</string>
+    <string name="settings_background_remove">Remove picture</string>
+    <string name="settings_background_dim">Background dimming</string>
+    <string name="settings_background_dim_light">Light</string>
+    <string name="settings_background_dim_medium">Medium</string>
+    <string name="settings_background_dim_strong">Strong</string>
     <string name="settings_debug">Debug</string>
     <string name="settings_show_fps">Show FPS</string>
     <string name="settings_show_fps_hint">Overlay pictures per second on the Now Playing video. Sampling stops when paused or you leave that screen.</string>

@@ -82,6 +82,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -106,6 +107,7 @@ import io.ymusic.dynamicengine.yt.extractTrendingMusicFeed
 import io.ymusic.dynamicengine.yt.getRecommendedFeed
 import io.ymusic.dynamicengine.yt.handleWebViewPlayNext
 import io.ymusic.dynamicengine.yt.resolveLink
+import io.ymusic.imageloader.AsyncImage
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.VideoQualityState
 import io.ymusic.player.showsVideo
@@ -894,6 +896,25 @@ private fun AppRoot(
                 // Every screen that shows the drawer's Menu button (nothing pushed) takes the edge swipe.
                 .drawerEdgeGestureExclusion(!drawer.isOpen && !nowPlayingOpen && layers.isEmpty()),
         ) {
+            if (!desktopLayoutHole) {
+                val backgroundUri by remember(graph) { graph.settings.string(BackgroundImageSettingKey, "") }.collectAsState()
+                val backgroundDim by remember(graph) { graph.settings.string(BackgroundDimSettingKey, DefaultBackgroundDim) }.collectAsState()
+                val loader = LocalImageLoader.current
+                if (backgroundUri.isNotBlank() && loader != null) {
+                    AsyncImage(
+                        loader = loader,
+                        url = backgroundUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            DesignColors.Surface.copy(alpha = backgroundDim.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.75f),
+                        ),
+                    )
+                }
+            }
             BoxWithConstraints(
                 Modifier.fillMaxSize().safeDrawingPadding(),
             ) {

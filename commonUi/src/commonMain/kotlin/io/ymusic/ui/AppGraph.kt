@@ -50,6 +50,13 @@ const val PlaybackEqKey = "player.eq"
 const val PlaybackShuffleKey = "player.shuffle"
 const val PlaybackLoopModeKey = "player.loopMode"
 
+/** `file://` uri of the picked background picture; blank = none. */
+const val BackgroundImageSettingKey = "theme.background"
+
+/** Share of the surface color laid over the background picture, `0.0`–`1.0` as text. */
+const val BackgroundDimSettingKey = "theme.background.dim"
+const val DefaultBackgroundDim = "0.75"
+
 /** How a shell scan ended; the shared UI renders it as the user-facing summary. */
 sealed interface ScanResult {
     data class Done(val scanned: Int, val added: Int, val updated: Int, val removed: Int, val failed: Int) : ScanResult
@@ -250,6 +257,8 @@ class AppGraph(
     val copyToClipboard: ((String) -> Unit)? = null,
     /** The text currently on the system clipboard, if any. */
     val readClipboard: (() -> String?)? = null,
+    /** Lets the user pick a picture and returns the `file://` uri of the app-owned copy, or null when cancelled; null hides the background setting. */
+    val pickBackground: (suspend () -> String?)? = null,
     // Kept last so shells pass it as the trailing lambda.
     val playerSurface: @Composable (modifier: Modifier) -> Unit,
 ) {
