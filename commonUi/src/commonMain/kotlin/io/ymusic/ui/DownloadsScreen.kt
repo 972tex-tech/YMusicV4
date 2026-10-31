@@ -2,6 +2,7 @@ package io.ymusic.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.FileDownload
@@ -27,10 +29,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,6 +63,7 @@ import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.model.MediaStoreItem
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.cd_share
+import io.ymusic.ui.resources.delete_from_disk_confirm
 import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.download_other_format
 import io.ymusic.ui.resources.download_size_kb
@@ -67,6 +73,10 @@ import io.ymusic.ui.resources.downloads_action_resume
 import io.ymusic.ui.resources.downloads_action_reveal_finder
 import io.ymusic.ui.resources.downloads_action_reveal_library
 import io.ymusic.ui.resources.downloads_completed_date
+import io.ymusic.ui.resources.downloads_delete_selected
+import io.ymusic.ui.resources.downloads_delete_selected_failed
+import io.ymusic.ui.resources.downloads_delete_selected_message
+import io.ymusic.ui.resources.downloads_delete_selected_title
 import io.ymusic.ui.resources.downloads_empty_all
 import io.ymusic.ui.resources.downloads_empty_completed
 import io.ymusic.ui.resources.downloads_empty_error
@@ -84,7 +94,10 @@ import io.ymusic.ui.resources.downloads_filter_waiting
 import io.ymusic.ui.resources.downloads_none_message
 import io.ymusic.ui.resources.downloads_none_title
 import io.ymusic.ui.resources.downloads_pause_all
+import io.ymusic.ui.resources.downloads_remove_selected
 import io.ymusic.ui.resources.downloads_resume_all
+import io.ymusic.ui.resources.downloads_select_all
+import io.ymusic.ui.resources.downloads_selected_count
 import io.ymusic.ui.resources.downloads_state_canceled
 import io.ymusic.ui.resources.downloads_state_done
 import io.ymusic.ui.resources.downloads_state_downloading
@@ -114,11 +127,13 @@ import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.Playability
 import projectcommon.error.errorCode
 import projectcommon.error.playabilityOf
+import projectcommon.error.runSuspendCatching
 
 /**
  * The Download Manager: a status filter chip row over one flat adaptive grid (one column on a phone,
@@ -173,6 +188,42 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     val snackbar = LocalSnackbar.current
     val scans = LocalScanController.current
     var retryBlock by remember { mutableStateOf<RetryBlock?>(null) }
+    var selectedIds by remember { mutableStateOf(emptySet<String>()) }
+    val selectedTasks = visible.filter { it.id in selectedIds }
+    val selecting = selectedTasks.isNotEmpty()
+    var confirmingDelete by remember { mutableStateOf(false) }
+    val canDeleteFiles = graph.deleteFromDisk != null && store != null
+    val deleteSelected: () -> Unit = {
+        val doomed = selectedTasks
+        selectedIds = emptySet()
+        scope.launch {
+            var failed = 0
+            doomed.forEach { task ->
+                runSuspendCatching {
+                    val item = if (store != null && task.state == DownloadState.COMPLETED) libraryItemOf(store, task) else null
+                    if (item != null) {
+                        graph.deleteFromDisk?.invoke(item)
+                        store?.deleteItem(item.id, hard = true)
+                    }
+                    removeOrCancel(service, task)
+                }.onFailure {
+                    failed++
+                    graph.logger?.fork("downloads")?.captureError(it, "bulk delete from disk failed")
+                }
+            }
+            if (failed > 0) snackbar(getString(Res.string.downloads_delete_selected_failed, failed))
+        }
+    }
+    if (confirmingDelete) {
+        DeleteSelectedDialog(
+            count = selectedTasks.size,
+            onDismiss = { confirmingDelete = false },
+            onConfirm = {
+                confirmingDelete = false
+                deleteSelected()
+            },
+        )
+    }
     var renaming by remember { mutableStateOf<DownloadTask?>(null) }
     renaming?.let { task ->
         graph.fileRenaming?.let { renamer -> RenameDownloadDialog(graph, renamer, service, task, onDismiss = { renaming = null }) }
@@ -221,6 +272,10 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 DownloadCard(
                     task, service,
                     modifier = Modifier.animateItem(),
+                    selected = task.id in selectedIds,
+                    selecting = selecting,
+                    onToggle = { selectedIds = if (task.id in selectedIds) selectedIds - task.id else selectedIds + task.id },
+                    onLongPress = { selectedIds = selectedIds + task.id },
                     onRetry = {
                         val playability = playabilityOf(task.errorCode)
                         when {
@@ -269,7 +324,21 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             }
         }
 
-        if (running || paused) {
+        if (selecting) {
+            SelectionBar(
+                count = selectedTasks.size,
+                onClear = { selectedIds = emptySet() },
+                onSelectAll = { selectedIds = shown.map { it.id }.toSet() },
+                onRemove = {
+                    selectedTasks.forEach { removeOrCancel(service, it) }
+                    selectedIds = emptySet()
+                },
+                onDelete = if (canDeleteFiles) ({ confirmingDelete = true }) else null,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = LocalMiniPlayerInset.current),
+            )
+        }
+
+        if ((running || paused) && !selecting) {
             ExtendedFloatingActionButton(
                 onClick = { if (running) service.pauseAll() else service.resumeAll() },
                 text = { Text(stringResource(if (running) Res.string.downloads_pause_all else Res.string.downloads_resume_all)) },
@@ -277,6 +346,74 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = LocalMiniPlayerInset.current).padding(DesignSpacing.Space16),
             )
         }
+    }
+}
+
+/** Takes a finished task off the list; one still queued, running or paused is cancelled instead. */
+private fun removeOrCancel(service: DownloadService, task: DownloadTask) {
+    when (task.state) {
+        DownloadState.COMPLETED, DownloadState.FAILED, DownloadState.CANCELED -> service.remove(task.id)
+        else -> service.cancel(task.id)
+    }
+}
+
+/** The multi-select bar: the count, select all, and the actions on every selected download. */
+@Composable
+private fun SelectionBar(
+    count: Int,
+    onClear: () -> Unit,
+    onSelectAll: () -> Unit,
+    onRemove: () -> Unit,
+    onDelete: (() -> Unit)?,
+    modifier: Modifier,
+) {
+    val c = downloadColors()
+    Surface(
+        shape = RoundedCornerShape(MediaCardCorner),
+        color = c.surface,
+        border = BorderStroke(1.dp, c.border),
+        shadowElevation = 6.dp,
+        modifier = modifier.fillMaxWidth().padding(DesignSpacing.Space16),
+    ) {
+        Row(
+            Modifier.padding(horizontal = DesignSpacing.Space8),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onClear) { Icon(Icons.Filled.Close, stringResource(Res.string.dialog_cancel), tint = c.ink) }
+            Text(
+                stringResource(Res.string.downloads_selected_count, count),
+                style = MaterialTheme.typography.labelLarge,
+                color = c.ink,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onSelectAll) { Text(stringResource(Res.string.downloads_select_all), color = c.accent) }
+            TextButton(onClick = onRemove) { Text(stringResource(Res.string.downloads_remove_selected), color = c.accent) }
+            onDelete?.let { delete ->
+                TextButton(onClick = delete) { Text(stringResource(Res.string.downloads_delete_selected), color = c.danger) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeleteSelectedDialog(count: Int, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    ElevatedBarDialog(
+        title = stringResource(Res.string.downloads_delete_selected_title),
+        onDismiss = onDismiss,
+        canScrollBackward = false,
+        canScrollForward = false,
+        buttons = {
+            DialogSecondaryButton(stringResource(Res.string.dialog_cancel), onClick = onDismiss)
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(Res.string.delete_from_disk_confirm), color = MaterialTheme.colorScheme.error)
+            }
+        },
+    ) {
+        Text(
+            stringResource(Res.string.downloads_delete_selected_message, count),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+        )
     }
 }
 
@@ -311,6 +448,10 @@ private fun DownloadCard(
     task: DownloadTask,
     service: DownloadService,
     modifier: Modifier,
+    selected: Boolean,
+    selecting: Boolean,
+    onToggle: () -> Unit,
+    onLongPress: () -> Unit,
     onRetry: () -> Unit,
     onPlay: () -> Unit,
     onRevealLibrary: (() -> Unit)?,
@@ -322,9 +463,19 @@ private fun DownloadCard(
     val failed = task.state == DownloadState.FAILED
     Surface(
         shape = RoundedCornerShape(MediaCardCorner),
-        color = if (failed) c.dangerSoft else c.surface,
-        border = BorderStroke(1.dp, if (failed) c.danger.copy(alpha = 0.4f) else c.border),
-        modifier = modifier.fillMaxWidth(),
+        color = when {
+            selected -> c.accent.copy(alpha = 0.16f)
+            failed -> c.dangerSoft
+            else -> c.surface
+        },
+        border = when {
+            selected -> BorderStroke(2.dp, c.accent)
+            failed -> BorderStroke(1.dp, c.danger.copy(alpha = 0.4f))
+            else -> BorderStroke(1.dp, c.border)
+        },
+        modifier = modifier.fillMaxWidth().pointerInput(selecting) {
+            detectTapGestures(onLongPress = { onLongPress() }, onTap = { if (selecting) onToggle() })
+        },
     ) {
         Column(Modifier.padding(CardPadding), verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
             Row(horizontalArrangement = Arrangement.spacedBy(CardGap)) {

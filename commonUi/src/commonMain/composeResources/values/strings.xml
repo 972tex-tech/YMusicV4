@@ -22,6 +22,13 @@
     <string name="downloads_empty_paused">No paused downloads</string>
     <string name="downloads_empty_completed">No completed downloads yet</string>
     <string name="downloads_empty_error">No failed downloads</string>
+    <string name="downloads_selected_count">%1$d selected</string>
+    <string name="downloads_select_all">All</string>
+    <string name="downloads_remove_selected">Remove</string>
+    <string name="downloads_delete_selected">Delete files</string>
+    <string name="downloads_delete_selected_title">Delete files?</string>
+    <string name="downloads_delete_selected_message">%1$d selected downloads will be permanently deleted from this device. This cannot be undone.</string>
+    <string name="downloads_delete_selected_failed">%1$d downloads could not be deleted</string>
     <string name="downloads_pause_all">Pause all</string>
     <string name="downloads_resume_all">Resume all</string>
     <string name="downloads_unavailable">Downloads aren’t available on this device.</string>
