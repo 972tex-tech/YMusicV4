@@ -600,6 +600,7 @@ class YMusicApplication : Application() {
                 client = sabrClient,
                 userAgent = WebSettings.getDefaultUserAgent(applicationContext),
                 ffmpeg = ffmpegBin?.let { bin -> io.ymusic.download.Ffmpeg(bin) },
+                maxConcurrent = 5,
                 // Handles file:// (app dirs) via okio and user-picked SAF folders (content://) via SAF.
                 // App data, not cacheDir (trimmed mid-download under storage pressure); no_backup keeps
                 // multi-MB scratch out of Auto Backup's quota.
