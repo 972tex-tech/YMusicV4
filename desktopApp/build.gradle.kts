@@ -29,8 +29,8 @@ compose.resources {
 
 val desktopVersion = appVersionName()
 // BUMP ON EVERY RELEASE. The update check compares this and nothing else — desktopVersion is a
-// display string. Desktop counts separately from androidApp's versionCode (separate cadence).
-val desktopVersionCode = 16
+// display string. Every platform shares one versionCode (androidApp, iosApp's CFBundleVersion): bump them together.
+val desktopVersionCode = 21
 version = desktopVersion
 
 /** The first candidate JDK that carries jpackage — the marker for "full JDK, not a JBR/JRE". */
@@ -259,10 +259,13 @@ kotlin {
                 implementation(compose.materialIconsExtended)
                 implementation(compose.components.resources)
                 implementation(Libs.Jna.core)
+                implementation(Libs.NavigationEvent.compose) // Esc as a back event, after popups'
                 implementation(Libs.SqlDelight.sqliteDriver) // AppStore
                 implementation(project(":telemetry")) // api: sentry-kotlin-multiplatform + SentryLogger
+                implementation(project(":log-store")) // the app log (logs.db)
                 implementation(project(":kmpHttp:core"))
                 implementation(project(":projectCommon"))
+                implementation(project(":quickjs")) // QuickJsRuntime.hostVersions
                 implementation(project(":remote-config"))
                 implementation(project(":yt-media"))
                 implementation(Libs.Kotlinx.coroutinesCore)
@@ -276,7 +279,7 @@ kotlin {
     }
 }
 
-// Publishing a release: package on each platform's machine (packageReleaseDmg / Msi / Deb), then
+// Publishing a release: package on each platform's machine (packageReleaseDmg / InnoSetup / Deb), then
 // sign each installer with the config service's scripts/sign-app-update.mjs.
 
 // Standalone UI-component catalogue (see CatalogueMain.kt): ./gradlew :desktopApp:catalogue
@@ -309,6 +312,9 @@ compose.desktop {
             "-Xmx256m",
             "-XX:ReservedCodeCacheSize=64m",
             "-Dskiko.gpu.resourceCacheLimit=64M",
+            // POSIX_SPAWN execs the runtime's jspawnhelper, which an update replaces under the running
+            // JVM; it then refuses every launch, the relaunch included. Windows ignores the property.
+            "-Djdk.lang.Process.launchMechanism=FORK",
         )
         // Release packaging (packageReleaseDmg etc.) runs ProGuard SHRINK-ONLY: no obfuscation, no
         // optimization — dead-code removal is the point (material-icons-extended alone is 37MB of
@@ -323,14 +329,18 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "YMusic"
             packageVersion = desktopVersion
+            description = "Music player"
+            vendor = "YMusic"
             macOS {
                 // Stable across releases: the updater and Gatekeeper both identify the app by it.
                 bundleID = "io.ymusic.desktop"
+                minimumSystemVersion = Versions.macosMin
                 // The rounded-square dock tile; the runtime Taskbar icon (dev runs) is the same
                 // artwork from src/jvmMain/resources/ymusic_dock.png. macOS 26+ draws the
                 // CFBundleIconName icon from macos/Assets.car instead (installMacIconAssets).
                 iconFile.set(project.file("ymusic.icns"))
-                // ymusic:// links open the app (Main.kt's open-URI handler takes them).
+                // ymusic:// links open the app (Main.kt's open-URI handler takes them). Media files
+                // list it under Open With (its open-file handler); Alternate never claims a default.
                 infoPlist {
                     extraKeysRawXml = """
                         <key>CFBundleIconName</key>
@@ -342,6 +352,39 @@ compose.desktop {
                                 <string>io.ymusic.desktop</string>
                                 <key>CFBundleURLSchemes</key>
                                 <array><string>ymusic</string></array>
+                            </dict>
+                        </array>
+                        <key>CFBundleDocumentTypes</key>
+                        <array>
+                            <dict>
+                                <key>CFBundleTypeName</key>
+                                <string>Media file</string>
+                                <key>CFBundleTypeRole</key>
+                                <string>Viewer</string>
+                                <key>LSHandlerRank</key>
+                                <string>Alternate</string>
+                                <key>LSItemContentTypes</key>
+                                <array>
+                                    <string>public.mp3</string>
+                                    <string>com.apple.m4a-audio</string>
+                                    <string>public.mpeg-4-audio</string>
+                                    <string>public.aac-audio</string>
+                                    <string>org.xiph.flac</string>
+                                    <string>com.microsoft.waveform-audio</string>
+                                    <string>public.mpeg-4</string>
+                                    <string>com.apple.m4v-video</string>
+                                    <string>com.apple.quicktime-movie</string>
+                                </array>
+                            </dict>
+                            <dict>
+                                <key>CFBundleTypeName</key>
+                                <string>Media file</string>
+                                <key>CFBundleTypeRole</key>
+                                <string>Viewer</string>
+                                <key>LSHandlerRank</key>
+                                <string>Alternate</string>
+                                <key>CFBundleTypeExtensions</key>
+                                <array><string>m4b</string><string>ogg</string><string>oga</string><string>opus</string><string>mka</string><string>webm</string><string>mkv</string></array>
                             </dict>
                         </array>
                     """.trimIndent()
@@ -373,12 +416,23 @@ compose.desktop {
                 perUserInstall = false
                 menu = true
                 shortcut = true
+                // Multi-res ICO (16–256 px): a one-off Skia render of ymusic_logo.xml's ring artwork
+                // clipped to a circle; without this jpackage falls back to its default Java/Compose
+                // icon on the installer dialog, Start-menu entry, and running window.
+                iconFile.set(project.file("ymusic.ico"))
+            }
+            linux {
+                // :commonUi's ymusic_logo.xml rendered at 512 px, inset to 7/8 (Main.kt's runtime entry matches).
+                iconFile.set(project.file("ymusic.png"))
+                appCategory = "sound"
+                menuGroup = "AudioVideo;Audio;Player;"
             }
             // jlink modules the default set misses but the runtime graph uses: java.sql
             // (sqlite-jdbc), jdk.unsupported (Unsafe — JNA/coroutines/okio),
             // java.management + java.logging (Sentry integrations, JNA), jdk.crypto.ec
-            // (TLS for update checks).
-            modules("java.sql", "java.management", "java.logging", "jdk.unsupported", "jdk.crypto.ec")
+            // (TLS for update checks), jdk.accessibility (bundles AccessBridge so AWT
+            // doesn't abort at startup when a screen reader / Magnifier is active).
+            modules("java.sql", "java.management", "java.logging", "jdk.unsupported", "jdk.crypto.ec", "jdk.accessibility")
             // Host ffmpeg next to compose resources (`compose.application.resources.dir` at runtime).
             appResourcesRootDir.set(ffmpegAppResources)
         }
@@ -403,6 +457,13 @@ val hostOs = org.gradle.internal.os.OperatingSystem.current().let {
     if (it.isMacOsX) "macos" else if (it.isWindows) "windows" else "linux"
 }
 val hostArm64 = System.getProperty("os.arch").lowercase() in setOf("aarch64", "arm64")
+
+/** What the .desktop entry offers to open; the demuxers the packed ffmpeg has. */
+val linuxMimeTypes = listOf(
+    "audio/mpeg", "audio/mp4", "audio/x-m4a", "audio/x-m4b", "audio/aac", "audio/flac", "audio/x-flac", "audio/wav",
+    "audio/x-wav", "audio/ogg", "audio/opus", "audio/webm", "audio/x-matroska", "video/mp4", "video/x-m4v",
+    "video/quicktime", "video/webm", "video/x-matroska",
+).joinToString(";", postfix = ";")
 
 /** `macos-x64`, `windows-x64`, …: the update service's platform key, and the installer's suffix. */
 val hostPlatform = "$hostOs-${if (hostArm64) "arm64" else "x64"}"
@@ -430,6 +491,32 @@ if (hostOs == "macos") {
             val process = ProcessBuilder(command).redirectErrorStream(true).start()
             val output = process.inputStream.readBytes().decodeToString()
             check(process.waitFor() == 0) { "re-signing ${app.name} failed: $output" }
+        }
+    }
+}
+
+// jpackage's .deb templates have no Homepage (App Center's "Developer website") and no StartupWMClass
+// (GNOME matches our windows to the menu entry by it), so the package is unpacked, both added, and rebuilt.
+if (hostOs == "linux") {
+    tasks.withType<AbstractJPackageTask>().matching { it.name == "packageDeb" || it.name == "packageReleaseDeb" }.configureEach {
+        val debName = "_${desktopVersion}_${if (hostArm64) "arm64" else "amd64"}.deb"
+        doLast("addDebMetadata") {
+            fun run(vararg command: String) {
+                val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+                val output = process.inputStream.readBytes().decodeToString()
+                check(process.waitFor() == 0) { "${command.joinToString(" ")} failed: $output" }
+            }
+            val deb = destinationDir.get().asFile.listFiles().orEmpty().single { it.name.endsWith(debName) }
+            val root = File(temporaryDir, "deb").apply { deleteRecursively() }
+            run("dpkg-deb", "-R", deb.path, root.path)
+            val control = File(root, "DEBIAN/control")
+            control.writeText(control.readText().trimEnd() + "\nHomepage: https://ymusic.io\n")
+            root.walk().filter { it.isFile && it.name.endsWith(".desktop") }.forEach {
+                val lines = it.readLines().map { line -> if (line.startsWith("Exec=")) "$line %F" else line }
+                it.writeText((lines + "StartupWMClass=io-ymusic-desktop-MainKt" + "MimeType=$linuxMimeTypes").joinToString("\n", postfix = "\n"))
+            }
+            run("dpkg-deb", "--root-owner-group", "--build", root.path, deb.path)
+            root.deleteRecursively()
         }
     }
 }
@@ -485,16 +572,66 @@ tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
 }
 
 // The host's installer under a name that says what it is for, ready for sign-app-update.mjs:
-//   ./gradlew :desktopApp:releaseInstaller   →   build/release/YMusic-<version>-<platform>.<dmg|msi|deb>
+//   ./gradlew :desktopApp:releaseInstaller   →   build/release/YMusic-<version>-<platform>.<dmg|exe|deb>
 tasks.register<Copy>("releaseInstaller") {
     group = "distribution"
     description = "Package the release installer for this OS/arch and name it YMusic-<version>-<platform>."
-    val format = mapOf("macos" to "Dmg", "windows" to "Msi", "linux" to "Deb").getValue(hostOs)
-    dependsOn("packageRelease$format")
-    from(layout.buildDirectory.dir("compose/binaries/main-release/${format.lowercase()}"))
-    include("*.${format.lowercase()}")
-    rename { "YMusic-$desktopVersion-$hostPlatform.${format.lowercase()}" }
+    val (task, dir, ext) = when (hostOs) {
+        "macos" -> Triple("packageReleaseDmg", "dmg", "dmg")
+        "windows" -> Triple("packageReleaseInnoSetup", "innosetup", "exe")
+        else -> Triple("packageReleaseDeb", "deb", "deb")
+    }
+    dependsOn(task)
+    from(layout.buildDirectory.dir("compose/binaries/main-release/$dir"))
+    include("*.$ext")
+    rename { "YMusic-$desktopVersion-$hostPlatform.$ext" }
     into(layout.buildDirectory.dir("release"))
 }
 
 kotlin.sourceSets.getByName("jvmMain").resources.srcDir(files(layout.buildDirectory.dir("engineJsResources")).builtBy(stageEngineJs))
+
+// ---------------------------------------------------------------------------------------------
+// Windows: Inno Setup installer. Wraps the jlinked app directory produced by
+// createReleaseDistributable in an LZMA2-compressed single-exe installer with a nicer upgrade
+// flow than jpackage's canned MSI. Compiler lookup: see buildSrc InnoSetup.kt.
+// ---------------------------------------------------------------------------------------------
+val isccPath: Provider<File> = providers.provider {
+    innoSetupCompiler() ?: error(INNO_SETUP_MISSING)
+}
+
+val innoSetupOutDir = layout.buildDirectory.dir("compose/binaries/main-release/innosetup")
+
+val packageReleaseInnoSetup by tasks.registering(Exec::class) {
+    group = "compose desktop"
+    description = "Wrap the release distributable in an Inno Setup installer (Windows only)."
+    onlyIf { hostOs == "windows" }
+    dependsOn("createReleaseDistributable")
+
+    val script = project.file("installer/windows/ymusic.iss")
+    val iconFile = project.file("ymusic.ico")
+    val appDir = layout.buildDirectory.dir("compose/binaries/main-release/app/YMusic")
+
+    inputs.file(script)
+    inputs.file(iconFile)
+    inputs.dir(appDir)
+    inputs.property("version", desktopVersion)
+    inputs.property("platform", hostPlatform)
+    outputs.dir(innoSetupOutDir)
+
+    doFirst {
+        val out = innoSetupOutDir.get().asFile.apply { mkdirs() }
+        commandLine(
+            isccPath.get().absolutePath,
+            "/Qp",
+            "/DAppVersion=$desktopVersion",
+            "/DAppPublisher=YMusic",
+            "/DAppURL=https://ymusic.io",
+            "/DAppSourceDir=${appDir.get().asFile.absolutePath}",
+            "/DIconFile=${iconFile.absolutePath}",
+            "/DOutputDir=${out.absolutePath}",
+            "/DArch=${if (hostArm64) "arm64" else "x64compatible"}",
+            "/DOutputBaseName=YMusic-Setup-$desktopVersion-$hostPlatform",
+            script.absolutePath,
+        )
+    }
+}

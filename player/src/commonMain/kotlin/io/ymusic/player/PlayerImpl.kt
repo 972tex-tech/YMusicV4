@@ -45,6 +45,8 @@ internal class PlayerImpl(
     /** Next queue index ([QueueController.peekNext]); [prepareNextArmed] once preload (or skip) ran. */
     private var prepareNextIndex: Int? = null
     private var prepareNextArmed = false
+    private var queueOrigin = QueueOrigin.Unknown
+    private var lastChange = QueueChange.Load
 
     /** [prepareNextIndex] came from a freshly loaded page — a user skip honors it too. */
     private var nextFromPage = false
@@ -138,8 +140,11 @@ internal class PlayerImpl(
         playWhenReady: Boolean,
         queueId: String?,
         source: QueueSource?,
+        origin: QueueOrigin,
     ) {
         if (released) return
+        queueOrigin = origin
+        lastChange = QueueChange.Load
         attachSource(source.takeIf { items.isNotEmpty() })
         controller.setQueue(items, playIndex, queueId ?: Uuid.random().toString())
         setPlayWhenReadyIntent(playWhenReady)
@@ -164,6 +169,12 @@ internal class PlayerImpl(
         publishQueue()
     }
 
+    override fun moveToPlayNext(index: Int) {
+        if (released) return
+        controller.moveNext(index)
+        publishQueue()
+    }
+
     override fun move(from: Int, to: Int) {
         if (released) return
         controller.move(from, to)
@@ -180,6 +191,7 @@ internal class PlayerImpl(
         if (released) return
         val removedCurrent = controller.removeAt(index)
         if (removedCurrent) {
+            lastChange = QueueChange.User
             publishQueue(refreshNext = false)
             if (controller.state.currentIndex >= 0) loadCurrent(0L) else {
                 refreshPrepareNext()
@@ -194,6 +206,7 @@ internal class PlayerImpl(
         if (released) return
         val removedCurrent = controller.removeRange(fromIndex, toIndex)
         if (removedCurrent) {
+            lastChange = QueueChange.User
             publishQueue(refreshNext = false)
             if (controller.state.currentIndex >= 0) loadCurrent(0L) else {
                 refreshPrepareNext()
@@ -215,6 +228,7 @@ internal class PlayerImpl(
     override fun playAt(index: Int) {
         if (released) return
         if (controller.moveTo(index)) {
+            lastChange = QueueChange.User
             publishQueue(refreshNext = false)
             setPlayWhenReadyIntent(true)
             loadCurrent(0L)
@@ -245,7 +259,15 @@ internal class PlayerImpl(
     }
 
     override fun togglePlay() {
-        if (status.value.playWhenReady) pause() else play()
+        val status = status.value
+        when {
+            status.state.isEnded() -> {
+                seekTo(0L)
+                play()
+            }
+            status.playWhenReady -> pause()
+            else -> play()
+        }
     }
 
     override fun stop() {
@@ -278,6 +300,7 @@ internal class PlayerImpl(
         val pagePick = prepareNextIndex.takeIf { nextFromPage }
         val next = if (pagePick != null) pagePick.also { controller.commitNext(it) } else controller.advance(userInitiated = true)
         if (next != null) {
+            lastChange = QueueChange.User
             publishQueue(refreshNext = false)
             loadCurrent(0L)
         }
@@ -292,6 +315,7 @@ internal class PlayerImpl(
         }
         val prev = controller.previous()
         if (prev != null) {
+            lastChange = QueueChange.User
             publishQueue(refreshNext = false)
             loadCurrent(0L)
         } else {
@@ -344,7 +368,7 @@ internal class PlayerImpl(
     override fun setBassBoost(db: Float) = pushConfig(currentConfig.copy(bassBoostDb = db.coerceIn(-12f, 12f)))
 
     override fun setVirtualizer(width: Float) =
-        pushConfig(currentConfig.copy(virtualizer = width.coerceIn(0f, 2f)))
+        pushConfig(currentConfig.copy(virtualizer = width.coerceIn(0.5f, 2f)))
 
     override fun setPreamp(db: Float) = pushConfig(currentConfig.copy(preampDb = db.coerceIn(-12f, 12f)))
 
@@ -422,14 +446,12 @@ internal class PlayerImpl(
 
     override fun refreshOnNext() {
         ytResetOnNext = true
-        ytEngine?.refreshOnNext()
     }
 
     override fun reload() {
         if (released) return
         if (controller.state.currentItem == null) return
         val resumeMs = _progress.value.positionMs
-        if (_currentEngine.value === ytEngine) ytEngine?.refreshOnNext()
         _currentEngine.value?.reset("reload")
         loadCurrent(resumeMs)
     }
@@ -448,6 +470,11 @@ internal class PlayerImpl(
     override fun presentedFrames(): Int =
         if (released) 0 else _currentEngine.value?.presentedFrames() ?: 0
 
+    override fun droppedFrames(): Int =
+        if (released) 0 else _currentEngine.value?.droppedFrames() ?: 0
+
+    override fun videoDecoder(): String? = if (released) null else _currentEngine.value?.videoDecoder()
+
     override fun release() {
         if (released) return
         released = true
@@ -461,7 +488,7 @@ internal class PlayerImpl(
     }
 
     private fun publishQueue(refreshNext: Boolean = true) {
-        _queue.value = controller.state.copy(more = more)
+        _queue.value = controller.state.copy(more = more, origin = queueOrigin, lastChange = lastChange)
         if (refreshNext) refreshPrepareNext()
         maybeLoadAhead()
     }
@@ -717,10 +744,7 @@ internal class PlayerImpl(
             is PlaybackState.Uninitialized -> {
                 if (!first.isInitializing) engine.init()
             }
-            is PlaybackState.Error -> {
-                if (!first.error.canRetry) return first.error
-                if (first.error.needReset) engine.reset("error ${first.error.code} needs reset") else return null
-            }
+            is PlaybackState.Error -> engine.reset("error ${first.error.code} needs reset")
             else -> return null
         }
         val settled = suspend {
@@ -824,6 +848,7 @@ internal class PlayerImpl(
         val next = prepareNextIndex
         if (next != null) {
             controller.commitNext(next)
+            lastChange = QueueChange.Auto
             publishQueue(refreshNext = false)
             loadCurrent(0L)
         }

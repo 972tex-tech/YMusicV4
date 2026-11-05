@@ -23,6 +23,10 @@
     <string name="downloads_none_title">暂无下载</string>
     <string name="downloads_none_message">已下载的歌曲和视频可离线播放。</string>
     <string name="downloads_failed">下载失败</string>
+    <!-- Shows a file or folder in the OS file manager; one label per desktop OS (Finder / File Explorer are product names). -->
+    <string name="menu_reveal_finder">在访达中显示</string>
+    <string name="menu_reveal_explorer">在文件资源管理器中显示</string>
+    <string name="menu_reveal_file_manager">在文件管理器中显示</string>
     <string name="section_settings">设置</string>
     <string name="section_donate">捐赠</string>
     <string name="section_feedback">反馈</string>
@@ -121,8 +125,30 @@
     <string name="yt_playlist_removed_video">已从播放列表中移除 %1$s</string>
     <string name="cd_add_to_playlist">添加到播放列表</string>
     <string name="cd_share">分享</string>
-    <string name="cd_music_video">音乐</string>
-    <string name="cd_album">专辑</string>
+    <!-- Screen-reader prefix naming what a feed card is: "Video, <title>, 5 minutes 3 seconds, <channel>" -->
+    <string name="a11y_kind_video">视频</string>
+    <string name="a11y_kind_music_video">音乐视频</string>
+    <string name="a11y_kind_live">直播</string>
+    <string name="a11y_kind_playlist">播放列表</string>
+    <string name="a11y_kind_album">专辑</string>
+    <string name="a11y_kind_mix">合辑</string>
+    <string name="a11y_kind_channel">频道</string>
+    <!-- A video's length as a screen reader speaks it, joined with spaces: "1 hour 5 minutes 3 seconds" -->
+    <plurals name="a11y_duration_hours">
+        <item quantity="other">%1$d 小时</item>
+    </plurals>
+    <plurals name="a11y_duration_minutes">
+        <item quantity="other">%1$d 分钟</item>
+    </plurals>
+    <plurals name="a11y_duration_seconds">
+        <item quantity="other">%1$d 秒</item>
+    </plurals>
+    <string name="a11y_now_playing">正在播放</string>
+    <string name="a11y_playback_position">播放进度</string>
+    <string name="a11y_x_of_y">%1$s，共 %2$s</string>
+    <string name="a11y_behind_live">比直播慢 %1$s</string>
+    <string name="a11y_downloaded">已下载</string>
+    <string name="a11y_eq_preamp">前级放大</string>
 
     <!-- Library -->
     <string name="library_tab_folders">文件夹</string>
@@ -225,7 +251,6 @@
     <string name="settings_debug">调试</string>
     <string name="settings_show_fps">显示 FPS</string>
     <string name="settings_show_fps_hint">在“正在播放”的视频上叠加显示每秒帧数。暂停或离开该页面时停止统计。</string>
-    <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">开源许可</string>
     <string name="settings_terms">条款与隐私</string>
     <string name="settings_licenses_intro">YMusic 基于 GNU GPL v3.0 开源，包含以下组件：</string>
@@ -362,7 +387,6 @@
     <string name="account_sign_out">退出登录</string>
     <string name="account_switch">切换帐号</string>
     <string name="switch_account_hint">选择你要使用的帐号，然后点按返回箭头关闭此页面 — 应用将以新帐号刷新。</string>
-    <string name="cd_account_avatar">帐号头像</string>
     <string name="account_my_channel">我的频道</string>
     <string name="account_watch_history">观看记录</string>
     <string name="account_watch_later">稍后观看</string>
@@ -428,11 +452,9 @@
     <string name="download_more_qualities">另有 %1$d 项</string>
     <string name="download_down_to">低至 %1$s</string>
     <string name="download_less">收起</string>
-    <string name="download_webm_detail">WebM · 原始流</string>
+    <string name="download_webm_detail">Opus · 原始流</string>
     <string name="download_m4a_detail">AAC · 原始流</string>
-    <string name="download_mp3_detail">%1$d kbps · 到处都能播放</string>
-    <string name="settings_mp3_source_bitrate">以原始码率下载 MP3</string>
-    <string name="settings_mp3_source_bitrate_hint">以约 256 kbps（可变码率）而非 320 kbps 编码 MP3。文件更小，音质相同。</string>
+    <string name="download_mp3_detail">到处都能播放</string>
     <string name="download_audio_track">音轨</string>
     <string name="download_captions">字幕</string>
     <string name="download_captions_off">关闭</string>
@@ -459,7 +481,7 @@
     <string name="download_no_subtitles">无可用字幕</string>
     <string name="dialog_ok_done">完成</string>
     <string name="download_captions_as_lyrics">%1$s · 作为歌词</string>
-    <string name="download_lyrics_note">MP3 会将字幕保存为歌词，支持歌词的播放器可显示。</string>
+    <string name="download_lyrics_note">此格式会将字幕保存为歌词，支持歌词的播放器可显示。</string>
     <string name="download_caption_translated">%1$s（自动翻译）</string>
     <string name="download_live_unsupported">无法下载直播视频</string>
     <string name="download_save_quick">保存为快速下载</string>
@@ -546,6 +568,24 @@
     <string name="video_details_delete_title">删除评论</string>
     <string name="video_details_delete_message">要永久删除你的评论及其所有回复吗？</string>
     <string name="video_details_deleted">评论已删除</string>
+    <string name="cookie_protect_title">要用密码保护你的登录信息吗？</string>
+    <string name="cookie_protect_body">你的登录信息保存在这台电脑上，你运行的其他应用可以读取它。设置密码将其锁定后，YMusic 每次启动时都会要求输入密码。</string>
+    <string name="cookie_password">密码</string>
+    <string name="cookie_protect_confirm">确认密码</string>
+    <string name="cookie_protect_mismatch">两次输入的密码不一致。</string>
+    <string name="cookie_protect_submit">保护</string>
+    <string name="cookie_protect_skip">以后再说</string>
+    <string name="cookie_unlock_title">解锁登录信息</string>
+    <string name="cookie_unlock_body">你的 YouTube 登录信息已受密码保护。</string>
+    <string name="cookie_unlock_submit">解锁</string>
+    <string name="cookie_unlock_wrong">密码错误。</string>
+    <string name="cookie_unlock_cant_unlock">无法解锁？</string>
+    <string name="cookie_unlock_guest">以访客身份继续</string>
+    <string name="cookie_unlock_guest_hint">以未登录状态启动，不会保留任何内容。</string>
+    <string name="cookie_unlock_sign_out">退出登录</string>
+    <string name="cookie_unlock_sign_out_hint">移除这份已保存的登录信息。</string>
+    <string name="cookie_unlock_sign_out_title">要退出登录吗？</string>
+    <string name="cookie_unlock_sign_out_body">这会从这台电脑上移除已保存的登录信息。如需重新登录，请使用 YMusic 应用扫描二维码。</string>
     <string name="menu_details_comments">详情和评论</string>
     <string name="menu_search_lyrics">搜索歌词</string>
     <string name="menu_speed_pitch">速度和音调</string>
@@ -565,4 +605,33 @@
     <string name="download_other_format">以其他格式下载</string>
     <string name="unsubscribe">取消订阅</string>
     <string name="unsubscribed">已取消订阅</string>
+    <string name="tray_pause">暂停</string>
+    <string name="tray_resume">继续</string>
+    <string name="tray_stop">停止（清空队列）</string>
+    <string name="tray_quit">退出</string>
+    <string name="shortcuts_title">键盘快捷键</string>
+    <string name="shortcuts_play_pause">播放/暂停</string>
+    <string name="shortcuts_now_playing">显示或隐藏“正在播放”</string>
+    <string name="shortcuts_nav_menu">打开或关闭菜单</string>
+    <string name="shortcuts_switch_tabs">切换标签</string>
+    <string name="shortcuts_escape">退出全屏，或关闭“正在播放”、菜单或弹出窗口</string>
+    <string name="shortcuts_help">显示此帮助</string>
+    <string name="shortcuts_volume_up">调高音量</string>
+    <string name="shortcuts_volume_down">调低音量</string>
+    <string name="a11y_key_arrow_left">左箭头</string>
+    <string name="a11y_key_arrow_right">右箭头</string>
+    <string name="a11y_key_arrow_up">上箭头</string>
+    <string name="a11y_key_arrow_down">下箭头</string>
+    <string name="cd_always_on_top">始终置顶</string>
+    <string name="settings_caption_size">大小</string>
+    <string name="caption_size_preview">字幕将显示为这样</string>
+    <string name="settings_caption_style">字幕样式</string>
+    <string name="settings_caption_style_hint">视频字幕的大小、颜色和背景</string>
+    <string name="caption_text_color">文字颜色</string>
+    <string name="caption_background">背景</string>
+    <string name="caption_background_opacity">背景不透明度</string>
+    <string name="download_quality_save">省流</string>
+    <string name="download_quality_medium">中</string>
+    <string name="download_quality_best">最佳</string>
+    <string name="download_kbps">%1$d kbps</string>
 </resources>

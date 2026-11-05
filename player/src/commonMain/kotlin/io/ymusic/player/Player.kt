@@ -57,7 +57,7 @@ interface Player {
 
     /** Replace the queue and load [playIndex]. An empty [items] clears and stops. [queueId] becomes
      *  [QueueState.queueId] — pass a saved queue's id to resume it as the same queue; null mints one.
-     *  [source] grows the queue past [items] (see [QueueSource]). */
+     *  [source] grows the queue past [items] (see [QueueSource]). [origin] labels it in the log. */
     fun setQueue(
         items: List<PlayableItem>,
         playIndex: Int = 0,
@@ -65,6 +65,7 @@ interface Player {
         playWhenReady: Boolean = true,
         queueId: String? = null,
         source: QueueSource? = null,
+        origin: QueueOrigin = QueueOrigin.Unknown,
     )
 
     /** Fetch the queue source's next page now (the queue's "Load more" / retry). No-op without one. */
@@ -75,6 +76,9 @@ interface Player {
 
     /** Insert right after the current item. */
     fun addToPlayNext(items: List<PlayableItem>)
+
+    /** Move the queued item at [index] to play next, after anything already queued to play next. */
+    fun moveToPlayNext(index: Int)
 
     fun move(from: Int, to: Int)
 
@@ -199,6 +203,12 @@ interface Player {
 
     /** Pictures presented by the active engine since attach. 0 when the backend has no counter. */
     fun presentedFrames(): Int = 0
+
+    /** Pictures the active engine dropped for missing their time since its current load. 0 when it has no counter. */
+    fun droppedFrames(): Int = 0
+
+    /** The active engine's video decoder, e.g. "hw vp9"; null when unknown. Main thread: off it the engine may free its host mid-call. */
+    fun videoDecoder(): String? = null
 
     /** Releases both engines and stops all internal work. The instance is unusable afterwards. */
     fun release()

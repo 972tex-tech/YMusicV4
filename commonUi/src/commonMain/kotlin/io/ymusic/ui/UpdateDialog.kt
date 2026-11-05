@@ -54,6 +54,7 @@ import io.ymusic.ui.resources.update_ready
 import io.ymusic.ui.resources.update_up_to_date
 import io.ymusic.ui.resources.update_version
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.DISK_FULL_CODE
 
 /**
  * The update prompt, one shape for every state of the release: the version, its brief notes, the
@@ -109,7 +110,7 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
                 download is UpdateDownload.NeedsInstallPermission -> TextButton(onClick = { updates.allowInstall() }) {
                     Text(stringResource(Res.string.update_allow_install))
                 }
-                download is UpdateDownload.Ready -> TextButton(onClick = { updates.installAndRestart() }) {
+                download is UpdateDownload.Ready || download is UpdateDownload.InstallFailed -> TextButton(onClick = { updates.installAndRestart() }) {
                     Text(stringResource(Res.string.update_install_now))
                 }
                 download is UpdateDownload.Installing || (requested && download is UpdateDownload.Running) -> TextButton(onClick = {}, enabled = false) {
@@ -175,7 +176,14 @@ fun UpdateDialog(graph: AppGraph, recheck: Int = 0) {
             }
             if (requested && download is UpdateDownload.Failed) {
                 Text(
-                    stringResource(Res.string.update_failed, download.code),
+                    if (download.code == DISK_FULL_CODE) errorMessage(download.code) else stringResource(Res.string.update_failed, download.code),
+                    style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
+                )
+                openDownloadPage?.let { LinkText(stringResource(Res.string.update_official_site), it) }
+            }
+            if (download is UpdateDownload.InstallFailed) {
+                Text(
+                    if (download.code == DISK_FULL_CODE) errorMessage(download.code) else stringResource(Res.string.update_failed, download.code),
                     style = TextStyle(fontSize = 13.sp, color = DesignColors.InkSecondary),
                 )
                 openDownloadPage?.let { LinkText(stringResource(Res.string.update_official_site), it) }

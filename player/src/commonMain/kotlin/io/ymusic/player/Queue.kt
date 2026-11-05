@@ -19,6 +19,12 @@ enum class LoopMode {
  * changes only on the next setQueue; null when nothing is queued. [more] is set when the queue
  * has a [QueueSource] to grow from.
  */
+/** Where a queue came from, for the playback log. */
+enum class QueueOrigin { Unknown, Library, Downloads, Single, Radio, Playlist, Resume, Link, File }
+
+/** Why the current item last changed, for the playback log. */
+enum class QueueChange { Load, Auto, User }
+
 data class QueueState(
     val items: List<PlayableItem> = emptyList(),
     val currentIndex: Int = -1,
@@ -26,6 +32,8 @@ data class QueueState(
     val shuffle: Boolean = false,
     val queueId: String? = null,
     val more: QueueMore? = null,
+    val origin: QueueOrigin = QueueOrigin.Unknown,
+    val lastChange: QueueChange = QueueChange.Load,
 ) {
     val currentItem: PlayableItem? get() = items.getOrNull(currentIndex)
 }
@@ -203,9 +211,26 @@ internal class QueueController(private val random: Random = Random.Default) {
 
     fun move(from: Int, to: Int) {
         if (from !in state.items.indices || to !in state.items.indices || from == to) return
+        upNext.clear()
+        moveItem(from, to)
+    }
+
+    /** Moves [from] behind the songs already queued by [addNext] and queues it with them. */
+    fun moveNext(from: Int) {
+        val current = state.currentIndex
+        if (from !in state.items.indices || current < 0 || from == current) return
+        val queued = upNext.filter { it != from }
+        val tail = queued.lastOrNull() ?: current
+        val to = if (from > tail) tail + 1 else tail
+        upNext.clear()
+        val shift = if (from == to) { i: Int -> i } else moveItem(from, to)
+        upNext += queued.map(shift)
+        upNext += to
+    }
+
+    private fun moveItem(from: Int, to: Int): (Int) -> Int {
         val items = state.items.toMutableList()
         items.add(to, items.removeAt(from))
-        upNext.clear()
         val shift = { i: Int ->
             when {
                 i == from -> to
@@ -216,6 +241,7 @@ internal class QueueController(private val random: Random = Random.Default) {
         }
         remap(shift)
         state = state.copy(items = items, currentIndex = shift(state.currentIndex))
+        return shift
     }
 
     /**

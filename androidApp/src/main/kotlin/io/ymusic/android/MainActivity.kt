@@ -177,7 +177,10 @@ class MainActivity : FragmentActivity() {
         } catch (e: ActivityNotFoundException) {
             (application as YMusicApplication).rootLogger.fork("folder-pick")
                 .log(kmpcommon.log.Logger.Level.WARN, "no app details screen for $pkg", e)
-            startActivity(Intent(Settings.ACTION_SETTINGS))
+            if (!startFirstActivity(Intent(Settings.ACTION_SETTINGS))) {
+                (application as YMusicApplication).rootLogger.fork("folder-pick")
+                    .log(kmpcommon.log.Logger.Level.WARN, "no settings screen on this device")
+            }
         }
     }
 
@@ -617,7 +620,10 @@ class MainActivity : FragmentActivity() {
                 null
             }
             graph.temporaryUris.update { it + uri.toString() }
-            graph.player.setQueue(listOf(PlayableItem.LocalMedia(uri = uri.toString(), title = title)))
+            graph.player.setQueue(
+                listOf(PlayableItem.LocalMedia(uri = uri.toString(), title = title)),
+                origin = io.ymusic.player.QueueOrigin.File,
+            )
             graph.pip.nowPlayingOpen.value = true
         }
     }
@@ -675,7 +681,15 @@ class MainActivity : FragmentActivity() {
         } else {
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null))
         }
-        startActivity(intent)
+        val opened = startFirstActivity(
+            intent,
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null)),
+            Intent(Settings.ACTION_SETTINGS),
+        )
+        if (!opened) {
+            (application as YMusicApplication).rootLogger.fork("notification-settings")
+                .log(kmpcommon.log.Logger.Level.WARN, "no settings screen on this device")
+        }
     }
 }
 

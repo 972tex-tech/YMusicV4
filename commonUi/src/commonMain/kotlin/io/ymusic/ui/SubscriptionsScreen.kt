@@ -72,8 +72,8 @@ fun SubscriptionsScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onOpe
         } catch (c: CancellationException) {
             throw c
         } catch (e: Exception) {
-            log?.captureError(TechnicalException("E60067", "local subscriptions feed failed to load", cause = e))
-            errorCode = "E60067"
+            log?.captureError(TechnicalException("E60068", "local subscriptions feed failed to load", cause = e))
+            errorCode = "E60068"
         }
     }
     val partial = stringResource(Res.string.subscriptions_partial)
@@ -121,8 +121,8 @@ fun SubscriptionsScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onOpe
                         } catch (c: CancellationException) {
                             throw c
                         } catch (e: Exception) {
-                            log?.captureError(TechnicalException("E60070", "local subscriptions import failed", cause = e))
-                            actionError = "E60070"
+                            log?.captureError(TechnicalException("E60071", "local subscriptions import failed", cause = e))
+                            actionError = "E60071"
                         }
                     }
                 }
@@ -152,8 +152,8 @@ fun SubscriptionsScreen(graph: AppGraph, coordinator: PlaybackCoordinator, onOpe
                                             } catch (c: CancellationException) {
                                                 throw c
                                             } catch (e: Exception) {
-                                                log?.captureError(TechnicalException("E60068", "local unsubscribe failed", cause = e))
-                                                actionError = "E60068"
+                                                log?.captureError(TechnicalException("E60069", "local unsubscribe failed", cause = e))
+                                                actionError = "E60069"
                                             }
                                         }
                                     },

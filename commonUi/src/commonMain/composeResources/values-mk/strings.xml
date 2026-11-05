@@ -23,6 +23,10 @@
     <string name="downloads_none_title">Сè уште нема преземања</string>
     <string name="downloads_none_message">Преземените песни и видеа се пуштаат офлајн.</string>
     <string name="downloads_failed">Преземањето не успеа</string>
+    <!-- Shows a file or folder in the OS file manager; one label per desktop OS (Finder / File Explorer are product names). -->
+    <string name="menu_reveal_finder">Прикажи во Finder</string>
+    <string name="menu_reveal_explorer">Прикажи во Истражувач на датотеки</string>
+    <string name="menu_reveal_file_manager">Прикажи во управувач со датотеки</string>
     <string name="section_settings">Поставки</string>
     <string name="section_donate">Донирај</string>
     <string name="section_feedback">Повратни информации</string>
@@ -121,8 +125,33 @@
     <string name="yt_playlist_removed_video">„%1$s“ е отстрането од плејлистата</string>
     <string name="cd_add_to_playlist">Додај во плејлиста</string>
     <string name="cd_share">Сподели</string>
-    <string name="cd_music_video">Музика</string>
-    <string name="cd_album">Албум</string>
+    <!-- Screen-reader prefix naming what a feed card is: "Video, <title>, 5 minutes 3 seconds, <channel>" -->
+    <string name="a11y_kind_video">Видео</string>
+    <string name="a11y_kind_music_video">Музичко видео</string>
+    <string name="a11y_kind_live">Пренос во живо</string>
+    <string name="a11y_kind_playlist">Плејлиста</string>
+    <string name="a11y_kind_album">Албум</string>
+    <string name="a11y_kind_mix">Микс</string>
+    <string name="a11y_kind_channel">Канал</string>
+    <!-- A video's length as a screen reader speaks it, joined with spaces: "1 hour 5 minutes 3 seconds" -->
+    <plurals name="a11y_duration_hours">
+        <item quantity="one">%1$d час</item>
+        <item quantity="other">%1$d часа</item>
+    </plurals>
+    <plurals name="a11y_duration_minutes">
+        <item quantity="one">%1$d минута</item>
+        <item quantity="other">%1$d минути</item>
+    </plurals>
+    <plurals name="a11y_duration_seconds">
+        <item quantity="one">%1$d секунда</item>
+        <item quantity="other">%1$d секунди</item>
+    </plurals>
+    <string name="a11y_now_playing">Сега свири</string>
+    <string name="a11y_playback_position">Позиција на репродукција</string>
+    <string name="a11y_x_of_y">%1$s од %2$s</string>
+    <string name="a11y_behind_live">%1$s зад преносот во живо</string>
+    <string name="a11y_downloaded">Преземено</string>
+    <string name="a11y_eq_preamp">Претпојачувач</string>
 
     <!-- Library -->
     <string name="library_tab_folders">Папки</string>
@@ -226,7 +255,6 @@
     <string name="settings_debug">Дебагирање</string>
     <string name="settings_show_fps">Прикажи FPS</string>
     <string name="settings_show_fps_hint">Прикажува слики во секунда врз видеото во „Сега се пушта“. Мерењето запира при пауза или кога ќе го напуштите екранот.</string>
-    <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">Лиценци за отворен код</string>
     <string name="settings_terms">Услови и приватност</string>
     <string name="settings_licenses_intro">YMusic е со отворен код под лиценцата GNU GPL v3.0. Ги вклучува следниве компоненти:</string>
@@ -363,7 +391,6 @@
     <string name="account_sign_out">Одјави се</string>
     <string name="account_switch">Промени сметка</string>
     <string name="switch_account_hint">Изберете ја сметката што ја сакате, па затворете го екранот со стрелката назад — апликацијата ќе се освежи со новата сметка.</string>
-    <string name="cd_account_avatar">Слика на сметката</string>
     <string name="account_my_channel">Мој канал</string>
     <string name="account_watch_history">Историја на гледање</string>
     <string name="account_watch_later">Гледај подоцна</string>
@@ -429,11 +456,9 @@
     <string name="download_more_qualities">Уште %1$d</string>
     <string name="download_down_to">до %1$s</string>
     <string name="download_less">Помалку</string>
-    <string name="download_webm_detail">WebM · оригинален стрим</string>
+    <string name="download_webm_detail">Opus · оригинален стрим</string>
     <string name="download_m4a_detail">AAC · оригинален стрим</string>
-    <string name="download_mp3_detail">%1$d kbps · се пушта насекаде</string>
-    <string name="settings_mp3_source_bitrate">Преземи MP3 со оригинален битрејт</string>
-    <string name="settings_mp3_source_bitrate_hint">Кодирај MP3 со околу 256 kbps (променлив битрејт) наместо 320 kbps. Помали датотеки, ист квалитет.</string>
+    <string name="download_mp3_detail">Се пушта насекаде</string>
     <string name="download_audio_track">Аудиозапис</string>
     <string name="download_captions">Титлови</string>
     <string name="download_captions_off">Исклучено</string>
@@ -460,7 +485,7 @@
     <string name="download_no_subtitles">Нема достапни</string>
     <string name="dialog_ok_done">Готово</string>
     <string name="download_captions_as_lyrics">%1$s · како стихови</string>
-    <string name="download_lyrics_note">MP3 ги чува титловите како стихови, што ги прикажуваат плеерите што читаат стихови.</string>
+    <string name="download_lyrics_note">Овој формат ги чува титловите како стихови, што ги прикажуваат плеерите што читаат стихови.</string>
     <string name="download_caption_translated">%1$s (автоматски преведено)</string>
     <string name="download_live_unsupported">Не може да се преземе видео ВО ЖИВО</string>
     <string name="download_save_quick">Зачувај како брзо преземање</string>
@@ -551,6 +576,24 @@
     <string name="video_details_delete_title">Избриши коментар</string>
     <string name="video_details_delete_message">Трајно да се избришат вашиот коментар и сите одговори на него?</string>
     <string name="video_details_deleted">Коментарот е избришан</string>
+    <string name="cookie_protect_title">Да ја заштитите најавата со лозинка?</string>
+    <string name="cookie_protect_body">Вашата најава е зачувана на овој компјутер, каде што можат да ја читаат други апликации што ги извршувате. Поставете лозинка за да ја заклучите; YMusic ќе ја бара при секое стартување.</string>
+    <string name="cookie_password">Лозинка</string>
+    <string name="cookie_protect_confirm">Потврдете ја лозинката</string>
+    <string name="cookie_protect_mismatch">Лозинките не се совпаѓаат.</string>
+    <string name="cookie_protect_submit">Заштити</string>
+    <string name="cookie_protect_skip">Не сега</string>
+    <string name="cookie_unlock_title">Отклучете ја најавата</string>
+    <string name="cookie_unlock_body">Вашата најава на YouTube е заштитена со лозинка.</string>
+    <string name="cookie_unlock_submit">Отклучи</string>
+    <string name="cookie_unlock_wrong">Погрешна лозинка.</string>
+    <string name="cookie_unlock_cant_unlock">Не можете да отклучите?</string>
+    <string name="cookie_unlock_guest">Продолжи како гостин</string>
+    <string name="cookie_unlock_guest_hint">Стартува без најава. Ништо не се зачувува.</string>
+    <string name="cookie_unlock_sign_out">Одјави се</string>
+    <string name="cookie_unlock_sign_out_hint">Ја отстранува оваа зачувана најава.</string>
+    <string name="cookie_unlock_sign_out_title">Да се одјавите?</string>
+    <string name="cookie_unlock_sign_out_body">Ова ја отстранува зачуваната најава од овој компјутер. За повторно да се најавите, скенирајте го QR-кодот со апликацијата YMusic.</string>
     <string name="menu_details_comments">Детали и коментари</string>
     <string name="menu_search_lyrics">Пребарај текст на песната</string>
     <string name="menu_speed_pitch">Брзина и висина</string>
@@ -570,4 +613,33 @@
     <string name="download_other_format">Преземи во друг формат</string>
     <string name="unsubscribe">Откажи претплата</string>
     <string name="unsubscribed">Претплатата е откажана</string>
+    <string name="tray_pause">Пауза</string>
+    <string name="tray_resume">Продолжи</string>
+    <string name="tray_stop">Стоп (исчисти ја редицата)</string>
+    <string name="tray_quit">Затвори</string>
+    <string name="shortcuts_title">Кратенки на тастатурата</string>
+    <string name="shortcuts_play_pause">Пушти / паузирај</string>
+    <string name="shortcuts_now_playing">Прикажи или скриј „Сега се пушта“</string>
+    <string name="shortcuts_nav_menu">Отвори или затвори го менито</string>
+    <string name="shortcuts_switch_tabs">Префрли картичка</string>
+    <string name="shortcuts_escape">Излези од цел екран или затвори „Сега се пушта“, мени или скокачки прозорец</string>
+    <string name="shortcuts_help">Прикажи ја оваа помош</string>
+    <string name="shortcuts_volume_up">Зголеми звук</string>
+    <string name="shortcuts_volume_down">Намали звук</string>
+    <string name="a11y_key_arrow_left">стрелка лево</string>
+    <string name="a11y_key_arrow_right">стрелка десно</string>
+    <string name="a11y_key_arrow_up">стрелка горе</string>
+    <string name="a11y_key_arrow_down">стрелка долу</string>
+    <string name="cd_always_on_top">Секогаш најгоре</string>
+    <string name="settings_caption_size">Големина</string>
+    <string name="caption_size_preview">Титловите ќе изгледаат вака</string>
+    <string name="settings_caption_style">Стил на титловите</string>
+    <string name="settings_caption_style_hint">Големина, боја и позадина на видео титловите</string>
+    <string name="caption_text_color">Боја на текстот</string>
+    <string name="caption_background">Позадина</string>
+    <string name="caption_background_opacity">Непроѕирност на позадината</string>
+    <string name="download_quality_save">Штедење</string>
+    <string name="download_quality_medium">Средно</string>
+    <string name="download_quality_best">Најдобро</string>
+    <string name="download_kbps">%1$d kbps</string>
 </resources>

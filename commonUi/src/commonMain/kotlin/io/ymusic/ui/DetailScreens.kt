@@ -29,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -300,10 +301,12 @@ internal fun PlaylistHeader(
             if (onCreateLocal != null) ActionIcon(Icons.Outlined.LibraryAdd, stringResource(Res.string.local_playlist_create), onClick = onCreateLocal)
             Box(Modifier.weight(1f))
             Box(
-                Modifier.size(46.dp).clip(CircleShape).background(DesignColors.InkStrong).clickable(enabled = onShuffle != null, role = Role.Button, onClick = { onShuffle?.invoke() }),
+                Modifier.size(46.dp).clip(CircleShape).background(DesignColors.InkStrong)
+                    .clickable(enabled = onShuffle != null, role = Role.Button, onClick = { onShuffle?.invoke() })
+                    .a11yActionLabel(stringResource(Res.string.cd_shuffle)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.Shuffle, stringResource(Res.string.cd_shuffle), Modifier.size(20.dp), tint = DesignColors.OnInk)
+                Icon(Icons.Default.Shuffle, null, Modifier.size(20.dp), tint = DesignColors.OnInk)
             }
         }
         // 8dp under the divider + the first row's own 8dp = the list's 16dp item rhythm; without
@@ -451,8 +454,8 @@ class ChannelSession(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                log?.captureError(TechnicalException("E60069", "local subscribe failed", cause = error))
-                subscribeErrorCode = "E60069"
+                log?.captureError(TechnicalException("E60070", "local subscribe failed", cause = error))
+                subscribeErrorCode = "E60070"
             } finally {
                 subscribing = false
             }
@@ -504,6 +507,16 @@ fun ChannelDetailScreen(
 
     LaunchedEffect(ready?.pageTabs) {
         ready?.pageTabs?.takeIf { it.isNotEmpty() }?.let { s.tabs = it }
+    }
+    DisposableEffect(s.tabs) {
+        val remove = GlobalShortcutActions.pushTabHandler { i ->
+            s.tabs.getOrNull(i - 1)?.url?.let { url ->
+                s.url = url
+                s.feed.pager.refresh()
+                true
+            } ?: false
+        }
+        onDispose { remove() }
     }
     s.subscribeErrorCode?.let { code ->
         val snackbar = LocalSnackbar.current

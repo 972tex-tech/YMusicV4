@@ -187,7 +187,8 @@ private sealed class CheckResult {
 /**
  * Walk cached segments of the first covered format forward from [playerTimeMs] until [minBufferMs] is
  * covered, prepending each format's init segment on first use. Every candidate is verified against
- * `blobs.isCached`. Port of legacy `findFormatCachedSegments`.
+ * `blobs.isCached`, then its stored bytes against [MediaCache.checkStored] (which purges a corrupt one).
+ * Port of legacy `findFormatCachedSegments`.
  */
 private fun MediaCache.findCachedSegments(
     playerTimeMs: Long,
@@ -203,9 +204,11 @@ private fun MediaCache.findCachedSegments(
         for (format in formats) {
             val segment = find(format) ?: continue
             if (!blobs.isCached(segment.cacheKey, segment.startRange, segment.contentLength)) continue
+            if (!checkStored(segment)) continue
             if (format !in initialized) {
                 val init = index.findBySegmentIndex(format.itag, format.lmt, 0) ?: continue
                 if (!blobs.isCached(init.cacheKey, init.startRange, init.contentLength)) continue
+                if (!checkStored(init)) continue
                 result += init
                 initialized += format
             }
@@ -229,7 +232,11 @@ private fun MediaCache.findCachedSegments(
         }
         newBufferedPos = bufferedPosMs
     } else {
-        val seg = addNext { index.findByStartTime(it.itag, it.lmt, playerTimeMs) } ?: return CheckResult.Miss
+        val seg = addNext { format ->
+            index.findByStartTime(format.itag, format.lmt, playerTimeMs)?.takeUnless { segment ->
+                sorted.any { it.formatId == format && segment.segmentIndex in it.startSegmentIndex..it.endSegmentIndex }
+            }
+        } ?: return CheckResult.Miss
         nextSeg = seg.segmentIndex + 1
         newBufferedPos = checkNotNull(seg.startMs) + checkNotNull(seg.durationMs) - 1
     }

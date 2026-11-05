@@ -41,7 +41,6 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarData
@@ -68,6 +67,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -76,6 +76,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -89,7 +91,11 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -105,11 +111,9 @@ import io.ymusic.dynamicengine.yt.extractHomeFeed
 import io.ymusic.dynamicengine.yt.extractMusicBrowse
 import io.ymusic.dynamicengine.yt.extractTrendingMusicFeed
 import io.ymusic.dynamicengine.yt.getRecommendedFeed
-import io.ymusic.dynamicengine.yt.handleWebViewPlayNext
 import io.ymusic.dynamicengine.yt.resolveLink
 import io.ymusic.imageloader.AsyncImage
 import io.ymusic.player.PlayableItem
-import io.ymusic.player.VideoQualityState
 import io.ymusic.player.showsVideo
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
@@ -148,23 +152,16 @@ import io.ymusic.ui.resources.tab_music
 import io.ymusic.ui.resources.tab_recommended
 import io.ymusic.ui.resources.tab_top_tracks
 import io.ymusic.ui.resources.yt_playlist_sign_in
-import io.ymusic.ui.sponsorblock.SponsorBlockCoordinator
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
+import kmpcommon.log.Logger
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.errorCode
-import projectcommon.error.runSuspendCatching
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -233,12 +230,7 @@ fun App(
     sectionState: androidx.compose.runtime.MutableState<AppSection>,
     catalogue: (@Composable () -> Unit)? = null,
 ) {
-    val uiLanguage by remember(graph) { graph.settings.flow(AppSettings.uiLanguage) }.collectAsState()
-    // ONE language, decided ONCE: the shell seeded the setting before the engine started
-    // (ensureAppLanguage), so this is a concrete tag — the blank fallback only covers unseeded
-    // test graphs. The engine pulls the same key for its hl default; no push happens here.
-    val tag = uiLanguage.ifBlank { defaultUiLanguageTag() }
-    remember(tag) { applyUiLocale(tag) }
+    val tag by graph.uiLanguage.collectAsState()
     val themePref by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
     val accentPref by remember(graph) { graph.settings.flow(AppSettings.themeAccent) }.collectAsState()
     val palette = designPaletteFor(themePref, androidx.compose.foundation.isSystemInDarkTheme(), accentPref)
@@ -247,52 +239,6 @@ fun App(
         snapshotFlow { sectionState.value }
             .filter { it in ResumableSections }
             .collect { graph.settings.put(AppSettings.lastSection, it.id) }
-    }
-    LaunchedEffect(graph.playerCache, graph.settings) {
-        val cache = graph.playerCache ?: return@LaunchedEffect
-        graph.settings.flow(AppSettings.playerCacheMaxMb).collect { mb ->
-            withContext(Dispatchers.IO) { cache.blobs.setMaxSize(mb * 1024L * 1024L) }
-        }
-    }
-    LaunchedEffect(graph.player, graph.settings) {
-        val quality = graph.settings.string(PlaybackQualitySettingKey, VideoQualityState.AUTO).value
-        if (quality != VideoQualityState.AUDIO_ONLY) graph.player.selectVideoQuality(quality)
-        graph.player.setAudioOnly(graph.settings.string(PlaybackAudioOnlyKey, "1").value != "0")
-        graph.player.volume = graph.settings.string(PlaybackVolumeKey, "1").value.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f
-        graph.player.speed = graph.settings.string(PlaybackSpeedKey, "1").value.toFloatOrNull()?.coerceIn(0.25f, 4f) ?: 1f
-        graph.player.setPitch(graph.settings.string(PlaybackPitchKey, "1").value.toFloatOrNull()?.coerceIn(0.5f, 2f) ?: 1f)
-        graph.settings.string(PlaybackEqKey, "").value.split(',').mapNotNull { it.toFloatOrNull() }.let { n ->
-            if (n.size >= 12) {
-                graph.player.setBassBoost(n[0])
-                graph.player.setVirtualizer(n[1])
-                graph.player.setEqBands(n.drop(2).take(10))
-                n.getOrNull(12)?.let { graph.player.setPreamp(it) }
-            }
-        }
-        launch {
-            graph.player.config.map { it.preferVideoQuality.first }.distinctUntilChanged()
-                .collect { graph.settings.putString(PlaybackQualitySettingKey, it) }
-        }
-        launch {
-            combine(graph.player.config.map { it.audioOnly }, graph.pip.demotedToAudioOnly) { audioOnly, demoted ->
-                audioOnly.takeUnless { demoted }
-            }.filterNotNull().distinctUntilChanged()
-                .collect { graph.settings.putString(PlaybackAudioOnlyKey, if (it) "1" else "0") }
-        }
-        launch {
-            graph.player.config.map { "${it.volume}|${it.speed}|${it.pitchFactor}|${it.bassBoostDb}|${it.virtualizer}|${it.eqBands.joinToString(",")}|${it.preampDb}" }
-                .distinctUntilChanged()
-                .collect { blob ->
-                    val p = blob.split('|')
-                    if (p.size >= 7) {
-                        graph.settings.putString(PlaybackVolumeKey, p[0])
-                        graph.settings.putString(PlaybackSpeedKey, p[1])
-                        graph.settings.putString(PlaybackPitchKey, p[2])
-                        // bass, virtualizer, 10 bands, preamp — preamp last so 12-value saves still load.
-                        graph.settings.putString(PlaybackEqKey, "${p[3]},${p[4]},${p[5]},${p[6]}")
-                    }
-                }
-        }
     }
     key(tag) {
         val direction = if (isRtlLanguage(Locale.current.language)) LayoutDirection.Rtl else LayoutDirection.Ltr
@@ -392,7 +338,6 @@ private fun AppRoot(
     run {
         val scope = rememberCoroutineScope()
         val coordinator = graph.playback
-        remember { SponsorBlockCoordinator(graph, scope) }
         val inPip by graph.pip.inPip.collectAsState()
         if (inPip) {
             Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -405,22 +350,13 @@ private fun AppRoot(
         val libraryReveal = remember { androidx.compose.runtime.mutableStateOf<Long?>(null) }
         val libraryGroupReveal = remember { androidx.compose.runtime.mutableStateOf<LibraryGroupReveal?>(null) }
         // Signed-in state, derived from the engine's cookie gate. Bumps loginEpoch on sign-in/out.
-        val accountController = remember { AccountController(graph, scope) }
+        val accountController = graph.account
         val signedIn by accountController.signedIn.collectAsState()
         val account by accountController.account.collectAsState()
         val profileReady by accountController.profileReady.collectAsState()
         val loginEpoch by accountController.loginEpoch.collectAsState()
-        // The Recommended feed's raw material: the playing page reports YouTube's related items for
-        // a music video and the engine keeps them. Pure hand-off — the app parses nothing, and a
-        // harvest that fails must never disturb playback.
-        LaunchedEffect(graph) {
-            graph.player.watchNextSeen.collect { seen ->
-                runSuspendCatching { graph.engines.handleWebViewPlayNext(seen.videoId, seen.contentsJson) }
-                    .onFailure { graph.logger?.fork("watch-next-harvest")?.log(kmpcommon.log.Logger.Level.WARN, "harvest hand-off failed", it) }
-            }
-        }
         // App-level so a scan started in Library keeps running (and still notifies) across sections.
-        val scanController = remember { ScanController(scope, graph.logger?.fork("library-scan")) }
+        val scanController = graph.scans
         val drawer = rememberDrawerState(DrawerValue.Closed)
         if (catalogue == null) {
             LaunchedEffect(section) {
@@ -446,6 +382,10 @@ private fun AppRoot(
                 snackbarHostState.currentSnackbarData?.dismiss()
                 snackbarHostState.showSnackbar(message)
             }
+        }
+        DisposableEffect(snackbarHostState) {
+            GlobalShortcutActions.showMessage = showSnackbar
+            onDispose { GlobalShortcutActions.showMessage = {} }
         }
         LaunchedEffect(uriFailures) {
             uriFailures.collect { uri -> showSnackbar(getString(Res.string.link_open_failed, uri)) }
@@ -615,6 +555,27 @@ private fun AppRoot(
                 else -> layers.add(AppLayer.Search(SearchSession.youtube(graph, scope)))
             }
         }
+        DisposableEffect(drawer, scope) {
+            GlobalShortcutActions.toggleNavDrawer = {
+                scope.launch { if (drawer.isOpen) drawer.close() else drawer.open() }
+            }
+            GlobalShortcutActions.closeNavDrawerIfOpen = {
+                if (drawer.isOpen) { scope.launch { drawer.close() }; true } else false
+            }
+            onDispose {
+                GlobalShortcutActions.toggleNavDrawer = {}
+                GlobalShortcutActions.closeNavDrawerIfOpen = { false }
+            }
+        }
+        // Only while the tab row shows: a pushed page or Now Playing covers it.
+        if (section == AppSection.Discover && layers.isEmpty() && !nowPlayingOpen) {
+            DisposableEffect(discoverTabs) {
+                val remove = GlobalShortcutActions.pushTabHandler { i ->
+                    discoverTabs.getOrNull(i - 1)?.let { discoverTab = it; true } ?: false
+                }
+                onDispose { remove() }
+            }
+        }
         // YT Music's search (its own stack): a music SearchSession over ytmusic/search, single-instance
         // the same way.
         val openMusicSearch: () -> Unit = {
@@ -710,6 +671,26 @@ private fun AppRoot(
                 }
             }
         }
+        // Each section's own search flow, for the app bar's search icon and the Ctrl/Cmd+F hotkey
+        // alike: YouTube on Discover, music on YT Music, local files on Library, none elsewhere.
+        val sectionSearch: (() -> Unit)? = when {
+            section == AppSection.Discover -> openSearch
+            section == AppSection.YtMusic -> openMusicSearch
+            section == AppSection.Library && graph.mediaStore != null -> openLibrarySearch
+            else -> null
+        }
+        // The hotkey lands in the input even over submitted results (the results bar takes no typing).
+        val hotkeySearch: () -> Unit = {
+            if (sectionSearch != null) {
+                sectionSearch()
+                (layers.lastOrNull() as? AppLayer.Search)?.session?.editing = true
+            }
+        }
+        val latestHotkeySearch by rememberUpdatedState(hotkeySearch)
+        DisposableEffect(Unit) {
+            GlobalShortcutActions.openSearch = { latestHotkeySearch() }
+            onDispose { GlobalShortcutActions.openSearch = {} }
+        }
         // The "Search "q" online" hand-off: jump to Discover and run q as a YouTube search there,
         // reusing Discover's single search layer (its stack, not Library's).
         val searchOnline: (String) -> Unit = { q ->
@@ -766,7 +747,11 @@ private fun AppRoot(
                         val downloads = graph.downloads
                         when {
                             action == LinkAction.PLAY_SINGLE || (queueEmpty && action in QueueActions) ->
-                                coordinator.player.setQueue(listOf(video.toYtMedia()), startPositionMs = target.startMs ?: 0L)
+                                coordinator.player.setQueue(
+                                    listOf(video.toYtMedia()),
+                                    startPositionMs = target.startMs ?: 0L,
+                                    origin = io.ymusic.player.QueueOrigin.Link,
+                                )
                             action == LinkAction.QUEUE_NEXT -> {
                                 coordinator.playNext(video)
                                 showSnackbar(linkQueuedNext)
@@ -790,6 +775,7 @@ private fun AppRoot(
                                     } else {
                                         NextQueueSource.radio(graph.engines, video.id, log?.fork("queue-source"))
                                     },
+                                    origin = io.ymusic.player.QueueOrigin.Link,
                                 )
                                 graph.pip.nowPlayingOpen.value = true
                             }
@@ -862,9 +848,8 @@ private fun AppRoot(
         // layer of the CURRENT section's stack pops. A lateral section with nothing left to unwind
         // steps back to Discover — which restores its own retained stack — and only from Discover's
         // root is back left to the OS to exit the app.
-        PlatformBackHandler(
-            enabled = drawer.isOpen || nowPlayingOpen || layers.isNotEmpty() || section != AppSection.Discover,
-        ) {
+        val backEnabled = drawer.isOpen || nowPlayingOpen || layers.isNotEmpty() || section != AppSection.Discover
+        val onBack: () -> Unit = {
             val top = layers.lastOrNull()
             when {
                 drawer.isOpen -> scope.launch { drawer.close() }
@@ -878,6 +863,12 @@ private fun AppRoot(
                 layers.isNotEmpty() -> popLayer()
                 else -> onSection(AppSection.Discover)
             }
+        }
+        PlatformBackHandler(enabled = backEnabled, onBack = onBack)
+        val latestBack by rememberUpdatedState(onBack.takeIf { backEnabled })
+        DisposableEffect(Unit) {
+            GlobalShortcutActions.back = { latestBack?.let { it(); true } ?: false }
+            onDispose { GlobalShortcutActions.back = { false } }
         }
 
         // Keep the shared video surface hosted while a YouTube item or a pictured local item is
@@ -926,15 +917,13 @@ private fun AppRoot(
                 Box(
                     Modifier.fillMaxSize()
                         .drawWithContent { if (drawShell) drawContent() }
-                        .then(if (nowPlayingOpen) Modifier.clearAndSetSemantics {} else Modifier),
+                        // Not with the hole open (the box is empty then): desktop's a11y point
+                        // hit-test returns the first child containing the point, so even an empty
+                        // cleared node here would shadow Now Playing.
+                        .then(if (nowPlayingOpen && !holeOpen) Modifier.clearAndSetSemantics {} else Modifier),
                 ) {
-                    if (!holeOpen) ModalNavigationDrawer(
+                    if (!holeOpen) AppNavigationDrawer(
                         drawerState = drawer,
-                        // Swipe-open is touch-only: with a mouse, the whole-screen drag would claim any
-                        // click whose press wanders a pixel (mouse slop ~0.1dp). Open stays possible while
-                        // showing so scrim/drag dismiss keeps working on desktop. On the swipe-tab screens the
-                        // tab switcher yields a start-edge strip (leadingEdgeReserve) so this still opens there.
-                        gesturesEnabled = platformUsesTouch || drawer.isOpen,
                         drawerContent = {
                             AppDrawer(
                                 section = section,
@@ -960,6 +949,7 @@ private fun AppRoot(
                                         scope.launch { drawer.close() }
                                     }
                                 },
+                                open = drawer.isOpen,
                             )
                         },
                     ) {
@@ -1030,14 +1020,7 @@ private fun AppRoot(
                                                         if (section == AppSection.Discover) discoverTab.label else section.label,
                                                     ),
                                                     onMenu = { scope.launch { drawer.open() } },
-                                                    // Each section's own search flow: YouTube on Discover,
-                                                    // local files on Library, none elsewhere.
-                                                    onSearch = when {
-                                                        section == AppSection.Discover -> openSearch
-                                                        section == AppSection.YtMusic -> openMusicSearch
-                                                        section == AppSection.Library && graph.mediaStore != null -> openLibrarySearch
-                                                        else -> null
-                                                    },
+                                                    onSearch = sectionSearch,
                                                     // Inline tabs sit right after the title, so the slot
                                                     // reserves the widest tab label — the tabs must not
                                                     // shift when switching tabs re-titles the bar.
@@ -1348,13 +1331,22 @@ internal fun DiscoverTabRow(
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     // Each tab's (centre, width) in the row's space so the indicator can slide between them.
     val bounds = remember(rtl) { mutableStateMapOf<DiscoverTab, Pair<Dp, Dp>>() }
+    // When this tab row first composes (= user entered the section), focus the current tab so
+    // keyboard users can arrow-navigate immediately. Does not re-fire on mere tab clicks within
+    // the section because the DiscoverTabRow stays composed.
+    val activeTabFocus = remember { FocusRequester() }
     BoxWithConstraints(if (inline) Modifier else Modifier.fillMaxWidth()) {
+        // In the subcomposition with the tabs, so the active tab carries the requester by now.
+        LaunchedEffect(Unit) {
+            if (selected in tabs) activeTabFocus.requestFocus()
+        }
         // Inline: equal tabs tiling the row with no dead space, shrinking from the max when the bar is short.
         val inlineTabWidth = (maxWidth / tabs.size.coerceAtLeast(1)).coerceAtMost(DiscoverInlineTabMaxWidth)
         Column(if (inline) Modifier else Modifier.fillMaxWidth()) {
-            Row(if (inline) Modifier else Modifier.fillMaxWidth()) {
+            Row((if (inline) Modifier else Modifier.fillMaxWidth()).listKeyboardNavigation(ListOrientation.Horizontal)) {
                 tabs.forEach { t ->
                     val active = t == selected
+                    val label = stringResource(t.label)
                     Box(
                         (if (inline) Modifier.width(inlineTabWidth) else Modifier.weight(1f))
                             .onGloballyPositioned { c ->
@@ -1365,13 +1357,21 @@ internal fun DiscoverTabRow(
                                 bounds[t] = with(density) { x.toDp() to c.size.width.toDp() }
                             }
                             .then(if (inline) Modifier.clip(RoundedCornerShape(10.dp)) else Modifier)
+                            .then(if (active) Modifier.focusRequester(activeTabFocus) else Modifier)
+                            .a11yActionLabel(label)
+                            .semantics {
+                                // this.selected disambiguates from the outer `selected: DiscoverTab`
+                                // function parameter that shadows the semantics setter.
+                                this.selected = active
+                                role = Role.Tab
+                            }
                             .clickable { onSelect(t) }
                             .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             t.icon,
-                            stringResource(t.label),
+                            null,
                             Modifier.size(24.dp),
                             tint = if (active) DesignColors.Accent else DesignColors.InkFaint,
                         )

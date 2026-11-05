@@ -5,7 +5,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -17,6 +16,7 @@ import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.BucketDraft
 import io.ymusic.mediastore.model.MediaItemDraft
+import io.ymusic.settings.InMemorySettingsStore
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.runBlocking
 import java.util.Locale
@@ -54,7 +54,7 @@ class LibraryExcludeFolderTest {
                 val section = mutableStateOf(AppSection.Library)
                 setContent {
                     App(
-                        AppGraph(engines = engines, player = StubPlayer(), playerSurface = {}, mediaStore = store),
+                        AppGraph(settings = InMemorySettingsStore(), engines = engines, player = StubPlayer(), playerSurface = {}, mediaStore = store),
                         section,
                     )
                 }
@@ -70,7 +70,7 @@ class LibraryExcludeFolderTest {
                 onNodeWithText("Folders").performClick()
                 onNodeWithText("Music").performClick()
                 waitUntilAtLeastOneExists(hasText("Rock"), 5_000)
-                onNodeWithContentDescription("More").performClick() // Rock is the only row here
+                onNodeWithActionLabel("More").performClick() // Rock is the only row here
                 onNodeWithText("Exclude folder").performClick()
 
                 // Rock's song leaves the library; the sibling stays. The folder itself is still listed.

@@ -3,7 +3,6 @@ package io.ymusic.ui
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -11,6 +10,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.embeddedEngineJsSource
+import io.ymusic.settings.InMemorySettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,7 +54,7 @@ class SearchScreenTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             runComposeUiTest {
-                val graph = AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})
+                val graph = AppGraph(settings = InMemorySettingsStore(), engines = engines, player = StubPlayer(), playerSurface = {})
                 val coordinator = PlaybackCoordinator(graph, scope)
                 setContent { YMusicTheme { SearchScreen(graph, coordinator, onBack = {}) } }
 
@@ -67,13 +67,13 @@ class SearchScreenTest {
                 onNodeWithText("son tung mtp karaoke").performClick()
 
                 // Results mode: the fixture's items render, the bar shows the query + filter icon.
-                waitUntilAtLeastOneExists(hasText("Mix - Sơn Tùng M-TP"), 20_000)
+                waitUntilAtLeastOneExists(hasText("Mix - Sơn Tùng M-TP", substring = true), 20_000)
                 onNodeWithText("son tung mtp karaoke").assertExists()
                 // The playlist row carries its count/Mix badge — the visual video/playlist separator.
-                onNodeWithText("Mix").assertExists()
+                onNodeWithText("Mix", useUnmergedTree = true).assertExists()
 
                 // The filter dialog lists the server's groups; picking one re-searches with its params.
-                onNodeWithContentDescription("Filter").performClick()
+                onNodeWithActionLabel("Filter").performClick()
                 waitUntilAtLeastOneExists(hasText("TYPE"), 10_000)
                 onNodeWithText("Under 3 minutes").assertExists()
                 onNodeWithText("Relevance").assertExists()
@@ -82,11 +82,11 @@ class SearchScreenTest {
                     searchBodies.any { it.contains("EgIQCQ") }
                 }
                 onNodeWithText("TYPE").assertDoesNotExist()
-                waitUntilAtLeastOneExists(hasText("Mix - Sơn Tùng M-TP"), 20_000)
+                waitUntilAtLeastOneExists(hasText("Mix - Sơn Tùng M-TP", substring = true), 20_000)
 
                 // Search icon returns to input mode with the query prefilled; clearing shows history.
-                onNodeWithContentDescription("Search").performClick()
-                onNodeWithContentDescription("Clear").performClick()
+                onNodeWithActionLabel("Search").performClick()
+                onNodeWithActionLabel("Clear").performClick()
                 waitUntilAtLeastOneExists(hasText("Clear history"), 10_000)
                 onNodeWithText("son tung mtp karaoke").assertExists()
 

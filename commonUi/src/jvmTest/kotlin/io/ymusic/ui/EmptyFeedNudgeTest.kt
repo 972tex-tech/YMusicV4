@@ -2,7 +2,6 @@ package io.ymusic.ui
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -10,6 +9,7 @@ import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.extractHomeFeed
+import io.ymusic.settings.InMemorySettingsStore
 import kotlinx.coroutines.runBlocking
 import java.util.Locale
 import kotlin.test.Test
@@ -64,8 +64,8 @@ class EmptyFeedNudgeTest {
         runBlocking { engines.start() }
         try {
             runComposeUiTest {
-                setContent { App(AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})) }
-                onNodeWithContentDescription("Home").performClick()
+                setContent { App(AppGraph(settings = InMemorySettingsStore(), engines = engines, player = StubPlayer(), playerSurface = {})) }
+                onNodeWithActionLabel("Home").performClick()
                 waitUntilAtLeastOneExists(hasText("Try searching to get started"), 20_000)
                 onNodeWithText("Start watching videos to help us build a feed of videos you'll love.")
                     .assertExists()

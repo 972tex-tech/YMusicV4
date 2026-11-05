@@ -2,9 +2,13 @@ package io.ymusic.remoteconfig
 
 import io.ymusic.remoteconfig.AppUpdate.Companion.value
 import io.ymusic.remoteconfig.BundleVersion.Companion.value
+import io.ymusic.remoteconfig.Features.Companion.value
 import kmphttp.json.JsonWriter
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import projectcommon.json.arrayOrNull
 import projectcommon.json.boolOrNull
+import projectcommon.json.doubleOrNull
 import projectcommon.json.int
 import projectcommon.json.intOrNull
 import projectcommon.json.long
@@ -109,15 +113,8 @@ data class AppUpdate(
     }
 }
 
-/**
- * The answer from `GET /v1/config`.
- *
- * Every field has a default and unknown ones are skipped, so the service can add a flag without
- * breaking a client that predates it, and a client can be built against a field the deployed service
- * does not send yet. That is the whole point of the defaults — do not remove them to make a field
- * "required".
- */
-data class RemoteConfigData(
+/** The service's `features` object: flags, links and tunables. Every field has a default; see [RemoteConfigData]. */
+data class Features(
     val variableA: Int = 0,
     val featureX: Boolean = false,
     /** The drawer's "Telegram announcements" link; null = the app's built-in one. */
@@ -138,16 +135,16 @@ data class RemoteConfigData(
     val donationUrl: String? = null,
     /** The official download site, where a failed or impossible in-app update sends the user. */
     val downloadPageUrl: String? = null,
-    val appUpdate: AppUpdate? = null,
-    val engineJs: BundleVersion? = null,
-    val playerJs: BundleVersion? = null,
-    // client populated timestamp at time data parsed from server
-    val updatedAt: Long,
+    /** How many of the newest log lines an error event sends along; 0 = none. */
+    val errorLogLines: Int = 500,
+    /** How many lines the app log keeps (trimmed once 10% over). */
+    val logLines: Int = 5_000,
+    /** The share of non-fatal errors (`captureError`) sent to Sentry, 0–1; crashes always go. */
+    val errorSampleRate: Double = 1.0,
+    /** Regexes over an error's "Type: message"; a match keeps a non-fatal error in the local log only. */
+    val errorFilters: List<String> = emptyList(),
 ) {
     companion object {
-        /** What the app runs on before the first successful fetch, and with no cache to fall back on. */
-        val DEFAULTS = RemoteConfigData(updatedAt = 0L)
-        private const val KEY_FEATURES = "features"
         private const val KEY_VARIABLE_A = "variableA"
         private const val KEY_FEATURE_X = "featureX"
         private const val KEY_TELEGRAM_URL = "telegramUrl"
@@ -159,6 +156,76 @@ data class RemoteConfigData(
         private const val KEY_TERMS_URL = "termsUrl"
         private const val KEY_DONATION_URL = "donationUrl"
         private const val KEY_DOWNLOAD_PAGE_URL = "downloadPageUrl"
+        private const val KEY_ERROR_LOG_LINES = "errorLogLines"
+        private const val KEY_LOG_LINES = "logLines"
+        private const val KEY_ERROR_SAMPLE_RATE = "errorSampleRate"
+        private const val KEY_ERROR_FILTERS = "errorFilters"
+
+        fun from(json: JsonObject): Features {
+            val default = Features()
+            return Features(
+                variableA = json.intOrNull(KEY_VARIABLE_A) ?: default.variableA,
+                featureX = json.boolOrNull(KEY_FEATURE_X) ?: default.featureX,
+                telegramUrl = json.stringOrNull(KEY_TELEGRAM_URL),
+                changelogUrl = json.stringOrNull(KEY_CHANGELOG_URL),
+                websiteUrl = json.stringOrNull(KEY_WEBSITE_URL),
+                feedbackEmail = json.stringOrNull(KEY_FEEDBACK_EMAIL),
+                feedbackIssueUrl = json.stringOrNull(KEY_FEEDBACK_ISSUE_URL),
+                sourceCodeUrl = json.stringOrNull(KEY_SOURCE_CODE_URL),
+                termsUrl = json.stringOrNull(KEY_TERMS_URL),
+                donationUrl = json.stringOrNull(KEY_DONATION_URL),
+                downloadPageUrl = json.stringOrNull(KEY_DOWNLOAD_PAGE_URL),
+                errorLogLines = json.intOrNull(KEY_ERROR_LOG_LINES) ?: default.errorLogLines,
+                logLines = json.intOrNull(KEY_LOG_LINES) ?: default.logLines,
+                errorSampleRate = json.doubleOrNull(KEY_ERROR_SAMPLE_RATE) ?: default.errorSampleRate,
+                errorFilters = json.arrayOrNull(KEY_ERROR_FILTERS).orEmpty()
+                    .mapNotNull { (it as? JsonPrimitive)?.takeIf { primitive -> primitive.isString }?.content },
+            )
+        }
+
+        fun JsonWriter.value(data: Features): JsonWriter {
+            beginObject()
+            name(KEY_VARIABLE_A).value(data.variableA)
+            name(KEY_FEATURE_X).value(data.featureX)
+            data.telegramUrl?.let { name(KEY_TELEGRAM_URL).value(it) }
+            data.changelogUrl?.let { name(KEY_CHANGELOG_URL).value(it) }
+            data.websiteUrl?.let { name(KEY_WEBSITE_URL).value(it) }
+            data.feedbackEmail?.let { name(KEY_FEEDBACK_EMAIL).value(it) }
+            data.feedbackIssueUrl?.let { name(KEY_FEEDBACK_ISSUE_URL).value(it) }
+            data.sourceCodeUrl?.let { name(KEY_SOURCE_CODE_URL).value(it) }
+            data.termsUrl?.let { name(KEY_TERMS_URL).value(it) }
+            data.donationUrl?.let { name(KEY_DONATION_URL).value(it) }
+            data.downloadPageUrl?.let { name(KEY_DOWNLOAD_PAGE_URL).value(it) }
+            name(KEY_ERROR_LOG_LINES).value(data.errorLogLines)
+            name(KEY_LOG_LINES).value(data.logLines)
+            name(KEY_ERROR_SAMPLE_RATE).value(data.errorSampleRate)
+            name(KEY_ERROR_FILTERS).beginArray()
+            data.errorFilters.forEach { value(it) }
+            endArray()
+            endObject()
+            return this
+        }
+    }
+}
+
+/**
+ * The answer from `GET /v1/config`, in its wire shape.
+ *
+ * Every field has a default and unknown ones are skipped, so the service can add a flag without
+ * breaking a client that predates it, and a client can be built against a field the deployed service
+ * does not send yet. That is the whole point of the defaults — do not remove them to make a field
+ * "required".
+ */
+data class RemoteConfigData(
+    val features: Features = Features(),
+    val appUpdate: AppUpdate? = null,
+    val engineJs: BundleVersion? = null,
+    val playerJs: BundleVersion? = null,
+    // client populated timestamp at time data parsed from server
+    val updatedAt: Long = 0L,
+) {
+    companion object {
+        private const val KEY_FEATURES = "features"
         private const val KEY_APP_UPDATE = "appUpdate"
         private const val KEY_ENGINE_JS = "engineJs"
         private const val KEY_PLAYER_JS = "playerJs"
@@ -172,42 +239,17 @@ data class RemoteConfigData(
          * so [now] stamps it. If a server ever DOES send it, it wins — which is worth knowing, since
          * that hands it the ability to pin clients to a document it declares perpetually fresh.
          */
-        fun from(root: JsonObject, now: () -> Long): RemoteConfigData {
-            val features = root.objectOrNull(KEY_FEATURES)
-            return RemoteConfigData(
-                variableA = features?.intOrNull(KEY_VARIABLE_A) ?: DEFAULTS.variableA,
-                featureX = features?.boolOrNull(KEY_FEATURE_X) ?: DEFAULTS.featureX,
-                telegramUrl = features?.stringOrNull(KEY_TELEGRAM_URL),
-                changelogUrl = features?.stringOrNull(KEY_CHANGELOG_URL),
-                websiteUrl = features?.stringOrNull(KEY_WEBSITE_URL),
-                feedbackEmail = features?.stringOrNull(KEY_FEEDBACK_EMAIL),
-                feedbackIssueUrl = features?.stringOrNull(KEY_FEEDBACK_ISSUE_URL),
-                sourceCodeUrl = features?.stringOrNull(KEY_SOURCE_CODE_URL),
-                termsUrl = features?.stringOrNull(KEY_TERMS_URL),
-                donationUrl = features?.stringOrNull(KEY_DONATION_URL),
-                downloadPageUrl = features?.stringOrNull(KEY_DOWNLOAD_PAGE_URL),
-                appUpdate = root.objectOrNull(KEY_APP_UPDATE)?.let(AppUpdate::from),
-                engineJs = root.objectOrNull(KEY_ENGINE_JS)?.let(BundleVersion::from),
-                playerJs = root.objectOrNull(KEY_PLAYER_JS)?.let(BundleVersion::from),
-                updatedAt = root.longOrNull(KEY_UPDATED_AT) ?: now(),
-            )
-        }
+        fun from(root: JsonObject, now: () -> Long): RemoteConfigData = RemoteConfigData(
+            features = root.objectOrNull(KEY_FEATURES)?.let(Features::from) ?: Features(),
+            appUpdate = root.objectOrNull(KEY_APP_UPDATE)?.let(AppUpdate::from),
+            engineJs = root.objectOrNull(KEY_ENGINE_JS)?.let(BundleVersion::from),
+            playerJs = root.objectOrNull(KEY_PLAYER_JS)?.let(BundleVersion::from),
+            updatedAt = root.longOrNull(KEY_UPDATED_AT) ?: now(),
+        )
 
         fun JsonWriter.value(data: RemoteConfigData): JsonWriter {
             beginObject()
-            name(KEY_FEATURES).beginObject()
-            name(KEY_VARIABLE_A).value(data.variableA)
-            name(KEY_FEATURE_X).value(data.featureX)
-            data.telegramUrl?.let { name(KEY_TELEGRAM_URL).value(it) }
-            data.changelogUrl?.let { name(KEY_CHANGELOG_URL).value(it) }
-            data.websiteUrl?.let { name(KEY_WEBSITE_URL).value(it) }
-            data.feedbackEmail?.let { name(KEY_FEEDBACK_EMAIL).value(it) }
-            data.feedbackIssueUrl?.let { name(KEY_FEEDBACK_ISSUE_URL).value(it) }
-            data.sourceCodeUrl?.let { name(KEY_SOURCE_CODE_URL).value(it) }
-            data.termsUrl?.let { name(KEY_TERMS_URL).value(it) }
-            data.donationUrl?.let { name(KEY_DONATION_URL).value(it) }
-            data.downloadPageUrl?.let { name(KEY_DOWNLOAD_PAGE_URL).value(it) }
-            endObject()
+            name(KEY_FEATURES).value(data.features)
             data.appUpdate?.let { name(KEY_APP_UPDATE).value(it) }
             data.engineJs?.let { name(KEY_ENGINE_JS).value(it) }
             data.playerJs?.let { name(KEY_PLAYER_JS).value(it) }

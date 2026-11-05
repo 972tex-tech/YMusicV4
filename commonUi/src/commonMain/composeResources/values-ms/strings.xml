@@ -23,6 +23,10 @@
     <string name="downloads_none_title">Belum ada muat turun</string>
     <string name="downloads_none_message">Lagu dan video yang dimuat turun boleh dimainkan di luar talian.</string>
     <string name="downloads_failed">Muat turun gagal</string>
+    <!-- Shows a file or folder in the OS file manager; one label per desktop OS (Finder / File Explorer are product names). -->
+    <string name="menu_reveal_finder">Tunjukkan dalam Finder</string>
+    <string name="menu_reveal_explorer">Tunjukkan dalam Penjelajah Fail</string>
+    <string name="menu_reveal_file_manager">Tunjukkan dalam pengurus fail</string>
     <string name="section_settings">Tetapan</string>
     <string name="section_donate">Derma</string>
     <string name="section_feedback">Maklum balas</string>
@@ -121,8 +125,30 @@
     <string name="yt_playlist_removed_video">%1$s dialih keluar daripada senarai main</string>
     <string name="cd_add_to_playlist">Tambah ke senarai main</string>
     <string name="cd_share">Kongsi</string>
-    <string name="cd_music_video">Muzik</string>
-    <string name="cd_album">Album</string>
+    <!-- Screen-reader prefix naming what a feed card is: "Video, <title>, 5 minutes 3 seconds, <channel>" -->
+    <string name="a11y_kind_video">Video</string>
+    <string name="a11y_kind_music_video">Video muzik</string>
+    <string name="a11y_kind_live">Video langsung</string>
+    <string name="a11y_kind_playlist">Senarai main</string>
+    <string name="a11y_kind_album">Album</string>
+    <string name="a11y_kind_mix">Campuran</string>
+    <string name="a11y_kind_channel">Saluran</string>
+    <!-- A video's length as a screen reader speaks it, joined with spaces: "1 hour 5 minutes 3 seconds" -->
+    <plurals name="a11y_duration_hours">
+        <item quantity="other">%1$d jam</item>
+    </plurals>
+    <plurals name="a11y_duration_minutes">
+        <item quantity="other">%1$d minit</item>
+    </plurals>
+    <plurals name="a11y_duration_seconds">
+        <item quantity="other">%1$d saat</item>
+    </plurals>
+    <string name="a11y_now_playing">Sedang dimainkan</string>
+    <string name="a11y_playback_position">Kedudukan main balik</string>
+    <string name="a11y_x_of_y">%1$s daripada %2$s</string>
+    <string name="a11y_behind_live">%1$s di belakang siaran langsung</string>
+    <string name="a11y_downloaded">Dimuat turun</string>
+    <string name="a11y_eq_preamp">Prapenguat</string>
 
     <!-- Library -->
     <string name="library_tab_folders">Folder</string>
@@ -225,7 +251,6 @@
     <string name="settings_debug">Nyahpepijat</string>
     <string name="settings_show_fps">Tunjukkan FPS</string>
     <string name="settings_show_fps_hint">Paparkan bingkai sesaat di atas video Sedang Dimainkan. Pensampelan berhenti apabila dijeda atau anda meninggalkan skrin itu.</string>
-    <string name="overlay_fps">%1$d fps</string>
     <string name="settings_licenses">Lesen sumber terbuka</string>
     <string name="settings_terms">Terma &amp; privasi</string>
     <string name="settings_licenses_intro">YMusic ialah sumber terbuka di bawah GNU GPL v3.0. Ia mengandungi komponen berikut:</string>
@@ -362,7 +387,6 @@
     <string name="account_sign_out">Log keluar</string>
     <string name="account_switch">Tukar akaun</string>
     <string name="switch_account_hint">Pilih akaun yang anda mahu, kemudian tutup skrin ini dengan anak panah kembali — apl akan dimuat semula di bawah akaun baharu.</string>
-    <string name="cd_account_avatar">Gambar akaun</string>
     <string name="account_my_channel">Saluran saya</string>
     <string name="account_watch_history">Sejarah tontonan</string>
     <string name="account_watch_later">Tonton kemudian</string>
@@ -428,11 +452,9 @@
     <string name="download_more_qualities">+%1$d lagi</string>
     <string name="download_down_to">hingga %1$s</string>
     <string name="download_less">Kurang</string>
-    <string name="download_webm_detail">WebM · strim asal</string>
+    <string name="download_webm_detail">Opus · strim asal</string>
     <string name="download_m4a_detail">AAC · strim asal</string>
-    <string name="download_mp3_detail">%1$d kbps · boleh dimainkan di mana-mana</string>
-    <string name="settings_mp3_source_bitrate">Muat turun MP3 pada kadar bit asal</string>
-    <string name="settings_mp3_source_bitrate_hint">Kodkan MP3 pada kira-kira 256 kbps (kadar bit berubah) dan bukannya 320 kbps. Fail lebih kecil, kualiti sama.</string>
+    <string name="download_mp3_detail">Boleh dimainkan di mana-mana</string>
     <string name="download_audio_track">Trek audio</string>
     <string name="download_captions">Sari kata</string>
     <string name="download_captions_off">Mati</string>
@@ -459,7 +481,7 @@
     <string name="download_no_subtitles">Tiada yang tersedia</string>
     <string name="dialog_ok_done">Selesai</string>
     <string name="download_captions_as_lyrics">%1$s · sebagai lirik</string>
-    <string name="download_lyrics_note">MP3 menyimpan sari kata sebagai lirik, dipaparkan oleh pemain yang membaca lirik.</string>
+    <string name="download_lyrics_note">Format ini menyimpan sari kata sebagai lirik, dipaparkan oleh pemain yang membaca lirik.</string>
     <string name="download_caption_translated">%1$s (diterjemahkan secara automatik)</string>
     <string name="download_live_unsupported">Tidak dapat memuat turun video LANGSUNG</string>
     <string name="download_save_quick">Simpan sebagai Muat turun pantas</string>
@@ -546,6 +568,24 @@
     <string name="video_details_delete_title">Padam ulasan</string>
     <string name="video_details_delete_message">Padamkan ulasan anda dan semua balasannya secara kekal?</string>
     <string name="video_details_deleted">Ulasan dipadamkan</string>
+    <string name="cookie_protect_title">Lindungi log masuk anda dengan kata laluan?</string>
+    <string name="cookie_protect_body">Log masuk anda disimpan pada komputer ini, tempat apl lain yang anda jalankan boleh membacanya. Tetapkan kata laluan untuk menguncinya; YMusic akan memintanya setiap kali dimulakan.</string>
+    <string name="cookie_password">Kata laluan</string>
+    <string name="cookie_protect_confirm">Sahkan kata laluan</string>
+    <string name="cookie_protect_mismatch">Kata laluan tidak sepadan.</string>
+    <string name="cookie_protect_submit">Lindungi</string>
+    <string name="cookie_protect_skip">Bukan sekarang</string>
+    <string name="cookie_unlock_title">Buka kunci log masuk anda</string>
+    <string name="cookie_unlock_body">Log masuk YouTube anda dilindungi dengan kata laluan.</string>
+    <string name="cookie_unlock_submit">Buka kunci</string>
+    <string name="cookie_unlock_wrong">Kata laluan salah.</string>
+    <string name="cookie_unlock_cant_unlock">Tidak dapat membuka kunci?</string>
+    <string name="cookie_unlock_guest">Teruskan sebagai tetamu</string>
+    <string name="cookie_unlock_guest_hint">Bermula tanpa log masuk. Tiada apa-apa yang disimpan.</string>
+    <string name="cookie_unlock_sign_out">Log keluar</string>
+    <string name="cookie_unlock_sign_out_hint">Mengalih keluar log masuk yang disimpan ini.</string>
+    <string name="cookie_unlock_sign_out_title">Log keluar?</string>
+    <string name="cookie_unlock_sign_out_body">Tindakan ini mengalih keluar log masuk yang disimpan daripada komputer ini. Untuk log masuk semula, imbas kod QR dengan apl YMusic.</string>
     <string name="menu_details_comments">Butiran dan ulasan</string>
     <string name="menu_search_lyrics">Cari lirik</string>
     <string name="menu_speed_pitch">Kelajuan dan pic</string>
@@ -565,4 +605,33 @@
     <string name="download_other_format">Muat turun dalam format lain</string>
     <string name="unsubscribe">Nyahlanggan</string>
     <string name="unsubscribed">Dinyahlanggan</string>
+    <string name="tray_pause">Jeda</string>
+    <string name="tray_resume">Sambung semula</string>
+    <string name="tray_stop">Henti (kosongkan baris gilir)</string>
+    <string name="tray_quit">Tutup</string>
+    <string name="shortcuts_title">Pintasan papan kekunci</string>
+    <string name="shortcuts_play_pause">Main / jeda</string>
+    <string name="shortcuts_now_playing">Tunjukkan atau sembunyikan Sedang Dimainkan</string>
+    <string name="shortcuts_nav_menu">Buka atau tutup menu</string>
+    <string name="shortcuts_switch_tabs">Tukar tab</string>
+    <string name="shortcuts_escape">Keluar dari skrin penuh, atau tutup Sedang Dimainkan, menu atau tetingkap timbul</string>
+    <string name="shortcuts_help">Tunjukkan bantuan ini</string>
+    <string name="shortcuts_volume_up">Kuatkan bunyi</string>
+    <string name="shortcuts_volume_down">Perlahankan bunyi</string>
+    <string name="a11y_key_arrow_left">anak panah kiri</string>
+    <string name="a11y_key_arrow_right">anak panah kanan</string>
+    <string name="a11y_key_arrow_up">anak panah atas</string>
+    <string name="a11y_key_arrow_down">anak panah bawah</string>
+    <string name="cd_always_on_top">Sentiasa di atas</string>
+    <string name="settings_caption_size">Saiz</string>
+    <string name="caption_size_preview">Kapsyen akan kelihatan seperti ini</string>
+    <string name="settings_caption_style">Gaya kapsyen</string>
+    <string name="settings_caption_style_hint">Saiz, warna dan latar belakang kapsyen video</string>
+    <string name="caption_text_color">Warna teks</string>
+    <string name="caption_background">Latar belakang</string>
+    <string name="caption_background_opacity">Kelegapan latar belakang</string>
+    <string name="download_quality_save">Jimat</string>
+    <string name="download_quality_medium">Sederhana</string>
+    <string name="download_quality_best">Terbaik</string>
+    <string name="download_kbps">%1$d kbps</string>
 </resources>

@@ -3,7 +3,6 @@ package io.ymusic.ui
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
@@ -12,6 +11,7 @@ import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.BucketDraft
+import io.ymusic.settings.InMemorySettingsStore
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
@@ -43,6 +43,7 @@ class ScanNotificationTest {
         try {
             runComposeUiTest {
                 val graph = AppGraph(
+                    settings = InMemorySettingsStore(),
                     engines = engines,
                     player = StubPlayer(),
                     playerSurface = {},
@@ -56,7 +57,7 @@ class ScanNotificationTest {
                 setContent { App(graph, section) }
 
                 waitUntilAtLeastOneExists(hasText("Folders"), 20_000)
-                onNodeWithContentDescription("Rescan folders").performClick()
+                onNodeWithActionLabel("Rescan folders").performClick()
                 waitUntilAtLeastOneExists(hasText("Scanning 5…"), 10_000)
 
                 // Leave Library for Discover WHILE the scan runs.

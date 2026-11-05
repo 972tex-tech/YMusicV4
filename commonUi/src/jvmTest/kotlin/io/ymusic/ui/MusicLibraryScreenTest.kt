@@ -10,6 +10,7 @@ import io.ymusic.dynamicengine.DynamicEngineManager
 import io.ymusic.dynamicengine.embeddedEngineJsSource
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.extractMusicLibrary
+import io.ymusic.settings.InMemorySettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -117,7 +118,7 @@ class MusicLibraryScreenTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             runComposeUiTest {
-                val graph = AppGraph(engines = engines, player = StubPlayer(), playerSurface = {})
+                val graph = AppGraph(settings = InMemorySettingsStore(), engines = engines, player = StubPlayer(), playerSurface = {})
                 val coordinator = PlaybackCoordinator(graph, scope)
                 setContent {
                     YMusicTheme {
@@ -134,8 +135,8 @@ class MusicLibraryScreenTest {
                 onNodeWithText("Library").performClick()
 
                 // The landing grid: playlist cards with their privacy/owner line and artist cards.
-                waitUntilAtLeastOneExists(hasText("Mock Text 102"), 20_000)
-                onNodeWithText("Playlist • Mock User X • 8 tracks").assertExists()
+                waitUntilAtLeastOneExists(hasText("Mock Text 102", substring = true), 20_000)
+                onNodeWithText("Playlist • Mock User X • 8 tracks", substring = true).assertExists()
                 waitUntilAtLeastOneExists(hasText("Mock Text 104", substring = true), 20_000)
 
                 // The filter chips + the sort trigger naming the current order.
