@@ -196,6 +196,9 @@ class AppGraph(
      * Null hides Settings → Link devices together with [exportSessionCookies].
      */
     val scanQrCode: (suspend () -> String?)? = null,
+    /** Listens for one spoken query (see [SpeechEvent]); canceling the collection stops listening.
+     *  Null hides the search field's mic. */
+    val speechToText: (() -> kotlinx.coroutines.flow.Flow<SpeechEvent>)? = null,
     /**
      * OS PIN / biometric / passcode prompt. True if the user unlocked, false if they canceled.
      * Throws with message `no-lock` when the phone has no screen lock. Null hides Settings →
@@ -322,6 +325,15 @@ class AppGraph(
         // Settings reach the player, cache and locale here, not in App: the process also runs without the UI
         // (Android Auto, media buttons, the playback service).
         val bindings = processScope
+        restoreUiLocale = { noRules, alreadyRestored ->
+            val log = logger?.fork("ui-locale")
+            if (alreadyRestored) {
+                log?.log(Logger.Level.WARN, "plural rules still missing after restoring the app language", noRules)
+            } else {
+                log?.log(Logger.Level.WARN, "platform locale has no plural rules", noRules)
+                reapplyUiLanguage()
+            }
+        }
         bindings.launch {
             settings.flow(AppSettings.uiLanguage).map { uiLanguageTag(settings) }.distinctUntilChanged().collect { tag ->
                 applyUiLocale(tag)
@@ -329,6 +341,7 @@ class AppGraph(
             }
         }
         bindPlayerConfig(bindings)
+        bindings.launch { pip.pictureHidden.collect { player.setVideoHidden(it) } }
         bindPlayerCacheLimit(bindings)
         SponsorBlockCoordinator(this, bindings)
         bindings.launch {

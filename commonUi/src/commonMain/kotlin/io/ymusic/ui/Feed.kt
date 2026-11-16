@@ -76,6 +76,7 @@ import io.ymusic.ui.resources.error_playlist_backup_invalid
 import io.ymusic.ui.resources.error_playlist_backup_newer
 import io.ymusic.ui.resources.error_supervised_account
 import io.ymusic.ui.resources.feed_empty
+import io.ymusic.ui.resources.media_engine_unavailable
 import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.menu_play_single
 import io.ymusic.ui.resources.menu_remove
@@ -108,7 +109,9 @@ import kotlinx.coroutines.withTimeout
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.DISK_FULL_CODE
+import projectcommon.error.PLAYBACK_UNAVAILABLE_CODE
 import projectcommon.error.errorCode
+import projectcommon.log.captureUnlessEnvironmental
 
 /** Paged feed loading over any yt page source (browse / search / watch-next continuations).
  *  [fetchTimeoutMs] is the watchdog for a wedged engine (seen live: Android CookieManager deadlocking
@@ -142,8 +145,10 @@ class Pager(
             val emptyMessage: String? = null,
             val continuation: String?,
             val loadingMore: Boolean,
-            /** Pull-to-refresh in flight: the list stays on screen, only the pull indicator spins. */
+            /** A keep-content [reload] in flight: the list stays on screen until the new page lands. */
             val refreshing: Boolean = false,
+            /** The chip whose page that reload fetches: the chip spins instead of the pull indicator. */
+            val reloadingChipToken: String? = null,
             /** Search surfaces only: the server's filter submenu (empty elsewhere). */
             val filterGroups: List<io.ymusic.dynamicengine.yt.YtFilterGroup> = emptyList(),
             /** Detail surfaces only (channel / playlist browse). */
@@ -189,7 +194,7 @@ class Pager(
             } catch (e: CancellationException) {
                 throw e // a newer refresh took over the state — this coroutine just dies
             } catch (e: Exception) {
-                logger?.captureError(e)
+                logger?.captureUnlessEnvironmental(e)
                 State.Failed(e.errorCode() ?: "E20032", e.message)
             }
         }
@@ -202,15 +207,17 @@ class Pager(
      *  null reloads the surface's default top-of-feed. */
     fun reload(chipToken: String? = null) {
         val source = reloadFetch ?: fetch
-        val current = _state.value as? State.Ready ?: return load(chipToken, source)
-        if (current.refreshing) return
+        val ready = _state.value as? State.Ready ?: return load(chipToken, source)
+        // Another chip takes over a chip reload; a pull, or the same chip again, waits for it.
+        if (ready.refreshing && (chipToken == null || chipToken == ready.reloadingChipToken)) return
+        val current = ready.copy(refreshing = false, reloadingChipToken = null)
         job?.cancel()
         val carryOver = chipToken != null
         val previousChips = if (carryOver) current.chips else emptyList()
         val previousSort = if (carryOver) current.sort else emptyList()
         val previousWrap = carryOver && current.chipsWrap
         val previousFilters = if (carryOver) current.filterGroups else emptyList()
-        _state.value = current.copy(refreshing = true)
+        _state.value = current.copy(refreshing = true, reloadingChipToken = chipToken)
         job = scope.launch {
             _state.value = try {
                 val page = withTimeout(fetchTimeoutMs) { source(chipToken) }
@@ -219,11 +226,11 @@ class Pager(
                 if (e !is TimeoutCancellationException) throw e
                 logger?.log(Logger.Level.WARN, "reload timed out after ${fetchTimeoutMs}ms", e)
                 _errors.tryEmit(TIMEOUT_CODE)
-                current.copy(refreshing = false)
+                current
             } catch (e: Exception) {
-                logger?.captureError(e)
+                logger?.captureUnlessEnvironmental(e)
                 _errors.tryEmit(e.errorCode() ?: "E20033")
-                current.copy(refreshing = false)
+                current
             }
         }
     }
@@ -291,7 +298,7 @@ class Pager(
                 logger?.log(Logger.Level.WARN, "loadMore timed out after ${fetchTimeoutMs}ms", e)
                 current.copy(loadingMore = false) // timed out — the tail button stays for a retry
             } catch (e: Exception) {
-                logger?.captureError(e)
+                logger?.captureUnlessEnvironmental(e)
                 // Keep what we have; the tail button stays for a retry.
                 current.copy(loadingMore = false)
             }
@@ -379,7 +386,7 @@ fun FeedList(
             errorCode = null
         }
     }
-    val refreshing = (state as? Pager.State.Ready)?.refreshing == true
+    val refreshing = (state as? Pager.State.Ready)?.let { it.refreshing && it.reloadingChipToken == null } == true
     PullToRefreshFeed(refreshing = refreshing, onRefresh = reload) {
         when (val s = state) {
             is Pager.State.Loading -> Column(modifier) {
@@ -426,8 +433,8 @@ class EmptyAction(val label: String, val onClick: () -> Unit)
 
 /** Touch platforms wrap the feed in Material's pull-to-refresh; desktop reloads via F5/Cmd+R
  *  instead (a mouse can't over-drag a list), so the wrapper is a no-op there. The indicator spins
- *  for any keep-content reload — a pull gesture or a chip tap — but not the first full-screen load
- *  (that state has no list to pull against and shows its own centered spinner). */
+ *  for a pull or F5 reload, not a chip tap (the chip spins) nor the first full-screen load (that
+ *  state has no list to pull against and shows its own centered spinner). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PullToRefreshFeed(refreshing: Boolean, onRefresh: () -> Unit, content: @Composable () -> Unit) {
@@ -490,7 +497,7 @@ internal fun EmptyState(
                         Text(stringResource(Res.string.reload))
                     }
                 }
-                Button(onClick = onReload) { Text(actionLabel) }
+                Button(onClick = onReload, modifier = Modifier.focusRing(ButtonDefaults.shape)) { Text(actionLabel) }
             }
         }
     }
@@ -505,6 +512,7 @@ internal fun errorMessage(code: String): String = errorText(code).resolve()
 internal fun errorText(code: String): UiText = when (code) {
     "network" -> UiText.Resource(Res.string.error_network)
     DISK_FULL_CODE -> UiText.Resource(Res.string.error_disk_full)
+    PLAYBACK_UNAVAILABLE_CODE -> UiText.Resource(Res.string.media_engine_unavailable)
     StillProcessingException.CODE -> UiText.Resource(Res.string.error_live_still_processing)
     CAPTCHA_CODE -> UiText.Resource(Res.string.error_captcha)
     SUPERVISED_ACCOUNT_CODE -> UiText.Resource(Res.string.error_supervised_account)
@@ -537,7 +545,7 @@ internal fun ErrorState(code: String, modifier: Modifier = Modifier, onRetry: ()
             )
             val captcha = LocalCaptchaResolver.current?.takeIf { code == CAPTCHA_CODE }
             if (captcha == null) {
-                Button(onClick = onRetry, modifier = Modifier.padding(top = DesignSpacing.Space8)) {
+                Button(onClick = onRetry, modifier = Modifier.padding(top = DesignSpacing.Space8).focusRing(ButtonDefaults.shape)) {
                     Text(stringResource(Res.string.retry))
                 }
             } else {
@@ -552,7 +560,7 @@ internal fun ErrorState(code: String, modifier: Modifier = Modifier, onRetry: ()
                     ) {
                         Text(stringResource(Res.string.retry))
                     }
-                    Button(onClick = { captcha.resolve(onRetry) }) { Text(stringResource(captcha.label)) }
+                    Button(onClick = { captcha.resolve(onRetry) }, modifier = Modifier.focusRing(ButtonDefaults.shape)) { Text(stringResource(captcha.label)) }
                 }
             }
         }
@@ -574,11 +582,12 @@ private fun FeedSections(
     // Collapsible sections start collapsed; the map survives recomposition, keyed by section slot.
     val expanded = remember { mutableStateMapOf<Int, Boolean>() }
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val metrics = gridMetricsFor(maxWidth)
-        val layout = feedLayoutFor(maxWidth)
-        val columns = if (layout != FeedLayout.Grid) 1 else gridColumnsFor(maxWidth)
+        val layoutWidth = railStableWidth(maxWidth)
+        val metrics = gridMetricsFor(layoutWidth)
+        val layout = feedLayoutFor(layoutWidth)
+        val columns = if (layout != FeedLayout.Grid) 1 else gridColumnsFor(layoutWidth)
         val wide = layout == FeedLayout.WideList
-        val compactTitle = feedCompactTitleFor(maxWidth)
+        val compactTitle = feedCompactTitleFor(layoutWidth)
         val listState = hoistedListState ?: rememberLazyListState()
         // Report scroll to the shell (which lifts the app bar); the feed doesn't touch the bar itself.
         TrackScroll { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
@@ -864,7 +873,7 @@ private fun rememberChannelSubscriber(coordinator: PlaybackCoordinator): ((chann
 @Composable
 private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
     if (state.chips.isEmpty() && state.sort.isEmpty()) return
-    // Keep-content reload either way: the list stays put with the pull indicator spinning, so a
+    // Keep-content reload either way: the list stays put with the tapped chip spinning, so a
     // failed chip fetch keeps the current data (error → snackbar) instead of blanking the screen.
     if (state.chipsWrap) {
         androidx.compose.foundation.layout.FlowRow(
@@ -875,7 +884,7 @@ private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
             verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
         ) {
             state.chips.forEach { chip ->
-                FeedChip(chip.title, selected = chip.selected) { pager.reload(chip.token) }
+                FeedChip(chip.title, selected = chip.selected, loading = chip.isReloading(state)) { pager.reload(chip.token) }
             }
             if (state.sort.isNotEmpty()) {
                 FeedSortMenu(state.sort) { token -> pager.reload(token) }
@@ -891,7 +900,7 @@ private fun FeedChips(state: Pager.State.Ready, pager: Pager) {
         horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
     ) {
         items(state.chips) { chip ->
-            FeedChip(chip.title, selected = chip.selected) { pager.reload(chip.token) }
+            FeedChip(chip.title, selected = chip.selected, loading = chip.isReloading(state)) { pager.reload(chip.token) }
         }
         if (state.sort.isNotEmpty()) {
             item { FeedSortMenu(state.sort) { token -> pager.reload(token) } }
@@ -947,22 +956,31 @@ private fun FeedSortMenu(options: List<YtChip>, modifier: Modifier = Modifier, o
     }
 }
 
+private fun YtChip.isReloading(state: Pager.State.Ready): Boolean =
+    state.refreshing && token != null && token == state.reloadingChipToken
+
 /** One feed filter pill; [onClick] null = a non-interactive label in the same style. [choice] false
- *  when [selected] only emphasizes an action, so screen readers don't call it selected. */
+ *  when [selected] only emphasizes an action, so screen readers don't call it selected. [loading]
+ *  spins after the title while the page it filters to loads. */
 @Composable
-fun FeedChip(title: String, selected: Boolean, choice: Boolean = true, onClick: (() -> Unit)?) {
+fun FeedChip(title: String, selected: Boolean, choice: Boolean = true, loading: Boolean = false, onClick: (() -> Unit)?) {
+    val contentColor = if (selected) Color.White else DesignColors.InkSoft
     ChipTapArea(onClick, selected = selected.takeIf { choice }) { indication ->
-        Text(
-            title,
-            style = TextStyle(fontSize = ChipTextSize, color = if (selected) Color.White else DesignColors.InkSoft),
-            maxLines = 1,
-            modifier = Modifier
+        Row(
+            Modifier
                 .clip(RoundedCornerShape(999.dp))
                 .background(if (selected) DesignColors.Accent else Color.Transparent)
                 .border(1.dp, if (selected) DesignColors.Accent else DesignColors.Outline, RoundedCornerShape(999.dp))
                 .then(indication)
                 .chipPadding(),
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),
+        ) {
+            Text(title, style = TextStyle(fontSize = ChipTextSize, color = contentColor), maxLines = 1)
+            if (loading) {
+                CircularProgressIndicator(Modifier.size(12.dp), color = contentColor, strokeWidth = 2.dp)
+            }
+        }
     }
 }
 

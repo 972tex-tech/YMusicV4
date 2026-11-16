@@ -16,6 +16,21 @@
     if (!map[type] && create) map[type] = [];
     return map[type] || null;
   }
+  /* Event state lives here for the same reason: isTrusted is a Chrome event's only own property. */
+  var eventData = new WeakMap();
+  function eventOf(ev) {
+    var d = ev !== null && typeof ev === "object" ? eventData.get(ev) : undefined;
+    if (!d) throw new TypeError("Illegal invocation");
+    return d;
+  }
+  var imageRequest = null;
+  function domError(name, code, message) {
+    var e = Object.create(globalThis.DOMException.prototype);
+    hide(e, "name", name);
+    hide(e, "message", message);
+    hide(e, "code", code);
+    return e;
+  }
   function hrtime() {
     var p = globalThis.performance;
     if (p && typeof p.now === "function")
@@ -195,27 +210,43 @@
     i = list.indexOf(fn);
     if (i >= 0) list.splice(i, 1);
   });
-  globalThis.dispatchEvent = native("dispatchEvent", function (ev) {
-    var type, fn, list, i, target;
-    if (ev == null || typeof ev !== "object") ev = { type: String(ev == null ? "" : ev) };
-    type = String(ev.type || "");
-    target = this;
-    if (ev.target == null) ev.target = target;
-    ev.currentTarget = target;
-    fn = target["on" + type];
-    if (typeof fn === "function") {
-      try {
-        fn.call(target, ev);
-      } catch (e) {}
-    }
-    list = listenersOf(target, type, false) || [];
-    for (i = 0; i < list.length; i++) {
-      try {
-        list[i].call(target, ev);
-      } catch (e2) {}
-    }
-    return !ev.defaultPrevented;
-  });
+  var dispatchNative = (globalThis.dispatchEvent = __nativeFn(
+    "dispatchEvent",
+    function (ev) {
+      var prefix = "Failed to execute 'dispatchEvent' on 'EventTarget': ";
+      var target = this == null ? globalThis : this;
+      var d, fn, list, i;
+      if (!arguments.length)
+        throw new TypeError(prefix + "1 argument required, but only 0 present.");
+      d = ev !== null && typeof ev === "object" ? eventData.get(ev) : undefined;
+      if (!d) throw new TypeError(prefix + "parameter 1 is not of type 'Event'.");
+      if (!d.init)
+        throw domError("InvalidStateError", 11, prefix + "The event provided is uninitialized.");
+      if (d.dispatching)
+        throw domError("InvalidStateError", 11, prefix + "The event is already being dispatched.");
+      d.dispatching = true;
+      d.target = d.currentTarget = target;
+      d.eventPhase = 2;
+      d.path = [target];
+      fn = target["on" + d.type];
+      if (typeof fn === "function") {
+        try {
+          fn.call(target, ev);
+        } catch (e) {}
+      }
+      list = (listenersOf(target, d.type, false) || []).slice();
+      for (i = 0; i < list.length && !d.stopNow; i++) {
+        try {
+          list[i].call(target, ev);
+        } catch (e2) {}
+      }
+      d.dispatching = d.stopNow = d.cancelBubble = false;
+      d.currentTarget = d.path = null;
+      d.eventPhase = 0;
+      return !d.defaultPrevented;
+    },
+    1,
+  ));
   globalThis.getComputedStyle = native("getComputedStyle", function getComputedStyle(el) {
     if (el && el.style) return el.style;
     return cssStyle();
@@ -234,10 +265,7 @@
   if (typeof globalThis.requestAnimationFrame !== "function") {
     globalThis.requestAnimationFrame = native("requestAnimationFrame", function (fn) {
       return setTimeout(function () {
-        var ts = 0;
-        if (globalThis.performance && typeof globalThis.performance.now === "function")
-          ts = globalThis.performance.now();
-        fn(ts);
+        fn(platformNow.call(globalThis.performance));
       }, 16);
     });
   }
@@ -316,6 +344,35 @@
       usedJSHeapSize: 10200000,
     };
   }
+  /* Stamps internal to the browser, which page script can't observe as a read. */
+  var platformNow = globalThis.performance.now;
+
+  /* Milliseconds after navigation start, rolled once per session at Chrome's 0.1 ms resolution. */
+  var navTiming = (function () {
+    var at = 0;
+    function after(min, max) {
+      at += min + Math.random() * (max - min);
+      at = Math.round(at * 10) / 10;
+      return at;
+    }
+    var t = { fetchStart: after(0.5, 3) };
+    t.domainLookupStart = t.fetchStart;
+    t.domainLookupEnd = after(1, 30);
+    t.connectStart = t.domainLookupEnd;
+    t.secureConnectionStart = after(4, 20);
+    t.connectEnd = after(4, 20);
+    t.requestStart = after(0.2, 2);
+    t.responseStart = after(80, 400);
+    t.responseEnd = after(20, 120);
+    t.domInteractive = after(300, 900);
+    t.domContentLoadedEventStart = after(0, 3);
+    t.domContentLoadedEventEnd = after(0.1, 2);
+    t.domComplete = after(100, 500);
+    t.loadEventStart = t.domComplete;
+    t.loadEventEnd = after(0.1, 1);
+    return t;
+  })();
+
   (function attachTiming(perf, navStart) {
     if (!perf.timing) {
       perf.timing = {
@@ -324,22 +381,22 @@
         unloadEventEnd: 0,
         redirectStart: 0,
         redirectEnd: 0,
-        fetchStart: navStart + 1,
-        domainLookupStart: navStart + 2,
-        domainLookupEnd: navStart + 3,
-        connectStart: navStart + 4,
-        connectEnd: navStart + 5,
-        secureConnectionStart: navStart + 5,
-        requestStart: navStart + 10,
-        responseStart: navStart + 40,
-        responseEnd: navStart + 80,
-        domLoading: navStart + 81,
-        domInteractive: navStart + 100,
-        domContentLoadedEventStart: navStart + 110,
-        domContentLoadedEventEnd: navStart + 111,
-        domComplete: navStart + 120,
-        loadEventStart: navStart + 121,
-        loadEventEnd: navStart + 122,
+        fetchStart: navStart + Math.round(navTiming.fetchStart),
+        domainLookupStart: navStart + Math.round(navTiming.domainLookupStart),
+        domainLookupEnd: navStart + Math.round(navTiming.domainLookupEnd),
+        connectStart: navStart + Math.round(navTiming.connectStart),
+        connectEnd: navStart + Math.round(navTiming.connectEnd),
+        secureConnectionStart: navStart + Math.round(navTiming.secureConnectionStart),
+        requestStart: navStart + Math.round(navTiming.requestStart),
+        responseStart: navStart + Math.round(navTiming.responseStart),
+        responseEnd: navStart + Math.round(navTiming.responseEnd),
+        domLoading: navStart + Math.round(navTiming.responseEnd) + 1,
+        domInteractive: navStart + Math.round(navTiming.domInteractive),
+        domContentLoadedEventStart: navStart + Math.round(navTiming.domContentLoadedEventStart),
+        domContentLoadedEventEnd: navStart + Math.round(navTiming.domContentLoadedEventEnd),
+        domComplete: navStart + Math.round(navTiming.domComplete),
+        loadEventStart: navStart + Math.round(navTiming.loadEventStart),
+        loadEventEnd: navStart + Math.round(navTiming.loadEventEnd),
       };
     }
     if (!perf.navigation) {
@@ -473,20 +530,18 @@
 
   /* Desktop Chrome on youtube.com. */
   globalThis.chrome = {
-    app: { isInstalled: false },
-    csi: native("csi", function csi() {
-      return { startE: origin, onloadT: origin + 80, pageT: hrtime() - origin, tran: 15 };
-    }),
     loadTimes: native("loadTimes", function loadTimes() {
       return {};
     }),
-    runtime: {
-      connect: native("connect", function connect() {
-        return {};
-      }),
-      sendMessage: native("sendMessage", function sendMessage() {}),
-    },
-    cast: {},
+    csi: native("csi", function csi() {
+      return {
+        startE: origin,
+        onloadT: origin + 80,
+        pageT: platformNow.call(globalThis.performance),
+        tran: 15,
+      };
+    }),
+    app: { isInstalled: false },
   };
 
   var nav = {
@@ -511,6 +566,7 @@
     cookieEnabled: true,
     onLine: true,
     pdfViewerEnabled: true,
+    doNotTrack: null,
     userAgentData: {
       brands: [
         { brand: "Chromium", version: "151" },
@@ -593,7 +649,11 @@
   })();
   nav.mediaDevices = {
     enumerateDevices: native("enumerateDevices", function () {
-      return Promise.resolve([]);
+      return Promise.resolve(
+        ["audioinput", "videoinput", "audiooutput"].map(function (kind) {
+          return { deviceId: "", kind: kind, label: "", groupId: "" };
+        }),
+      );
     }),
     getUserMedia: native("getUserMedia", function () {
       var e = new Error("Requested device not found");
@@ -606,18 +666,14 @@
       return Promise.reject(e);
     }),
   };
+  var keyboardLayoutMap;
   nav.keyboard = {
     lock: native("lock", function () {
       return Promise.resolve();
     }),
     unlock: native("unlock", function () {}),
     getLayoutMap: native("getLayoutMap", function () {
-      return Promise.resolve({
-        size: 0,
-        get: function () {
-          return undefined;
-        },
-      });
+      return Promise.resolve(keyboardLayoutMap);
     }),
   };
   nav.gpu = {
@@ -675,6 +731,54 @@
   globalThis.name = "";
   globalThis.status = "";
   globalThis.defaultStatus = "";
+  (function installZoneName() {
+    /* QuickJS Date strings stop at GMT+0700. Standard name, daylight name, by standard offset. */
+    var ZONES = {
+      "-480": ["Pacific Standard Time", "Pacific Daylight Time"],
+      "-420": ["Mountain Standard Time", "Mountain Daylight Time"],
+      "-360": ["Central Standard Time", "Central Daylight Time"],
+      "-300": ["Eastern Standard Time", "Eastern Daylight Time"],
+      "-180": ["Brasilia Standard Time"],
+      0: ["Greenwich Mean Time", "British Summer Time"],
+      60: ["Central European Standard Time", "Central European Summer Time"],
+      120: ["Eastern European Standard Time", "Eastern European Summer Time"],
+      180: ["Moscow Standard Time"],
+      240: ["Gulf Standard Time"],
+      300: ["Pakistan Standard Time"],
+      330: ["India Standard Time"],
+      420: ["Indochina Time"],
+      480: ["China Standard Time"],
+      540: ["Japan Standard Time"],
+      600: ["Australian Eastern Standard Time", "Australian Eastern Daylight Time"],
+    };
+    var proto = Date.prototype;
+    function zoneName(date) {
+      var at = date.getTimezoneOffset();
+      var year = date.getFullYear();
+      var standard = -Math.max(
+        new Date(year, 0, 1).getTimezoneOffset(),
+        new Date(year, 6, 1).getTimezoneOffset(),
+      );
+      var names = ZONES[standard];
+      if (names) return names[-at !== standard && names[1] ? 1 : 0];
+      var abs = Math.abs(at);
+      var pad = function (n) {
+        return (n < 10 ? "0" : "") + n;
+      };
+      return "GMT" + (at > 0 ? "-" : "+") + pad(Math.floor(abs / 60)) + ":" + pad(abs % 60);
+    }
+    ["toString", "toTimeString"].forEach(function (key) {
+      var plain = proto[key];
+      hide(
+        proto,
+        key,
+        native(key, function () {
+          var text = plain.call(this);
+          return isNaN(this.getTime()) ? text : text + " (" + zoneName(this) + ")";
+        }),
+      );
+    });
+  })();
   globalThis.origin = globalThis.location.origin;
   globalThis.closed = false;
   globalThis.isSecureContext = true;
@@ -688,7 +792,7 @@
   })();
   /* Chrome window.history; live Create 9959 read it as undefined. */
   globalThis.history = {
-    length: 1,
+    length: 2,
     state: null,
     scrollRestoration: "auto",
     pushState: native("pushState", function () {}),
@@ -726,10 +830,6 @@
     }
     function isElement(v) {
       return isNode(v) && v.nodeType === 1;
-    }
-    function now() {
-      var p = globalThis.performance;
-      return p && typeof p.now === "function" ? p.now() : 0;
     }
     function defineProto(C, name, members) {
       var proto = {};
@@ -859,7 +959,7 @@
       var inter = hit ? rect(left, top, right - left, bottom - top) : rect(0, 0, 0, 0);
       var entry = Object.create(ioEntryProto);
       entryData.set(entry, {
-        time: now(),
+        time: platformNow.call(globalThis.performance),
         rootBounds: s.root == null ? rect(0, 0, vw, vh) : rectOf(s.root),
         boundingClientRect: box,
         intersectionRect: inter,
@@ -1362,6 +1462,7 @@
     "SVGComponentTransferFunctionElement",
   ];
   var WINDOW_FUNCS = [
+    "fetchLater",
     "alert",
     "confirm",
     "prompt",
@@ -1413,6 +1514,445 @@
     }
     return fn;
   }
+  /* QuickJS has no URL; mse.ts leaves a plain object carrying the blob URL statics. */
+  (function installUrl() {
+    if (typeof globalThis.URL === "function") return;
+    var blob = globalThis.URL || {};
+    var urls = new WeakMap();
+    var params = new WeakMap();
+    var PORTS = {
+      "http:": "80",
+      "https:": "443",
+      "ws:": "80",
+      "wss:": "443",
+      "ftp:": "21",
+      "file:": "",
+    };
+    var ABS =
+      /^([a-zA-Z][a-zA-Z0-9+.-]*:)(?:\/\/(?:([^:@\/?#]*)(?::([^@\/?#]*))?@)?(\[[^\]]*\]|[^:\/?#]*)(?::(\d*))?)?([^?#]*)(\?[^#]*)?(#.*)?$/;
+    var REL = /^([^?#]*)(\?[^#]*)?(#.*)?$/;
+    function special(r) {
+      return Object.prototype.hasOwnProperty.call(PORTS, r.protocol);
+    }
+    function removeDots(path) {
+      var out = [];
+      var segs = path.split("/");
+      segs.forEach(function (seg, i) {
+        var last = i === segs.length - 1;
+        if (seg === ".." || seg === ".") {
+          if (seg === ".." && out.length > 1) out.pop();
+          if (last) out.push("");
+        } else out.push(seg);
+      });
+      return out.join("/");
+    }
+    function finish(r) {
+      r.protocol = r.protocol.toLowerCase();
+      if (special(r)) {
+        r.hostname = r.hostname.toLowerCase();
+        if (r.port === PORTS[r.protocol]) r.port = "";
+        r.pathname = removeDots(r.pathname || "/");
+        if (r.pathname.charAt(0) !== "/") r.pathname = "/" + r.pathname;
+      } else if (r.pathname.charAt(0) === "/") r.pathname = removeDots(r.pathname);
+      r.pathname = r.pathname.replace(/ /g, "%20");
+      r.search = r.search === "?" ? "" : r.search.replace(/ /g, "%20");
+      r.hash = r.hash === "#" ? "" : r.hash.replace(/ /g, "%20");
+      return r;
+    }
+    function parse(input, base) {
+      var s = String(input)
+        .replace(/^[\u0000- ]+|[\u0000- ]+$/g, "")
+        .replace(/[\t\n\r]/g, "");
+      var m = ABS.exec(s);
+      var r, rel, b;
+      if (m && (m[4] !== undefined || !PORTS.hasOwnProperty(m[1].toLowerCase()))) {
+        r = {
+          protocol: m[1],
+          username: m[2] || "",
+          password: m[3] || "",
+          hostname: m[4] || "",
+          port: m[5] || "",
+          pathname: m[6] || "",
+          search: m[7] || "",
+          hash: m[8] || "",
+          authority: m[4] !== undefined,
+        };
+        if (special(r) && !r.hostname && r.protocol !== "file:") return null;
+        return finish(r);
+      }
+      if (base === undefined) return null;
+      b = base instanceof Object && urls.get(base) ? urls.get(base) : parse(base);
+      if (!b) return null;
+      if (s.slice(0, 2) === "//") return parse(b.protocol + s);
+      rel = REL.exec(s);
+      r = Object.assign({}, b, { hash: rel[3] || "" });
+      if (rel[1]) {
+        r.pathname = rel[1].charAt(0) === "/" ? rel[1] : b.pathname.replace(/[^\/]*$/, "") + rel[1];
+        r.search = rel[2] || "";
+      } else if (rel[2] !== undefined) r.search = rel[2];
+      return finish(r);
+    }
+    function host(r) {
+      return r.hostname + (r.port ? ":" + r.port : "");
+    }
+    function href(r) {
+      var auth = "";
+      if (r.authority || special(r)) {
+        auth = "//";
+        if (r.username || r.password)
+          auth += r.username + (r.password ? ":" + r.password : "") + "@";
+        auth += host(r);
+      }
+      return r.protocol + auth + r.pathname + r.search + r.hash;
+    }
+    function own(self, what) {
+      var r = (what === "url" ? urls : params).get(self);
+      if (!r) throw new TypeError("Illegal invocation");
+      return r;
+    }
+    function invalid(what, s) {
+      return new TypeError("Failed to " + what + ": Invalid URL" + (s ? " '" + s + "'" : ""));
+    }
+    function encodeForm(v) {
+      return encodeURIComponent(v)
+        .replace(/[!'()~]/g, function (c) {
+          return "%" + c.charCodeAt(0).toString(16).toUpperCase();
+        })
+        .replace(/%20/g, "+");
+    }
+    function decodeForm(v) {
+      try {
+        return decodeURIComponent(v.replace(/\+/g, " "));
+      } catch (e) {
+        return v;
+      }
+    }
+    function parseQuery(q) {
+      var list = [];
+      String(q)
+        .replace(/^\?/, "")
+        .split("&")
+        .forEach(function (pair) {
+          if (!pair) return;
+          var i = pair.indexOf("=");
+          list.push(
+            i < 0
+              ? [decodeForm(pair), ""]
+              : [decodeForm(pair.slice(0, i)), decodeForm(pair.slice(i + 1))],
+          );
+        });
+      return list;
+    }
+    function serialize(list) {
+      return list
+        .map(function (kv) {
+          return encodeForm(kv[0]) + "=" + encodeForm(kv[1]);
+        })
+        .join("&");
+    }
+    function method(proto, name, length, fn) {
+      hide(proto, name, __nativeFn(name, fn, length));
+      Object.defineProperty(proto, name, { enumerable: true });
+    }
+    function accessor(proto, name, get, set) {
+      Object.defineProperty(proto, name, {
+        configurable: true,
+        enumerable: true,
+        get: __nativeFn("get " + name, get, 0),
+        set: set ? __nativeFn("set " + name, set, 1) : undefined,
+      });
+    }
+    function ctor(name, length, make) {
+      var C = __nativeFn(
+        name,
+        function () {
+          if (typeof this !== "function")
+            throw new TypeError(
+              "Failed to construct '" +
+                name +
+                "': Please use the 'new' operator, this DOM object constructor cannot be called as a function.",
+            );
+          return make.apply(null, arguments);
+        },
+        length,
+      );
+      Object.defineProperty(C, "prototype", { value: {} });
+      return C;
+    }
+
+    var Params = ctor("URLSearchParams", 0, function (init) {
+      var self = Object.create(Params.prototype);
+      var list = [];
+      if (init instanceof Object && params.get(init)) list = params.get(init).list.slice();
+      else if (Array.isArray(init))
+        list = init.map(function (kv) {
+          return [String(kv[0]), String(kv[1])];
+        });
+      else if (init !== null && typeof init === "object")
+        list = Object.keys(init).map(function (k) {
+          return [k, String(init[k])];
+        });
+      else if (init !== undefined) list = parseQuery(init);
+      params.set(self, { list: list, url: null });
+      return self;
+    });
+    var pp = Params.prototype;
+    function update(p) {
+      if (p.url) {
+        var q = serialize(p.list);
+        urls.get(p.url).search = q ? "?" + q : "";
+      }
+    }
+    accessor(pp, "size", function () {
+      return own(this).list.length;
+    });
+    method(pp, "append", 2, function (k, v) {
+      var p = own(this);
+      p.list.push([String(k), String(v)]);
+      update(p);
+    });
+    method(pp, "delete", 1, function (k) {
+      var p = own(this);
+      p.list = p.list.filter(function (kv) {
+        return kv[0] !== String(k);
+      });
+      update(p);
+    });
+    method(pp, "get", 1, function (k) {
+      var hit = own(this).list.filter(function (kv) {
+        return kv[0] === String(k);
+      })[0];
+      return hit ? hit[1] : null;
+    });
+    method(pp, "getAll", 1, function (k) {
+      return own(this)
+        .list.filter(function (kv) {
+          return kv[0] === String(k);
+        })
+        .map(function (kv) {
+          return kv[1];
+        });
+    });
+    method(pp, "has", 1, function (k) {
+      return own(this).list.some(function (kv) {
+        return kv[0] === String(k);
+      });
+    });
+    method(pp, "set", 2, function (k, v) {
+      var p = own(this);
+      var seen = false;
+      p.list = p.list.filter(function (kv) {
+        if (kv[0] !== String(k)) return true;
+        if (seen) return false;
+        kv[1] = String(v);
+        return (seen = true);
+      });
+      if (!seen) p.list.push([String(k), String(v)]);
+      update(p);
+    });
+    method(pp, "sort", 0, function () {
+      var p = own(this);
+      p.list = p.list
+        .map(function (kv, i) {
+          return [kv, i];
+        })
+        .sort(function (a, b) {
+          return a[0][0] < b[0][0] ? -1 : a[0][0] > b[0][0] ? 1 : a[1] - b[1];
+        })
+        .map(function (e) {
+          return e[0];
+        });
+      update(p);
+    });
+    method(pp, "toString", 0, function () {
+      return serialize(own(this).list);
+    });
+    method(pp, "entries", 0, function () {
+      return own(this)
+        .list.map(function (kv) {
+          return [kv[0], kv[1]];
+        })
+        [Symbol.iterator]();
+    });
+    method(pp, "forEach", 1, function (fn, that) {
+      var self = this;
+      own(this).list.forEach(function (kv) {
+        fn.call(that, kv[1], kv[0], self);
+      });
+    });
+    method(pp, "keys", 0, function () {
+      return own(this)
+        .list.map(function (kv) {
+          return kv[0];
+        })
+        [Symbol.iterator]();
+    });
+    method(pp, "values", 0, function () {
+      return own(this)
+        .list.map(function (kv) {
+          return kv[1];
+        })
+        [Symbol.iterator]();
+    });
+    hide(pp, "constructor", Params);
+    hide(pp, Symbol.iterator, pp.entries);
+    Object.defineProperty(pp, Symbol.toStringTag, { value: "URLSearchParams", configurable: true });
+
+    var Url = ctor("URL", 1, function (input, base) {
+      var r = parse(input, base);
+      if (!r) throw invalid("construct 'URL'");
+      var self = Object.create(Url.prototype);
+      urls.set(self, r);
+      return self;
+    });
+    var up = Url.prototype;
+    function searchParamsOf(self) {
+      var r = own(self, "url");
+      if (!r.params) {
+        r.params = new Params(r.search);
+        params.get(r.params).url = self;
+      }
+      return r.params;
+    }
+    function setSearch(self, v) {
+      var r = own(self, "url");
+      v = String(v);
+      r.search = !v || v === "?" ? "" : (v.charAt(0) === "?" ? "" : "?") + v;
+      if (r.params) params.get(r.params).list = parseQuery(r.search);
+    }
+    accessor(up, "origin", function () {
+      var r = own(this, "url");
+      return special(r) && r.protocol !== "file:" ? r.protocol + "//" + host(r) : "null";
+    });
+    [
+      [
+        "protocol",
+        function (r, v) {
+          if (/^[a-zA-Z][a-zA-Z0-9+.-]*:?$/.test(v))
+            r.protocol = v.replace(/:?$/, ":").toLowerCase();
+        },
+      ],
+      [
+        "username",
+        function (r, v) {
+          r.username = v;
+        },
+      ],
+      [
+        "password",
+        function (r, v) {
+          r.password = v;
+        },
+      ],
+      [
+        "host",
+        function (r, v) {
+          var m = /^([^:\/?#]*)(?::(\d*))?/.exec(v);
+          r.hostname = m[1];
+          if (m[2] !== undefined) r.port = m[2];
+          finish(r);
+        },
+      ],
+      [
+        "hostname",
+        function (r, v) {
+          r.hostname = v;
+          finish(r);
+        },
+      ],
+      [
+        "port",
+        function (r, v) {
+          r.port = String(parseInt(v, 10) >= 0 ? parseInt(v, 10) : "");
+          finish(r);
+        },
+      ],
+      [
+        "pathname",
+        function (r, v) {
+          r.pathname = v;
+          finish(r);
+        },
+      ],
+    ].forEach(function (entry) {
+      var key = entry[0];
+      accessor(
+        up,
+        key,
+        function () {
+          var r = own(this, "url");
+          return key === "host" ? host(r) : r[key];
+        },
+        function (v) {
+          entry[1](own(this, "url"), String(v));
+        },
+      );
+    });
+    accessor(
+      up,
+      "search",
+      function () {
+        return own(this, "url").search;
+      },
+      function (v) {
+        setSearch(this, v);
+      },
+    );
+    accessor(up, "searchParams", function () {
+      return searchParamsOf(this);
+    });
+    accessor(
+      up,
+      "hash",
+      function () {
+        return own(this, "url").hash;
+      },
+      function (v) {
+        v = String(v);
+        own(this, "url").hash = !v || v === "#" ? "" : (v.charAt(0) === "#" ? "" : "#") + v;
+      },
+    );
+    accessor(
+      up,
+      "href",
+      function () {
+        return href(own(this, "url"));
+      },
+      function (v) {
+        var old = own(this, "url");
+        var r = parse(v);
+        if (!r) throw invalid("set the 'href' property on 'URL'", String(v));
+        urls.set(this, r);
+        if (old.params) {
+          r.params = old.params;
+          params.get(r.params).list = parseQuery(r.search);
+        }
+      },
+    );
+    method(up, "toJSON", 0, function () {
+      return href(own(this, "url"));
+    });
+    method(up, "toString", 0, function () {
+      return href(own(this, "url"));
+    });
+    hide(up, "constructor", Url);
+    Object.defineProperty(up, Symbol.toStringTag, { value: "URL", configurable: true });
+    method(Url, "canParse", 1, function (input, base) {
+      return !!parse(input, base);
+    });
+    method(Url, "parse", 1, function (input, base) {
+      try {
+        return Url.apply(Url, arguments);
+      } catch (e) {
+        return null;
+      }
+    });
+    ["createObjectURL", "revokeObjectURL"].forEach(function (k) {
+      if (typeof blob[k] === "function") method(Url, k, 1, blob[k]);
+    });
+    globalThis.URL = Url;
+    globalThis.URLSearchParams = Params;
+  })();
   var ci;
   for (ci = 0; ci < WINDOW_CTORS.length; ci++) illegalCtor(WINDOW_CTORS[ci]);
   if (globalThis.HTMLMediaElement && globalThis.HTMLMediaElement.prototype) {
@@ -1431,6 +1971,8 @@
       "audio/flac": "probably",
     };
     globalThis.HTMLMediaElement.prototype.canPlayType = native("canPlayType", function (type) {
+      var tag = this && this.tagName;
+      if (tag !== "VIDEO" && tag !== "AUDIO") throw new TypeError("Illegal invocation");
       type = String(type == null ? "" : type).toLowerCase();
       if (!type) return "";
       if (type.indexOf("codecs=") < 0) {
@@ -1456,62 +1998,260 @@
       return "";
     });
   }
-  /* Chrome Event is constructable; illegalCtor would throw on new Event("x"). */
-  globalThis.Event = native("Event", function Event(type, init) {
-    var o = this && this !== globalThis ? this : {};
-    o.type = String(type == null ? "" : type);
-    o.bubbles = !!(init && init.bubbles);
-    o.cancelable = !!(init && init.cancelable);
-    o.defaultPrevented = false;
-    o.target = null;
-    o.currentTarget = null;
-    o.eventPhase = 0;
-    o.timeStamp = hrtime();
-    o.cancelBubble = false;
-    o.returnValue = true;
-    o.srcElement = null;
-    o.ctrlKey = false;
-    o.altKey = false;
-    o.shiftKey = false;
-    o.metaKey = false;
-    o.button = 0;
-    o.buttons = 0;
-    o.clientX = 0;
-    o.clientY = 0;
-    o.screenX = 0;
-    o.screenY = 0;
-    o.pageX = 0;
-    o.pageY = 0;
-    o.offsetX = 0;
-    o.offsetY = 0;
-    o.which = 0;
-    o.x = 0;
-    o.y = 0;
-    o.movementX = 0;
-    o.movementY = 0;
-    o.relatedTarget = null;
-    return o;
-  });
-  if (!globalThis.Event.prototype || typeof globalThis.Event.prototype !== "object")
-    globalThis.Event.prototype = {};
-  if (typeof globalThis.Event.prototype.preventDefault !== "function") {
-    globalThis.Event.prototype.preventDefault = native("preventDefault", function () {
-      this.defaultPrevented = true;
-    });
-    globalThis.Event.prototype.stopPropagation = native("stopPropagation", function () {});
-    globalThis.Event.prototype.stopImmediatePropagation = native(
-      "stopImmediatePropagation",
-      function () {},
+  /* Chrome's event interfaces: parent, constructor length (0 is not constructable), and own
+   * prototype members in Chrome's order. "x" is an attribute defaulting to null, "x:s" to "",
+   * "x:0" to 0, "x:f" to false, "x:a" to []; "x=n" is a constant, "x()" an operation. */
+  var EVENT_CLASSES = {
+    Event: [
+      "",
+      1,
+      "type:s target currentTarget eventPhase:0 bubbles:f cancelable:f defaultPrevented:f composed:f timeStamp:0 srcElement returnValue:f cancelBubble:f NONE=0 CAPTURING_PHASE=1 AT_TARGET=2 BUBBLING_PHASE=3 composedPath() initEvent() preventDefault() stopImmediatePropagation() stopPropagation()",
+    ],
+    UIEvent: ["Event", 1, "view detail:0 sourceCapabilities which:0 initUIEvent() pseudoTarget"],
+    MouseEvent: [
+      "UIEvent",
+      1,
+      "screenX:0 screenY:0 clientX:0 clientY:0 ctrlKey:f shiftKey:f altKey:f metaKey:f button:0 buttons:0 relatedTarget pageX:0 pageY:0 x:0 y:0 offsetX:0 offsetY:0 movementX:0 movementY:0 fromElement toElement layerX:0 layerY:0 getModifierState() initMouseEvent()",
+    ],
+    KeyboardEvent: [
+      "UIEvent",
+      1,
+      "key:s code:s location:0 ctrlKey:f shiftKey:f altKey:f metaKey:f repeat:f isComposing:f charCode:0 keyCode:0 DOM_KEY_LOCATION_STANDARD=0 DOM_KEY_LOCATION_LEFT=1 DOM_KEY_LOCATION_RIGHT=2 DOM_KEY_LOCATION_NUMPAD=3 getModifierState() initKeyboardEvent()",
+    ],
+    CustomEvent: ["Event", 1, "detail initCustomEvent()"],
+    CompositionEvent: ["UIEvent", 1, "data:s initCompositionEvent()"],
+    TextEvent: ["UIEvent", 0, "data:s initTextEvent()"],
+    FocusEvent: ["UIEvent", 1, "relatedTarget"],
+    MessageEvent: [
+      "Event",
+      1,
+      "data origin:s lastEventId:s source ports:a userActivation initMessageEvent()",
+    ],
+    StorageEvent: ["Event", 1, "key oldValue newValue url:s storageArea initStorageEvent()"],
+    HashChangeEvent: ["Event", 1, "oldURL:s newURL:s"],
+    BeforeUnloadEvent: ["Event", 0, "returnValue:s"],
+    DeviceMotionEvent: [
+      "Event",
+      1,
+      "acceleration accelerationIncludingGravity rotationRate interval:0",
+    ],
+    DeviceOrientationEvent: ["Event", 1, "alpha beta gamma absolute:f"],
+    DragEvent: ["MouseEvent", 1, "dataTransfer"],
+  };
+  /* The arguments after (type, bubbles, cancelable); "-" is one Chrome ignores. */
+  var EVENT_INIT_ARGS = {
+    initEvent: "",
+    initUIEvent: "view detail",
+    initMouseEvent:
+      "view detail screenX screenY clientX clientY ctrlKey altKey shiftKey metaKey button relatedTarget",
+    initKeyboardEvent: "view - location ctrlKey altKey shiftKey metaKey",
+    initCustomEvent: "detail",
+    initCompositionEvent: "view data",
+    initTextEvent: "view data",
+    initMessageEvent: "data origin lastEventId source ports",
+    initStorageEvent: "key oldValue newValue url storageArea",
+  };
+  var EVENT_ALIASES = {
+    srcElement: "target",
+    x: "clientX",
+    y: "clientY",
+    pageX: "clientX",
+    pageY: "clientY",
+    offsetX: "clientX",
+    offsetY: "clientY",
+    layerX: "clientX",
+    layerY: "clientY",
+  };
+  var EVENT_MODIFIERS = { Control: "ctrlKey", Shift: "shiftKey", Alt: "altKey", Meta: "metaKey" };
+  var EVENT_GETTERS = {
+    "Event.returnValue": function (d) {
+      return !d.defaultPrevented;
+    },
+    "BeforeUnloadEvent.returnValue": function (d) {
+      return d.unloadMessage === undefined ? "" : d.unloadMessage;
+    },
+    "UIEvent.which": function (d, ev) {
+      return ev instanceof globalThis.MouseEvent ? (d.button || 0) + 1 : 0;
+    },
+  };
+  var EVENT_SETTERS = {
+    "Event.returnValue": function (d, v) {
+      if (!v && d.cancelable) d.defaultPrevented = true;
+    },
+    "Event.cancelBubble": function (d, v) {
+      if (v) d.cancelBubble = true;
+    },
+    "BeforeUnloadEvent.returnValue": function (d, v) {
+      d.unloadMessage = String(v);
+    },
+  };
+  var EVENT_OPS = {
+    composedPath: function (d) {
+      return d.path ? d.path.slice() : [];
+    },
+    preventDefault: function (d) {
+      if (d.cancelable) d.defaultPrevented = true;
+    },
+    stopImmediatePropagation: function (d) {
+      d.stopNow = true;
+    },
+    stopPropagation: function (d) {
+      d.cancelBubble = true;
+    },
+    getModifierState: function (d, key) {
+      return !!d[EVENT_MODIFIERS[key]];
+    },
+  };
+  var eventDefaults = {};
+  /* createEvent's names, lowercased: every class but the aliases below takes its own name. */
+  var eventProtoByName = Object.create(null);
+  var isTrustedGetter = __nativeFn(
+    "get isTrusted",
+    function () {
+      return eventOf(this).trusted === true;
+    },
+    0,
+  );
+  function newEvent(proto, data) {
+    var ev = Object.create(proto);
+    var perf = globalThis.performance;
+    Object.defineProperty(ev, "isTrusted", { get: isTrustedGetter, enumerable: true });
+    data.timeStamp = perf && typeof perf.now === "function" ? platformNow.call(perf) : 0;
+    eventData.set(ev, data);
+    return ev;
+  }
+  function eventCoerce(dflt, v) {
+    if (dflt === 0) return +v || 0;
+    if (dflt === false) return !!v;
+    return dflt === "" ? String(v) : v;
+  }
+  function eventCtor(name, length) {
+    var prefix = "Failed to construct '" + name + "': ";
+    return __nativeFn(
+      name,
+      function (type, init) {
+        var data, key;
+        if (!length) throw new TypeError(prefix + "Illegal constructor");
+        if (typeof this !== "function")
+          throw new TypeError(
+            prefix +
+              "Please use the 'new' operator, this DOM object constructor cannot be called as a function.",
+          );
+        if (!arguments.length)
+          throw new TypeError(prefix + "1 argument required, but only 0 present.");
+        data = { type: String(type), init: true };
+        if (init !== null && init !== undefined) {
+          for (key in eventDefaults[name]) {
+            if (key !== "type" && !EVENT_ALIASES[key] && init[key] !== undefined)
+              data[key] = eventCoerce(eventDefaults[name][key], init[key]);
+          }
+        }
+        return newEvent(this.prototype, data);
+      },
+      length,
     );
   }
-  if (typeof globalThis.CustomEvent !== "function") {
-    globalThis.CustomEvent = native("CustomEvent", function CustomEvent(type, init) {
-      var o = globalThis.Event(type, init);
-      o.detail = init && init.detail !== undefined ? init.detail : null;
-      return o;
-    });
-    globalThis.CustomEvent.prototype = globalThis.Event.prototype;
+  function eventInitOp(name, owner) {
+    var fields = EVENT_INIT_ARGS[name] ? EVENT_INIT_ARGS[name].split(" ") : [];
+    return function (d, type, bubbles, cancelable) {
+      var i, v;
+      if (d.dispatching) return;
+      d.init = true;
+      d.type = String(type);
+      d.bubbles = !!bubbles;
+      d.cancelable = !!cancelable;
+      d.defaultPrevented = d.cancelBubble = d.stopNow = false;
+      d.target = null;
+      for (i = 0; i < fields.length; i++) {
+        v = arguments[i + 4];
+        if (fields[i] !== "-" && v !== undefined)
+          d[fields[i]] = eventCoerce(eventDefaults[owner][fields[i]], v);
+      }
+    };
   }
+  function defineEventClass(name) {
+    var spec = EVENT_CLASSES[name];
+    var parent = spec[0] ? globalThis[spec[0]] : null;
+    var C = eventCtor(name, spec[1]);
+    var proto = Object.create(parent ? parent.prototype : Object.prototype);
+    var defaults = (eventDefaults[name] = Object.create(parent ? eventDefaults[spec[0]] : null));
+    spec[2].split(" ").forEach(function (member) {
+      var m = /^(\w+)(?::(\w)|=(\d)|(\(\)))?$/.exec(member);
+      var key = m[1];
+      var dflt, fn, takesArg;
+      if (m[3] !== undefined) {
+        var constant = { value: +m[3], enumerable: true };
+        Object.defineProperty(proto, key, constant);
+        Object.defineProperty(C, key, constant);
+      } else if (m[4]) {
+        fn = EVENT_OPS[key] || eventInitOp(key, name);
+        takesArg = !EVENT_OPS[key] || key === "getModifierState";
+        hide(
+          proto,
+          key,
+          __nativeFn(
+            key,
+            function () {
+              var args = [eventOf(this)];
+              if (takesArg && !arguments.length)
+                throw new TypeError(
+                  "Failed to execute '" +
+                    key +
+                    "' on '" +
+                    name +
+                    "': 1 argument required, but only 0 present.",
+                );
+              args.push.apply(args, arguments);
+              return fn.apply(this, args);
+            },
+            takesArg ? 1 : 0,
+          ),
+        );
+      } else {
+        dflt = { s: "", 0: 0, f: false, a: [] }[m[2]];
+        if (dflt === undefined) dflt = null;
+        defaults[key] = dflt;
+        Object.defineProperty(proto, key, {
+          configurable: true,
+          enumerable: true,
+          get: __nativeFn(
+            "get " + key,
+            function () {
+              var d = eventOf(this);
+              var getter = EVENT_GETTERS[name + "." + key];
+              var field = EVENT_ALIASES[key] || key;
+              if (getter) return getter(d, this);
+              return field in d ? d[field] : Array.isArray(dflt) ? [] : dflt;
+            },
+            0,
+          ),
+          set: EVENT_SETTERS[name + "." + key]
+            ? __nativeFn(
+                "set " + key,
+                function (v) {
+                  EVENT_SETTERS[name + "." + key](eventOf(this), v);
+                },
+                1,
+              )
+            : undefined,
+        });
+      }
+    });
+    hide(proto, "constructor", C);
+    Object.defineProperty(proto, Symbol.toStringTag, { value: name, configurable: true });
+    Object.defineProperty(C, "prototype", { value: proto });
+    if (parent) Object.setPrototypeOf(C, parent);
+    hide(globalThis, name, C);
+    eventProtoByName[name.toLowerCase()] = proto;
+  }
+  Object.keys(EVENT_CLASSES).forEach(defineEventClass);
+  eventProtoByName.events =
+    eventProtoByName.htmlevents =
+    eventProtoByName.svgevents =
+      eventProtoByName.event;
+  eventProtoByName.uievents = eventProtoByName.uievent;
+  eventProtoByName.mouseevents = eventProtoByName.mouseevent;
+  eventProtoByName.keyboardevents = eventProtoByName.keyboardevent;
   for (ci = 0; ci < WINDOW_FUNCS.length; ci++) {
     if (typeof globalThis[WINDOW_FUNCS[ci]] !== "function") {
       globalThis[WINDOW_FUNCS[ci]] = native(WINDOW_FUNCS[ci], function () {
@@ -1520,9 +2260,12 @@
     }
   }
   globalThis.matchMedia = native("matchMedia", function matchMedia(q) {
+    var media = String(q == null ? "" : q);
     return {
-      matches: false,
-      media: String(q == null ? "" : q),
+      matches: /^\((any-)?(pointer:fine|hover:hover)\)$/.test(
+        media.replace(/\s/g, "").toLowerCase(),
+      ),
+      media: media,
       addListener: native("addListener", function () {}),
       removeListener: native("removeListener", function () {}),
       addEventListener: globalThis.addEventListener,
@@ -1530,7 +2273,10 @@
     };
   });
 
-  var htmlElProto = {};
+  /* Members land on htmlElProto; idl_stubs.raw.js moves them to the interface that declares them. */
+  var nodeProto = {};
+  var elementProto = Object.create(nodeProto);
+  var htmlElProto = Object.create(elementProto);
   function ensureCtor(name) {
     if (typeof globalThis[name] !== "function")
       globalThis[name] = native(name, function () {
@@ -1542,8 +2288,8 @@
   ensureCtor("Node");
   ensureCtor("HTMLIFrameElement");
   globalThis.HTMLElement.prototype = htmlElProto;
-  globalThis.Element.prototype = htmlElProto;
-  globalThis.Node.prototype = htmlElProto;
+  globalThis.Element.prototype = elementProto;
+  globalThis.Node.prototype = nodeProto;
   var iframeProto = Object.create(htmlElProto);
   globalThis.HTMLIFrameElement.prototype = iframeProto;
 
@@ -2049,6 +2795,23 @@
     });
   }
 
+  /* Chrome elements are instances of their interface. Before idl_stubs runs the interfaces
+   * don't exist yet; installChromeBackedApis adopts those early elements. */
+  function adoptInterface(el) {
+    var C = globalThis["HTML" + (ELEMENT_INTERFACES[el.tagName] || "") + "Element"];
+    var proto = typeof C === "function" ? C.prototype : null;
+    var target = el.tagName === "IFRAME" ? iframeProto : el;
+    if (!proto || proto === target || proto.isPrototypeOf(target) || target.isPrototypeOf(proto))
+      return;
+    Object.setPrototypeOf(target, proto);
+  }
+  function attachFrame(c) {
+    if (!c || c.tagName !== "IFRAME" || c.contentWindow) return;
+    c.contentWindow = makeIframeWindow();
+    c.contentDocument = c.contentWindow.document;
+    globalThis[0] = c.contentWindow;
+    globalThis.length = 1;
+  }
   (function installElementProto() {
     var n, impl;
     impl = {
@@ -2056,10 +2819,7 @@
         ownChildNodes(this).push(c);
         syncElementChildren(this);
         if (c) c.parentNode = this;
-        if (c && c.tagName === "IFRAME" && c.contentWindow && c.contentWindow !== globalThis) {
-          globalThis[0] = c.contentWindow;
-          globalThis.length = 1;
-        }
+        attachFrame(c);
         runScript(c);
         return c;
       },
@@ -2072,6 +2832,7 @@
         else nodes.splice(i, 0, c);
         syncElementChildren(this);
         c.parentNode = this;
+        attachFrame(c);
         runScript(c);
         return c;
       },
@@ -2083,6 +2844,12 @@
           syncElementChildren(this);
         }
         if (c) c.parentNode = null;
+        if (c && c.tagName === "IFRAME") {
+          c.contentWindow = null;
+          c.contentDocument = null;
+          delete globalThis[0];
+          globalThis.length = 0;
+        }
         return c;
       },
       contains: function (n) {
@@ -2194,6 +2961,23 @@
       dispatchEvent: globalThis.dispatchEvent,
     };
     for (n in impl) hide(htmlElProto, n, native(n, impl[n]));
+    hide(
+      htmlElProto,
+      "click",
+      native("click", function () {
+        dispatchNative.call(
+          this,
+          newEvent(globalThis.PointerEvent.prototype, {
+            type: "click",
+            init: true,
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            view: globalThis,
+          }),
+        );
+      }),
+    );
     hide(htmlElProto, "constructor", globalThis.HTMLElement);
     Object.defineProperty(htmlElProto, "dataset", {
       configurable: true,
@@ -2317,6 +3101,36 @@
         ),
       );
     }
+  }
+
+  /* Chrome window names the page itself must not gain: base.js feature-tests several of them. */
+  var IFRAME_ONLY_NAMES =
+    "CSS WebAssembly SuppressedError DisposableStack AsyncDisposableStack webkitURL webkitRTCPeerConnection " +
+    "webkitMediaStream offscreenBuffering styleMedia onsearch onappinstalled onbeforeinstallprompt " +
+    "oncontentvisibilityautostatechange onmousewheel ongotpointercapture onlostpointercapture " +
+    "onpointerdown onpointermove onpointerup onpointercancel onpointerover onpointerout " +
+    "onpointerenter onpointerleave onselectstart onselectionchange onanimationcancel onanimationend " +
+    "onanimationiteration onanimationstart ontransitionrun ontransitionstart ontransitionend " +
+    "ontransitioncancel onbeforexrselect scheduler indexedDB find Temporal crashReport cookieStore " +
+    "ondevicemotion ondeviceorientation ondeviceorientationabsolute onpointerrawupdate caches " +
+    "documentPictureInPicture GPUBufferUsage GPUColorWrite GPUMapMode GPUShaderStage GPUTextureUsage " +
+    "fetchLater getScreenDetails queryLocalFonts showDirectoryPicker showOpenFilePicker " +
+    "showSaveFilePicker viewport credentialless fence launchQueue speechSynthesis onscrollsnapchange " +
+    "onscrollsnapchanging ongamepadconnected ongamepaddisconnected webkitSpeechGrammar " +
+    "webkitSpeechGrammarList webkitSpeechRecognitionError webkitSpeechRecognitionEvent requestResize " +
+    "webkitRequestFileSystem webkitResolveLocalFileSystemURL";
+  var iframeGlobalNames = [];
+
+  /* Each realm owns its namespace objects. Their constructors can't be wrapped: native() has no `new`. */
+  function ownNamespace(name) {
+    var src = globalThis[name];
+    var own = {};
+    ownNativeStatic(own, src);
+    Object.getOwnPropertyNames(src).forEach(function (n) {
+      if (typeof src[n] !== "function" || /^[A-Z]/.test(n)) hide(own, n, src[n]);
+    });
+    Object.defineProperty(own, Symbol.toStringTag, { value: name, configurable: true });
+    return own;
   }
 
   /* Unset camelCase / vendor CSS is "" and `in` is true (Chrome CSSOM). join/push stay absent. */
@@ -2653,6 +3467,7 @@
     var innerDoc;
     inner.window = inner;
     inner.self = inner;
+    inner.globalThis = inner;
     inner.parent = globalThis;
     inner.top = globalThis;
     inner.frames = inner;
@@ -2672,7 +3487,6 @@
     inner.scrollY = 0;
     inner.name = "";
     inner.status = "";
-    inner.defaultStatus = "";
     inner.closed = false;
     inner.opener = null;
     inner.menubar = globalThis.menubar;
@@ -2706,24 +3520,35 @@
     inner.Array.prototype = ownNativeProto(Array.prototype);
     inner.Array.prototype.constructor = inner.Array;
     ownNativeStatic(inner.Array, Array);
-    inner.Object = native("Object", function Object() {
-      return {};
+    inner.Object = native("Object", function () {
+      return arguments[0] == null ? {} : Object(arguments[0]);
     });
+    inner.Object.prototype = ownNativeProto(Object.prototype);
+    inner.Object.prototype.constructor = inner.Object;
+    ownNativeStatic(inner.Object, Object);
     inner.String = native("String", function String(v) {
       return "" + v;
     });
     inner.String.prototype = ownNativeProto(String.prototype);
     inner.String.prototype.constructor = inner.String;
     ownNativeStatic(inner.String, String);
-    inner.Number = native("Number", function Number(v) {
-      return +v;
+    inner.Number = native("Number", function (v) {
+      return arguments.length ? +v : 0;
     });
-    inner.Boolean = native("Boolean", function Boolean(v) {
+    inner.Number.prototype = ownNativeProto(Number.prototype);
+    inner.Number.prototype.constructor = inner.Number;
+    ownNativeStatic(inner.Number, Number);
+    inner.Boolean = native("Boolean", function (v) {
       return !!v;
     });
-    inner.Error = native("Error", function Error(m) {
+    inner.Boolean.prototype = ownNativeProto(Boolean.prototype);
+    inner.Boolean.prototype.constructor = inner.Boolean;
+    inner.Error = native("Error", function (m) {
       return new Error(m);
     });
+    inner.Error.prototype = ownNativeProto(Error.prototype);
+    inner.Error.prototype.constructor = inner.Error;
+    ownNativeStatic(inner.Error, Error);
     inner.Function = native("Function", function Function() {
       throw new EvalError(
         "Evaluating a string as JavaScript violates this document's Trusted Type assignment requirements.",
@@ -2749,13 +3574,6 @@
     inner.addEventListener = globalThis.addEventListener;
     inner.removeEventListener = globalThis.removeEventListener;
     inner.dispatchEvent = globalThis.dispatchEvent;
-    inner.setTimeout = globalThis.setTimeout;
-    inner.clearTimeout = globalThis.clearTimeout;
-    inner.requestIdleCallback = globalThis.requestIdleCallback;
-    inner.performance = globalThis.performance;
-    inner.trustedTypes = globalThis.trustedTypes;
-    inner.btoa = globalThis.btoa;
-    inner.atob = globalThis.atob;
     innerDoc = {
       nodeType: 9,
       readyState: "complete",
@@ -2770,22 +3588,52 @@
     };
     inner.document = innerDoc;
     innerDoc.defaultView = inner;
-    /* Same-origin about:blank iframe: Web IDL constructors exist (typeof
-     * function). Identity may match the parent; Array/eval stay separate. */
-    (function copyIdl(dst) {
-      var names = Object.getOwnPropertyNames(globalThis);
-      var i, n, ch;
-      for (i = 0; i < names.length; i++) {
-        n = names[i];
-        if (!n) continue;
-        ch = n.charCodeAt(0);
-        if (ch < 65 || ch > 90) continue;
-        if (dst[n] != null) continue;
-        if (typeof globalThis[n] === "function") dst[n] = globalThis[n];
-      }
-    })(inner);
+    /* Same-origin about:blank iframe: BotGuard lists these names. Identity may match the parent;
+     * Array/eval stay separate. */
+    iframeGlobalNames.forEach(function (n) {
+      if (!(n in inner)) inner[n] = globalThis[n];
+    });
+    IFRAME_ONLY_NAMES.split(" ").forEach(function (n) {
+      if (n in inner) return;
+      if (n.indexOf("on") === 0) inner[n] = null;
+      else inner[n] = /^(CSS|GPU|Temporal|WebAssembly)/.test(n) ? {} : native(n, function () {});
+    });
+    ["JSON", "Math", "Intl", "Atomics", "Reflect", "CSS", "WebAssembly"].forEach(function (n) {
+      if (globalThis[n] != null) inner[n] = ownNamespace(n);
+    });
     return inner;
   }
+
+  var ELEMENT_INTERFACES = {
+    A: "Anchor",
+    AUDIO: "Audio",
+    BODY: "Body",
+    BR: "BR",
+    BUTTON: "Button",
+    CANVAS: "Canvas",
+    DIV: "Div",
+    FORM: "Form",
+    HEAD: "Head",
+    HTML: "Html",
+    IFRAME: "IFrame",
+    IMG: "Image",
+    INPUT: "Input",
+    LABEL: "Label",
+    LI: "LI",
+    LINK: "Link",
+    META: "Meta",
+    OPTION: "Option",
+    P: "Paragraph",
+    PRE: "Pre",
+    SCRIPT: "Script",
+    SELECT: "Select",
+    SPAN: "Span",
+    STYLE: "Style",
+    TEXTAREA: "TextArea",
+    TITLE: "Title",
+    UL: "UList",
+    VIDEO: "Video",
+  };
 
   function element(tagName) {
     var t = String(tagName || "div").toUpperCase();
@@ -2794,22 +3642,7 @@
       if (H && H.main) return H.main;
     }
     var kids = [];
-    var hostName =
-      t === "IFRAME"
-        ? "HTMLIFrameElement"
-        : t === "IMG"
-          ? "HTMLImageElement"
-          : t === "INPUT"
-            ? "HTMLInputElement"
-            : t === "TEXTAREA"
-              ? "HTMLTextAreaElement"
-              : t === "VIDEO"
-                ? "HTMLVideoElement"
-                : t === "AUDIO"
-                  ? "HTMLAudioElement"
-                  : t === "CANVAS"
-                    ? "HTMLCanvasElement"
-                    : "Element";
+    var hostName = "HTML" + (ELEMENT_INTERFACES[t] || "") + "Element";
     var el = Object.create(t === "IFRAME" ? iframeProto : htmlElProto);
     el.tagName = t;
     el.nodeName = t;
@@ -2881,11 +3714,33 @@
         },
       });
     }
+    if (t === "IMG") {
+      var imgSrc;
+      Object.defineProperty(el, "src", {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          return imgSrc;
+        },
+        set: function (v) {
+          var url = absScriptUrl(v);
+          imgSrc = v;
+          /* BotGuard's ping, nothing else: a 204 is never an image, so Chrome fires error. */
+          if (!imageRequest || url.indexOf("https://www.youtube.com/generate_204") !== 0) return;
+          imgSrc = url;
+          imageRequest(url, function () {
+            dispatchNative.call(
+              el,
+              newEvent(globalThis.Event.prototype, { type: "error", init: true, trusted: true }),
+            );
+          });
+        },
+      });
+    }
     if (t === "IFRAME") {
-      var cw = makeIframeWindow();
       el.src = "about:blank";
-      el.contentWindow = cw;
-      el.contentDocument = cw.document;
+      el.contentWindow = null;
+      el.contentDocument = null;
       hide(el, "longDesc", "");
       hide(el, "vspace", 0);
       hide(el, "hspace", 0);
@@ -2988,6 +3843,7 @@
         return "data:image/png;base64,";
       });
     }
+    adoptInterface(el);
     return el;
   }
 
@@ -2999,6 +3855,7 @@
 
   var document = {
     nodeType: 9,
+    nodeName: "#document",
     readyState: "complete",
     hidden: false,
     visibilityState: "visible",
@@ -3046,131 +3903,27 @@
     if (src != null) el.src = String(src);
     return el;
   });
-  hide(
-    document,
+  var createEvent = __nativeFn(
     "createEvent",
-    native("createEvent", function (type) {
-      var t = String(type == null ? "" : type);
-      var ev = {
-        type: t,
-        bubbles: false,
-        cancelable: false,
-        defaultPrevented: false,
-        target: null,
-        currentTarget: null,
-        eventPhase: 0,
-        timeStamp: hrtime(),
-      };
-      ev.cancelBubble = false;
-      ev.returnValue = true;
-      ev.srcElement = null;
-      ev.ctrlKey = false;
-      ev.altKey = false;
-      ev.shiftKey = false;
-      ev.metaKey = false;
-      ev.button = 0;
-      ev.clientX = 0;
-      ev.clientY = 0;
-      ev.screenX = 0;
-      ev.screenY = 0;
-      ev.pageX = 0;
-      ev.pageY = 0;
-      ev.offsetX = 0;
-      ev.offsetY = 0;
-      ev.which = 0;
-      ev.x = 0;
-      ev.y = 0;
-      ev.movementX = 0;
-      ev.movementY = 0;
-      ev.buttons = 0;
-      ev.relatedTarget = null;
-      ev.view = null;
-      ev.detail = 0;
-      hide(
-        ev,
-        "initEvent",
-        native("initEvent", function (ty, b, c) {
-          this.type = String(ty == null ? "" : ty);
-          this.bubbles = !!b;
-          this.cancelable = !!c;
-        }),
-      );
-      hide(
-        ev,
-        "initMouseEvent",
-        native(
-          "initMouseEvent",
-          function (
-            ty,
-            bubbles,
-            cancelable,
-            view,
-            detail,
-            screenX,
-            screenY,
-            clientX,
-            clientY,
-            ctrlKey,
-            altKey,
-            shiftKey,
-            metaKey,
-            button,
-            relatedTarget,
-          ) {
-            this.type = String(ty == null ? this.type : ty);
-            this.bubbles = !!bubbles;
-            this.cancelable = !!cancelable;
-            this.view = view || null;
-            this.detail = detail || 0;
-            this.screenX = screenX || 0;
-            this.screenY = screenY || 0;
-            this.clientX = clientX || 0;
-            this.clientY = clientY || 0;
-            this.pageX = this.clientX;
-            this.pageY = this.clientY;
-            this.which = this.button + 1;
-            this.x = this.clientX;
-            this.y = this.clientY;
-            this.ctrlKey = !!ctrlKey;
-            this.altKey = !!altKey;
-            this.shiftKey = !!shiftKey;
-            this.metaKey = !!metaKey;
-            this.button = button || 0;
-            this.relatedTarget = relatedTarget || null;
-          },
-        ),
-      );
-      hide(
-        ev,
-        "initUIEvent",
-        native("initUIEvent", function (ty, b, c, view, detail) {
-          this.type = String(ty == null ? this.type : ty);
-          this.bubbles = !!b;
-          this.cancelable = !!c;
-          this.view = view || null;
-          this.detail = detail || 0;
-        }),
-      );
-      hide(
-        ev,
-        "preventDefault",
-        native("preventDefault", function () {
-          this.defaultPrevented = true;
-        }),
-      );
-      hide(
-        ev,
-        "stopPropagation",
-        native("stopPropagation", function () {}),
-      );
-      hide(
-        ev,
-        "stopImmediatePropagation",
-        native("stopImmediatePropagation", function () {}),
-      );
-      return ev;
-    }),
+    function (type) {
+      var prefix = "Failed to execute 'createEvent' on 'Document': ";
+      var name, proto;
+      if (!arguments.length)
+        throw new TypeError(prefix + "1 argument required, but only 0 present.");
+      name = String(type);
+      proto = eventProtoByName[name.toLowerCase()];
+      if (!proto)
+        throw domError(
+          "NotSupportedError",
+          9,
+          prefix + "The provided event type ('" + name + "') is invalid.",
+        );
+      return newEvent(proto, {});
+    },
+    1,
   );
+  hide(document, "createEvent", createEvent);
+  hide(globalThis.Document.prototype, "createEvent", createEvent);
   hide(
     document,
     "createElementNS",
@@ -3309,7 +4062,252 @@
   globalThis.MessageChannel = native("MessageChannel", MessageChannel);
   globalThis.MessageChannel.prototype = MessageChannel.prototype;
 
+  /* The ES prototypes Chrome leaves as [object Object]. */
+  var UNTAGGED_PROTOS =
+    /^(Object|Date|RegExp|(Aggregate|Eval|Range|Reference|Syntax|Type|URI)?Error|(Big)?U?[Ii]nt\d+(Clamped)?Array|Float\d+Array)$/;
+
+  function tagInterfacePrototypes() {
+    Object.getOwnPropertyNames(globalThis).forEach(function (n) {
+      var ctor = globalThis[n];
+      var proto = typeof ctor === "function" && /^[A-Z]/.test(n) ? ctor.prototype : null;
+      if (!proto || UNTAGGED_PROTOS.test(n) || Symbol.toStringTag in proto) return;
+      if (Object.prototype.toString.call(proto) !== "[object Object]") return;
+      Object.defineProperty(proto, Symbol.toStringTag, { value: n, configurable: true });
+    });
+  }
+
+  function illegalUnless(self, owner) {
+    if (self !== owner) throw new TypeError("Illegal invocation");
+  }
+
+  /* ES class names don't survive Closure, and Chrome keeps constructor last on these. */
+  function nameClasses() {
+    ["HTMLMediaElement", "MediaSource", "SourceBuffer"].forEach(function (n) {
+      Object.defineProperty(globalThis[n], "name", { value: n, configurable: true });
+    });
+    ["HTMLVideoElement", "SpeechSynthesis", "SpeechSynthesisEvent"].forEach(function (n) {
+      var proto = globalThis[n].prototype;
+      delete proto.constructor;
+      hide(proto, "constructor", globalThis[n]);
+    });
+  }
+  function readOnlyAttributes(proto, owner, values) {
+    Object.keys(values).forEach(function (key) {
+      Object.defineProperty(proto, key, {
+        get: native("get " + key, function () {
+          illegalUnless(this, owner);
+          return values[key];
+        }),
+        enumerable: true,
+        configurable: true,
+      });
+    });
+  }
+
+  function installNavigationEntry() {
+    var perf = globalThis.performance;
+    var navProto = globalThis.PerformanceNavigationTiming.prototype;
+    var resourceProto = globalThis.PerformanceResourceTiming.prototype;
+    var entryProto = globalThis.PerformanceEntry.prototype;
+    var entry = Object.create(navProto);
+    var all = {
+      name: String(globalThis.location.href),
+      entryType: "navigation",
+      startTime: 0,
+      duration: navTiming.loadEventEnd,
+      navigationId: 1,
+    };
+    readOnlyAttributes(entryProto, entry, all);
+    var resource = {
+      initiatorType: "navigation",
+      nextHopProtocol: "h2",
+      deliveryType: "",
+      workerStart: 0,
+      redirectStart: 0,
+      redirectEnd: 0,
+      fetchStart: navTiming.fetchStart,
+      domainLookupStart: navTiming.domainLookupStart,
+      domainLookupEnd: navTiming.domainLookupEnd,
+      connectStart: navTiming.connectStart,
+      connectEnd: navTiming.connectEnd,
+      secureConnectionStart: navTiming.secureConnectionStart,
+      requestStart: navTiming.requestStart,
+      responseStart: navTiming.responseStart,
+      responseEnd: navTiming.responseEnd,
+      transferSize: 300 + Math.floor(Math.random() * 200000),
+      serverTiming: [],
+      renderBlockingStatus: "non-blocking",
+      responseStatus: 200,
+      contentType: "text/html",
+      contentEncoding: "br",
+      finalResponseHeadersStart: 0,
+      firstInterimResponseStart: 0,
+    };
+    resource.encodedBodySize = resource.transferSize - 300;
+    resource.decodedBodySize = resource.encodedBodySize * 6;
+    readOnlyAttributes(resourceProto, entry, resource);
+    var navigation = {
+      unloadEventStart: 0,
+      unloadEventEnd: 0,
+      domInteractive: navTiming.domInteractive,
+      domContentLoadedEventStart: navTiming.domContentLoadedEventStart,
+      domContentLoadedEventEnd: navTiming.domContentLoadedEventEnd,
+      domComplete: navTiming.domComplete,
+      loadEventStart: navTiming.loadEventStart,
+      loadEventEnd: navTiming.loadEventEnd,
+      type: "navigate",
+      redirectCount: 0,
+      criticalCHRestart: 0,
+      activationStart: 0,
+      notRestoredReasons: null,
+    };
+    readOnlyAttributes(navProto, entry, navigation);
+    hide(
+      navProto,
+      "toJSON",
+      native("toJSON", function () {
+        illegalUnless(this, entry);
+        return Object.assign({}, all, resource, navigation);
+      }),
+    );
+    hide(
+      perf,
+      "getEntriesByType",
+      native("getEntriesByType", function (type) {
+        return String(type) === "navigation" ? [entry] : [];
+      }),
+    );
+    hide(
+      perf,
+      "getEntries",
+      native("getEntries", function () {
+        return [entry];
+      }),
+    );
+    hide(
+      perf,
+      "getEntriesByName",
+      native("getEntriesByName", function (name) {
+        return String(name) === all.name ? [entry] : [];
+      }),
+    );
+  }
+
+  function installPermissions() {
+    var permissions = Object.create(globalThis.Permissions.prototype);
+    hide(
+      globalThis.Permissions.prototype,
+      "query",
+      native("query", function (descriptor) {
+        if (this !== permissions)
+          return Promise.reject(
+            new TypeError("Failed to execute 'query' on 'Permissions': Illegal invocation"),
+          );
+        var status = Object.create(globalThis.PermissionStatus.prototype);
+        status.name = String(descriptor && descriptor.name);
+        status.state = "prompt";
+        status.onchange = null;
+        return Promise.resolve(status);
+      }),
+    );
+    readOnlyAttributes(globalThis.Navigator.prototype, globalThis.navigator, {
+      permissions: permissions,
+    });
+  }
+
+  /* macOS US layout, in the order Chrome enumerates it. */
+  var US_LAYOUT =
+    "KeyK k KeyG g Digit2 2 Digit0 0 KeyV v KeyA a Backquote ` KeyL l IntlBackslash \u00a7 Quote ' " +
+    "KeyW w Digit8 8 KeyM m KeyH h Period . Digit7 7 Digit1 1 KeyP p KeyD d KeyF f KeyO o KeyQ q " +
+    "KeyC c KeyN n BracketLeft [ KeyZ z KeyY y Digit3 3 Digit6 6 Digit5 5 KeyX x Slash / " +
+    "Backslash \\ Comma , Minus - Digit4 4 KeyB b KeyT t Digit9 9 KeyS s KeyI i KeyU u Equal = " +
+    "KeyJ j Semicolon ; KeyR r BracketRight ] KeyE e";
+
+  function installKeyboardLayoutMap() {
+    var proto = globalThis.KeyboardLayoutMap.prototype;
+    var layout = US_LAYOUT.split(" ");
+    var keys = new Map();
+    for (var i = 0; i < layout.length; i += 2) keys.set(layout[i], layout[i + 1]);
+    keyboardLayoutMap = Object.create(proto);
+    readOnlyAttributes(proto, keyboardLayoutMap, { size: keys.size });
+    var iteratorProto = Object.create(Object.getPrototypeOf(Object.getPrototypeOf([].keys())));
+    Object.defineProperty(iteratorProto, Symbol.toStringTag, {
+      value: "KeyboardLayoutMap Iterator",
+      configurable: true,
+    });
+    hide(
+      iteratorProto,
+      "next",
+      native("next", function () {
+        return iterators.get(this).next();
+      }),
+    );
+    var iterators = new WeakMap();
+    function iterating(method) {
+      return native(method, function () {
+        illegalUnless(this, keyboardLayoutMap);
+        var iterator = Object.create(iteratorProto);
+        iterators.set(iterator, keys[method]());
+        return iterator;
+      });
+    }
+    hide(proto, "entries", iterating("entries"));
+    hide(proto, "keys", iterating("keys"));
+    hide(proto, "values", iterating("values"));
+    hide(proto, Symbol.iterator, proto.entries);
+    hide(
+      proto,
+      "get",
+      native("get", function (key) {
+        illegalUnless(this, keyboardLayoutMap);
+        return keys.get(String(key));
+      }),
+    );
+    hide(
+      proto,
+      "has",
+      native("has", function (key) {
+        illegalUnless(this, keyboardLayoutMap);
+        return keys.has(String(key));
+      }),
+    );
+    hide(
+      proto,
+      "forEach",
+      native("forEach", function (callback, thisArg) {
+        illegalUnless(this, keyboardLayoutMap);
+        keys.forEach(function (value, key) {
+          callback.call(thisArg, value, key, keyboardLayoutMap);
+        });
+      }),
+    );
+  }
+
   return {
+    setImageRequest: function (fn) {
+      imageRequest = fn;
+    },
+    /* The interfaces these fill only exist once chrome_shapes.raw.js has run. */
+    installChromeBackedApis: function () {
+      nameClasses();
+      [document.documentElement, document.head, document.body].forEach(function (el) {
+        if (el) adoptInterface(el);
+      });
+      installNavigationEntry();
+      installKeyboardLayoutMap();
+      tagInterfacePrototypes();
+      installPermissions();
+      Object.setPrototypeOf(globalThis.navigator, globalThis.Navigator.prototype);
+      delete globalThis.navigator.webdriver;
+      readOnlyAttributes(globalThis.Navigator.prototype, globalThis.navigator, {
+        webdriver: false,
+      });
+      iframeGlobalNames = Object.getOwnPropertyNames(globalThis).filter(function (n) {
+        return !/^(__|\d|versions$|ymix$|yt$|ytcfg$|CLOSURE_FLAGS$|webkitAudioContext$|on(copy|cut|paste)$)/.test(
+          n,
+        );
+      });
+    },
     endLayoutProbes: function () {
       layoutProbes = false;
     },

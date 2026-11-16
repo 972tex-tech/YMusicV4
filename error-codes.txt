@@ -9,6 +9,8 @@
 #         E8xxxx :mse | E91xxx app updater (desktopApp / androidApp)
 
 E10001 - (example) kmpCommon CodedErrorTest fixture
+E10002 D quickjsjni or another boot library refused by an App Control policy: known state, one event per version, full-screen message (desktopApp)
+E10003 D quickjsjni or another boot library failed to load for any other reason: full-screen message (desktopApp)
 E12345 - (example) doc placeholder in AGENTS.md minting rule
 E12375 - (example) doc placeholder in AGENTS.md / CodedError kdoc
 
@@ -31,6 +33,7 @@ E20052 D cache/put body sent no bytes for its idle timeout (dynamic-engine Cache
 E20053 D cache put cancelled by a newer put/delete of the same scope+key (dynamic-engine DiskCacheStore)
 E20060 D settings request has a missing/invalid field or malformed head (dynamic-engine SettingsProtocol)
 E20061 D settings store get/put threw (dynamic-engine SettingsProtocol)
+E20062 D remote-config/get head malformed or the features read threw (dynamic-engine RemoteConfigProtocol)
 E20070 D mse-player request has a missing/invalid field or malformed head (dynamic-engine MsePlayerProtocol)
 E20071 D MsePlayer threw while serving mse-player (dynamic-engine MsePlayerProtocol)
 E20072 D player/load missing videoId (engine-js logic/player.ts)
@@ -47,7 +50,7 @@ E20084 D player/stop before Application.create (engine-js logic/player/boot.ts)
 E20085 D player/setQuality missing quality, before create, or no setPlaybackQualityRange (engine-js logic/player/boot.ts)
 E20086 D player/caption busy (engine-js logic/player/captions.ts)
 E20087 D player/playerResponse: /player or its decoded SABR URL not captured in time (engine-js logic/player/player_res.ts)
-E20088 D googlevideo answered StreamProtectionStatus=3 (PO token rejected) to the session's minted token; bg-session dump attached (engine-js logic/player/bg_dump.ts)
+E20088 D googlevideo answered StreamProtectionStatus=3 (PO token rejected) to the session's minted token; bg-session dump attached unless remote enable_bg_dump turns it off (engine-js logic/player/bg_dump.ts)
 E20089 D listen/player/status busy (engine-js logic/player/push.ts)
 E20090 D listen/player/catalog busy (engine-js logic/player/push.ts)
 E20091 D player/preload missing videoId (engine-js logic/player.ts)
@@ -98,6 +101,7 @@ E20161 D subscribing/unsubscribing from a channel row menu failed with an uncode
 E20162 D player/setAudioTrack: the video has no audio track with the requested id, or base.js lacks setAudioTrack (engine-js logic/player/boot.ts)
 E20163 D player/setAudioTrack called without an id (engine-js logic/player.ts)
 E20164 D player/setAudioTrack before Application.create (no movie_player) (engine-js logic/player/boot.ts)
+E20165 D a PO token re-mint ran before the player session's first mint left anything to re-mint from (engine-js logic/player/pot.ts remint)
 E24242 - (example) dynamic-engine HostCommandTest fixture
 E29999 - (example) EngineErrorDecodeTest / HOST_PROTOCOLS.md fixture
 
@@ -109,6 +113,9 @@ E50005 D playlist restore failed to write the store (commonUi PlaylistTransferSt
 E50006 D saving a local playlist's arrangement failed (commonUi ArrangePlaylistDialog)
 E50007 D the document provider refused to delete a library file (androidApp YMusicApplication.deleteFromDisk)
 E50008 D deleting a library file from disk failed, otherwise uncoded (commonUi DeleteFromDiskDialog)
+E50009 D a library file:// file could not be deleted (androidApp YMusicApplication.deleteFromDisk)
+E50011 D the installed YMusic Files has no folder picker activity (androidApp MainActivity.pickFolderWithCompanion)
+E50012 D a library scan failed with an otherwise uncoded error (commonUi ScanController.run)
 
 E60001 D bad media uri — AVURLAsset unopenable (player apple)
 E60002 D timed out preparing the AVPlayerItem (player apple)
@@ -118,8 +125,9 @@ E60011 D ExoPlayer decoder failure: init, query or decoding (player android Andr
 E60012 D ExoPlayer can't parse the file: malformed or unsupported container (player android AndroidLocalPlayer)
 E60013 D ExoPlayer audio output (AudioTrack) failure (player android AndroidLocalPlayer)
 E60014 D ExoPlayer operation timed out (player android AndroidLocalPlayer)
+E60015 D ExoPlayer refused a media item when it was set, e.g. an HLS, DASH or RTSP uri with no module in the app (player android AndroidLocalPlayer)
 E60020 D libVLC not found at construction (player jvm)
-E60021 D libVLC playback error (player jvm)
+E60021 D local playback failed in the file_av engine: open error other than a missing file, or a decoder gave up (player jvm JvmLocalPlayer)
 E60033 D YouTube playback error, no engine-supplied code (MsePlayer fallback)
 E60034 D MsePlayer download request (playerResponse/PO token) while the engine is released or in a failed session
 E60050 D queue item needs the YouTube engine but none is configured (player facade)
@@ -155,9 +163,12 @@ E70050 D googlevideo rejected the download's PO token again after a re-attest (d
 E70051 D SABR withheld media while attestation stayed pending (StreamProtectionStatus=2) (download YtStreamDownloader.sabrFailure)
 E70052 D googlevideo answered a SABR error part (UMP 44) to a download (download YtStreamDownloader.sabrFailure)
 E70053 D a SABR download failed with an otherwise uncoded error (download YtStreamDownloader.sabrFailure)
+E70054 D googlevideo withheld media from or rejected a download (StreamProtectionStatus 2/3) while it accepts the player's PO token: the download's own SABR requests are at fault (download YtStreamDownloader.specOnNewToken)
 E70060 D could not create the download scratch directory, volume not full (download DefaultDownloadScratch)
 E70070 D renaming a completed download's file failed with an uncoded error (commonUi DownloadsScreen.kt RenameDownloadDialog)
 E70071 D reading a completed download's file name for Rename failed with an uncoded error (commonUi DownloadsScreen.kt RenameDownloadDialog)
+E70080 D the download database is corrupt or could not be read (download DownloadStore.db)
+E70081 D the download list failed to load with an otherwise uncoded error (commonUi DownloadsScreen)
 
 E80070 D MSE not available on this platform (mse apple)
 E80071 D MSE mime type not supported (mse)
@@ -166,6 +177,8 @@ E80073 D MediaSource not open / player released (mse)
 E80074 D MSE decoder playback error (mse android MediaCodec)
 E80075 D ffmpeg JNI backend missing or failed to create (mse jvm)
 E80076 D MSE append parse / byte-stream violation (mse)
+E80077 D JNI or a libav DLL refused by an App Control policy: known state, one event per version, playback off (desktopApp)
+E80078 D JNI or a libav DLL failed to load for any other reason: playback off for this launch (desktopApp)
 
 E90210 - (example) kmpCommon CodedErrorTest / HOST_PROTOCOLS.md fixture
 
@@ -173,8 +186,12 @@ E91001 D desktop update entry's signature does not match the pinned update key (
 E91002 D desktop update installer's size/sha256 differs from the signed entry (UpdateService.download)
 E91003 D desktop update installer download failed (UpdateService.download)
 E91004 D desktop update installer failed to run (UpdateService.install)
+E91005 D desktop update installer download refused: the server answered a non-2xx HTTP status (UpdateService.download)
+E91006 D desktop update install refused: another package manager held the dpkg lock past the wait (UpdateService.install, Linux)
 E91011 D android update APK's size/sha256 differs from the config entry (AndroidAppUpdates.download)
 E91012 D android update APK download failed (AndroidAppUpdates.download)
 E91013 D android update APK could not be handed to PackageInstaller (AndroidAppUpdates.installAndRestart)
 E91014 D android update APK download failed: the device doesn't trust the host's TLS chain (AndroidAppUpdates.download)
 E91015 D android update install refused by the device: SD-card install it can't move, policy/FRP restriction, or no installer session (AndroidAppUpdates.installAndRestart)
+E91016 D android update install failed after the hand-off: PackageInstaller reported a failure, or no screen could confirm it (AndroidAppUpdates.onInstallEnded)
+E91017 D android update APK download refused: the server answered a non-2xx HTTP status (AndroidAppUpdates.download)

@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,8 +73,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -171,7 +175,6 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.StringResource
-import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.errorCode
 
@@ -322,95 +325,98 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     LibraryTabRow(tab, tabDrag) { tab = it }
                     HorizontalDivider(color = DesignColors.Divider)
                 }
-                CompositionLocalProvider(LocalLibraryReveal provides reveal) {
-                    val openDrawer = LocalOpenNavDrawer.current
-                    SwipeTabSwitcher(
-                        tab,
-                        LibraryTab.entries,
-                        onSelect = { tab = it },
-                        onDragProgress = { tabDrag = it },
-                        leadingEdgeReserve = NavDrawerEdgeReserve,
-                        onLeadingEdgeSwipe = openDrawer,
-                    ) { current ->
-                        tabStateHolder.SaveableStateProvider(current.name) {
-                            when (current) {
-                                // Its songs are already shown in their folder: no "Show in folder".
-                                LibraryTab.Folders -> CompositionLocalProvider(LocalLibraryReveal provides null) {
-                                    FoldersTab(
-                                        store,
-                                        loaded,
-                                        coordinator,
-                                        graph.scanLibraryFolder,
-                                        graph.rescanLibrary,
-                                        scanController,
-                                        revealBucket,
-                                        onRevealHandled = { revealBucket = null },
-                                        downloadLocation = downloadLocation,
-                                        onToggleDownloadLocation = onToggleDownloadLocation,
-                                        settings = graph.settings,
-                                    )
-                                }
-                                LibraryTab.Playlists -> PlaylistsTab(store, graph, loaded, coordinator, graph.playHistory)
-                                LibraryTab.Songs -> if (loaded.songs.isEmpty()) {
-                                    EmptyState(stringResource(Res.string.library_no_songs), onReload = null)
-                                } else {
-                                    val sort = rememberSortState("songs", graph.settings)
-                                    val songs = sort.sort(loaded.songs, songSortOptions)
-                                    SongList(
-                                        songs,
-                                        coordinator,
-                                        header = {
-                                            SortBar(songSortOptions.map { it.label }, sort) {
-                                                LibraryChip(stringResource(Res.string.shuffle_all), selected = false, icon = Icons.Default.Shuffle) {
-                                                    coordinator.playLocal(songs, songs.indices.random(), shuffle = true)
+                Box(Modifier.weight(1f)) {
+                    CompositionLocalProvider(LocalLibraryReveal provides reveal) {
+                        val openDrawer = LocalOpenNavDrawer.current
+                        SwipeTabSwitcher(
+                            tab,
+                            LibraryTab.entries,
+                            onSelect = { tab = it },
+                            onDragProgress = { tabDrag = it },
+                            leadingEdgeReserve = NavDrawerEdgeReserve,
+                            onLeadingEdgeSwipe = openDrawer,
+                        ) { current ->
+                            tabStateHolder.SaveableStateProvider(current.name) {
+                                when (current) {
+                                    // Its songs are already shown in their folder: no "Show in folder".
+                                    LibraryTab.Folders -> CompositionLocalProvider(LocalLibraryReveal provides null) {
+                                        FoldersTab(
+                                            store,
+                                            loaded,
+                                            coordinator,
+                                            graph.scanLibraryFolder,
+                                            graph.rescanLibrary,
+                                            scanController,
+                                            revealBucket,
+                                            onRevealHandled = { revealBucket = null },
+                                            downloadLocation = downloadLocation,
+                                            onToggleDownloadLocation = onToggleDownloadLocation,
+                                            settings = graph.settings,
+                                        )
+                                    }
+                                    LibraryTab.Playlists -> PlaylistsTab(store, graph, loaded, coordinator, graph.playHistory)
+                                    LibraryTab.Songs -> if (loaded.songs.isEmpty()) {
+                                        EmptyState(stringResource(Res.string.library_no_songs), onReload = null)
+                                    } else {
+                                        val sort = rememberSortState("songs", graph.settings)
+                                        val songs = sort.sort(loaded.songs, songSortOptions)
+                                        SongList(
+                                            songs,
+                                            coordinator,
+                                            header = {
+                                                SortBar(songSortOptions.map { it.label }, sort) {
+                                                    LibraryChip(stringResource(Res.string.shuffle_all), selected = false, icon = Icons.Default.Shuffle) {
+                                                        coordinator.playLocal(songs, songs.indices.random(), shuffle = true)
+                                                    }
                                                 }
-                                            }
-                                        },
-                                    )
-                                }
-                                LibraryTab.Artists -> if (loaded.songs.isEmpty()) {
-                                    EmptyState(stringResource(Res.string.library_no_artists), onReload = null)
-                                } else {
-                                    GroupedList(
-                                        loaded.songs,
-                                        Icons.Default.Person,
-                                        stringResource(Res.string.unknown_artist),
-                                        coordinator,
-                                        sortId = "artists",
-                                        settings = graph.settings,
-                                        reveal = revealGroup?.takeIf { it.kind == LibraryGroupKind.Artist },
-                                        onRevealHandled = { revealGroup = null },
-                                    ) { it.artist }
-                                }
-                                LibraryTab.Albums -> if (loaded.songs.isEmpty()) {
-                                    EmptyState(stringResource(Res.string.library_no_albums), onReload = null)
-                                } else {
-                                    GroupedList(
-                                        loaded.songs,
-                                        Icons.Default.Album,
-                                        stringResource(Res.string.unknown_album),
-                                        coordinator,
-                                        sortId = "albums",
-                                        settings = graph.settings,
-                                        reveal = revealGroup?.takeIf { it.kind == LibraryGroupKind.Album },
-                                        onRevealHandled = { revealGroup = null },
-                                    ) { it.album }
-                                }
-                                LibraryTab.Genres -> if (loaded.songs.isEmpty()) {
-                                    EmptyState(stringResource(Res.string.library_no_genres), onReload = null)
-                                } else {
-                                    GroupedList(
-                                        loaded.songs,
-                                        Icons.Default.Category,
-                                        stringResource(Res.string.unknown_genre),
-                                        coordinator,
-                                        sortId = "genres",
-                                        settings = graph.settings,
-                                    ) { it.genre }
+                                            },
+                                        )
+                                    }
+                                    LibraryTab.Artists -> if (loaded.songs.isEmpty()) {
+                                        EmptyState(stringResource(Res.string.library_no_artists), onReload = null)
+                                    } else {
+                                        GroupedList(
+                                            loaded.songs,
+                                            Icons.Default.Person,
+                                            stringResource(Res.string.unknown_artist),
+                                            coordinator,
+                                            sortId = "artists",
+                                            settings = graph.settings,
+                                            reveal = revealGroup?.takeIf { it.kind == LibraryGroupKind.Artist },
+                                            onRevealHandled = { revealGroup = null },
+                                        ) { it.artist }
+                                    }
+                                    LibraryTab.Albums -> if (loaded.songs.isEmpty()) {
+                                        EmptyState(stringResource(Res.string.library_no_albums), onReload = null)
+                                    } else {
+                                        GroupedList(
+                                            loaded.songs,
+                                            Icons.Default.Album,
+                                            stringResource(Res.string.unknown_album),
+                                            coordinator,
+                                            sortId = "albums",
+                                            settings = graph.settings,
+                                            reveal = revealGroup?.takeIf { it.kind == LibraryGroupKind.Album },
+                                            onRevealHandled = { revealGroup = null },
+                                        ) { it.album }
+                                    }
+                                    LibraryTab.Genres -> if (loaded.songs.isEmpty()) {
+                                        EmptyState(stringResource(Res.string.library_no_genres), onReload = null)
+                                    } else {
+                                        GroupedList(
+                                            loaded.songs,
+                                            Icons.Default.Category,
+                                            stringResource(Res.string.unknown_genre),
+                                            coordinator,
+                                            sortId = "genres",
+                                            settings = graph.settings,
+                                        ) { it.genre }
+                                    }
                                 }
                             }
                         }
                     }
+                    ScanProgressLine(scanController, Modifier.align(Alignment.TopCenter))
                 }
             }
         }
@@ -420,14 +426,31 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
 /** First-open state: nothing indexed yet — just the scan call-to-action. */
 @Composable
 private fun EmptyLibrary(scan: ScanAction?, controller: ScanController?) {
-    CenteredBox {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(stringResource(Res.string.library_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (scan == null || controller == null) return@Column
-            ScanPill(scan, controller, label = stringResource(Res.string.library_scan_folder))
-            if (controller.running) CircularProgressIndicator(Modifier.size(22.dp))
+    Box(Modifier.fillMaxSize()) {
+        CenteredBox {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(stringResource(Res.string.library_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (scan == null || controller == null) return@Column
+                ScanPill(scan, controller, label = stringResource(Res.string.library_scan_folder))
+            }
         }
+        ScanProgressLine(controller, Modifier.align(Alignment.TopCenter))
     }
+}
+
+/** A running scan's progress, shown over the Library on every tab: a thin indeterminate line, as the
+ *  Rust desktop app's. */
+@Composable
+private fun ScanProgressLine(controller: ScanController?, modifier: Modifier = Modifier) {
+    if (controller?.running != true) return
+    val label = stringResource(Res.string.library_scanning)
+    LinearProgressIndicator(
+        modifier = modifier.fillMaxWidth().height(2.dp).semantics { contentDescription = label },
+        color = DesignColors.Accent,
+        trackColor = Color.Transparent,
+        strokeCap = StrokeCap.Butt,
+        gapSize = 0.dp,
+    )
 }
 
 // ---- folders ----
@@ -454,6 +477,7 @@ private fun FoldersTab(
     // (id, displayName) instead of the bucket itself so the browse position survives the section
     // leaving composition (saveable): coming back from Discover reopens the same folder.
     var path by rememberSaveable(stateSaver = CrumbPathSaver) { mutableStateOf(listOf<Pair<Long, String>>()) }
+    NestedBackHandler(enabled = path.isNotEmpty()) { path = path.dropLast(1) }
     var folders by remember { mutableStateOf<List<MediaStoreBucket>?>(null) }
     var items by remember { mutableStateOf<List<MediaStoreItem>>(emptyList()) }
     val folderListState = rememberLazyListState()
@@ -566,9 +590,10 @@ private fun FoldersTab(
                 // as a wider list below them (see design/final/library.html). Songs are min-width
                 // sized — full-width when tight, splitting as the screen grows — and rendered as
                 // full-width weighted rows so they stay gap-free whatever the folder column count.
-                if (maxWidth >= LibraryGridMinWidth) {
-                    val columns = libraryGridColumns(maxWidth)
-                    val songsPerRow = librarySongColumns(maxWidth)
+                val layoutWidth = railStableWidth(maxWidth)
+                if (layoutWidth >= LibraryGridMinWidth) {
+                    val columns = libraryGridColumns(layoutWidth)
+                    val songsPerRow = librarySongColumns(layoutWidth)
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(columns),
                         modifier = Modifier.fillMaxSize(),
@@ -931,6 +956,7 @@ private fun PlaylistsTab(
     // (id, name) — saveable, so the opened playlist survives the tab leaving composition. Negative ids
     // are the system playlists; the name is the resolved display title.
     var selected by rememberSaveable(stateSaver = OpenPlaylistSaver) { mutableStateOf<Pair<Long, String>?>(null) }
+    NestedBackHandler(enabled = selected != null) { selected = null }
     var userLists by remember { mutableStateOf<List<Pair<Playlist, Int>>?>(null) }
     // Each user playlist's thumbnail: the art of its most recently added song that has artwork.
     var userArt by remember { mutableStateOf<Map<Long, String?>>(emptyMap()) }
@@ -1089,9 +1115,10 @@ private fun PlaylistsTab(
         LocalRemoveFromPlayHistory provides removeFromPlayHistory,
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            if (maxWidth >= LibraryGridMinWidth) {
+            val layoutWidth = railStableWidth(maxWidth)
+            if (layoutWidth >= LibraryGridMinWidth) {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
+                    columns = GridCells.Fixed(libraryGridColumns(layoutWidth)),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = LibraryGridPadding, end = LibraryGridPadding, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                     state = gridState,
@@ -1103,7 +1130,7 @@ private fun PlaylistsTab(
                         }
                         if (showEmptyHint) item("empty", span = { GridItemSpan(maxLineSpan) }) { NoPlaylistsHint(transfer) }
                     } else {
-                        val perRow = librarySongColumns(maxWidth)
+                        val perRow = librarySongColumns(layoutWidth)
                         items(
                             songs.indices.chunked(perRow),
                             key = { songs[it.first()].id },
@@ -1191,7 +1218,7 @@ private fun playlistDisplay(entry: PlaylistEntry): Triple<String, String, ImageV
     is SmartEntry -> Triple(stringResource(entry.labelRes), stringResource(entry.descRes), entry.icon)
     is UserEntry -> Triple(
         entry.playlist.name,
-        pluralStringResource(Res.plurals.n_songs, entry.count, entry.count),
+        pluralText(Res.plurals.n_songs, entry.count, entry.count),
         Icons.AutoMirrored.Filled.PlaylistPlay,
     )
 }
@@ -1470,14 +1497,13 @@ private fun FoldersToolbar(
 
 @Composable
 private fun RescanButton(rescan: ScanAction, controller: ScanController) {
-    if (controller.running) {
-        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(Modifier.size(20.dp))
-        }
-    } else {
-        ActionIcon(Icons.Default.Refresh, stringResource(Res.string.library_rescan), tint = DesignColors.InkSoft) {
-            controller.start(rescan)
-        }
+    ActionIcon(
+        Icons.Default.Refresh,
+        stringResource(Res.string.library_rescan),
+        tint = DesignColors.InkSoft,
+        enabled = !controller.running,
+    ) {
+        controller.start(rescan)
     }
 }
 
@@ -1494,9 +1520,10 @@ internal fun SongList(
     BoxWithConstraints(modifier.fillMaxSize()) {
         // Same min-width sizing as the Folders tab's songs: as many columns as keep each song
         // ≥ LibrarySongMinWidth, dropping to a single full-width column when that's all that fits.
-        if (maxWidth >= LibraryGridMinWidth) {
+        val layoutWidth = railStableWidth(maxWidth)
+        if (layoutWidth >= LibraryGridMinWidth) {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(librarySongColumns(maxWidth)),
+                columns = GridCells.Fixed(librarySongColumns(layoutWidth)),
                 modifier = Modifier.fillMaxSize(),
                 state = gridState,
                 contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current),
@@ -1525,7 +1552,7 @@ internal fun SongRow(song: MediaStoreItem, coordinator: PlaybackCoordinator? = n
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onPlay)
-            .a11yActionLabel(listOfNotNull(song.title, length, sub.ifEmpty { null }).joinToString(", "))
+            .a11yRowLabel(listOfNotNull(song.title, length, sub.ifEmpty { null }).joinToString(", "))
             .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
@@ -1607,6 +1634,7 @@ private fun GroupedList(
 ) {
     // Saveable: the opened artist/album/genre survives the tab leaving composition.
     var group by rememberSaveable { mutableStateOf<String?>(null) }
+    NestedBackHandler(enabled = group != null) { group = null }
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
     LaunchedEffect(reveal) {
@@ -1657,9 +1685,10 @@ private fun GroupedList(
 
     TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (maxWidth >= LibraryGridMinWidth) {
+        val layoutWidth = railStableWidth(maxWidth)
+        if (layoutWidth >= LibraryGridMinWidth) {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(libraryGridColumns(maxWidth)),
+                columns = GridCells.Fixed(libraryGridColumns(layoutWidth)),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                 state = gridState,
@@ -1668,7 +1697,7 @@ private fun GroupedList(
                 if (selected == null) {
                     items(entries, key = { it.first }) { (name, members) -> GroupCard(icon, name, members) { group = name } }
                 } else {
-                    val perRow = librarySongColumns(maxWidth)
+                    val perRow = librarySongColumns(layoutWidth)
                     items(
                         groupSongs.indices.chunked(perRow),
                         key = { groupSongs[it.first()].id },
@@ -1711,7 +1740,7 @@ private fun GroupRow(icon: ImageVector, name: String, members: List<MediaStoreIt
         Column(Modifier.weight(1f)) {
             Text(name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(
-                pluralStringResource(Res.plurals.n_songs, members.size, members.size),
+                pluralText(Res.plurals.n_songs, members.size, members.size),
                 style = ListSubStyle,
                 modifier = Modifier.padding(top = 4.dp),
             )
@@ -1726,7 +1755,7 @@ private fun GroupCard(icon: ImageVector, name: String, members: List<MediaStoreI
         icon = icon,
         artUrl = members.firstNotNullOfOrNull(::localArtUrl),
         title = name,
-        subtitle = pluralStringResource(Res.plurals.n_songs, members.size, members.size),
+        subtitle = pluralText(Res.plurals.n_songs, members.size, members.size),
         onClick = onOpen,
     )
 }

@@ -1080,6 +1080,7 @@ struct JSObject {
 typedef struct JSMapRecord {
     int ref_count; /* used during enumeration to avoid freeing the record */
     BOOL empty : 8; /* TRUE if the record is deleted */
+    uint8_t gc_marked; /* patch: weak map value kept by the current gc_scan */
     struct list_head link;
     struct JSMapRecord *hash_next;
     JSValue key;
@@ -1088,6 +1089,7 @@ typedef struct JSMapRecord {
 
 typedef struct JSMapState {
     BOOL is_weak; /* TRUE if WeakSet/WeakMap */
+    BOOL gc_scanned; /* patch: weak map reached by the current gc_scan */
     struct list_head records; /* list of JSMapRecord.link */
     uint32_t record_count;
     JSMapRecord **hash_table;
@@ -1389,6 +1391,7 @@ static JSValue JS_InstantiateFunctionListItem2(JSContext *ctx, JSObject *p,
 static JSValue js_object_groupBy(JSContext *ctx, JSValueConst this_val,
                                  int argc, JSValueConst *argv, int is_map);
 static void map_delete_weakrefs(JSRuntime *rt, JSWeakRefHeader *wh);
+static BOOL js_weakref_is_live(JSValueConst val);
 static void weakref_delete_weakref(JSRuntime *rt, JSWeakRefHeader *wh);
 static void finrec_delete_weakref(JSRuntime *rt, JSWeakRefHeader *wh);
 static void JS_RunGCInternal(JSRuntime *rt, BOOL remove_weak_objects);
@@ -6734,18 +6737,91 @@ static void gc_scan_incref_child2(JSRuntime *rt, JSGCObjectHeader *p)
     js_rc(p)->ref_count++;
 }
 
+/* BEGIN patch: ephemerons. A weak map value stays reachable only through its key: while gc_scan
+   keeps the reachable objects, js_map_mark skips the values of a weak map and only flags it;
+   gc_scan_weak_values then keeps the values whose key turned out reachable, until no more do.
+   Without this a value referring to its own key (or to another entry's key) kept both forever. */
+static BOOL gc_scan_weak_values(JSRuntime *rt)
+{
+    struct list_head *el, *el1;
+    BOOL changed = FALSE;
+
+    list_for_each(el, &rt->weakref_list) {
+        JSWeakRefHeader *wh = list_entry(el, JSWeakRefHeader, link);
+        JSMapState *s;
+        if (wh->weakref_type != JS_WEAKREF_TYPE_MAP)
+            continue;
+        s = container_of(wh, JSMapState, weakref_header);
+        if (!s->gc_scanned)
+            continue;
+        list_for_each(el1, &s->records) {
+            JSMapRecord *mr = list_entry(el1, JSMapRecord, link);
+            if (mr->empty || mr->gc_marked || !js_weakref_is_live(mr->key))
+                continue;
+            mr->gc_marked = TRUE;
+            JS_MarkValue(rt, mr->value, gc_scan_incref_child);
+            changed = TRUE;
+        }
+    }
+    return changed;
+}
+
+/* The value of an unreachable key lost this record's reference in gc_decref and is never given it
+   back: the record lets go of it now (gc_free_cycles may free it), and the record itself goes at
+   the next GC, when gc_remove_weak_objects finds its key dead. */
+static void gc_drop_weak_values(JSRuntime *rt)
+{
+    struct list_head *el, *el1;
+
+    list_for_each(el, &rt->weakref_list) {
+        JSWeakRefHeader *wh = list_entry(el, JSWeakRefHeader, link);
+        JSMapState *s;
+        if (wh->weakref_type != JS_WEAKREF_TYPE_MAP)
+            continue;
+        s = container_of(wh, JSMapState, weakref_header);
+        if (!s->gc_scanned)
+            continue;
+        s->gc_scanned = FALSE;
+        list_for_each(el1, &s->records) {
+            JSMapRecord *mr = list_entry(el1, JSMapRecord, link);
+            if (!mr->empty && !mr->gc_marked) {
+                switch(JS_VALUE_GET_TAG(mr->value)) {
+                case JS_TAG_OBJECT:
+                case JS_TAG_FUNCTION_BYTECODE:
+                case JS_TAG_MODULE:
+                    mr->value = JS_UNDEFINED;
+                    break;
+                default:
+                    break;
+                }
+            }
+            mr->gc_marked = FALSE;
+        }
+    }
+}
+/* END patch */
+
 static void gc_scan(JSRuntime *rt)
 {
-    struct list_head *el;
+    struct list_head *el, *last;
     JSGCObjectHeader *p;
 
     /* keep the objects with a refcount > 0 and their children. */
-    list_for_each(el, &rt->gc_obj_list) {
-        p = list_entry(el, JSGCObjectHeader, link);
-        assert(js_rc(p)->ref_count > 0);
-        js_rc(p)->mark = 0; /* reset the mark for the next GC call */
-        mark_children(rt, p, gc_scan_incref_child);
+    el = rt->gc_obj_list.next;
+    for(;;) {
+        for(; el != &rt->gc_obj_list; el = el->next) {
+            p = list_entry(el, JSGCObjectHeader, link);
+            assert(js_rc(p)->ref_count > 0);
+            js_rc(p)->mark = 0; /* reset the mark for the next GC call */
+            mark_children(rt, p, gc_scan_incref_child);
+        }
+        /* patch: ephemerons; the values kept now may reach more keys */
+        last = rt->gc_obj_list.prev;
+        if (!gc_scan_weak_values(rt))
+            break;
+        el = last->next;
     }
+    gc_drop_weak_values(rt);
 
     /* restore the refcount of the objects to be deleted. */
     list_for_each(el, &rt->tmp_obj_list) {
@@ -7598,12 +7674,12 @@ static const char *stack_safe_file(const char *file, const char *page)
 
 /* if filename != NULL, an additional level is added with the filename
    and line number information (used for parse error). */
-static void build_backtrace(JSContext *ctx, JSValueConst error_obj,
+static void build_backtrace(JSContext *ctx, JSValueConst error_val,
                             const char *filename, int line_num, int col_num,
                             int backtrace_flags)
 {
     JSStackFrame *sf;
-    JSValue str;
+    JSValue str, error_obj;
     DynBuf dbuf;
     const char *func_name_str;
     JSObject *p;
@@ -7611,8 +7687,12 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_obj,
     size_t k;
     const char *page, *page_or;
 
-    if (!JS_IsObject(error_obj))
+    if (!JS_IsObject(error_val))
         return; /* protection in the out of memory case */
+
+    /* upstream cd97c2b: an exception raised below frees the current
+       exception, which error_val aliases at most call sites */
+    error_obj = JS_DupValue(ctx, error_val);
 
     page = stack_page_url(ctx);
     page_or = (page && page[0]) ? page : "about:blank";
@@ -7644,7 +7724,8 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_obj,
         str = JS_NewString(ctx, filename);
         if (JS_IsException(str)) {
             JS_FreeCString(ctx, page);
-            return;
+            dbuf_free(&dbuf);
+            goto done;
         }
         /* Note: SpiderMonkey does that, could update once there is a standard */
         if (JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_fileName, str,
@@ -7654,7 +7735,8 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_obj,
             JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_columnNumber, JS_NewInt32(ctx, col_num),
                                    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE) < 0) {
             JS_FreeCString(ctx, page);
-            return;
+            dbuf_free(&dbuf);
+            goto done;
         }
     }
     for(sf = ctx->rt->current_stack_frame; sf != NULL; sf = sf->prev_frame) {
@@ -7714,6 +7796,8 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_obj,
     dbuf_free(&dbuf);
     JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_stack, str,
                            JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+ done:
+    JS_FreeValue(ctx, error_obj);
 }
 /* END patch */
 
@@ -7921,8 +8005,10 @@ static JSValue JS_ThrowTypeErrorNotASymbol(JSContext *ctx)
 static JSValue JS_ThrowReferenceErrorNotDefined(JSContext *ctx, JSAtom name)
 {
     char buf[ATOM_GET_STR_BUF_SIZE];
-    return JS_ThrowReferenceError(ctx, "'%s' is not defined",
+    /* BEGIN patch: V8 error text, BotGuard hashes it. */
+    return JS_ThrowReferenceError(ctx, "%s is not defined",
                                   JS_AtomGetStr(ctx, buf, sizeof(buf), name));
+    /* END patch */
 }
 
 static JSValue JS_ThrowReferenceErrorUninitialized(JSContext *ctx, JSAtom name)
@@ -8320,10 +8406,12 @@ JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
     tag = JS_VALUE_GET_TAG(obj);
     if (unlikely(tag != JS_TAG_OBJECT)) {
         switch(tag) {
+        /* BEGIN patch: V8 error text, BotGuard hashes it. */
         case JS_TAG_NULL:
-            return JS_ThrowTypeErrorAtom(ctx, "cannot read property '%s' of null", prop);
+            return JS_ThrowTypeErrorAtom(ctx, "Cannot read properties of null (reading '%s')", prop);
         case JS_TAG_UNDEFINED:
-            return JS_ThrowTypeErrorAtom(ctx, "cannot read property '%s' of undefined", prop);
+            return JS_ThrowTypeErrorAtom(ctx, "Cannot read properties of undefined (reading '%s')", prop);
+        /* END patch */
         case JS_TAG_EXCEPTION:
             return JS_EXCEPTION;
         case JS_TAG_STRING:
@@ -9189,8 +9277,21 @@ static JSValue JS_GetPropertyValue(JSContext *ctx, JSValueConst this_obj,
     slow_path:
         /* ToObject() must be done before ToPropertyKey() */
         if (JS_IsNull(this_obj) || JS_IsUndefined(this_obj)) {
+            /* BEGIN patch: V8 error text, BotGuard hashes it. */
+            const char *of = JS_IsNull(this_obj) ? "Cannot read properties of null (reading '%s')"
+                                                 : "Cannot read properties of undefined (reading '%s')";
+            if (JS_IsString(prop) || JS_IsNumber(prop)) {
+                atom = JS_ValueToAtom(ctx, prop);
+                JS_FreeValue(ctx, prop);
+                if (atom == JS_ATOM_NULL)
+                    return JS_EXCEPTION;
+                JS_ThrowTypeErrorAtom(ctx, of, atom);
+                JS_FreeAtom(ctx, atom);
+                return JS_EXCEPTION;
+            }
             JS_FreeValue(ctx, prop);
-            return JS_ThrowTypeError(ctx, "cannot read property of %s", JS_IsNull(this_obj) ? "null" : "undefined");
+            return JS_ThrowTypeError(ctx, "Cannot read properties of %s", JS_IsNull(this_obj) ? "null" : "undefined");
+            /* END patch */
         }
         atom = JS_ValueToAtom(ctx, prop);
         JS_FreeValue(ctx, prop);
@@ -9680,7 +9781,9 @@ static JSValue js_allocate_fast_array(JSContext *ctx, int64_t len)
     int i;
     
     if (len > INT32_MAX)
-        return JS_ThrowRangeError(ctx, "invalid array length");
+        /* BEGIN patch: V8 error text, BotGuard hashes it. */
+        return JS_ThrowRangeError(ctx, "Invalid array length");
+        /* END patch */
     arr = JS_NewArray(ctx);
     if (JS_IsException(arr))
         return arr;
@@ -9783,11 +9886,15 @@ int JS_SetPropertyInternal(JSContext *ctx, JSValueConst obj,
             switch(tag) {
             case JS_TAG_NULL:
                 JS_FreeValue(ctx, val);
-                JS_ThrowTypeErrorAtom(ctx, "cannot set property '%s' of null", prop);
+                /* BEGIN patch: V8 error text, BotGuard hashes it. */
+                JS_ThrowTypeErrorAtom(ctx, "Cannot set properties of null (setting '%s')", prop);
+                /* END patch */
                 return -1;
             case JS_TAG_UNDEFINED:
                 JS_FreeValue(ctx, val);
-                JS_ThrowTypeErrorAtom(ctx, "cannot set property '%s' of undefined", prop);
+                /* BEGIN patch: V8 error text, BotGuard hashes it. */
+                JS_ThrowTypeErrorAtom(ctx, "Cannot set properties of undefined (setting '%s')", prop);
+                /* END patch */
                 return -1;
             default:
                 /* even on a primitive type we can have setters on the prototype */
@@ -13572,7 +13679,9 @@ static __exception int JS_ToArrayLengthFree(JSContext *ctx, uint32_t *plen,
                     return -1;
                 if (len1 != len) {
                 fail:
-                    JS_ThrowRangeError(ctx, "invalid array length");
+                    /* BEGIN patch: V8 error text, BotGuard hashes it. */
+                    JS_ThrowRangeError(ctx, "Invalid array length");
+                    /* END patch */
                     return -1;
                 }
             }
@@ -22562,7 +22671,9 @@ static __exception int js_parse_template_part(JSParseState *s, const uint8_t *p)
     return 0;
 
  unexpected_eof:
-    js_parse_error(s, "unexpected end of string");
+    /* BEGIN patch: V8 error text, BotGuard hashes it. */
+    js_parse_error(s, "Unterminated template literal");
+    /* END patch */
  fail:
     string_buffer_free(b);
     return -1;
@@ -22699,7 +22810,9 @@ static __exception int js_parse_string(JSParseState *s, int sep,
     goto fail;
  invalid_char:
     if (do_throw)
-        js_parse_error(s, "unexpected end of string");
+        /* BEGIN patch: V8 error text, BotGuard hashes it. */
+        js_parse_error(s, "Invalid or unexpected token");
+        /* END patch */
  fail:
     string_buffer_free(b);
     return -1;
@@ -41472,8 +41585,10 @@ static JSValue js_function_toString(JSContext *ctx, JSValueConst this_val,
     JSObject *p;
     JSFunctionKindEnum func_kind = JS_FUNC_NORMAL;
 
-    if (check_function(ctx, this_val))
-        return JS_EXCEPTION;
+    /* BEGIN patch: V8 error text, BotGuard hashes it. */
+    if (!JS_IsFunction(ctx, this_val))
+        return JS_ThrowTypeError(ctx, "Function.prototype.toString requires that 'this' be a Function");
+    /* END patch */
 
     p = JS_VALUE_GET_OBJ(this_val);
     if (js_class_has_bytecode(p->class_id)) {
@@ -43320,7 +43435,9 @@ static JSValue js_array_toSpliced(JSContext *ctx, JSValueConst this_val,
 
     newlen = len + add - del;
     if (newlen > MAX_SAFE_INTEGER) {
-        JS_ThrowTypeError(ctx, "invalid array length");
+        /* BEGIN patch: V8 error text, BotGuard hashes it. */
+        JS_ThrowTypeError(ctx, "Invalid array length");
+        /* END patch */
         goto exception;
     }
 
@@ -45115,7 +45232,9 @@ static int js_get_radix(JSContext *ctx, JSValueConst val)
     if (JS_ToInt32Sat(ctx, &radix, val))
         return -1;
     if (radix < 2 || radix > 36) {
-        JS_ThrowRangeError(ctx, "radix must be between 2 and 36");
+        /* BEGIN patch: V8 error text, BotGuard hashes it. */
+        JS_ThrowRangeError(ctx, "toString() radix argument must be between 2 and 36");
+        /* END patch */
         return -1;
     }
     return radix;
@@ -52197,6 +52316,7 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
         return NULL;
     mr->ref_count = 1;
     mr->empty = FALSE;
+    mr->gc_marked = FALSE;
     if (s->is_weak) {
         mr->key = js_weakref_new(ctx, key);
     } else {
@@ -52658,6 +52778,11 @@ static void js_map_mark(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func)
 
     s = p->u.map_state;
     if (s) {
+        /* patch: ephemerons, see gc_scan_weak_values */
+        if (s->is_weak && mark_func == gc_scan_incref_child) {
+            s->gc_scanned = TRUE;
+            return;
+        }
         list_for_each(el, &s->records) {
             mr = list_entry(el, JSMapRecord, link);
             if (!s->is_weak)
@@ -57774,7 +57899,9 @@ static JSValue js_typed_array_set_internal(JSContext *ctx,
             goto fail;
         if (offset > dst_len - src_len) {
         range_error:
-            JS_ThrowRangeError(ctx, "invalid array length");
+            /* BEGIN patch: V8 error text, BotGuard hashes it. */
+            JS_ThrowRangeError(ctx, "Invalid array length");
+            /* END patch */
             goto fail;
         }
     }

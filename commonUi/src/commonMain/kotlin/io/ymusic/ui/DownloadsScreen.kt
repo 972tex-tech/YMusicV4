@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -28,6 +27,7 @@ import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -38,6 +38,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -122,6 +123,7 @@ import kmpcommon.uri.Uri
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
@@ -135,6 +137,7 @@ import projectcommon.error.Playability
 import projectcommon.error.errorCode
 import projectcommon.error.playabilityOf
 import projectcommon.error.runSuspendCatching
+import projectcommon.log.captureUnlessEnvironmental
 
 /**
  * The Download Manager: a status filter chip row over one flat adaptive grid (one column on a phone,
@@ -151,8 +154,22 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     }
     // Own the aggregator for as long as this screen is composed: it seeds once and folds change events,
     // and is dropped (its DB subscription cancelled) when the user leaves.
-    val aggregator = remember(service) { DownloadTasksAggregator(service::snapshot, service.changes) }
-    val tasks by aggregator.tasks.collectAsState(emptyList())
+    var reloads by remember { mutableIntStateOf(0) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    val aggregator = remember(service, reloads) { DownloadTasksAggregator(service::snapshot, service.changes) }
+    val tasks by remember(aggregator) {
+        aggregator.tasks.catch { e ->
+            graph.logger?.fork("downloads")?.captureUnlessEnvironmental(e, "download list failed to load")
+            loadError = e.errorCode() ?: "E70081"
+        }
+    }.collectAsState(emptyList())
+    loadError?.let { code ->
+        ErrorState(code) {
+            loadError = null
+            reloads++
+        }
+        return
+    }
 
     val visible = tasks.filter { it.state != DownloadState.CANCELED }
     if (visible.isEmpty()) {
@@ -209,7 +226,7 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     removeOrCancel(service, task)
                 }.onFailure {
                     failed++
-                    graph.logger?.fork("downloads")?.captureError(it, "bulk delete from disk failed")
+                    graph.logger?.fork("downloads")?.captureUnlessEnvironmental(it, "bulk delete from disk failed")
                 }
             }
             if (failed > 0) snackbar(getString(Res.string.downloads_delete_selected_failed, failed))
@@ -244,7 +261,7 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Adaptive(DownloadCardMinWidth),
+            columns = railStableAdaptive(DownloadCardMinWidth),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = DesignSpacing.MarginCompact,
@@ -290,11 +307,7 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                             else -> service.retry(task.id)
                         }
                     },
-                    onPlay = {
-                        task.fileUri?.let { uri ->
-                            scope.launch { coordinator.playDownloaded(uri, task.videoId, task.title, task.artist) }
-                        }
-                    },
+                    onPlay = { scope.launch { coordinator.playDownloads(shown, task.id) } },
                     onRevealLibrary = if (store != null) ({
                         scope.launch {
                             // Resolve the folder from the file itself, not the current download-location
@@ -344,7 +357,8 @@ fun DownloadsScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 onClick = { if (running) service.pauseAll() else service.resumeAll() },
                 text = { Text(stringResource(if (running) Res.string.downloads_pause_all else Res.string.downloads_resume_all)) },
                 icon = { Icon(if (running) Icons.Filled.Pause else Icons.Filled.PlayArrow, null) },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = LocalMiniPlayerInset.current).padding(DesignSpacing.Space16),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = LocalMiniPlayerInset.current).padding(DesignSpacing.Space16)
+                    .focusRing(FloatingActionButtonDefaults.extendedFabShape),
             )
         }
     }
@@ -528,6 +542,7 @@ private fun DownloadCard(
                             Text(downloadErrorText(task), style = MaterialTheme.typography.bodySmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             Button(
                                 onClick = onRetry,
+                                modifier = Modifier.focusRing(RoundedCornerShape(percent = 50)),
                                 shape = RoundedCornerShape(percent = 50),
                                 colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                                 contentPadding = PaddingValues(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space4),

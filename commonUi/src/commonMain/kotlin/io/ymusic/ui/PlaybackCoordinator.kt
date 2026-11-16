@@ -1,5 +1,7 @@
 package io.ymusic.ui
 
+import io.ymusic.download.DownloadState
+import io.ymusic.download.DownloadTask
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtFeedPage
 import io.ymusic.dynamicengine.yt.YtThumb
@@ -18,6 +20,8 @@ import kmpcommon.log.Logger
 import kmpcommon.log.info
 import kmpcommon.uri.Uri
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -73,6 +77,8 @@ class PlaybackCoordinator(
                         log.log(Logger.Level.WARN, "folder access lost id=$id: ${err.message}", err.cause)
                     } else if (err != null && err.code == "network") {
                         log.log(Logger.Level.WARN, "network id=$id: ${err.message}", err.cause)
+                    } else if (err != null && err.code == PlayerError.PLAYBACK_UNAVAILABLE) {
+                        log.log(Logger.Level.WARN, "playback unavailable id=$id: ${err.message}")
                     } else if (err != null) {
                         log.captureError(
                             TechnicalException(err.code, err.message ?: "player error", cause = err.cause),
@@ -208,16 +214,28 @@ class PlaybackCoordinator(
     }
 
     /**
-     * Play a finished download now (queue of one). Its library item when the store has indexed it —
-     * same id, tags and embedded-cover art as the Library; else the file by uri with [videoId]'s
-     * thumbnail, resolved at the view size by the `art:` fetcher.
+     * Play the finished [downloads] as the queue, in order, starting at the one with [startId]. Each is its
+     * library item when the store has indexed it — same id, tags and embedded-cover art as the Library;
+     * else the file by uri with its video's thumbnail, resolved at the view size by the `art:` fetcher.
      */
-    suspend fun playDownloaded(uri: String, videoId: String, title: String, artist: String?) {
-        val item = mediaStore?.findItemByUri(Uri.parse(uri))?.toLocalMedia() ?: run {
-            val art = if (mediaStore != null) youtubeArtUrl(videoId) else youtubeThumbUrl(videoId)
-            PlayableItem.LocalMedia(uri = uri, title = title, artist = artist, thumbnailUrl = art)
+    suspend fun playDownloads(downloads: List<DownloadTask>, startId: String) {
+        val finished = downloads.mapNotNull { task -> task.fileUri?.takeIf { task.state == DownloadState.COMPLETED }?.let { task to it } }
+        val startIndex = finished.indexOfFirst { (task, _) -> task.id == startId }
+        if (startIndex < 0) return
+        val store = mediaStore
+        val items = withContext(Dispatchers.IO) {
+            finished.map { (task, uri) ->
+                store?.findItemByUri(Uri.parse(uri))?.toLocalMedia() ?: PlayableItem.LocalMedia(
+                    uri = uri,
+                    title = task.title,
+                    artist = task.artist,
+                    thumbnailUrl = if (store != null) youtubeArtUrl(task.videoId) else youtubeThumbUrl(task.videoId),
+                    loudnessGainDb = task.loudnessGainDb,
+                    videoId = task.videoId,
+                )
+            }
         }
-        player.setQueue(listOf(item), origin = QueueOrigin.Downloads)
+        player.setQueue(items, playIndex = startIndex, origin = QueueOrigin.Downloads)
     }
 
     /**
@@ -337,6 +355,8 @@ fun MediaStoreItem.toLocalMedia() = PlayableItem.LocalMedia(
     album = album,
     thumbnailUrl = localArtUrl(this),
     durationMs = durationMs,
+    loudnessGainDb = loudnessGainDb,
+    videoId = youtubeVid,
 )
 
 /** A scraped video as a self-describing queue item — keeps just what the UI + downloads need. */

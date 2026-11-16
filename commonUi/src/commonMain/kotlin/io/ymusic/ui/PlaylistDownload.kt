@@ -85,8 +85,6 @@ import io.ymusic.ui.resources.playlist_uncheck_all
 import io.ymusic.ui.resources.playlist_uncheck_downloaded
 import io.ymusic.ui.resources.playlist_videos_loaded
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.getPluralString
-import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /** Video heights a playlist download can ask for; each video takes its nearest available. */
@@ -143,7 +141,7 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
             val target = session.targetPlaylist
             val store = graph.mediaStore
             if (target != null && store != null) store.addCodesToPlaylist(target.id, picked.map { it.id })
-            snackbar(getPluralString(Res.plurals.playlist_added, picked.size, picked.size))
+            snackbar(loadPluralText(Res.plurals.playlist_added, picked.size, picked.size))
             onBack()
         }
     }
@@ -192,11 +190,11 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
                     if (picked.any { it.id in offline }) confirming = picked else startDownload(picked)
                 },
                 enabled = count > 0,
-                modifier = Modifier.widthIn(max = CONTENT_MAX_WIDTH).fillMaxWidth().height(48.dp),
+                modifier = Modifier.widthIn(max = CONTENT_MAX_WIDTH).fillMaxWidth().height(48.dp).focusRing(RoundedCornerShape(12.dp)),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = downloadPrimary, contentColor = Color.White),
             ) {
-                Text(pluralStringResource(Res.plurals.playlist_download_action, count, count), fontWeight = FontWeight.Bold)
+                Text(pluralText(Res.plurals.playlist_download_action, count, count), fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -232,7 +230,7 @@ private fun LoadedHeader(session: PlaylistDownloadSession, ready: Pager.State.Re
             overflow = TextOverflow.Ellipsis,
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
-            FeedChip(pluralStringResource(Res.plurals.playlist_videos_loaded, videos.size, videos.size), selected = false, onClick = null)
+            FeedChip(pluralText(Res.plurals.playlist_videos_loaded, videos.size, videos.size), selected = false, onClick = null)
             when {
                 ready?.loadingMore == true -> CircularProgressIndicator(Modifier.size(18.dp), color = DesignColors.Accent, strokeWidth = 2.dp)
                 ready?.continuation != null -> FeedChip(stringResource(Res.string.playlist_load_more), selected = true, choice = false) { session.pager.loadMore() }
@@ -381,7 +379,7 @@ private fun VideoCheckRow(video: YtFeedItem, position: Int?, checked: Boolean, d
             .widthIn(max = CONTENT_MAX_WIDTH)
             .fillMaxWidth()
             .toggleable(value = checked, enabled = !video.live, role = Role.Checkbox, onValueChange = onToggle)
-            .a11yActionLabel(label)
+            .a11yRowLabel(label)
             .padding(horizontal = DesignSpacing.Space8, vertical = DesignSpacing.Space4),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8),

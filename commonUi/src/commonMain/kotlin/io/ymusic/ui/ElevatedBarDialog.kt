@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
@@ -41,6 +42,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -82,10 +85,15 @@ fun ElevatedBarDialog(
     val barColor = if (DesignColors.isDark) DesignColors.SurfaceDim else DesignColors.SurfaceElevated
     val wide = maxWidth > 560.dp
     // Dialog, not BasicAlertDialog: that one clamps its content to 560dp whatever the properties.
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = !wide, dismissOnClickOutside = dismissOnClickOutside)) {
+    val properties = if (wide) {
+        wideDialogProperties(dismissOnClickOutside)
+    } else {
+        DialogProperties(usePlatformDefaultWidth = true, dismissOnClickOutside = dismissOnClickOutside)
+    }
+    Dialog(onDismissRequest = onDismiss, properties = properties) {
         // Measured inside the Dialog: its constraints are the window. Outside, a caller in a scrolling
         // column has no height bound at all.
-        BoxWithConstraints {
+        BoxWithConstraints(if (wide) Modifier.safeDrawingPadding() else Modifier) {
             val windowHeight = this.maxHeight
             val bodyMax = if (windowHeight.value.isFinite() && windowHeight > 0.dp) {
                 (windowHeight * 0.85f - 112.dp).coerceAtLeast(240.dp)
@@ -121,6 +129,7 @@ fun ElevatedBarDialog(
                                 style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DesignColors.Ink),
                                 modifier = Modifier
                                     .weight(1f)
+                                    .semantics { heading() }
                                     .focusRequester(titleFocus)
                                     .onFocusChanged {
                                         if (it.isFocused) titleHadFocus = true else if (titleHadFocus) titleFocusable = false
@@ -168,3 +177,10 @@ fun DialogSecondaryButton(text: String, enabled: Boolean = true, onClick: () -> 
         colors = ButtonDefaults.textButtonColors(contentColor = DesignColors.InkSecondary),
     ) { Text(text) }
 }
+
+/**
+ * Properties for a dialog wider than the platform default. Android must not fit the decor to system
+ * windows: that path caps the window height with screen-coordinate insets on API < 30, which collapses
+ * a dialog of a freeform window placed low on the screen (Samsung DeX) to a sliver.
+ */
+internal expect fun wideDialogProperties(dismissOnClickOutside: Boolean): DialogProperties

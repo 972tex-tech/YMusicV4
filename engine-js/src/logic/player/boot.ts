@@ -7,13 +7,11 @@ import {
   installMseGlobals,
   installPlaybackQuality,
   isLiveDuration,
-  mseCreateObjectURL,
-  mseRevokeObjectURL,
   dumpDrain,
   onLoopAtEnd,
   resetDrainCounts,
 } from "../../protocol/mse";
-import { applyNavigatorLanguages, endLayoutProbes, installOrigEnv } from "./env";
+import { applyChromeShapes, applyNavigatorLanguages, endLayoutProbes, installOrigEnv } from "./env";
 import { installMediaCapabilities } from "./media_caps";
 import { applyHostScreen } from "./device";
 import { installXhr } from "../yt/xhr";
@@ -21,7 +19,8 @@ import { installFetch } from "../yt/fetch";
 import { executeWithCookies } from "../yt/cookies";
 import { HttpRequest } from "../../protocol/http";
 import { utf8Encode } from "../../transport";
-import { minterFromConfig } from "./pot";
+import { currentMinterId, minterFromConfig, remint } from "./pot";
+import { remintForDownload, setRemintHook } from "./bg_dump";
 import { installPlayerAdStrip } from "./skip_ads";
 import { installSabrIntercept } from "../yt/sabr_http";
 import { installAdaptiveFormatsHeader } from "../yt/sabr_af";
@@ -37,7 +36,7 @@ import {
   onCaptionsChanged,
   selectedCaptionVss,
 } from "./captions";
-import { playerStorageReady } from "./storage";
+import { clearPlayerStorage, isBadStoredValue, playerStorageReady } from "./storage";
 import { applyViewport, viewportHeight, viewportWidth } from "./viewport";
 
 const ORIGIN = "https://www.youtube.com";
@@ -213,6 +212,9 @@ function onHtmlPause(): void {
 function onHtmlEnded(): void {
   notifyListen("state");
 }
+function onHtmlVolumechange(): void {
+  notifyListen("gain");
+}
 
 function unbindHtmlMediaEvents(): void {
   const v = boundHtmlMedia;
@@ -223,6 +225,7 @@ function unbindHtmlMediaEvents(): void {
   v["removeEventListener"]("play", onHtmlPlay);
   v["removeEventListener"]("pause", onHtmlPause);
   v["removeEventListener"]("ended", onHtmlEnded);
+  v["removeEventListener"]("volumechange", onHtmlVolumechange);
   boundHtmlMedia = null;
 }
 
@@ -238,6 +241,7 @@ function bindHtmlMediaEvents(): void {
   v["addEventListener"]("play", onHtmlPlay);
   v["addEventListener"]("pause", onHtmlPause);
   v["addEventListener"]("ended", onHtmlEnded);
+  v["addEventListener"]("volumechange", onHtmlVolumechange);
 }
 
 let iframeListenBound = false;
@@ -355,82 +359,6 @@ function asNative<T extends Function>(name: string, impl: T): T {
   return impl;
 }
 
-/** e2e C URL is a constructor with createObjectURL. Engine URL is `{createObjectURL}` only. */
-function installNativeUrl(): void {
-  const g = globalThis as unknown as Record<string, unknown>;
-  function urlCtor(this: Record<string, unknown>, url: unknown, base?: unknown) {
-    const o: Record<string, unknown> = this && this !== globalThis ? this : {};
-    let href = String(url == null ? "" : url);
-    let b = "";
-    if (base != null) {
-      b = typeof base === "string" ? base : String((base as Record<string, unknown>)["href"] || "");
-    }
-    if (href.indexOf("://") < 0) {
-      if (href.indexOf("//") === 0) href = "https:" + href;
-      else if (href.charAt(0) === "/") href = "https://www.youtube.com" + href;
-      else href = (b || "https://www.youtube.com/") + href;
-    }
-    let protocol = "https:";
-    let hostname = "www.youtube.com";
-    let pathname = "/";
-    let search = "";
-    let hash = "";
-    const proto = href.indexOf("://");
-    if (proto >= 0) {
-      protocol = href.slice(0, proto + 1);
-      const rest = href.slice(proto + 3);
-      const slash = rest.indexOf("/");
-      const q = rest.indexOf("?");
-      const h = rest.indexOf("#");
-      let hostEnd = rest.length;
-      if (slash >= 0 && slash < hostEnd) hostEnd = slash;
-      if (q >= 0 && q < hostEnd) hostEnd = q;
-      if (h >= 0 && h < hostEnd) hostEnd = h;
-      hostname = rest.slice(0, hostEnd);
-      pathname = slash >= 0 ? rest.slice(slash) : "/";
-    } else {
-      pathname = href.charAt(0) === "/" ? href : "/" + href;
-    }
-    const qi = pathname.indexOf("?");
-    const hi = pathname.indexOf("#");
-    if (hi >= 0) {
-      hash = pathname.slice(hi);
-      pathname = pathname.slice(0, hi);
-    }
-    if (qi >= 0) {
-      search = pathname.slice(qi);
-      pathname = pathname.slice(0, qi);
-    }
-    o["href"] = href;
-    o["protocol"] = protocol;
-    o["host"] = hostname;
-    o["hostname"] = hostname;
-    o["port"] = "";
-    o["pathname"] = pathname || "/";
-    o["search"] = search;
-    o["hash"] = hash;
-    o["origin"] = protocol + "//" + hostname;
-    o["username"] = "";
-    o["password"] = "";
-    o["toString"] = function () {
-      return String(o["href"]);
-    };
-    o["toJSON"] = function () {
-      return String(o["href"]);
-    };
-    return o;
-  }
-  const ctor = asNative("URL", urlCtor) as unknown as Function & Record<string, unknown>;
-  ctor.prototype = urlCtor.prototype || {};
-  ctor["createObjectURL"] = asNative("createObjectURL", function (obj: unknown) {
-    return mseCreateObjectURL(obj as { __id?: number });
-  });
-  ctor["revokeObjectURL"] = asNative("revokeObjectURL", function (url: unknown) {
-    mseRevokeObjectURL(String(url == null ? "" : url));
-  });
-  g["URL"] = ctor;
-}
-
 function installPlayerTree(): void {
   if (document.getElementById("player")) return;
   const player = document.createElement("div");
@@ -479,6 +407,7 @@ function enableSharedOwlFlag(): void {
   /* Bl(): server picks SABR itags; field 16/17 stay empty. Client filter instead. */
   flags["html5_enable_server_format_filter"] = false;
   flags["html5_enable_server_format_filter_for_drm"] = false;
+  flags["html5_enable_drc"] = true;
   // Player fetch gzips /youtubei/v1/player when this is on; jsonObject() then
   // sees gzip magic (0x1f) instead of `{`.
   flags["wug_networking_gzip_request"] = false;
@@ -610,9 +539,11 @@ function baseJsHead(res: HttpResponse): string {
   );
 }
 
-async function fetchPlayerConfig(): Promise<Record<string, unknown>> {
+async function fetchPlayerConfig(
+  fresh: boolean = freshPlayerConfig,
+): Promise<Record<string, unknown>> {
   return callMain("get_player_config", async (pipe) => {
-    const w = pipe.sink.writeObjectAsJson(freshPlayerConfig ? { "maxAge": 0 } : {});
+    const w = pipe.sink.writeObjectAsJson(fresh ? { "maxAge": 0 } : {});
     if (w) await w;
     const c = pipe.sink.close();
     if (c) await c;
@@ -746,6 +677,8 @@ class Player {
   /** The live seek bar's 0, in media ms, as last reported: a bar position is relative to it. */
   private barStartMs = 0;
   private mintFn: ((id: Uint8Array) => unknown) | null = null;
+  /** The minter each download's content token came from, by videoId. */
+  private downloadMinters = new Map<string, number>();
   private configP: Promise<Record<string, unknown>> | null = null;
   private minterP: Promise<Record<string, unknown>> | null = null;
   private initP: Promise<Record<string, unknown>> | null = null;
@@ -794,7 +727,6 @@ class Player {
   private async doConfig(): Promise<Record<string, unknown>> {
     await initStep(playerStorageReady(), "player storage", "E20158");
     installOrigEnv();
-    installNativeUrl();
     setLocation(ORIGIN + "/", "/", "");
     const cfg = await initStep(fetchPlayerConfig(), "session scrape", "E20155");
     applyNavigatorLanguages(cfg["acceptLanguage"]);
@@ -804,7 +736,13 @@ class Player {
   private async doMinter(): Promise<Record<string, unknown>> {
     const cfg = await this.ensureConfig();
     const out: Record<string, unknown> = { "step": "minter" };
+    applyChromeShapes();
     this.mintFn = await initStep(minterFromConfig(cfg, out), "botguard", "E20156");
+    setRemintHook(function () {
+      return remint(function () {
+        return fetchPlayerConfig(true);
+      });
+    });
     endLayoutProbes();
     const self = this;
     installCaptionMinter(function (id: string) {
@@ -893,6 +831,7 @@ class Player {
         "wug_networking_gzip_request": "false",
         "html5_enable_server_format_filter": "false",
         "html5_enable_server_format_filter_for_drm": "false",
+        "html5_enable_drc": "true",
       });
     }
     this.createFn = create as (r: unknown, a: unknown, b: unknown) => unknown;
@@ -934,7 +873,14 @@ class Player {
     sizePlayerEl(root);
     out["step"] = "create";
     try {
-      this.player = create(root, param2, this.createCtx) as YtApp;
+      try {
+        this.player = create(root, param2, this.createCtx) as YtApp;
+      } catch (e) {
+        if (!isBadStoredValue(e)) throw e;
+        console.warn("player storage held a value base.js rejects; clearing it");
+        clearPlayerStorage();
+        this.player = create(root, param2, this.createCtx) as YtApp;
+      }
       (globalThis as unknown as Record<string, unknown>)["__ymPlayer"] = this.player;
       sizePlayerTree();
       fireWindowResize();
@@ -1080,9 +1026,26 @@ class Player {
     return out;
   }
 
+  /** A download's one re-mint: a new content token, or why the VM was left alone. */
+  async remintPo(videoId: string): Promise<Record<string, unknown>> {
+    await withinInitDeadline(this.ensureMinter(), "po token minter");
+    const used = this.downloadMinters.get(videoId);
+    // Its token came from a minter playback has since replaced: try the current one first, for free.
+    const status =
+      used !== undefined && used < currentMinterId() ? "reminted" : await remintForDownload();
+    const result: Record<string, unknown> = { "videoId": videoId, "status": status };
+    if (status === "reminted") result["contentPoToken"] = await this.downloadToken(videoId);
+    return result;
+  }
+
+  private downloadToken(videoId: string): Promise<string> {
+    this.downloadMinters.set(videoId, currentMinterId());
+    return this.mintToken(videoId);
+  }
+
   async mintPo(videoId: string): Promise<Record<string, unknown>> {
     const minterOut = await withinInitDeadline(this.ensureMinter(), "po token minter");
-    const token = await this.mintToken(videoId);
+    const token = await this.downloadToken(videoId);
     return {
       "videoId": videoId,
       "contentPoToken": token,
@@ -1391,6 +1354,12 @@ class Player {
     };
   }
 
+  /** base.js writes its loudness gain for the presenting format to the media element's volume. */
+  gain(): Record<string, unknown> {
+    const v = activeHtmlMedia();
+    return { "value": v ? v["volume"] : 1 };
+  }
+
   /** The presenting video's owner channel, from its player response (absent until it lands). */
   details(): Record<string, unknown> {
     const videoId = this.currentVideoId();
@@ -1579,6 +1548,10 @@ export function mintPlayerPo(videoId: string): Promise<Record<string, unknown>> 
   return ytPlayer.mintPo(videoId);
 }
 
+export function remintPlayerPo(videoId: string): Promise<Record<string, unknown>> {
+  return ytPlayer.remintPo(videoId);
+}
+
 export function setPlayerAudioTrack(id: string): void {
   ytPlayer.setAudioTrack(id);
 }
@@ -1635,6 +1608,10 @@ export function detailsPlayer(): Record<string, unknown> {
   return ytPlayer.details();
 }
 
+export function gainPlayer(): Record<string, unknown> {
+  return ytPlayer.gain();
+}
+
 export function catalogPlayer(): Record<string, unknown> {
   return ytPlayer.catalog();
 }
@@ -1644,7 +1621,7 @@ export function catalogReady(): boolean {
   return moviePlayer() != null;
 }
 
-export type ListenKind = "progress" | "state" | "picture" | "details";
+export type ListenKind = "progress" | "state" | "picture" | "details" | "gain";
 
 let catalogHook: (() => void) | null = null;
 let listenHook: ((kind: ListenKind) => void) | null = null;

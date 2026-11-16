@@ -63,6 +63,11 @@ typedef struct {
     size_t cap;
     size_t rd;
     size_t bytes;
+    /* Bumped by every change to f/n. f[span_lo..span_hi] is one contiguous run while span_gen
+       matches, so cfb_span, asked on every clock read, walks a run only after a change. */
+    uint64_t gen;
+    uint64_t span_gen;
+    size_t span_lo, span_hi;
 } Cfb;
 
 struct MseAv {
@@ -86,6 +91,10 @@ struct MseAv {
     int v_dead;
     /* Pts of the last packet vpipe took. */
     double v_fed;
+    /* The highest pts fed since the decoder last started at a keyframe, and how far it ran ahead
+       of the pictures coming out: the decoder's output delay (frame threads, reordering). */
+    double v_fed_hi;
+    double v_out_lag;
     SwrContext *swr;
     int swr_rate;
     int swr_ch;
@@ -172,8 +181,10 @@ struct MseAv {
     /* Failed opens in a row; the next try waits until mc_retry_us. */
     int mc_open_tries;
     int64_t mc_retry_us;
-    /* Set once MediaCodec gave up on this stream; the player fails playback on it. */
+    /* Set once MediaCodec gave up on this stream; the player fails playback on it. Never changes
+       after mc_failed, so the UI thread reads it without a->mu. */
     char mc_failure[128];
+    atomic_int mc_failed;
     int mc_hold;
     int mc_hold_ix;
     int64_t mc_hold_pts_us;
@@ -239,6 +250,7 @@ static void maybe_apply_video_rep(MseAv *a);
 #define MC_OPEN_RETRY_US 300000
 #else
 #define MSE_SEND_AHEAD 0.08
+#define MSE_SEND_AHEAD_MAX 1.0
 #endif
 
 /* Coded frames further apart than this are separate buffered ranges (an old island left behind a seek). */
@@ -264,9 +276,22 @@ static double mc_send_ahead(const MseAv *a)
         ahead = 0.45;
     return ahead;
 #else
-    (void)a;
-    return MSE_SEND_AHEAD;
+    /* Ahead by the decoder's output delay as well, or a deep decoder (frame-threaded dav1d at a
+       low frame rate) hands back every picture late. */
+    double ahead = MSE_SEND_AHEAD + a->v_out_lag;
+    return ahead < MSE_SEND_AHEAD_MAX ? ahead : MSE_SEND_AHEAD_MAX;
 #endif
+}
+
+/* A picture at p came out of the decoder. Rises at once and decays slowly: sending early only
+   parks a picture in vhold, sending late drops it. */
+static void v_note_out(MseAv *a, double p)
+{
+    double lag;
+    if (a->v_fed_hi < 0 || p > a->v_fed_hi)
+        return;
+    lag = a->v_fed_hi - p;
+    a->v_out_lag = lag > a->v_out_lag ? lag : a->v_out_lag * 0.95 + lag * 0.05;
 }
 
 #ifdef __ANDROID__
@@ -559,10 +584,14 @@ static int cf_cmp(const void *a, const void *b)
 static void cfb_free(Cfb *b)
 {
     size_t i;
+    uint64_t gen = b->gen;
     for (i = 0; i < b->n; i++)
         free(b->f[i].data);
     free(b->f);
     memset(b, 0, sizeof(*b));
+    /* Never back to a generation a cached span was taken at. */
+    b->gen = gen + 1;
+    b->span_gen = gen;
 }
 
 static int cfb_push(Cfb *b, double pts, double dts, double dur, int key, const uint8_t *p, size_t n)
@@ -591,6 +620,7 @@ static int cfb_push(Cfb *b, double pts, double dts, double dur, int key, const u
     b->f[b->n].n = n;
     b->n++;
     b->bytes += n;
+    b->gen++;
     return 0;
 }
 
@@ -611,6 +641,7 @@ static void cfb_drop(Cfb *b, double start, double end)
         b->f[w++] = b->f[i];
     }
     b->n = w;
+    b->gen++;
     if (b->rd > dropped_before)
         b->rd -= dropped_before;
     else
@@ -673,6 +704,7 @@ static void cfb_drop_fake(Cfb *b)
         b->f[w++] = b->f[i];
     }
     b->n = w;
+    b->gen++;
     if (b->rd > dropped_before)
         b->rd -= dropped_before;
     else
@@ -1164,6 +1196,29 @@ static void mc_hold_drop(MseAv *a, int render)
         return;
     AMediaCodec_releaseOutputBuffer(a->mc, (size_t)a->mc_hold_ix, render);
     a->mc_hold = 0;
+}
+
+/* Caller holds a->mu. Unhooks the codec from `a`; the caller stops it with mc_retire outside the lock. */
+static AMediaCodec *mc_detach(MseAv *a)
+{
+    AMediaCodec *mc = a->mc;
+    if (!mc)
+        return NULL;
+    mc_hold_drop(a, 0);
+    if (a->mc_bsf_out)
+        av_packet_unref(a->mc_bsf_out);
+    a->mc = NULL;
+    a->mc_eos = 0;
+    return mc;
+}
+
+static void mc_retire(AMediaCodec *mc)
+{
+    if (!mc)
+        return;
+    AMediaCodec_stop(mc);
+    AMediaCodec_delete(mc);
+    vlog("close mediacodec (retired)");
 }
 
 static void mc_close(MseAv *a)
@@ -1799,10 +1854,12 @@ static int mc_try_open(MseAv *a)
             return MC_OPEN_WAIT;
         }
         a->mc_fail = 1;
-        if (!a->mc_failure[0])
+        if (!a->mc_failure[0]) {
             snprintf(a->mc_failure, sizeof(a->mc_failure), "%s %dx%d: no MediaCodec after %d tries",
                      avcodec_get_name(a->vpar->codec_id), a->vpar->width, a->vpar->height,
                      a->mc_open_tries);
+            atomic_store_explicit(&a->mc_failed, 1, memory_order_release);
+        }
         mse_critf(MSE_LOG_ERROR, "mse-v %s", a->mc_failure);
         return -1;
     }
@@ -2232,6 +2289,7 @@ MseAv *mse_av_create(void)
     pthread_mutex_init(&a->desc_mu, NULL);
     a->a_sent = -1;
     a->v_sent = -1;
+    a->v_fed_hi = -1;
     a->v_switch_pts = -1;
     a->v_err_key = -1;
     a->need_rap[0] = 1;
@@ -2833,6 +2891,7 @@ static void keep_coded(MseAv *a, int idx, Cfb *tmp, Cfb *dst, double win_start, 
             cfb_push(dst, kept.f[i].pts, kept.f[i].dts, kept.f[i].dur, kept.f[i].key,
                      kept.f[i].data, kept.f[i].n);
         qsort(dst->f, dst->n, sizeof(Cf), cf_cmp);
+        dst->gen++;
         if (sp) {
             double sent_max = -1e300;
             for (j = 0; j < nsp; j++) {
@@ -3286,20 +3345,24 @@ void mse_av_change_type(MseAv *a, int audio)
     av_unlock(a, audio);
 }
 
-void mse_av_rest_video(MseAv *a, int on, double clock)
+void *mse_av_rest_video(MseAv *a, int on, double clock)
 {
+    void *retired = NULL;
     if (!a)
-        return;
+        return NULL;
     pthread_mutex_lock(&a->mu);
     on = on ? 1 : 0;
     if (a->v_rest == on) {
         pthread_mutex_unlock(&a->mu);
-        return;
+        return NULL;
     }
     a->v_rest = on;
-    if (on)
+    if (on) {
+#ifdef __ANDROID__
+        retired = mc_detach(a);
+#endif
         close_video_decoder(a);
-    else {
+    } else {
         double t;
         cfb_drop_fake(&a->vf);
         /* v_sent froze at rest-on. Resync to the playhead. */
@@ -3319,6 +3382,16 @@ void mse_av_rest_video(MseAv *a, int on, double clock)
     }
     mse_critf(MSE_LOG_INFO, "mse-v rest-video %d vf=%zu clock=%.3f", on, a->vf.n, clock);
     pthread_mutex_unlock(&a->mu);
+    return retired;
+}
+
+void mse_av_retire_decoder(void *decoder)
+{
+#ifdef __ANDROID__
+    mc_retire((AMediaCodec *)decoder);
+#else
+    (void)decoder;
+#endif
 }
 
 int mse_av_video_resting(const MseAv *a)
@@ -3373,6 +3446,7 @@ static void cfb_drop_span(Cfb *b, size_t from, size_t to)
     }
     memmove(&b->f[from], &b->f[to], (b->n - to) * sizeof(Cf));
     b->n -= to - from;
+    b->gen++;
     if (b->rd >= to)
         b->rd -= to - from;
     else if (b->rd > from)
@@ -3470,7 +3544,7 @@ void mse_av_flush(MseAv *a, int audio, int video)
 
 /* The buffered range around `at`: frames apart by up to MSE_SPAN_GAP_S count as one range. 0 when
    no range reaches within MSE_SPAN_EDGE_S of `at`. */
-static int cfb_span(const Cfb *b, double at, double *first, double *last)
+static int cfb_span(Cfb *b, double at, double *first, double *last)
 {
     size_t lo = 0, hi, i, j;
     if (!b->n || b->f[0].pts > at + MSE_SPAN_EDGE_S)
@@ -3483,12 +3557,20 @@ static int cfb_span(const Cfb *b, double at, double *first, double *last)
         else
             hi = mid;
     }
-    for (j = lo; j + 1 < b->n && b->f[j + 1].pts <= b->f[j].pts + b->f[j].dur + MSE_SPAN_GAP_S; j++)
-        ;
+    if (b->span_gen == b->gen && b->span_lo <= lo && lo <= b->span_hi && b->span_hi < b->n) {
+        i = b->span_lo;
+        j = b->span_hi;
+    } else {
+        for (j = lo; j + 1 < b->n && b->f[j + 1].pts <= b->f[j].pts + b->f[j].dur + MSE_SPAN_GAP_S; j++)
+            ;
+        for (i = lo; i > 0 && b->f[i].pts <= b->f[i - 1].pts + b->f[i - 1].dur + MSE_SPAN_GAP_S; i--)
+            ;
+        b->span_lo = i;
+        b->span_hi = j;
+        b->span_gen = b->gen;
+    }
     if (b->f[j].pts + b->f[j].dur + MSE_SPAN_EDGE_S < at)
         return 0;
-    for (i = lo; i > 0 && b->f[i].pts <= b->f[i - 1].pts + b->f[i - 1].dur + MSE_SPAN_GAP_S; i--)
-        ;
     *first = b->f[i].pts;
     *last = b->f[j].pts + b->f[j].dur;
     return 1;
@@ -3632,11 +3714,9 @@ int mse_av_video_failure(MseAv *a, char *out, int cap)
         return 0;
     out[0] = 0;
 #ifdef __ANDROID__
-    pthread_mutex_lock(&a->mu);
-    failed = a->mc_failure[0] != 0;
+    failed = atomic_load_explicit(&a->mc_failed, memory_order_acquire);
     if (failed)
         snprintf(out, (size_t)cap, "%s", a->mc_failure);
-    pthread_mutex_unlock(&a->mu);
 #endif
     return failed;
 }
@@ -4136,11 +4216,13 @@ static int pull_video(MseAv *a, double clock, int *w, int *h, double *pts, VShow
     maybe_apply_video_rep(a);
     while (vf_skip_stale(a, clock))
         ;
-    /* A running MediaCodec takes the next GOP early; only a resync waits. */
+    /* A running decoder takes the next GOP early; only a resync waits. */
     if (a->vf.rd < a->vf.n && coded_is_rap(a, &a->vf.f[a->vf.rd]) &&
         a->vf.f[a->vf.rd].pts > clock + early
 #ifdef __ANDROID__
         && !(a->mc && !a->need_rap[0])
+#else
+        && !(vpipe_is_open(a->vpipe) && !a->need_rap[0])
 #endif
     ) {
         pthread_mutex_unlock(&a->mu);
@@ -4239,6 +4321,8 @@ static int pull_video(MseAv *a, double clock, int *w, int *h, double *pts, VShow
         if (got == 0) {
             double p = frame->pts != AV_NOPTS_VALUE ? frame->pts / 1000.0 : clock;
             double d = p - clock;
+            if (frame->pts != AV_NOPTS_VALUE)
+                v_note_out(a, p);
             if (p > clock + early && frame->pts != AV_NOPTS_VALUE) {
                 if (!a->vhold) {
                     a->vhold = av_frame_alloc();
@@ -4312,7 +4396,7 @@ static int pull_video(MseAv *a, double clock, int *w, int *h, double *pts, VShow
             vlog_starve_empty(a, clock, got);
             break;
         }
-        if (a->vf.f[a->vf.rd].pts > clock + MSE_SEND_AHEAD) {
+        if (a->vf.f[a->vf.rd].pts > clock + mc_send_ahead(a)) {
             vlog_starve_ahead(a, clock, a->vf.rd);
             break;
         }
@@ -4329,9 +4413,13 @@ static int pull_video(MseAv *a, double clock, int *w, int *h, double *pts, VShow
                 continue;
             }
             if (rap) {
+                if (a->need_rap[0])
+                    a->v_fed_hi = sp;
                 a->need_rap[0] = 0;
                 a->v_seen_idr = 1;
             }
+            if (sp > a->v_fed_hi)
+                a->v_fed_hi = sp;
             if (vdbg_ok())
                 vlog("send pts=%.3f rap=%d clock=%.3f", sp, rap, clock);
         }

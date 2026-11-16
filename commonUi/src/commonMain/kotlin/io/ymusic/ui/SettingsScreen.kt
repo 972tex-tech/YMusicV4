@@ -113,6 +113,7 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.runSuspendCatching
+import projectcommon.log.captureUnlessEnvironmental
 
 @Composable
 fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Unit = {}) {
@@ -138,7 +139,7 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
     }
     suspend fun applyLocale(gl: String?) {
         runSuspendCatching { graph.engines.applyYtLocale(gl) }
-            .onFailure { graph.logger?.fork("settings")?.captureError(it, "applyYtLocale failed — UI reloads as if it changed") }
+            .onFailure { graph.logger?.fork("settings")?.captureUnlessEnvironmental(it, "applyYtLocale failed — UI reloads as if it changed") }
         localeRevision++ // re-ask: the labels and the automatic answer follow the new locale
         graph.localeEpoch.value++ // locale-shaped caches (Discover feeds) refetch
     }

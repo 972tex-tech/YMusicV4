@@ -58,10 +58,12 @@ import io.ymusic.ui.resources.device_link_unlock_title
 import io.ymusic.ui.resources.dialog_cancel
 import io.ymusic.ui.resources.settings_link_devices
 import io.ymusic.ui.resources.settings_link_devices_hint
+import kmpcommon.log.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.log.captureUnlessEnvironmental
 
 @Composable
 internal fun LinkDevicesRow(graph: AppGraph, signedIn: Boolean, onLogin: () -> Unit) {
@@ -128,7 +130,7 @@ private fun LinkDevicesDialog(
         } catch (c: CancellationException) {
             throw c
         } catch (t: Throwable) {
-            log?.captureError(t, "device-link scan failed")
+            log?.captureUnlessEnvironmental(t, "device-link scan failed")
             error = deviceLinkErrorText(t)
         }
     }
@@ -159,7 +161,11 @@ private fun LinkDevicesDialog(
         } catch (c: CancellationException) {
             throw c
         } catch (t: Throwable) {
-            log?.captureError(t, "device-link send failed")
+            if (t.message == "no-lock") {
+                log?.log(Logger.Level.WARN, "device-link send stopped: no screen lock", t)
+            } else {
+                log?.captureUnlessEnvironmental(t, "device-link send failed")
+            }
             error = deviceLinkErrorText(t)
         } finally {
             if (!done) busy = false
@@ -260,7 +266,7 @@ private fun DeviceLinkNeedLogin(onLogin: () -> Unit) {
 }
 
 @Composable
-private fun AccentButton(text: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun AccentButton(text: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -268,6 +274,7 @@ private fun AccentButton(text: String, enabled: Boolean, onClick: () -> Unit) {
                 if (enabled) DesignColors.Accent else DesignColors.Accent.copy(alpha = 0.4f),
                 RoundedCornerShape(8.dp),
             )
+            .focusRing(RoundedCornerShape(8.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 14.dp),
         contentAlignment = Alignment.Center,

@@ -135,6 +135,12 @@ interface Player {
     /** Audio-focus ducking: lowers what the engine plays without touching [volume] or [config]. */
     fun setDucked(ducked: Boolean)
 
+    /** Lowers playback further while voice input is listening, independent of [setDucked]. */
+    fun setVoiceDucked(ducked: Boolean)
+
+    /** No view shows the picture: the engine rests its video decoder without touching [config]'s quality. */
+    fun setVideoHidden(hidden: Boolean)
+
     /** Last applied playback speed. Write pushes [PlaybackConfig]; not a flow. */
     var speed: Float
 
@@ -217,11 +223,13 @@ interface Player {
 /**
  * Lazy engine factories — an engine is only constructed when the queue first needs its item type.
  * [youtube] may be null on hosts without a YouTube engine; a [PlayableItem.YtMedia] then fails with
- * `E60050` through [Player.status] instead of crashing.
+ * `E60050` through [Player.status] instead of crashing. [unavailable] is for a host whose media
+ * backend failed to come up: no engine is built and every load publishes it.
  */
 class PlayerEngines(
     val local: () -> LocalPlayer,
     val youtube: (() -> YtEngine)? = null,
+    val unavailable: PlayerError? = null,
 )
 
 fun createPlayer(

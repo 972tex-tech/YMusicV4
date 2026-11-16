@@ -22,6 +22,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import projectcommon.error.DISK_FULL_CODE
 import projectcommon.error.NETWORK_CODE
+import projectcommon.error.PLAYBACK_UNAVAILABLE_CODE
 import projectcommon.error.TechnicalException
 import projectcommon.error.codedError
 import projectcommon.error.errorCode
@@ -232,7 +233,7 @@ class DownloadService(
     suspend fun relocate(id: String, fileUri: String) {
         val task = store.get(id)?.takeIf { it.state == DownloadState.COMPLETED } ?: return
         val bytes = task.totalBytes ?: task.downloadedBytes
-        store.updateCompleted(id, fileUri, bytes, now())
+        store.updateCompleted(id, fileUri, bytes, task.loudnessGainDb, now())
         _changes.emit(DownloadChange.Completed(id, fileUri, bytes))
     }
 
@@ -386,6 +387,7 @@ class DownloadService(
                 code == DownloadFolderAccessException.CODE -> taskLog?.log(Logger.Level.WARN, "download folder not writable", e)
                 code == DISK_FULL_CODE -> taskLog?.log(Logger.Level.WARN, "download hit full storage", e)
                 code == NETWORK_CODE -> taskLog?.log(Logger.Level.WARN, "download hit a network failure", e)
+                code == PLAYBACK_UNAVAILABLE_CODE -> taskLog?.log(Logger.Level.WARN, "download needs the media library", e)
                 code == StillProcessingException.CODE -> taskLog?.log(Logger.Level.WARN, "download of a replay still processing", e)
                 else -> taskLog?.captureError(e, "download failed")
             }
@@ -396,7 +398,7 @@ class DownloadService(
         withContext(NonCancellable) {
             updates.close()
             writer.join()
-            store.updateCompleted(task.id, result.uri, result.bytes, now())
+            store.updateCompleted(task.id, result.uri, result.bytes, result.loudnessGainDb, now())
             _changes.emit(DownloadChange.Completed(task.id, result.uri, result.bytes))
             try {
                 store.get(task.id)?.let { onCompleted?.invoke(it, result) }

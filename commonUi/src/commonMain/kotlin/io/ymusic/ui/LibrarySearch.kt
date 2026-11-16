@@ -50,7 +50,6 @@ import io.ymusic.ui.resources.unknown_album
 import io.ymusic.ui.resources.unknown_artist
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.onStart
-import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -141,7 +140,8 @@ private fun LibrarySearchContent(
                     // Matched songs get the Library's min-width multi-column sizing on large screens
                     // (columns == 1 collapses the grid back to the phone-width single-column list); the
                     // online hand-off, section headers and artist/album rows always span the full width.
-                    val columns = if (maxWidth >= LibraryGridMinWidth) librarySongColumns(maxWidth) else 1
+                    val layoutWidth = railStableWidth(maxWidth)
+                    val columns = if (layoutWidth >= LibraryGridMinWidth) librarySongColumns(layoutWidth) else 1
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(columns),
                         modifier = Modifier.fillMaxSize(),
@@ -219,7 +219,7 @@ private fun LazyGridScope.groupSection(
             Column(Modifier.weight(1f)) {
                 Text(name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
-                    pluralStringResource(Res.plurals.n_songs, members.size, members.size),
+                    pluralText(Res.plurals.n_songs, members.size, members.size),
                     style = ListSubStyle,
                     modifier = Modifier.padding(top = 4.dp),
                 )

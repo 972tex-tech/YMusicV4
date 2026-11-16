@@ -8,6 +8,16 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
   (live suggestions, paged results) over `:dynamic-engine`'s `yt` task methods; LibraryScreen over `:media-store`
   flows; the persistent mini-player + full Now Playing (transport, sleep timer, capability selectors, queue).
 
+- **Now Playing layouts** — a tall window stacks video, controls and queue; a wide one puts the queue in a side
+  pane, but only from `SideBySideMinWidth`, below which the pane would out-size the video and the layout stacks
+  (video height capped so the list stays usable).
+
+- **Navigation shell** — phones use the drawer and the bottom mini-player. Windows at least 750dp wide and 480dp tall
+  use `AppRail` (`Rail.kt`) instead: a left rail carrying the same sections and the mini-player, which hosts the shared
+  video surface in its art tile. The expanded rail always sits beside the content (expanding moves it over) and starts
+  open on desktop windows from 1200dp; touch windows start collapsed. A TV expands it while it holds focus. Now Playing and Search are the same screens on every size.
+  Width-based layout reads `railStableWidth`, so expanding resizes cards without changing a column count.
+
 - **SponsorBlock seam** — `ymusic.ui.sponsorblock`: `SponsorBlockApi` + `MockSponsorBlockApi` +
   SQLite cache/whitelist (`SponsorBlockStore`) + `SponsorBlockService` + `SponsorBlockCoordinator`
   (queue videoId → `Player.setSkipSegments`). The mock returns a 0–10s intro and a 60–75s mid-roll;
@@ -59,6 +69,8 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
   exempt).
   - The `AppSettings.uiLanguage` setting drives `applyUiLocale` (expect/actual; JVM/Android set the default locale,
     iOS = next launch).
+  - Plurals go through `pluralText` / `loadPluralText`, never compose-resources' own lookups: those throw while the
+    platform locale's language has no CLDR plural rules, and Android can restore such a device locale over ours.
   - `App` rebuilds under `key(tag)` with `LocalLayoutDirection` derived from the effective locale (RTL mirrors the
     whole UI).
   - `SettingsScreen` hosts the picker.

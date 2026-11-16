@@ -295,6 +295,10 @@
     <string name="cd_search">Buscar</string>
     <string name="cd_back">Atrás</string>
     <string name="cd_clear">Borrar</string>
+    <string name="cd_voice_search">Buscar por voz</string>
+    <string name="voice_search_press_ok">Pulsa Aceptar para buscar por voz</string>
+    <string name="voice_search_listening">Escuchando…</string>
+    <string name="voice_search_missed">No se ha entendido. Pulsa Aceptar para volver a intentarlo</string>
     <string name="cd_close">Cerrar</string>
     <string name="cd_more">Más</string>
     <string name="cd_collapse">Contraer</string>
@@ -538,6 +542,13 @@
     <string name="dialog_ok">Aceptar</string>
     <string name="folder_picker_disabled">La app Archivos del sistema está desactivada. Actívala para elegir una carpeta.</string>
     <string name="folder_picker_open_settings">Abrir ajustes</string>
+    <string name="folder_picker_title">Elige una carpeta de música</string>
+    <string name="folder_picker_use_folder">Usar esta carpeta</string>
+    <string name="folder_picker_empty">No hay carpetas aquí</string>
+    <string name="folder_picker_storage_denied">Permite el acceso a tus archivos de música en los ajustes para elegir una carpeta.</string>
+    <string name="folder_picker_companion_message">Este dispositivo no tiene selector de carpetas. Para elegir carpetas, descarga e instala YMusic Files, una pequeña app auxiliar de YMusic, desde este enlace y vuelve a intentarlo.</string>
+    <string name="folder_picker_companion_update">YMusic Files necesita una actualización para funcionar con esta versión de YMusic. Descarga e instala la versión más reciente desde este enlace y vuelve a intentarlo.</string>
+    <string name="folder_picker_companion_open">Abrir enlace</string>
     <string name="folder_picker_missing">Este dispositivo no tiene selector de carpetas, así que no se puede elegir una carpeta.</string>
     <string name="error_supervised_account">Esta cuenta de Google está supervisada, así que no se puede usar YouTube aquí. Cierra sesión o cambia a otra cuenta.</string>
     <string name="settings_player_cache">Caché del reproductor</string>
@@ -650,4 +661,11 @@
     <string name="download_quality_medium">Media</string>
     <string name="download_quality_best">Mejor</string>
     <string name="download_kbps">%1$d kbps</string>
+
+    <!-- Windows refused a native library (desktop) -->
+    <string name="native_blocked">Windows ha bloqueado una parte de YMusic.</string>
+    <string name="media_engine_unavailable">La música y los vídeos no se pueden reproducir aquí, pero puedes seguir explorando y buscando.</string>
+    <string name="native_blocked_help">En un PC del trabajo o de la escuela, pide a tu administrador que permita YMusic. En tu propio PC, revisa Control inteligente de aplicaciones en Seguridad de Windows.</string>
+    <!-- A feed reloading in place (desktop) -->
+    <string name="a11y_refreshing">Actualizando</string>
 </resources>

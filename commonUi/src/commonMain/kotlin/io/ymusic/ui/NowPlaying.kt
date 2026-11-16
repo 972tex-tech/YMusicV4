@@ -6,6 +6,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -103,10 +105,12 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -115,7 +119,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
@@ -157,6 +164,7 @@ import io.ymusic.settings.flow
 import io.ymusic.settings.put
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.a11y_behind_live
+import io.ymusic.ui.resources.a11y_downloaded
 import io.ymusic.ui.resources.a11y_now_playing
 import io.ymusic.ui.resources.a11y_playback_position
 import io.ymusic.ui.resources.a11y_x_of_y
@@ -192,6 +200,7 @@ import io.ymusic.ui.resources.error_captcha
 import io.ymusic.ui.resources.error_network
 import io.ymusic.ui.resources.error_supervised_account
 import io.ymusic.ui.resources.ic_sponsor_block
+import io.ymusic.ui.resources.media_engine_unavailable
 import io.ymusic.ui.resources.menu_add_to_playlist
 import io.ymusic.ui.resources.menu_details_comments
 import io.ymusic.ui.resources.menu_go_to_album
@@ -229,6 +238,7 @@ import io.ymusic.ui.sponsorblock.SponsorBlockState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.Playability
@@ -259,12 +269,18 @@ private fun inlineControlsOffscreen(listState: LazyListState): Boolean {
     return item0 == null || item0.offset + item0.size <= 0
 }
 
+/** True when list item 0 is taller than the list itself: in a window this short the inline transport never shows whole. */
+private fun inlineControlsClipped(listState: LazyListState): Boolean {
+    val layoutInfo = listState.layoutInfo
+    val item0 = layoutInfo.visibleItemsInfo.find { it.index == 0 } ?: return false
+    return item0.size > layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+}
+
 /**
  * The docked mini-player (design/final/library.html `.mini`): tap to expand to Now Playing.
  *
- * [surface] is the shared video container rendered as the 36dp art tile — only passed on platforms
- * whose surface tolerates thumbnail size ([AppGraph.surfaceScalesDown]); it keeps picture playing
- * while Now Playing is closed.
+ * [surface] is the shared video container, kept mounted under the cover so playback goes on while Now Playing is
+ * closed.
  */
 @Composable
 fun MiniPlayer(
@@ -278,7 +294,6 @@ fun MiniPlayer(
     val queue by coordinator.player.queue.collectAsState()
     val item = queue.currentItem ?: return
 
-    val duration = progress.durationMs
     val density = LocalDensity.current
     var colH by remember { mutableIntStateOf(0) }
     val tileH = with(density) { if (colH > 0) colH.toDp() else 48.dp }
@@ -290,7 +305,7 @@ fun MiniPlayer(
         modifier = modifier.fillMaxWidth(),
         commitFractionOfHeight = 1f / 3f,
         restingShadow = true,
-        enabled = !desktopLayoutHole,
+        enabled = platformUsesTouch && !desktopLayoutHole,
     ) {
         Row(
             modifier = Modifier
@@ -298,42 +313,13 @@ fun MiniPlayer(
                 .clickable(onClick = onExpand),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier
-                    .height(tileH)
-                    .aspectRatio(16f / 9f)
-                    .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
-                contentAlignment = Alignment.Center,
-            ) {
-                val audioOnly = showsAudioOnly(coordinator.player)
-                if (surface != null) {
-                    VideoHole(coordinator.player, surface, Modifier.fillMaxSize())
-                }
-                if (audioOnly || surface == null) {
-                    AudioOnlyCover(item.displayThumbnailUrl, Modifier.fillMaxSize())
-                }
-                BufferingIndicator(status, size = 22.dp, strokeWidth = 2.dp)
-                Box(
-                    Modifier.matchParentSize()
-                        .focusProperties { canFocus = false }
-                        .a11ySilent()
-                        .clickable(onClick = onExpand),
-                )
-            }
+            MiniArtTile(coordinator, item, surface, onExpand, Modifier.height(tileH).aspectRatio(16f / 9f), coverOnly = true)
             Column(
                 Modifier.weight(1f)
                     .background(DesignColors.SurfaceDim)
                     .onSizeChanged { colH = it.height },
             ) {
-                LinearProgressIndicator(
-                    progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
-                    modifier = Modifier.fillMaxWidth().height(4.dp).a11ySilent(),
-                    color = DesignColors.Accent,
-                    trackColor = Color.Transparent,
-                    strokeCap = StrokeCap.Butt,
-                    drawStopIndicator = {},
-                    gapSize = 0.dp,
-                )
+                MiniProgress(progress, Modifier.fillMaxWidth().height(4.dp))
                 Row(
                     Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -378,12 +364,59 @@ fun MiniPlayer(
     }
 }
 
+/** The mini player's picture: the shared video [surface] while one is passed, else the cover. */
+@Composable
+internal fun MiniArtTile(
+    coordinator: PlaybackCoordinator,
+    item: PlayableItem,
+    surface: (@Composable (Modifier) -> Unit)?,
+    onExpand: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Shows the cover over the [surface], which stays mounted so playback keeps going. */
+    coverOnly: Boolean = false,
+) {
+    val status by coordinator.player.status.collectAsState()
+    Box(
+        modifier.then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
+        contentAlignment = Alignment.Center,
+    ) {
+        val audioOnly = showsAudioOnly(coordinator.player)
+        if (surface != null) {
+            VideoHole(coordinator.player, surface, Modifier.fillMaxSize())
+        }
+        if (coverOnly || audioOnly || surface == null) {
+            AudioOnlyCover(item.displayThumbnailUrl, Modifier.fillMaxSize())
+        }
+        BufferingIndicator(status, size = 22.dp, strokeWidth = 2.dp)
+        Box(
+            Modifier.matchParentSize()
+                .focusProperties { canFocus = false }
+                .a11ySilent()
+                .clickable(onClick = onExpand),
+        )
+    }
+}
+
+@Composable
+internal fun MiniProgress(progress: Progress, modifier: Modifier = Modifier) {
+    val duration = progress.durationMs
+    LinearProgressIndicator(
+        progress = { if (duration > 0) progress.positionMs.toFloat() / duration else 0f },
+        modifier = modifier.a11ySilent(),
+        color = DesignColors.Accent,
+        trackColor = Color.Transparent,
+        strokeCap = StrokeCap.Butt,
+        drawStopIndicator = {},
+        gapSize = 0.dp,
+    )
+}
+
 /**
- * Full Now Playing (design/final/now-playing.html). Layout follows the window's orientation:
+ * Full Now Playing (design/final/now-playing.html). Layout follows the window's shape:
  * portrait/tablet = the top-bar · video · meta · seek · transport · queue column; landscape
- * (width > height) = the split — video fills the left with the controls overlaid on it, and a fixed
- * right pane carries the top bar and the queue. Full screen overrides both: video only, edge to
- * edge, with the auto-hiding overlay.
+ * (width > height, from [SideBySideMinWidth]) = the split — video fills the left with the controls
+ * overlaid on it, and a fixed right pane carries the top bar and the queue. Full screen overrides
+ * both: video only, edge to edge, with the auto-hiding overlay.
  */
 private val LocalOpenChannel = staticCompositionLocalOf<(url: String, title: String) -> Unit> { { _, _ -> } }
 
@@ -427,10 +460,17 @@ fun NowPlayingScreen(
     }
     val shell = @Composable {
         BoxWithConstraints {
+            val wide = maxWidth > maxHeight
             when {
                 fullscreen -> FullscreenVideo(graph, coordinator, onExit = { fullscreen = false })
-                maxWidth > maxHeight -> LandscapeNowPlaying(graph, coordinator, onClose, onFullscreen = { fullscreen = true })
-                else -> PortraitNowPlaying(graph, coordinator, onClose, onFullscreen = { fullscreen = true })
+                wide && maxWidth >= SideBySideMinWidth -> LandscapeNowPlaying(graph, coordinator, onClose, onFullscreen = { fullscreen = true })
+                else -> PortraitNowPlaying(
+                    graph,
+                    coordinator,
+                    onClose,
+                    onFullscreen = { fullscreen = true },
+                    videoHeight = if (wide) minOf(maxWidth * 9f / 16f, maxHeight * WideStackedVideoShare) else null,
+                )
             }
         }
     }
@@ -438,7 +478,7 @@ fun NowPlayingScreen(
         onDismiss = onClose,
         modifier = Modifier.then(if (fullscreen) Modifier else Modifier.statusBarsPadding()).fillMaxSize(),
         onPeek = onPeek,
-        enabled = !desktopLayoutHole,
+        enabled = platformUsesTouch && !desktopLayoutHole,
     ) {
         // No full-screen fill: the video hole is opaque (TextureView) and the chrome paints
         // Surface itself. A wrapping Surface under the picture is 1× overdraw on every pixel.
@@ -449,14 +489,91 @@ fun NowPlayingScreen(
                     if (event.type == KeyEventType.KeyDown && VideoOverlayNative.armed) VideoOverlayNative.show()
                     false
                 },
-                content = { shell() },
-            )
+            ) {
+                if (platformUsesTouch) shell() else FocusCatcher { shell() }
+            }
         }
     }
 }
 
+/**
+ * Without touch, focus must never fall out of Now Playing: when the focused control goes away (Full screen swaps the
+ * layout, auto-hidden controls leave composition), a catcher takes focus so keys cannot reach anything else composed.
+ * It can take focus only while armed, so it is never a D-pad target otherwise; any key on it brings the controls back
+ * and moves focus to the first one, or to the seek bar for Left/Right.
+ */
+/** The overlay control a [FocusCatcher] hands focus to: play/pause. */
+private val LocalOverlayEntryFocus = staticCompositionLocalOf<FocusRequester?> { null }
+
+/** The video overlay's seek bar, where a [FocusCatcher] sends Left/Right. */
+private val LocalOverlaySeekFocus = staticCompositionLocalOf<FocusRequester?> { null }
+
+@Composable
+private fun FocusCatcher(content: @Composable () -> Unit) {
+    val catcher = remember { FocusRequester() }
+    val entry = remember { FocusRequester() }
+    val seekBar = remember { FocusRequester() }
+    var enterSeekBar by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var armed by remember { mutableStateOf(false) }
+    var held by remember { mutableStateOf(false) }
+    var rootHasFocus by remember { mutableStateOf(false) }
+    var enterControls by remember { mutableStateOf(0) }
+    LaunchedEffect(enterControls) {
+        if (enterControls == 0) return@LaunchedEffect
+        // The controls compose a frame or two after show(); hand focus over once play/pause exists.
+        repeat(ENTRY_FOCUS_FRAMES) {
+            withFrameNanos { }
+            if (enterSeekBar && seekBar.requestFocus(FocusDirection.Enter)) return@LaunchedEffect
+            if (entry.requestFocus(FocusDirection.Enter)) return@LaunchedEffect
+        }
+    }
+    Box(
+        Modifier.fillMaxSize()
+            .onFocusChanged { state ->
+                rootHasFocus = state.hasFocus
+                if (state.hasFocus) return@onFocusChanged
+                // A frame later, in case focus was only moving between controls.
+                scope.launch {
+                    withFrameNanos { }
+                    if (rootHasFocus) return@launch
+                    armed = true
+                    withFrameNanos { }
+                    catcher.requestFocus(FocusDirection.Enter)
+                }
+            }
+            .focusGroup(),
+    ) {
+        Box(
+            Modifier.size(1.dp)
+                .focusProperties { canFocus = armed }
+                .focusRequester(catcher)
+                .onFocusChanged { state ->
+                    if (state.isFocused) {
+                        held = true
+                    } else if (held) {
+                        held = false
+                        armed = false
+                    }
+                }
+                .onKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown) {
+                        VideoOverlayNative.show()
+                        enterSeekBar = event.key == Key.DirectionLeft || event.key == Key.DirectionRight
+                        enterControls++
+                    }
+                    true
+                }
+                .focusable(),
+        )
+        CompositionLocalProvider(LocalOverlayEntryFocus provides entry, LocalOverlaySeekFocus provides seekBar) { content() }
+    }
+}
+
+private const val ENTRY_FOCUS_FRAMES = 10
+
 /** The item's artist, or for a YouTube video queued without one, the channel its player response names. */
-private fun artistText(current: PlayableItem?, status: PlaybackStatus): String? =
+internal fun artistText(current: PlayableItem?, status: PlaybackStatus): String? =
     current?.displaySubtitle ?: currentDetails(current as? PlayableItem.YtMedia, status)?.channelTitle
 
 private fun currentDetails(video: PlayableItem.YtMedia?, status: PlaybackStatus) =
@@ -533,6 +650,7 @@ private fun PortraitNowPlaying(
     coordinator: PlaybackCoordinator,
     onClose: () -> Unit,
     onFullscreen: () -> Unit,
+    videoHeight: Dp? = null,
 ) {
     val player = coordinator.player
     val status by player.status.collectAsState()
@@ -550,7 +668,7 @@ private fun PortraitNowPlaying(
     // Do not onDispose armed=false here: Compose disposes Portrait after Landscape
     // has set armed=true, which left clicks ignored (poke requires armed).
     LaunchedEffect(listState) {
-        snapshotFlow { inlineControlsOffscreen(listState) }.collect { off ->
+        snapshotFlow { inlineControlsOffscreen(listState) || inlineControlsClipped(listState) }.collect { off ->
             val becameArmed = off && !VideoOverlayNative.armed
             VideoOverlayNative.armed = off
             // Only when item 0 first leaves the viewport — not on later queue scrolls.
@@ -573,7 +691,8 @@ private fun PortraitNowPlaying(
         // Video surface — the shell's shared container; each engine shows/hides its own picture.
         // Black: HW overlay letterbox is transparent, so this fill is the bars.
         Box(
-            Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+            Modifier.fillMaxWidth()
+                .then(if (videoHeight != null) Modifier.height(videoHeight) else Modifier.aspectRatio(16f / 9f))
                 .then(if (desktopLayoutHole) Modifier else Modifier.background(Color.Black)),
         ) {
             PlayerSurfaceHole(
@@ -806,8 +925,17 @@ private fun rememberLocateCurrent(listState: LazyListState, currentIndex: Int, i
     }
 }
 
+private val QueuePaneMinWidth = 320.dp
+
 /** The landscape queue pane: 30% of the window, kept between 320dp (phones) and 480dp (desktops). */
-private fun queuePaneWidth(windowWidth: Dp): Dp = (windowWidth * 0.3f).coerceIn(320.dp, 480.dp)
+private fun queuePaneWidth(windowWidth: Dp): Dp = (windowWidth * 0.3f).coerceIn(QueuePaneMinWidth, 480.dp)
+
+/** Below this the queue pane would out-size the video, as on a phone's split-screen half, so video and
+ *  queue stack. A full-screen 360×640dp phone in landscape still fits side by side. */
+private val SideBySideMinWidth = QueuePaneMinWidth * 2
+
+/** Most of a wider-than-tall window's height the stacked video may take, so the list below stays usable. */
+private const val WideStackedVideoShare = 0.6f
 
 /** Pane width from which queue rows take the larger thumb and text. */
 private val QueueLargeRowsFrom = 380.dp
@@ -833,11 +961,10 @@ private fun BoxScope.AutoHidingOverlay(
                 },
         )
     }
-    var focusWithin by remember { mutableStateOf(false) }
-    LaunchedEffect(show) { if (!show) focusWithin = false }
-    HoldVideoOverlay(show && focusWithin)
+    // Focus inside does not hold the controls: every key restarts the hide timer, and once they hide the
+    // FocusCatcher keeps focus in Now Playing until the next key brings them back.
     if (show) {
-        Box(Modifier.fillMaxSize().onFocusChanged { focusWithin = it.hasFocus }, content = content)
+        Box(Modifier.fillMaxSize(), content = content)
     }
 }
 
@@ -865,7 +992,7 @@ private fun BoxScope.BufferingIndicator(
     )
 }
 
-/** The controls drawn over the video: landscape always, portrait once the inline controls scroll away. */
+/** The controls drawn over the video: landscape always, portrait once the inline controls scroll away or can't fit. */
 @Composable
 private fun BoxScope.VideoOverlayControls(
     coordinator: PlaybackCoordinator,
@@ -933,6 +1060,10 @@ private fun BoxScope.VideoOverlayControls(
             }
             DurationLabel(player, progress, overlayStyle)
             Box(Modifier.weight(1f))
+            // Full screen has no top bar, so its quality, details and speed come here.
+            if (isFullscreen) {
+                OverlayPlayerActions(coordinator, tint = Color(0xFFEEEEEE), iconSize = iconSize, hitSize = hitSize, scale = scale)
+            }
             CaptionToggle(player, offTint = Color(0xFFEEEEEE), iconSize = iconSize, hitSize = hitSize)
             if (onToggleRotationLock != null) {
                 ActionIcon(
@@ -969,6 +1100,7 @@ private fun BoxScope.VideoOverlayControls(
             trackColor = Color.White.copy(alpha = 0.32f),
             bufferedColor = Color.White.copy(alpha = 0.55f),
             onScrubMs = { scrubMs = it },
+            modifier = LocalOverlaySeekFocus.current?.let { Modifier.focusRequester(it) } ?: Modifier,
         )
     }
 }
@@ -1133,6 +1265,7 @@ internal fun playerErrorText(error: io.ymusic.player.PlayerError): UiText = when
     error.code == SUPERVISED_ACCOUNT_CODE -> UiText.Resource(Res.string.error_supervised_account)
     error.code == io.ymusic.player.PlayerError.FILE_MISSING -> UiText.Resource(Res.string.playback_file_missing)
     error.code == io.ymusic.player.PlayerError.FOLDER_ACCESS_LOST -> UiText.Resource(Res.string.playback_folder_access_lost)
+    error.code == io.ymusic.player.PlayerError.PLAYBACK_UNAVAILABLE -> UiText.Resource(Res.string.media_engine_unavailable)
     error.code == io.ymusic.player.PlayerError.VIDEO_DECODER_FAILED -> UiText.Resource(Res.string.playback_video_unsupported)
     error.code == io.ymusic.player.PlayerError.PO_TOKEN_REJECTED -> UiText.Resource(Res.string.playback_botguard_failed)
     else -> error.userMessage?.let(UiText::Plain) ?: when (error.playability()) {
@@ -1222,19 +1355,10 @@ private fun BoxScope.PlaybackErrorText(
 @Composable
 private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClose: () -> Unit) {
     val player = coordinator.player
-    val quality by player.videoQuality.collectAsState()
-    val audioOnlyLabel = stringResource(Res.string.audio_only)
-    val autoQualityLabel = stringResource(Res.string.video_quality_auto)
-    fun qualityLabel(option: VideoQualityOption): String = when (option.quality) {
-        VideoQualityState.AUDIO_ONLY -> audioOnlyLabel
-        VideoQualityState.AUTO -> autoQualityLabel
-        else -> option.label
-    }
-
     val queue by player.queue.collectAsState()
     val downloadLauncher = LocalDownloadLauncher.current
     val downloadable = coordinator.downloadable(queue.currentItem)
-    val videoId = (queue.currentItem as? PlayableItem.YtMedia)?.videoId
+    val videoId = queue.currentItem?.videoId
     val sponsorBlock = coordinator.graph.sponsorBlock
     val sbChanges by sponsorBlock.changes.collectAsState()
     val sbEnabled by remember(coordinator.graph) {
@@ -1242,11 +1366,7 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
     }.collectAsState()
     var sbState by remember { mutableStateOf(SponsorBlockState.Unavailable) }
     LaunchedEffect(videoId, sbChanges, sbEnabled) {
-        sbState = if (videoId == null) {
-            SponsorBlockState.Unavailable
-        } else {
-            sponsorBlock.load(videoId).state
-        }
+        sbState = videoId?.let { sponsorBlock.load(it).state } ?: SponsorBlockState.Unavailable
     }
     val scope = rememberCoroutineScope()
     val showSnackbar = LocalSnackbar.current
@@ -1286,37 +1406,35 @@ private fun PlayerTopBar(coordinator: PlaybackCoordinator, sleepMs: Long?, onClo
                 },
             )
         }
-        val sleepAfterCurrent by player.sleepAfterCurrent.collectAsState()
-        val settings = coordinator.graph.settings
-        val lastSleepMinutes by remember(settings) { settings.flow(AppSettings.sleepTimerMinutes) }.collectAsState()
-        SleepTimerButton(
-            sleepMs = sleepMs,
-            afterCurrent = sleepAfterCurrent,
-            lastMinutes = lastSleepMinutes,
-        ) { choice ->
-            when (choice) {
-                is SleepChoice.Timer -> {
-                    player.setSleepTimer(choice.minutes * 60_000L)
-                    scope.launch { settings.put(AppSettings.sleepTimerMinutes, choice.minutes) }
-                }
-                SleepChoice.EndOfTrack -> player.setSleepAfterCurrent(true)
-                SleepChoice.Off -> player.setSleepTimer(null)
-            }
-        }
-        if (quality.options.isNotEmpty()) {
-            QualityChip(
-                label = quality.options.firstOrNull { it.quality == quality.actualQuality }?.let(::qualityLabel)
-                    ?: when (quality.actualQuality) {
-                        VideoQualityState.AUTO -> autoQualityLabel
-                        VideoQualityState.AUDIO_ONLY -> audioOnlyLabel
-                        else -> quality.actualQuality
-                    },
-                options = quality.options.map { it.quality to qualityLabel(it) },
-                selectedId = quality.preferredQuality,
-                onSelect = { player.selectVideoQuality(it) },
-            )
+        PlayerSleepTimerButton(coordinator, sleepMs)
+        qualityChoices(player)?.let { choices ->
+            QualityChip(choices.label, choices.options, choices.selectedId) { player.selectVideoQuality(it) }
         }
         PlayerMoreMenu(coordinator)
+    }
+}
+
+/** [SleepTimerButton] driving the player, remembering the last minutes chosen. */
+@Composable
+internal fun PlayerSleepTimerButton(coordinator: PlaybackCoordinator, sleepMs: Long?) {
+    val player = coordinator.player
+    val scope = rememberCoroutineScope()
+    val sleepAfterCurrent by player.sleepAfterCurrent.collectAsState()
+    val settings = coordinator.graph.settings
+    val lastSleepMinutes by remember(settings) { settings.flow(AppSettings.sleepTimerMinutes) }.collectAsState()
+    SleepTimerButton(
+        sleepMs = sleepMs,
+        afterCurrent = sleepAfterCurrent,
+        lastMinutes = lastSleepMinutes,
+    ) { choice ->
+        when (choice) {
+            is SleepChoice.Timer -> {
+                player.setSleepTimer(choice.minutes * 60_000L)
+                scope.launch { settings.put(AppSettings.sleepTimerMinutes, choice.minutes) }
+            }
+            SleepChoice.EndOfTrack -> player.setSleepAfterCurrent(true)
+            SleepChoice.Off -> player.setSleepTimer(null)
+        }
     }
 }
 
@@ -1325,6 +1443,9 @@ internal fun QualityChip(
     label: String,
     options: List<Pair<String, String>>,
     selectedId: String? = null,
+    ink: Color = DesignColors.InkMuted,
+    outline: Color = DesignColors.OutlineSoft,
+    scale: Float = 1f,
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -1333,33 +1454,128 @@ internal fun QualityChip(
     Box {
         Text(
             label,
-            style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DesignColors.InkMuted),
+            style = TextStyle(fontSize = 11.sp * scale, fontWeight = FontWeight.Bold, color = ink),
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
-                .border(1.dp, DesignColors.OutlineSoft, RoundedCornerShape(6.dp))
+                .border(1.dp, outline, RoundedCornerShape(6.dp))
                 .clickable { open = true }
                 .a11yActionLabel("$qualityDescription, $label")
                 .clearAndSetSemantics { role = Role.DropdownList }
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            options.forEach { (id, text) ->
-                val selected = id == selectedId
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text,
-                            color = if (selected) DesignColors.Accent else DesignColors.Ink,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                    },
-                    trailingIcon = selectedCheck(selected),
-                    onClick = { onSelect(id); open = false },
-                    modifier = Modifier.menuChoice(selected),
-                )
-            }
+        QualityMenu(open, options, selectedId, onSelect = { onSelect(it); open = false }, onDismiss = { open = false })
+    }
+}
+
+/** The current quality's label, the choices, and the preferred one; null while the item offers no choice. */
+private class QualityChoices(val label: String, val options: List<Pair<String, String>>, val selectedId: String?)
+
+@Composable
+private fun qualityChoices(player: io.ymusic.player.Player): QualityChoices? {
+    val quality by player.videoQuality.collectAsState()
+    val audioOnlyLabel = stringResource(Res.string.audio_only)
+    val autoQualityLabel = stringResource(Res.string.video_quality_auto)
+    fun qualityLabel(option: VideoQualityOption): String = when (option.quality) {
+        VideoQualityState.AUDIO_ONLY -> audioOnlyLabel
+        VideoQualityState.AUTO -> autoQualityLabel
+        else -> option.label
+    }
+    if (quality.options.isEmpty()) return null
+    val label = quality.options.firstOrNull { it.quality == quality.actualQuality }?.let(::qualityLabel)
+        ?: when (quality.actualQuality) {
+            VideoQualityState.AUTO -> autoQualityLabel
+            VideoQualityState.AUDIO_ONLY -> audioOnlyLabel
+            else -> quality.actualQuality
+        }
+    return QualityChoices(label, quality.options.map { it.quality to qualityLabel(it) }, quality.preferredQuality)
+}
+
+@Composable
+private fun QualityMenu(
+    expanded: Boolean,
+    options: List<Pair<String, String>>,
+    selectedId: String?,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        options.forEach { (id, text) ->
+            val selected = id == selectedId
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text,
+                        color = if (selected) DesignColors.Accent else DesignColors.Ink,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                },
+                trailingIcon = selectedCheck(selected),
+                onClick = { onSelect(id) },
+                modifier = Modifier.menuChoice(selected),
+            )
         }
     }
+}
+
+/** Quality (as the top bar's chip), details and speed on the full-screen controls, opening the same menu, dialog and sheet as the top bar. */
+@Composable
+private fun OverlayPlayerActions(coordinator: PlaybackCoordinator, tint: Color, iconSize: Dp, hitSize: Dp, scale: Float) {
+    val player = coordinator.player
+    qualityChoices(player)?.let { choices ->
+        QualityChip(
+            choices.label,
+            choices.options,
+            choices.selectedId,
+            ink = tint,
+            outline = tint.copy(alpha = 0.6f),
+            scale = scale,
+        ) { player.selectVideoQuality(it) }
+    }
+    val video = player.queue.collectAsState().value.currentItem as? PlayableItem.YtMedia
+    if (video != null) {
+        var detailsOpen by remember { mutableStateOf(false) }
+        HoldVideoOverlay(detailsOpen)
+        ActionIcon(
+            Icons.Outlined.Info,
+            stringResource(Res.string.menu_details_comments),
+            iconSize = iconSize,
+            hitSize = hitSize,
+            tint = tint,
+            onClick = { detailsOpen = true },
+        )
+        if (detailsOpen) VideoDetails(coordinator, video.videoId) { detailsOpen = false }
+    }
+    var speedOpen by remember { mutableStateOf(false) }
+    HoldVideoOverlay(speedOpen)
+    val speed = player.config.collectAsState().value.speed
+    val speedValue = if (speed != 1f) "${trimFloat(speed)}×" else null
+    ActionIcon(
+        Icons.Outlined.Speed,
+        listOfNotNull(stringResource(Res.string.menu_speed_pitch), speedValue).joinToString(", "),
+        iconSize = iconSize,
+        hitSize = hitSize,
+        tint = tint,
+        onClick = { speedOpen = true },
+    )
+    speedValue?.let {
+        Text(
+            it,
+            style = TextStyle(fontSize = 10.sp * scale, fontWeight = FontWeight.Bold, color = tint),
+            modifier = Modifier.a11ySilent(),
+        )
+    }
+    if (speedOpen) PlaybackFxSheet(player, onDismiss = { speedOpen = false })
+}
+
+@Composable
+private fun VideoDetails(coordinator: PlaybackCoordinator, videoId: String, onDismiss: () -> Unit) {
+    val openChannel = LocalOpenChannel.current
+    VideoDetailsDialog(
+        coordinator.graph,
+        videoId,
+        onOpenChannel = { url, title -> onDismiss(); openChannel(url, title) },
+        onDismiss = onDismiss,
+    )
 }
 
 private fun Modifier.menuChoice(selected: Boolean) = semantics {
@@ -1433,9 +1649,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
     var detailsOpen by remember { mutableStateOf(false) }
     val current = player.queue.collectAsState().value.currentItem
     val video = current as? PlayableItem.YtMedia
-    val shareVideoId by produceState<String?>(null, current) {
-        value = current?.let { queueVideoIds(coordinator.graph, listOf(it)).firstOrNull() }
-    }
+    val shareVideoId = current?.videoId
     val uriHandler = LocalUriHandler.current
     val ytPlaylists = LocalYtPlaylistActions.current
     val shareYoutube = LocalShareYoutube.current
@@ -1472,7 +1686,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
                 MoreMenuItem(Icons.AutoMirrored.Outlined.QueueMusic, stringResource(Res.string.queue_save_as_yt_playlist)) {
                     open = false
                     scope.launch {
-                        val videoIds = queueVideoIds(coordinator.graph, player.queue.value.items)
+                        val videoIds = player.queue.value.items.mapNotNull { it.videoId }.distinct()
                         if (videoIds.isEmpty()) snackbar(noVideos) else ytPlaylists.saveAsPlaylist(videoIds)
                     }
                 }
@@ -1539,13 +1753,7 @@ private fun PlayerMoreMenu(coordinator: PlaybackCoordinator) {
         PlaybackFxSheet(player, onDismiss = { playbackOpen = false })
     }
     if (detailsOpen && video != null) {
-        val openChannel = LocalOpenChannel.current
-        VideoDetailsDialog(
-            coordinator.graph,
-            video.videoId,
-            onOpenChannel = { url, title -> detailsOpen = false; openChannel(url, title) },
-            onDismiss = { detailsOpen = false },
-        )
+        VideoDetails(coordinator, video.videoId) { detailsOpen = false }
     }
     if (eqOpen) {
         EqualizerFxSheet(coordinator.graph, onDismiss = { eqOpen = false })
@@ -1578,7 +1786,7 @@ private fun SeekBar(player: io.ymusic.player.Player, progress: Progress) {
 }
 
 @Composable
-private fun DurationLabel(
+internal fun DurationLabel(
     player: io.ymusic.player.Player,
     progress: Progress,
     style: TextStyle,
@@ -1602,12 +1810,13 @@ private fun DurationLabel(
 /** The bare slider (3dp [trackColor] track, orange fill + thumb) — SeekBar's core, reused by the
  *  landscape video overlay. */
 @Composable
-private fun SeekSlider(
+internal fun SeekSlider(
     player: io.ymusic.player.Player,
     progress: Progress,
     trackColor: Color,
     bufferedColor: Color = DesignColors.Accent.copy(alpha = 0.35f),
     onScrubMs: ((Long?) -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     val durationMs = progress.durationMs
     val skipSegments by player.skipSegments.collectAsState()
@@ -1623,7 +1832,7 @@ private fun SeekSlider(
             onScrub = { f -> onScrubMs?.invoke(if (f == null || durationMs <= 0) null else (f * durationMs).toLong()) },
             trackColor = trackColor,
             skipFractions = skipSegmentFractions(skipSegments, durationMs),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth(),
             a11y = seekBarA11y(progress),
         )
     }
@@ -1674,7 +1883,7 @@ private fun Dp.evenPx(): Dp {
 
 /** Media controls and the seek bar stay left-to-right in RTL locales: time runs left to right. */
 @Composable
-private fun MediaLtr(content: @Composable () -> Unit) {
+internal fun MediaLtr(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr, content = content)
 }
 
@@ -1719,6 +1928,7 @@ private fun TransportButtons(
         )
         Box(
             Modifier.size(circle).clip(CircleShape).background(playBackground)
+                .then(LocalOverlayEntryFocus.current?.let { Modifier.focusRequester(it) } ?: Modifier)
                 .clickable(role = Role.Button) { player.togglePlay() }
                 .a11yActionLabel(stringResource(if (playing) Res.string.cd_pause else Res.string.cd_play)),
             contentAlignment = Alignment.Center,
@@ -1832,23 +2042,9 @@ private fun QueueHeader(
         Box(Modifier.weight(1f))
         ActionIcon(
             if (loopMode == LoopMode.One) Icons.Default.RepeatOne else Icons.Default.Repeat,
-            stringResource(
-                when (loopMode) {
-                    LoopMode.None -> Res.string.cd_repeat_off
-                    LoopMode.All -> Res.string.cd_repeat_all
-                    LoopMode.One -> Res.string.cd_repeat_one
-                },
-            ),
+            stringResource(loopMode.label()),
             tint = if (loopMode != LoopMode.None) DesignColors.Accent else DesignColors.InkSoft,
-            onClick = {
-                player.setLoopMode(
-                    when (loopMode) {
-                        LoopMode.None -> LoopMode.All
-                        LoopMode.All -> LoopMode.One
-                        LoopMode.One -> LoopMode.None
-                    },
-                )
-            },
+            onClick = { player.setLoopMode(loopMode.cycled()) },
         )
         ToggleActionIcon(
             Icons.Default.Shuffle,
@@ -1860,16 +2056,16 @@ private fun QueueHeader(
     }
 }
 
-/** The queue's YouTube video ids in order, deduplicated: YouTube items, plus local files the library
- *  knows came from a YouTube video (downloads). */
-private suspend fun queueVideoIds(graph: AppGraph, items: List<PlayableItem>): List<String> {
-    val store = graph.mediaStore
-    return items.mapNotNull { item ->
-        when (item) {
-            is PlayableItem.YtMedia -> item.videoId
-            is PlayableItem.LocalMedia -> item.mediaId?.let { store?.findItem(it)?.youtubeVid }
-        }
-    }.distinct()
+internal fun LoopMode.label(): StringResource = when (this) {
+    LoopMode.None -> Res.string.cd_repeat_off
+    LoopMode.All -> Res.string.cd_repeat_all
+    LoopMode.One -> Res.string.cd_repeat_one
+}
+
+internal fun LoopMode.cycled(): LoopMode = when (this) {
+    LoopMode.None -> LoopMode.All
+    LoopMode.All -> LoopMode.One
+    LoopMode.One -> LoopMode.None
 }
 
 @Composable
@@ -1931,11 +2127,14 @@ private fun QueueRowContent(
     var menuOpen by remember { mutableStateOf(false) }
     val sub = listOfNotNull(item.displayDuration, item.displaySubtitle).joinToString(" · ")
     val playLabel = stringResource(Res.string.cd_play)
+    val videoId = (item as? PlayableItem.YtMedia)?.videoId
+    val offline = videoId != null && videoId in LocalAvailableOffline.current
     val label = listOfNotNull(
         if (current) stringResource(Res.string.a11y_now_playing) else null,
         item.displayTitle,
         item.displayDuration?.let { spokenLength(item.durationMs, it) },
         item.displaySubtitle,
+        if (offline) stringResource(Res.string.a11y_downloaded) else null,
     ).joinToString(", ")
     Row(
         Modifier
@@ -1950,7 +2149,7 @@ private fun QueueRowContent(
             .then(if (current) Modifier.background(DesignColors.Accent.copy(alpha = 0.1f)) else Modifier)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .clickable(role = Role.Button, onClickLabel = playLabel) { coordinator.player.playAt(index) }
-            .a11yActionLabel(label)
+            .a11yRowLabel(label)
             .padding(horizontal = 16.dp, vertical = if (large) 10.dp else 8.dp),
         horizontalArrangement = Arrangement.spacedBy(if (large) 12.dp else 8.dp),
         verticalAlignment = Alignment.Top,
@@ -1980,6 +2179,7 @@ private fun QueueRowContent(
             ArtImage(item.displayThumbnailUrl, RoundedCornerShape(6.dp)) {
                 ThumbPlaceholder(Icons.Outlined.Image, 18.dp)
             }
+            if (offline) AvailableOfflineMark(Modifier.align(Alignment.TopStart))
         }
         Column(Modifier.weight(1f).a11ySilent()) {
             Text(
@@ -2075,4 +2275,4 @@ private fun queueItemActions(coordinator: PlaybackCoordinator, index: Int, item:
 }
 
 /** The play button shows Pause while playback is wanted, but not once the track has ended. */
-private fun PlaybackStatus.showsPause(): Boolean = playWhenReady && !state.isEnded()
+internal fun PlaybackStatus.showsPause(): Boolean = playWhenReady && !state.isEnded()

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -41,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
@@ -68,16 +72,24 @@ import io.ymusic.ui.resources.search_filter_title
 import io.ymusic.ui.resources.search_no_results
 import io.ymusic.ui.resources.search_type_to_search
 import io.ymusic.ui.resources.search_youtube
+import io.ymusic.ui.resources.voice_search_listening
+import io.ymusic.ui.resources.voice_search_missed
+import io.ymusic.ui.resources.voice_search_press_ok
 import io.ymusic.ui.resources.ytmusic_search_hint
 import kmpcommon.log.Logger
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 private const val SearchHistoryKey = "search.history"
-private const val HistoryLimit = 20
+private const val HistoryLimit = 500
+
+/** History rows shown above the live suggestions while typing, so a long history never buries them. */
+private const val TypedHistoryMatches = 5
 
 /**
  * The search layer's retained state — query, mode, results and scroll. Hoisted into the app's
@@ -143,8 +155,9 @@ class SearchSession(
 
 /**
  * YouTube search (design/final/search.html), two app-bar modes:
- * - **input** — back · pill text field; below it the saved history (empty field) or live
- *   suggestions (typing). Rows submit on tap; the ↖ arrow only inserts the text into the field.
+ * - **input** — back · pill text field; below it the saved history (empty field) or, while typing,
+ *   the history entries containing the text above the live suggestions. Rows submit on tap; the ↖
+ *   arrow only inserts the text into the field.
  * - **results** — back · query title · filter · search; below it the paged result feed. The filter
  *   icon opens the centered dialog of server-provided filter groups; picking an option re-runs the
  *   search with that option's params (the server composes the combinations).
@@ -162,6 +175,9 @@ fun SearchScreen(
     val s = session ?: remember { SearchSession.youtube(graph, scope) }
     var suggestions by remember { mutableStateOf(listOf<String>()) }
     var filterOpen by remember { mutableStateOf(false) }
+    var voiceStatus by remember { mutableStateOf(VoiceStatus.Idle) }
+    val voiceLevel = remember { mutableFloatStateOf(0f) }
+    var voiceJob by remember { mutableStateOf<Job?>(null) }
 
     val historyRaw by remember(graph) { graph.settings.string(SearchHistoryKey, "") }.collectAsState()
     val history = remember(historyRaw) { historyRaw.split('\n').filter { it.isNotBlank() } }
@@ -197,12 +213,57 @@ fun SearchScreen(
     fun submit(q: String) {
         val trimmed = q.trim().replace('\n', ' ')
         if (trimmed.isEmpty()) return
+        voiceJob?.cancel()
+        voiceStatus = VoiceStatus.Idle
         setField(trimmed)
         s.submitted = trimmed
         s.filterParams = null
         s.editing = false
         saveHistory(listOf(trimmed) + history.filter { it != trimmed })
         s.pager.refresh()
+    }
+
+    fun toggleVoice(listen: () -> Flow<SpeechEvent>) {
+        val wasListening = voiceStatus == VoiceStatus.Listening
+        voiceJob?.cancel()
+        voiceJob = null
+        voiceStatus = VoiceStatus.Idle
+        if (wasListening) return
+        voiceStatus = VoiceStatus.Listening
+        voiceLevel.floatValue = 0f
+        voiceJob = scope.launch {
+            graph.player.setVoiceDucked(true)
+            try {
+                listen().collect { event ->
+                    when (event) {
+                        is SpeechEvent.Level -> voiceLevel.floatValue = event.value
+                        is SpeechEvent.Partial -> setField(event.text)
+                        is SpeechEvent.Final -> submit(event.text)
+                        SpeechEvent.NoMatch -> voiceStatus = VoiceStatus.Missed
+                    }
+                }
+                if (voiceStatus == VoiceStatus.Listening) voiceStatus = VoiceStatus.Idle
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c
+            } catch (e: Exception) {
+                s.log?.log(Logger.Level.WARN, "speech to text failed", e)
+                voiceStatus = VoiceStatus.Missed
+            } finally {
+                graph.player.setVoiceDucked(false)
+            }
+        }
+    }
+
+    fun LazyListScope.historyRows(entries: List<String>, label: (String) -> AnnotatedString) {
+        items(entries) { entry ->
+            QueryRow(
+                icon = Icons.Outlined.Schedule,
+                text = label(entry),
+                onClick = { submit(entry) },
+                onInsert = { setField(entry) },
+                onRemove = { saveHistory(history - entry) },
+            )
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -213,31 +274,42 @@ fun SearchScreen(
                 onSubmit = ::submit,
                 onBack = { if (s.submitted != null) s.editing = false else onBack() },
                 placeholder = stringResource(s.hint),
+                onVoice = graph.speechToText?.let { listen -> { toggleVoice(listen) } },
+                voiceFirst = platformIsTelevision,
+                voiceListening = voiceStatus == VoiceStatus.Listening,
+                voiceLevel = { voiceLevel.floatValue },
+                voiceHint = stringResource(
+                    when (voiceStatus) {
+                        VoiceStatus.Idle -> Res.string.voice_search_press_ok
+                        VoiceStatus.Listening -> Res.string.voice_search_listening
+                        VoiceStatus.Missed -> Res.string.voice_search_missed
+                    },
+                ),
             )
             when {
                 s.field.text.isBlank() && history.isEmpty() -> CenteredBox {
                     Text(stringResource(Res.string.search_type_to_search), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 s.field.text.isBlank() -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
-                    items(history) { entry ->
-                        QueryRow(
-                            icon = Icons.Outlined.Schedule,
-                            text = AnnotatedString(entry),
-                            onClick = { submit(entry) },
-                            onInsert = { setField(entry) },
-                            onRemove = { saveHistory(history - entry) },
-                        )
-                    }
+                    historyRows(history) { entry -> AnnotatedString(entry) }
                     item { ClearHistoryRow { saveHistory(emptyList()) } }
                 }
-                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
-                    items(suggestions) { sug ->
-                        QueryRow(
-                            icon = Icons.Default.Search,
-                            text = suggestionText(sug, s.field.text),
-                            onClick = { submit(sug) },
-                            onInsert = { setField(sug) },
-                        )
+                else -> {
+                    val typed = s.field.text.trim()
+                    val historyMatches = history.asSequence().filter { it.contains(typed, ignoreCase = true) }.take(TypedHistoryMatches).toList()
+                    val newSuggestions = suggestions.filter { suggestion ->
+                        historyMatches.none { it.equals(suggestion, ignoreCase = true) }
+                    }
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
+                        historyRows(historyMatches) { entry -> suggestionText(entry, typed) }
+                        items(newSuggestions) { sug ->
+                            QueryRow(
+                                icon = Icons.Default.Search,
+                                text = suggestionText(sug, s.field.text),
+                                onClick = { submit(sug) },
+                                onInsert = { setField(sug) },
+                            )
+                        }
                     }
                 }
             }
@@ -370,7 +442,7 @@ private fun FilterDialog(
                         color = DesignColors.InkSecondary,
                         letterSpacing = 0.4.sp,
                     ),
-                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+                    modifier = Modifier.semantics { heading() }.padding(top = 16.dp, bottom = 8.dp),
                 )
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

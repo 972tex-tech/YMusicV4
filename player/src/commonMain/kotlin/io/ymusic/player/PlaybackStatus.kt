@@ -1,6 +1,7 @@
 package io.ymusic.player
 
 import projectcommon.error.CodedError
+import projectcommon.error.PLAYBACK_UNAVAILABLE_CODE
 
 /**
  * Engine + media lifecycle, preserving the legacy player contract. [readyToLoad] means an ordinary
@@ -78,6 +79,9 @@ data class PlaybackConfig(
     val loop: Boolean = false,
     val preferCaptionLanguage: Pair<String, Long> = UNDETERMINED_LANGUAGE to 0L,
     val scaleMode: ScaleMode = ScaleMode.CONTAIN,
+    /** The picture is off screen: the engine may rest its video decoder, keeping the chosen quality. Engine-only,
+     *  from [Player.setVideoHidden]; always false in [Player.config]. */
+    val videoHidden: Boolean = false,
 ) {
     init {
         require(volume in 0f..1f) { "volume out of range: $volume" }
@@ -111,6 +115,9 @@ data class PlayerError(
 
         /** The app no longer holds the storage grant for a local item's folder (Android SAF) — re-adding the folder fixes it. */
         const val FOLDER_ACCESS_LOST = "folder_access_lost"
+
+        /** This host cannot play anything at all ([PlayerEngines.unavailable]); the shell has reported why. */
+        const val PLAYBACK_UNAVAILABLE = PLAYBACK_UNAVAILABLE_CODE
 
         /** The platform video decoder refused the stream (size or profile beyond the device). */
         const val VIDEO_DECODER_FAILED = "E60064"

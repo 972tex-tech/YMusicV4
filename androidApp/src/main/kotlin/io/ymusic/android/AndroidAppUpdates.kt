@@ -18,6 +18,7 @@ import io.ymusic.ui.AppUpdates
 import io.ymusic.ui.UpdateCheck
 import io.ymusic.ui.UpdateDownload
 import kmpcommon.log.Logger
+import kmphttp.HttpStatusException
 import kmphttp.KmpHttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +46,7 @@ import okio.sink
 import okio.source
 import org.jetbrains.compose.resources.StringResource
 import projectcommon.error.DISK_FULL_CODE
+import projectcommon.error.NETWORK_CODE
 import projectcommon.error.errorCode
 import java.io.File
 
@@ -217,6 +219,9 @@ class AndroidAppUpdates(
                 } else if (error is DownloadMismatchException) {
                     log?.captureError(error, "update ${update.versionCode} failed verification")
                     set(release, UpdateDownload.Failed("E91011"))
+                } else if (error is HttpStatusException) {
+                    log?.log(Logger.Level.WARN, "downloading update ${update.versionCode} refused by the server", error)
+                    set(release, UpdateDownload.Failed("E91017"))
                 } else if (error.errorCode() == DISK_FULL_CODE) {
                     log?.log(Logger.Level.WARN, "downloading update ${update.versionCode} failed: storage is full", error)
                     set(release, UpdateDownload.Failed(DISK_FULL_CODE))
@@ -224,6 +229,9 @@ class AndroidAppUpdates(
                     // The device doesn't trust the host (stale root store, wrong clock, intercepting network).
                     log?.log(Logger.Level.WARN, "downloading update ${update.versionCode} failed: untrusted TLS", error)
                     set(release, UpdateDownload.Failed("E91014"))
+                } else if (error.errorCode() == NETWORK_CODE) {
+                    log?.log(Logger.Level.WARN, "downloading update ${update.versionCode} hit a network failure", error)
+                    set(release, UpdateDownload.Failed(NETWORK_CODE))
                 } else {
                     log?.captureError(error, "downloading update ${update.versionCode} failed")
                     set(release, UpdateDownload.Failed("E91012"))
@@ -274,11 +282,16 @@ class AndroidAppUpdates(
         }
     }
 
-    /** The install session ended without replacing this process (cancelled, or failed): offer it again. */
-    fun onInstallEnded(storageFull: Boolean = false) {
+    /** The install session ended without replacing this process: offer it again, and say why unless the user cancelled. */
+    fun onInstallEnded(status: Int) {
         val (update, download) = current() ?: return
         if (download !is UpdateDownload.Installing) return
-        set(update.release, if (storageFull) UpdateDownload.InstallFailed(DISK_FULL_CODE) else UpdateDownload.Ready)
+        val next = when (status) {
+            PackageInstaller.STATUS_FAILURE_ABORTED -> UpdateDownload.Ready
+            PackageInstaller.STATUS_FAILURE_STORAGE -> UpdateDownload.InstallFailed(DISK_FULL_CODE)
+            else -> UpdateDownload.InstallFailed("E91016")
+        }
+        set(update.release, next)
     }
 
     private fun needInstallPermission(update: AppUpdate, install: Boolean) {
@@ -399,7 +412,8 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                 } catch (error: ActivityNotFoundException) {
                     val app = context.applicationContext as? YMusicApplication ?: return
                     app.rootLogger.fork("update").log(Logger.Level.WARN, "no screen confirms the package install", error)
-                    app.services.takeIf { it.isCompleted && !it.isCancelled }?.getCompleted()?.updates?.onInstallEnded()
+                    app.services.takeIf { it.isCompleted && !it.isCancelled }?.getCompleted()?.updates
+                        ?.onInstallEnded(PackageInstaller.STATUS_FAILURE)
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> Unit
@@ -410,7 +424,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                     "package install ended with status $status: ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}",
                 )
                 app.services.takeIf { it.isCompleted && !it.isCancelled }?.getCompleted()?.updates
-                    ?.onInstallEnded(storageFull = status == PackageInstaller.STATUS_FAILURE_STORAGE)
+                    ?.onInstallEnded(status)
             }
         }
     }

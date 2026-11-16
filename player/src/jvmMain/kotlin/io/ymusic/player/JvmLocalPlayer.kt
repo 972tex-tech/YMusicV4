@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.io.File
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -75,6 +76,8 @@ internal class JvmLocalPlayer(
     @Volatile private var loadedPath: String? = null
 
     @Volatile private var audioOnly = true
+
+    @Volatile private var videoHidden = false
 
     @Volatile private var preferVideoQuality = VideoQualityState.AUDIO_ONLY
 
@@ -190,19 +193,19 @@ internal class JvmLocalPlayer(
             videoSurface?.claim(VideoEngine.LOCAL)
             FileAvNative.setVolume(handle, volume.toDouble())
             FileAvNative.setAudioIndex(handle, -1)
-            FileAvNative.setVideoEnabled(handle, !audioOnly)
+            FileAvNative.setVideoEnabled(handle, !audioOnly && !videoHidden)
             FileAvNative.setSpeed(handle, config.speed.coerceAtLeast(0.05f).toDouble())
             FileAvNative.setPitch(handle, config.pitchFactor.toDouble())
             FileAvNative.setEq(handle, FloatArray(10) { i -> config.eqBands.getOrElse(i) { 0f } })
             FileAvNative.setBass(handle, config.bassBoostDb)
             FileAvNative.setVirtualizer(handle, config.virtualizer)
             FileAvNative.setPreamp(handle, config.preampDb)
-            if (FileAvNative.open(handle, path) != 0) {
-                val err = FileAvNative.lastError(handle).ifBlank { "open failed" }
-                fail(err)
+            val opened = FileAvNative.open(handle, path) == 0
+            if (gen != loadGen.get()) return@dispatch
+            if (!opened) {
+                failOpen(path)
                 return@dispatch
             }
-            if (gen != loadGen.get()) return@dispatch
             loadedPath = path
             streams = FileAvNative.streams(handle).mapNotNull(::parseAvStream)
             sidecarTracks = LocalSidecarCaptions.find(path)
@@ -336,15 +339,18 @@ internal class JvmLocalPlayer(
             }
         }
         val quality = config.preferVideoQuality.first
-        if (quality != prev.preferVideoQuality.first) {
+        if (quality != prev.preferVideoQuality.first || config.audioOnly != prev.audioOnly) {
             preferVideoQuality = quality
             audioOnly = config.audioOnly
             _status.update {
                 it.copy(videoSize = if (audioOnly) null else videoSizeFromStreams() ?: it.videoSize)
             }
             publishVideoQuality()
+        }
+        if (config.audioOnly != prev.audioOnly || config.videoHidden != prev.videoHidden) {
+            videoHidden = config.videoHidden
             dispatch {
-                if (handle != 0L) FileAvNative.setVideoEnabled(handle, !audioOnly)
+                if (handle != 0L) FileAvNative.setVideoEnabled(handle, !audioOnly && !videoHidden)
             }
         }
         if (config.preferCaptionLanguage != prev.preferCaptionLanguage ||
@@ -495,6 +501,7 @@ internal class JvmLocalPlayer(
     private fun applyConfigFlags(config: PlaybackConfig) {
         volume = config.volume.coerceIn(0f, 1f)
         audioOnly = config.audioOnly
+        videoHidden = config.videoHidden
         preferVideoQuality = config.preferVideoQuality.first
         loop = config.loop
     }
@@ -505,7 +512,7 @@ internal class JvmLocalPlayer(
         if (handle == 0L) return
         val pos = FileAvNative.position(handle)
         if (FileAvNative.open(handle, file) != 0) {
-            fail(FileAvNative.lastError(handle).ifBlank { "open failed" })
+            failOpen(file)
             return
         }
         loadedPath = file
@@ -655,12 +662,24 @@ internal class JvmLocalPlayer(
         if (lines != _captionLines.value) _captionLines.value = lines
     }
 
-    private fun fail(message: String) {
+    private fun fail(message: String) = fail(PlayerError("E60021", message))
+
+    private fun fail(error: PlayerError) {
         pumping = false
         onApp {
-            _status.update { it.copy(state = PlaybackState.Error(PlayerError("E60021", message))) }
+            _status.update { it.copy(state = PlaybackState.Error(error)) }
         }
         dispatch { if (handle != 0L) FileAvNative.pause(handle) }
+    }
+
+    /** ffmpeg's error is the OS's strerror, in the system language: only the file itself tells it is gone. */
+    private fun failOpen(path: String) {
+        val detail = FileAvNative.lastError(handle).ifBlank { "open failed" }
+        if (!path.contains("://") && !File(path).exists()) {
+            fail(PlayerError(PlayerError.FILE_MISSING, detail, canRetry = false))
+        } else {
+            fail(detail)
+        }
     }
 }
 
