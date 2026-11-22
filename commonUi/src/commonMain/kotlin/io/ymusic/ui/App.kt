@@ -915,8 +915,8 @@ private fun AppRoot(
                 .drawerEdgeGestureExclusion(!usesRail && !drawer.isOpen && !nowPlayingOpen && layers.isEmpty()),
         ) {
             if (!desktopLayoutHole) {
-                val backgroundUri by remember(graph) { graph.settings.string(BackgroundImageSettingKey, "") }.collectAsState()
-                val backgroundDim by remember(graph) { graph.settings.string(BackgroundDimSettingKey, DefaultBackgroundDim) }.collectAsState()
+                val backgroundUri by remember(graph) { graph.settings.string(BackgroundImageSettingKey, "") }.collectAsStateWithLifecycle()
+                val backgroundDim by remember(graph) { graph.settings.string(BackgroundDimSettingKey, DefaultBackgroundDim) }.collectAsStateWithLifecycle()
                 val loader = LocalImageLoader.current
                 if (backgroundUri.isNotBlank() && loader != null) {
                     AsyncImage(

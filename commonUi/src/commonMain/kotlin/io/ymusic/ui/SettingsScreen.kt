@@ -167,8 +167,8 @@ fun SettingsScreen(graph: AppGraph, signedIn: Boolean = false, onLogin: () -> Un
                 },
             )
             graph.pickBackground?.let { pick ->
-                val background by remember(graph) { graph.settings.string(BackgroundImageSettingKey, "") }.collectAsState()
-                val dim by remember(graph) { graph.settings.string(BackgroundDimSettingKey, DefaultBackgroundDim) }.collectAsState()
+                val background by remember(graph) { graph.settings.string(BackgroundImageSettingKey, "") }.collectAsStateWithLifecycle()
+                val dim by remember(graph) { graph.settings.string(BackgroundDimSettingKey, DefaultBackgroundDim) }.collectAsStateWithLifecycle()
                 BackgroundRow(
                     hasPicture = background.isNotBlank(),
                     onChoose = {
