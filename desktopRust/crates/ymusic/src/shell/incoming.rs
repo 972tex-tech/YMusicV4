@@ -14,7 +14,7 @@ use crate::desktop::TrayCommand;
 use crate::feed::FeedSource;
 use crate::graph::{AppGraph, on_core};
 use crate::instance::{Command, Inbox, Request};
-use crate::playback::QueueItem;
+use crate::playback::{QueueItem, Source};
 
 impl Shell {
     /// Takes the requests queued since launch, then each later one as it arrives.
@@ -78,8 +78,7 @@ impl Shell {
                 return;
             }
             YtLinkTarget::Search(query) => {
-                self.select_section(Section::Discover, cx);
-                self.show_results(query, cx);
+                self.search_online(query, window, cx);
                 return;
             }
             YtLinkTarget::Playlist(url) | YtLinkTarget::Channel(url) | YtLinkTarget::MusicBrowse(url) => url,
@@ -94,7 +93,7 @@ impl Shell {
     }
 
     /// Plays `paths` as the queue: a file in the Library as that item, any other described by its
-    /// own tags (or its name when it can't be probed).
+    /// own tags (or its name when it can't be probed) and kept out of Play again.
     fn open_files(&mut self, paths: Vec<PathBuf>, window: &mut Window, cx: &mut Context<Self>) {
         let graph = cx.global::<AppGraph>();
         let (store, log) = (graph.media.clone(), graph.log.fork("open-file"));
@@ -122,7 +121,12 @@ impl Shell {
                     window.push_notification(tf(Str::ErrorGeneric, &[&"R96002"]), cx);
                     return;
                 }
-                shell.playback.update(cx, |playback, cx| playback.play_queue(items, 0, cx));
+                let loose = items.iter().filter(|item| item.media_id.is_none()).filter_map(|item| match &item.source {
+                    Source::Local(path) => Some(path.clone()),
+                    Source::YouTube(_) => None,
+                });
+                cx.global::<AppGraph>().temporary_uris.lock().unwrap().extend(loose);
+                shell.playback.update(cx, |playback, cx| playback.play_queue(items, 0, None, cx));
                 shell.now_playing_open = true;
                 shell.show_window(cx);
                 cx.notify();
@@ -145,12 +149,12 @@ fn describe_file(store: &ym_store::MediaStore, path: PathBuf, log: &ym_common::l
         Ok(_) => {}
         Err(error) => log.warn("opened file: the Library lookup failed", Some(&error)),
     }
-    match ym_store::describe_file(&path) {
+    match ym_store::describe_file(&path, ym_ffmpeg::FfmpegMetadataGetter::shared()) {
         Ok(described) => {
-            if let Some(code) = described.probe_error {
-                log.warn(&format!("opened file probe failed (libav {code}): playing it under its name"), None);
+            if let Some(error) = &described.probe_error {
+                log.warn("opened file probe failed: playing it under its name", Some(error));
             }
-            Some(QueueItem::from_local(&described.item))
+            Some(QueueItem::from_file(&described.item))
         }
         Err(error) => {
             log.warn(&format!("opened file could not be read: {}", path.display()), Some(&error));

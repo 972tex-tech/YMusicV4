@@ -14,6 +14,134 @@ pub fn release_data_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_else(std::env::temp_dir).join(".ymusic")
 }
 
+/// What [`prepare_data_dir`] had to do before the data dir could be used.
+pub enum DataDirSetup {
+    Ready,
+    Created,
+    /// The data dir is a symlink whose folder was gone: the folder was made again where it points.
+    RecreatedLinkTarget(PathBuf),
+}
+
+impl DataDirSetup {
+    pub fn report(&self, data_dir: &Path, log: &Logger) {
+        match self {
+            Self::Ready => {}
+            Self::Created => log.info(&format!("created the data dir {}", data_dir.display())),
+            Self::RecreatedLinkTarget(target) => log.warn(
+                &format!(
+                    "R90405 the data dir {} links to {}, which was gone: made it again, empty",
+                    data_dir.display(),
+                    target.display()
+                ),
+                None,
+            ),
+        }
+    }
+}
+
+const MAX_LINK_HOPS: usize = 16;
+const WRITE_CHECK_PREFIX: &str = ".write-check-";
+
+/// Blocking. Makes `data_dir` a folder this process can write to before anything opens a file in
+/// it. A missing folder, or the missing folder a symlink points at, is created; anything else in
+/// the way (a file, no write permission, a link into a folder that is gone) is an error.
+pub fn prepare_data_dir(data_dir: &Path) -> std::io::Result<DataDirSetup> {
+    let setup = match std::fs::metadata(data_dir) {
+        Ok(_) => DataDirSetup::Ready,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => match dangling_link_target(data_dir)? {
+            // Only the last component: a link into a folder that is gone (an unplugged drive) is not
+            // made on the boot disk.
+            Some(target) => {
+                std::fs::create_dir(&target)?;
+                DataDirSetup::RecreatedLinkTarget(target)
+            }
+            None => {
+                std::fs::create_dir_all(data_dir)?;
+                DataDirSetup::Created
+            }
+        },
+        Err(error) => return Err(error),
+    };
+    if !std::fs::metadata(data_dir)?.is_dir() {
+        return Err(std::io::Error::new(std::io::ErrorKind::NotADirectory, "the data dir is not a folder"));
+    }
+    let probe = data_dir.join(format!("{WRITE_CHECK_PREFIX}{}", std::process::id()));
+    std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(&probe)?;
+    std::fs::remove_file(&probe)?;
+    Ok(setup)
+}
+
+/// The path at the end of `path`'s symlink chain when `path` is a symlink; `None` when it is not one.
+fn dangling_link_target(path: &Path) -> std::io::Result<Option<PathBuf>> {
+    let mut current = path.to_path_buf();
+    for _ in 0..MAX_LINK_HOPS {
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                let target = std::fs::read_link(&current)?;
+                current = current.parent().map_or_else(|| target.clone(), |parent| parent.join(&target));
+            }
+            Ok(_) => return Ok((current != path).then_some(current)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok((current != path).then_some(current));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::other("the data dir's symlinks loop"))
+}
+
+/// What [`open_database`] found when the file SQLite opened was unreadable.
+#[derive(Debug, thiserror::Error)]
+#[error("R90406 {name} is not a readable database: {cause}")]
+pub struct CorruptDatabase {
+    name: String,
+    cause: String,
+}
+
+/// Blocking. `open` on the database at `path`; a file SQLite reports corrupt or not a database is
+/// moved aside, with its write-ahead log and journal, as `<name>.corrupt-<local time>`, and a fresh
+/// one opened in its place. Any other failure, or one the move does not get past, is `open`'s.
+pub fn open_database<T, E>(path: &Path, log: &Logger, open: impl Fn(&Path) -> Result<T, E>) -> Result<T, E>
+where
+    E: std::error::Error + 'static,
+{
+    let error = match open(path) {
+        Err(error) if is_corruption(&error) => error,
+        opened => return opened,
+    };
+    let name = path.file_name().map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into());
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let aside = with_suffix(path, &format!(".corrupt-{stamp}"));
+    if let Err(move_error) = move_database(path, &aside) {
+        log.warn(&format!("R90407 the unreadable {name} could not be moved aside"), Some(&move_error));
+        return Err(error);
+    }
+    let corrupt = CorruptDatabase { name, cause: error.to_string() };
+    log.capture_error(&format!("unreadable database moved to {}, starting a new one", aside.display()), &corrupt);
+    open(path)
+}
+
+fn is_corruption(error: &(dyn std::error::Error + 'static)) -> bool {
+    std::iter::successors(Some(error), |error| error.source()).any(|error| {
+        matches!(
+            error.downcast_ref::<rusqlite::Error>().and_then(rusqlite::Error::sqlite_error_code),
+            Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)
+        )
+    })
+}
+
+/// The main file goes last: a failed move must never leave a sidecar where the next open creates a fresh
+/// database, which SQLite would replay that sidecar into.
+fn move_database(path: &Path, aside: &Path) -> std::io::Result<()> {
+    for suffix in SIDECARS {
+        match std::fs::rename(with_suffix(path, suffix), with_suffix(aside, suffix)) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+    }
+    std::fs::rename(path, aside)
+}
+
 const RENAMED: [(&str, &str); 4] = [
     ("media_store.db", "media-store.db"),
     ("play_history.db", "play-history.db"),
@@ -21,8 +149,9 @@ const RENAMED: [(&str, &str); 4] = [
     ("engine-cache/index.db", "engine-cache/engine-cache.db"),
 ];
 const SIDECARS: [&str; 3] = ["-wal", "-shm", "-journal"];
-/// Caches earlier builds kept where the JVM app keeps nothing; refilled under the JVM app's names.
-const OBSOLETE_DIRS: [&str; 1] = ["bundles"];
+/// Caches earlier builds (this app's or the JVM app's) kept that nothing reads now; refilled under the JVM
+/// app's current names.
+const OBSOLETE_DIRS: [&str; 3] = ["bundles", "art-cache", "image-http-cache"];
 
 /// Blocking. Runs only in the instance that holds the data dir, so nothing has the files open.
 pub fn adopt_jvm_names(data_dir: &Path, log: &Logger) {
@@ -105,8 +234,20 @@ fn remove_if_exists(path: &Path) -> std::io::Result<()> {
 /// Settings earlier builds kept under their own keys, moved to the JVM app's: `(old, new)`.
 const RENAMED_SETTINGS: [(&str, &str); 1] = [("playback.volume", "player.volume")];
 
+/// Settings no build reads any more; both apps delete them.
+const RETIRED_SETTINGS: [&str; 4] =
+    ["app.lastSection", "app.lastDiscoverTab", "app.lastLibraryTab", "app.lastYtMusicTab"];
+
 /// Blocking.
 pub fn adopt_jvm_settings(app_db: &AppDb, log: &Logger) {
+    for key in RETIRED_SETTINGS {
+        if !matches!(app_db.get_raw(key), Ok(Some(_))) {
+            continue;
+        }
+        if let Err(error) = app_db.delete_setting(key) {
+            log.warn(&format!("R90204 the retired setting {key} could not be removed"), Some(&error));
+        }
+    }
     for (old, new) in RENAMED_SETTINGS {
         let Ok(Some(value)) = app_db.get_raw(old) else { continue };
         let moved = match app_db.get_raw(new) {

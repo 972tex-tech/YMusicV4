@@ -21,13 +21,12 @@ import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.WebSettings
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.sentry.kotlin.multiplatform.Sentry
 import io.ymusic.download.DownloadChange
 import io.ymusic.download.DownloadFolderAccessException
@@ -113,6 +112,7 @@ import io.ymusic.ui.sponsorblock.PublicSponsorBlockApi
 import io.ymusic.ui.sponsorblock.SqliteSponsorBlockStore
 import io.ymusic.ui.sponsorblock.sponsorBlockAndroidDriver
 import io.ymusic.ui.subscriptions.LocalSubscriptions
+import io.ymusic.ytmedia.YOUTUBE_USER_AGENT
 import io.ymusic.ytmedia.cache.DiskMediaBlobCache
 import io.ymusic.ytmedia.cache.MediaCache
 import io.ymusic.ytmedia.cache.SqlDelightBlobIndex
@@ -233,8 +233,12 @@ class YMusicApplication : Application() {
 
     /** The current Activity's folder pick (a SAF tree, or a `file://` folder where the device has no tree
      *  picker), registered while it lives. The graph is app-scoped but a pick needs an Activity; a scan is
-     *  always user-driven, so one is up when this runs. */
-    @Volatile var folderPicker: (suspend () -> Uri?)? = null
+     *  always user-driven, so one is up when this runs. `writable` = only a folder the app can write into may be
+     *  chosen (the download location). */
+    @Volatile var folderPicker: (suspend (writable: Boolean) -> Uri?)? = null
+
+    /** The picks [folderPicker] is waiting on; outlives the Activity that launched the picker. */
+    internal val folderPicks = FolderPicks()
 
     /** The current Activity's background-picture pick — same lifecycle as [folderPicker]. */
     @Volatile var backgroundPicker: (suspend () -> String?)? = null
@@ -465,11 +469,15 @@ class YMusicApplication : Application() {
                 imageNetworkFetcher,
                 fileFetcher(),
                 ffmpegBin?.let {
+                    val artLogger = rootLogger.fork("local-art")
                     mediaStoreArtFetcher(
                         FfmpegMetadataGetter(it, AndroidFfInputResolver(contentResolver)),
                         mediaStore,
                         loaderYoutubeArt { checkNotNull(loaderRef) },
+                        artLogger,
                         coverCache = ImageSourceCache(FileSystem.SYSTEM, cacheDir.resolve("image-cover-cache").toOkioPath(), 32L * 1024 * 1024),
+                        frameFallback = PlatformVideoFrameExtractor(this, artLogger),
+                        extractorVersion = BuildConfig.VERSION_CODE.toString(),
                     )
                 },
             ),
@@ -613,7 +621,7 @@ class YMusicApplication : Application() {
         val mediaProxy = LocalMediaProxy(
             playerCache,
             mediaProxyClient,
-            userAgent = WebSettings.getDefaultUserAgent(applicationContext),
+            userAgent = YOUTUBE_USER_AGENT,
             logger = rootLogger,
             // Per-request media-path logging — debug builds only, it narrates the hot path.
             verbose = BuildConfig.DEBUG,
@@ -684,7 +692,7 @@ class YMusicApplication : Application() {
                 now = { System.currentTimeMillis() },
                 resolver = ytResolver,
                 client = sabrClient,
-                userAgent = WebSettings.getDefaultUserAgent(applicationContext),
+                userAgent = YOUTUBE_USER_AGENT,
                 ffmpeg = ffmpegBin?.let { bin -> io.ymusic.download.Ffmpeg(bin) },
                 // Handles file:// (app dirs) via okio and user-picked SAF folders (content://) via SAF.
                 // App data, not cacheDir (trimmed mid-download under storage pressure); no_backup keeps
@@ -859,9 +867,9 @@ class YMusicApplication : Application() {
             // (unlike Swing/UIKit), so adding the container directly throws "child already has a
             // parent". So each AndroidView gets its own empty host and re-parents the shared container
             // into whichever is active, detaching from the previous parent first.
-            val queue by player.queue.collectAsState()
-            val config by player.config.collectAsState()
-            val quality by player.videoQuality.collectAsState()
+            val queue by player.queue.collectAsStateWithLifecycle()
+            val config by player.config.collectAsStateWithLifecycle()
+            val quality by player.videoQuality.collectAsStateWithLifecycle()
             val showMse = queue.currentItem is PlayableItem.YtMedia && showsVideo(config, quality)
             AndroidView(
                 factory = { context -> FrameLayout(context) },
@@ -991,14 +999,34 @@ class YMusicApplication : Application() {
 
     /** SAF folder pick + full scan into [store]; returns how it ended, or null when canceled. */
     private suspend fun scanPickedFolder(store: BetterMediaStore, onProgress: (Int) -> Unit): ScanResult? {
-        val treeUri = folderPicker?.invoke() ?: return null
+        val treeUri = folderPicker?.invoke(false) ?: return null
         return scanUris(store, listOf(treeUri), onProgress)
     }
 
     /** Pick a folder and register it as a Library bucket (no media scan — works even when empty),
      *  returning its uri. Used to choose a download location. */
     private suspend fun pickAndRegisterFolder(store: BetterMediaStore): String? {
-        val treeUri = folderPicker?.invoke() ?: return null
+        val treeUri = folderPicker?.invoke(true) ?: return null
+        return registerFolder(store, treeUri)
+    }
+
+    /** Applies a picked folder whose caller died with the old process: see [AppGraph.adoptPickedFolder]. */
+    fun adoptFolderPick(treeUri: android.net.Uri, writable: Boolean) {
+        appScope.launch {
+            val graph = graphAsync().await()
+            val uri = Uri.parse(treeUri.toString())
+            if (writable) {
+                val store = graph.mediaStore ?: return@launch
+                val registered = registerFolder(store, uri) ?: return@launch
+                graph.adoptPickedFolder(registered, asDownloadLocation = true)
+            } else {
+                graph.adoptPickedFolder(uri.toString(), asDownloadLocation = false)
+            }
+        }
+    }
+
+    /** Registers [treeUri] as a Library bucket (no scan), returning its uri; null when it doesn't read as a folder. */
+    private suspend fun registerFolder(store: BetterMediaStore, treeUri: Uri): String? {
         val folder = SafDocumentsProvider(applicationContext).queryDocument(treeUri) as? DocumentInfo.Folder ?: return null
         store.upsertBucket(BucketDraft(uri = folder.uri, name = folder.name))
         return folder.uri.toString()

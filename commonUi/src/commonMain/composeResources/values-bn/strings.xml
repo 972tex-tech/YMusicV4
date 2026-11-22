@@ -199,6 +199,11 @@
     <string name="menu_remove_from_playlist">প্লেলিস্ট থেকে সরান</string>
     <string name="playlist_delete_title">প্লেলিস্ট মুছবেন?</string>
     <string name="playlist_delete_message">“%1$s” সরানো হবে। গানগুলো আপনার লাইব্রেরিতে থাকবে।</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">প্লেলিস্ট থেকে %1$dটি গান সরাবেন?</item>
+        <item quantity="other">প্লেলিস্ট থেকে %1$dটি গান সরাবেন?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">গানগুলো আপনার লাইব্রেরিতে থাকবে।</string>
     <string name="add_to_playlist_new">নতুন প্লেলিস্ট…</string>
     <string name="playlist_recent_play">সাম্প্রতিক চালানো</string>
     <string name="playlist_top_tracks">শীর্ষ ট্র্যাক</string>
@@ -304,10 +309,14 @@
     <string name="cd_download">ডাউনলোড</string>
     <string name="cd_fullscreen">পূর্ণ স্ক্রিন</string>
     <string name="cd_exit_fullscreen">পূর্ণ স্ক্রিন থেকে বেরোন</string>
+    <string name="cd_show_queue">সারি দেখান</string>
+    <string name="cd_hide_queue">সারি লুকান</string>
     <string name="cd_fit_video">ভিডিও মানানসই করুন</string>
     <string name="cd_fill_video">স্ক্রিন ভরাট করুন</string>
-    <string name="cd_lock_rotation">ঘোরানো লক করুন</string>
-    <string name="cd_unlock_rotation">ঘোরানো আনলক করুন</string>
+    <string name="cd_screen_rotation">স্ক্রিন ঘোরানো</string>
+    <string name="rotation_lock_landscape">ল্যান্ডস্কেপে লক করুন</string>
+    <string name="rotation_lock_portrait">পোর্ট্রেটে লক করুন</string>
+    <string name="rotation_free">মুক্তভাবে ঘোরান</string>
     <string name="cd_rewind10">10 সেকেন্ড পিছিয়ে যান</string>
     <string name="cd_forward10">10 সেকেন্ড এগিয়ে যান</string>
     <string name="cd_repeat_off">পুনরাবৃত্তি: বন্ধ</string>
@@ -416,6 +425,8 @@
     <string name="settings_audio_focus_apps">অন্য অ্যাপ শব্দ চালালে থামান</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube ভিডিওর স্পনসর অংশ স্বয়ংক্রিয়ভাবে বাদ দিন। Now Playing থেকে কোনো ভিডিওর জন্য বন্ধ করুন।</string>
+    <string name="settings_stable_volume">স্থির ভলিউম</string>
+    <string name="settings_stable_volume_hint">জোরালো ও মৃদু অংশ সমান করে এবং প্রতিটি গান প্রায় একই আওয়াজে চালায়।</string>
     <string name="sponsor_block_included">এই ভিডিওর জন্য SponsorBlock চালু</string>
     <string name="sponsor_block_excluded">এই ভিডিওর জন্য SponsorBlock বন্ধ</string>
     <string name="settings_sound">সাউন্ড</string>
@@ -660,4 +671,30 @@
     <string name="native_blocked_help">অফিস বা স্কুলের পিসিতে আপনার অ্যাডমিনিস্ট্রেটরকে YMusic অনুমতি দিতে বলুন। নিজের পিসিতে Windows Security-তে Smart App Control দেখুন।</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">রিফ্রেশ হচ্ছে</string>
+    <string name="a11y_loading">লোড হচ্ছে</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">সব নির্বাচন করুন</string>
+    <string name="downloads_action_select">নির্বাচন করুন</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">%1$dটি নির্বাচিত</item>
+        <item quantity="other">%1$dটি নির্বাচিত</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">তালিকা থেকে %1$dটি ডাউনলোড সরাবেন?</item>
+        <item quantity="other">তালিকা থেকে %1$dটি ডাউনলোড সরাবেন?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">সম্পূর্ণ হওয়া ফাইলগুলো এই ডিভাইসে থেকে যাবে।</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">%1$dটি ফাইল মুছবেন?</item>
+        <item quantity="other">%1$dটি ফাইল মুছবেন?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">মুছে ফেলা ফাইল আর ফিরিয়ে আনা যাবে না।</string>
+    <string name="downloads_cancel_selected">ডাউনলোড বাতিল করুন</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">%1$dটি ডাউনলোড বাতিল করবেন?</item>
+        <item quantity="other">%1$dটি ডাউনলোড বাতিল করবেন?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">এখন পর্যন্ত যা ডাউনলোড হয়েছে তা মুছে ফেলা হবে।</string>
+    <string name="downloads_cancel_selected_keep">রাখুন</string>
+    <string name="data_dir_unusable">YMusic তার ডেটা ফোল্ডার, %1$s, খুলতে পারছে না। নিশ্চিত করুন যে এটি এমন একটি ফোল্ডার যেখানে আপনি লিখতে পারেন, তারপর আবার YMusic খুলুন। (%2$s)</string>
 </resources>

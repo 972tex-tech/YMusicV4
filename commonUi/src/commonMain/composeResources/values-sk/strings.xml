@@ -205,6 +205,13 @@
     <string name="menu_remove_from_playlist">Odstrániť z playlistu</string>
     <string name="playlist_delete_title">Odstrániť playlist?</string>
     <string name="playlist_delete_message">„%1$s“ sa odstráni. Skladby zostanú vo vašej knižnici.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">Odstrániť %1$d skladbu z playlistu?</item>
+        <item quantity="few">Odstrániť %1$d skladby z playlistu?</item>
+        <item quantity="many">Odstrániť %1$d skladby z playlistu?</item>
+        <item quantity="other">Odstrániť %1$d skladieb z playlistu?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">Skladby zostanú vo vašej knižnici.</string>
     <string name="add_to_playlist_new">Nový playlist…</string>
     <string name="playlist_recent_play">Nedávno prehrané</string>
     <string name="playlist_top_tracks">Najprehrávanejšie skladby</string>
@@ -312,10 +319,14 @@
     <string name="cd_download">Stiahnuť</string>
     <string name="cd_fullscreen">Celá obrazovka</string>
     <string name="cd_exit_fullscreen">Ukončiť celú obrazovku</string>
+    <string name="cd_show_queue">Zobraziť rad</string>
+    <string name="cd_hide_queue">Skryť rad</string>
     <string name="cd_fit_video">Prispôsobiť video</string>
     <string name="cd_fill_video">Vyplniť obrazovku</string>
-    <string name="cd_lock_rotation">Uzamknúť otáčanie</string>
-    <string name="cd_unlock_rotation">Odomknúť otáčanie</string>
+    <string name="cd_screen_rotation">Otáčanie obrazovky</string>
+    <string name="rotation_lock_landscape">Uzamknúť na šírku</string>
+    <string name="rotation_lock_portrait">Uzamknúť na výšku</string>
+    <string name="rotation_free">Voľné otáčanie</string>
     <string name="cd_rewind10">Pretočiť o 10 sekúnd späť</string>
     <string name="cd_forward10">Pretočiť o 10 sekúnd dopredu</string>
     <string name="cd_repeat_off">Opakovať: vypnuté</string>
@@ -424,6 +435,8 @@
     <string name="settings_audio_focus_apps">Pozastaviť, keď iné aplikácie prehrávajú zvuk</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Automaticky preskakovať sponzorované úseky vo videách YouTube. Pre konkrétne video sa dá vypnúť v Práve hrá.</string>
+    <string name="settings_stable_volume">Stabilná hlasitosť</string>
+    <string name="settings_stable_volume_hint">Vyrovnáva hlasné a tiché pasáže a prehráva každú skladbu s podobnou hlasitosťou.</string>
     <string name="sponsor_block_included">SponsorBlock je pre toto video zapnutý</string>
     <string name="sponsor_block_excluded">SponsorBlock je pre toto video vypnutý</string>
     <string name="settings_sound">Zvuk</string>
@@ -676,4 +689,38 @@
     <string name="native_blocked_help">Na pracovnom alebo školskom počítači požiadajte správcu, aby povolil YMusic. Na vlastnom počítači skontrolujte Smart App Control v Zabezpečení Windows.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">Obnovuje sa</string>
+    <string name="a11y_loading">Načítava sa</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">Vybrať všetko</string>
+    <string name="downloads_action_select">Vybrať</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">Vybrané: %1$d</item>
+        <item quantity="few">Vybrané: %1$d</item>
+        <item quantity="many">Vybrané: %1$d</item>
+        <item quantity="other">Vybrané: %1$d</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">Odstrániť zo zoznamu %1$d stiahnutie?</item>
+        <item quantity="few">Odstrániť zo zoznamu %1$d stiahnutia?</item>
+        <item quantity="many">Odstrániť zo zoznamu %1$d stiahnutia?</item>
+        <item quantity="other">Odstrániť zo zoznamu %1$d stiahnutí?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">Dokončené súbory zostanú v tomto zariadení.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">Odstrániť %1$d súbor?</item>
+        <item quantity="few">Odstrániť %1$d súbory?</item>
+        <item quantity="many">Odstrániť %1$d súboru?</item>
+        <item quantity="other">Odstrániť %1$d súborov?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">Odstránené súbory sa nedajú obnoviť.</string>
+    <string name="downloads_cancel_selected">Zrušiť sťahovanie</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">Zrušiť %1$d stiahnutie?</item>
+        <item quantity="few">Zrušiť %1$d stiahnutia?</item>
+        <item quantity="many">Zrušiť %1$d stiahnutia?</item>
+        <item quantity="other">Zrušiť %1$d stiahnutí?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">Doteraz stiahnuté dáta sa odstránia.</string>
+    <string name="downloads_cancel_selected_keep">Ponechať</string>
+    <string name="data_dir_unusable">YMusic nemôže otvoriť svoj priečinok s údajmi, %1$s. Uistite sa, že je to priečinok, do ktorého môžete zapisovať, a potom YMusic otvorte znova. (%2$s)</string>
 </resources>

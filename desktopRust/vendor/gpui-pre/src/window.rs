@@ -13,13 +13,13 @@ use crate::{
     DispatchActionListener, DispatchNodeId, DispatchTree, DisplayId, Edges, Effect, Entity,
     EntityId, EventEmitter, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
     Hsla, InputHandler, InputPreference, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent,
-    Keystroke, KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers, ModifiersChangedEvent,
-    MonochromeSprite, MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent, Path, Pixels,
-    PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
-    PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
-    RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
-    SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
-    StrikethroughStyle, Style, SubpixelSprite, Subscription, SystemWindowTab,
+    Keystroke, KeystrokeEvent, LayoutDirection, LayoutId, LineLayoutIndex, Modifiers,
+    ModifiersChangedEvent, MonochromeSprite, MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent,
+    Path, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler,
+    PlatformWindow, Point, PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render,
+    RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge,
+    SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow,
+    SharedString, Size, StrikethroughStyle, Style, SubpixelSprite, Subscription, SystemWindowTab,
     SystemWindowTabController, TabStopMap, Task, TextInputConfiguration, TextInputStateChange,
     TextRenderingMode, TextStyle, TextStyleRefinement, ThermalState, TransformationMatrix,
     Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance, WindowBounds,
@@ -1229,6 +1229,7 @@ pub struct Window {
     sprite_atlas: Arc<dyn PlatformAtlas>,
     text_system: Rc<WindowTextSystem>,
     text_rendering_mode: Rc<Cell<TextRenderingMode>>,
+    layout_direction: Rc<Cell<LayoutDirection>>,
     rem_size: Pixels,
     /// The stack of override values for the window's rem size.
     ///
@@ -2133,7 +2134,7 @@ impl Window {
             let mut cx = cx.to_async();
             move || {
                 handle
-                    .update(&mut cx, |_, window, cx| window.bounds_changed(cx))
+                    .update(&mut cx, |_, window, cx| window.moved(cx))
                     .with_context(|| format!("handling move for window {:?}", handle.window_id()))
                     .log_err();
             }
@@ -2360,6 +2361,7 @@ impl Window {
             sprite_atlas,
             text_system,
             text_rendering_mode: cx.text_rendering_mode.clone(),
+            layout_direction: cx.layout_direction.clone(),
             rem_size: px(16.),
             rem_size_override_stack: SmallVec::new(),
             viewport_size: content_size,
@@ -2687,6 +2689,15 @@ impl Window {
         style
     }
 
+    /// The layout direction in effect: the innermost text style that sets one, else the app's.
+    pub fn layout_direction(&self) -> LayoutDirection {
+        self.text_style_stack
+            .iter()
+            .rev()
+            .find_map(|refinement| refinement.direction)
+            .unwrap_or_else(|| self.layout_direction.get())
+    }
+
     /// Check if the platform window is maximized.
     ///
     /// On some platforms (namely Windows) this is different than the bounds being the size of the display
@@ -3007,6 +3018,21 @@ impl Window {
 
         self.refresh();
 
+        self.bounds_observers
+            .clone()
+            .retain(|callback| callback(self, cx));
+    }
+
+    /// A move that keeps the content size and scale needs no redraw: on Windows the move loop runs
+    /// on the UI thread, so a full redraw per WM_MOVE makes dragging a heavy window stutter.
+    fn moved(&mut self, cx: &mut App) {
+        if self.platform_window.scale_factor() != self.scale_factor
+            || self.platform_window.content_size() != self.viewport_size
+        {
+            self.bounds_changed(cx);
+            return;
+        }
+        self.mouse_position = self.platform_window.mouse_position();
         self.bounds_observers
             .clone()
             .retain(|callback| callback(self, cx));
@@ -5490,11 +5516,13 @@ impl Window {
         cx.layout_id_buffer.extend(children);
         let rem_size = self.rem_size();
         let scale_factor = self.scale_factor();
+        let direction = self.layout_direction();
 
         self.layout_engine.as_mut().unwrap().request_layout(
             style,
             rem_size,
             scale_factor,
+            direction,
             &cx.layout_id_buffer,
         )
     }
@@ -6938,6 +6966,18 @@ impl Window {
     /// Focus the current window and bring it to the foreground at the platform level.
     pub fn activate_window(&self) {
         self.platform_window.activate();
+    }
+
+    /// As [`Self::activate_window`], with an XDG activation token another client minted for the
+    /// user action that asks for it: on Wayland the compositor grants focus only with one.
+    pub fn activate_window_with_token(&self, token: String) {
+        self.platform_window.activate_with_token(token);
+    }
+
+    /// For a user action that asks for no window but came with an XDG activation token: ends the
+    /// launch feedback (GNOME's busy cursor) the token started, which otherwise runs to a timeout.
+    pub fn complete_activation_token(&self, token: String) {
+        self.platform_window.complete_activation_token(token);
     }
 
     /// Requests that the operating system draw attention to this window.

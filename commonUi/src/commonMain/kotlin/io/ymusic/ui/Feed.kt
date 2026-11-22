@@ -41,7 +41,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -57,6 +56,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.ymusic.download.StillProcessingException
 import io.ymusic.dynamicengine.yt.YtChip
 import io.ymusic.dynamicengine.yt.YtFeedItem
@@ -365,7 +365,7 @@ fun FeedList(
     listState: LazyListState? = null,
     onDeeplink: ((link: String, title: String?) -> Unit)? = null,
 ) {
-    val state by pager.state.collectAsState()
+    val state by pager.state.collectAsStateWithLifecycle()
     // Pull-to-refresh / F5 reloads the surface from the top: drop any chip filter and take the
     // server's default first response, keeping the current list on screen until the new page lands.
     val reload = { pager.reload() }
@@ -581,6 +581,10 @@ private fun FeedSections(
 ) {
     // Collapsible sections start collapsed; the map survives recomposition, keyed by section slot.
     val expanded = remember { mutableStateMapOf<Int, Boolean>() }
+    val sectionFocus = remember { HashMap<Int, LoadMoreFocus>() }
+    val moreFocus = remember(pager) { LoadMoreFocus() }
+    val itemTotal = state.sections.sumOf { it.items.size }
+    moreFocus.Settle(loading = state.loadingMore, count = itemTotal, controlShown = state.continuation != null)
     BoxWithConstraints(modifier.fillMaxSize()) {
         val layoutWidth = railStableWidth(maxWidth)
         val metrics = gridMetricsFor(layoutWidth)
@@ -591,7 +595,7 @@ private fun FeedSections(
         val listState = hoistedListState ?: rememberLazyListState()
         // Report scroll to the shell (which lifts the app bar); the feed doesn't touch the bar itself.
         TrackScroll { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
-        LazyColumn(Modifier.fillMaxSize().listKeyboardNavigation(), state = listState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
+        LazyColumn(Modifier.fillMaxSize().listKeyboardNavigation(items = true), state = listState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
             if (topContent != null) item { topContent() }
             // A 0-height chip slot at index 0 makes firstVisibleItemIndex > 0 while still at the top.
             val hasChips = state.chips.isNotEmpty() || state.sort.isNotEmpty()
@@ -601,6 +605,7 @@ private fun FeedSections(
                 // mockups give the feed a small inset under the app bar (search.html .grid).
                 item { Spacer(Modifier.height(6.dp)) }
             }
+            var firstIndex = 0
             state.sections.forEachIndexed { index, section ->
                 if (index > 0) {
                     // The section separator: a hairline centered in the inter-section air (the
@@ -618,6 +623,10 @@ private fun FeedSections(
                 }
                 feedSection(
                     section = section,
+                    sectionIndex = index,
+                    firstIndex = firstIndex,
+                    moreFocus = moreFocus,
+                    sectionFocus = sectionFocus.getOrPut(index) { LoadMoreFocus() },
                     columns = columns,
                     metrics = metrics,
                     wide = wide,
@@ -629,15 +638,24 @@ private fun FeedSections(
                     onPlayItem = onPlayItem,
                     onDeeplink = onDeeplink,
                 )
+                firstIndex += section.items.size
             }
             if (state.continuation != null) {
                 item {
                     if (state.loadingMore) {
                         Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(Modifier.size(28.dp))
+                            LoadingMoreIndicator(moreFocus)
                         }
                     } else {
-                        ShowMoreButton(stringResource(Res.string.show_more), expanded = false, onClick = { pager.loadMore() })
+                        ShowMoreButton(
+                            stringResource(Res.string.show_more),
+                            expanded = false,
+                            modifier = moreFocus.control,
+                            onClick = {
+                                moreFocus.start(itemTotal)
+                                pager.loadMore()
+                            },
+                        )
                     }
                 }
             }
@@ -654,6 +672,10 @@ private val COLLAPSED_ROWS_BY_COLUMNS = listOf(4, 3, 2)
 
 private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     section: YtSection,
+    sectionIndex: Int,
+    firstIndex: Int,
+    moreFocus: LoadMoreFocus,
+    sectionFocus: LoadMoreFocus,
     columns: Int,
     metrics: GridMetrics,
     wide: Boolean,
@@ -689,21 +711,16 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
     // "Show more" toggle — the header's chevron and the button below both expand it.
     if (section.layout == YtSection.LAYOUT_TAGS) {
         val shown = if (expanded || !section.collapsible) section.items else section.items.take(TAGS_COLLAPSED)
-        item { TagFlow(shown, onOpen) }
+        item { TagFlow(shown, onOpen) { i -> moreFocus.item(firstIndex + i).then(sectionFocus.item(i)) } }
         if (section.collapsible && section.items.size > TAGS_COLLAPSED) {
-            item {
-                val label = if (expanded) {
-                    stringResource(Res.string.show_less)
-                } else {
-                    stringResource(Res.string.show_more_n, section.items.size - TAGS_COLLAPSED)
-                }
-                ShowMoreButton(label, expanded = expanded, onClick = onToggle)
+            item(key = showMoreKey(sectionIndex)) {
+                SectionToggle(section, TAGS_COLLAPSED, expanded, sectionFocus, onToggle)
             }
         }
         return
     }
     if (section.layout == YtSection.LAYOUT_CAROUSEL) {
-        item { ChannelCarousel(section.items, onOpen) }
+        item { ChannelCarousel(section.items, onOpen) { i -> moreFocus.item(firstIndex + i) } }
         return
     }
     // A collapsed section keeps a few rows, resolved by column count from an engine-supplied
@@ -719,6 +736,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                 item,
                 actions = itemActions(item, coordinator),
                 onClick = itemClick(item, section, coordinator, onOpen, onPlayItem),
+                modifier = moreFocus.item(firstIndex + i).then(sectionFocus.item(i)),
                 wide = wide,
                 compactTitle = compactTitle,
             )
@@ -740,12 +758,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
                     ),
                 horizontalArrangement = Arrangement.spacedBy(metrics.gutter - metrics.inset * 2),
             ) {
-                rows[r].forEach { item ->
+                rows[r].forEachIndexed { column, item ->
+                    val position = r * columns + column
                     FeedGridCard(
                         item,
                         actions = itemActions(item, coordinator),
                         onClick = itemClick(item, section, coordinator, onOpen, onPlayItem),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).then(moreFocus.item(firstIndex + position)).then(sectionFocus.item(position)),
                         inset = metrics.inset,
                     )
                 }
@@ -754,15 +773,34 @@ private fun androidx.compose.foundation.lazy.LazyListScope.feedSection(
         }
     }
     if (section.collapsible && section.items.size > collapsedCount) {
-        item {
-            val label = if (expanded) {
-                stringResource(Res.string.show_less)
-            } else {
-                stringResource(Res.string.show_more_n, section.items.size - collapsedCount)
-            }
-            ShowMoreButton(label, expanded = expanded, onClick = onToggle)
+        item(key = showMoreKey(sectionIndex)) {
+            SectionToggle(section, collapsedCount, expanded, sectionFocus, onToggle)
         }
     }
+}
+
+/** Keyed, so a focused toggle keeps its node (and focus) when the rows above it come and go. */
+private fun showMoreKey(sectionIndex: Int) = "show-more:$sectionIndex"
+
+/** A collapsible section's "Show more (N)" / "Show less": expanding focuses the first revealed item,
+ *  collapsing keeps focus on the toggle. */
+@Composable
+private fun SectionToggle(section: YtSection, collapsedCount: Int, expanded: Boolean, focus: LoadMoreFocus, onToggle: () -> Unit) {
+    val label = if (expanded) {
+        stringResource(Res.string.show_less)
+    } else {
+        stringResource(Res.string.show_more_n, section.items.size - collapsedCount)
+    }
+    ShowMoreButton(
+        label,
+        expanded = expanded,
+        modifier = focus.control,
+        onClick = {
+            if (expanded) focus.collapse() else focus.reveal(collapsedCount)
+            onToggle()
+        },
+    )
+    focus.Settle(loading = false, count = section.items.size, controlShown = true)
 }
 
 private fun itemClick(
@@ -795,7 +833,7 @@ internal val LocalRemoveFromTopTracks = compositionLocalOf<((YtFeedItem) -> Unit
 @Composable
 private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): ItemActions {
     val downloadLauncher = LocalDownloadLauncher.current
-    val quickPreset = downloadLauncher?.quickPreset?.collectAsState()?.value
+    val quickPreset = downloadLauncher?.quickPreset?.collectAsStateWithLifecycle()?.value
     val removeFromTopTracks = LocalRemoveFromTopTracks.current
     val ytPlaylists = LocalYtPlaylistActions.current
     val removeFromYtPlaylist = LocalRemoveFromYtPlaylist.current
@@ -813,9 +851,6 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
                 }
                 if (downloadLauncher != null && !item.live) {
                     add(stringResource(Res.string.cd_download) to { downloadLauncher.launch(item) })
-                    if (quickPreset != null) {
-                        add(stringResource(Res.string.quick_download_menu, quickPreset.label()) to { downloadLauncher.quickLaunch(item) })
-                    }
                 }
                 if (share != null) add(stringResource(Res.string.cd_share) to { share(item.kind, item.id) })
                 if (removeFromYtPlaylist != null && item.removeToken != null) {
@@ -823,6 +858,10 @@ private fun itemActions(item: YtFeedItem, coordinator: PlaybackCoordinator): Ite
                 }
                 if (removeFromTopTracks != null) {
                     add(stringResource(Res.string.menu_remove) to { removeFromTopTracks(item) })
+                }
+                // Kept last: quickest to reach with a screen reader (#340).
+                if (downloadLauncher != null && !item.live && quickPreset != null) {
+                    add(stringResource(Res.string.quick_download_menu, quickPreset.label()) to { downloadLauncher.quickLaunch(item) })
                 }
             }
         } else {
@@ -1008,22 +1047,26 @@ internal fun rankMusicFirst(items: List<YtFeedItem>): List<YtFeedItem> {
 /** The three feed layout bands a surface width falls into. */
 internal enum class FeedLayout { SquareList, WideList, Grid }
 
-/** The ONE place the feed breakpoints live: square list under 320dp, 16:9 list to 469dp, then the
- *  grid ([gridColumnsFor] columns). */
+/** Where the grid starts: two [GRID_CARD_MIN_WIDTH] cards fit at the compact margin and gutter. */
+internal val FEED_GRID_MIN_WIDTH: androidx.compose.ui.unit.Dp =
+    GRID_CARD_MIN_WIDTH * 2 + DesignSpacing.Space8 + DesignSpacing.MarginCompact * 2
+
+/** The ONE place the feed breakpoints live: square list under 320dp, 16:9 list below
+ *  [FEED_GRID_MIN_WIDTH], then the grid ([gridColumnsFor] columns). */
 internal fun feedLayoutFor(width: androidx.compose.ui.unit.Dp): FeedLayout = when {
     width < 320.dp -> FeedLayout.SquareList
-    width < 470.dp -> FeedLayout.WideList
+    width < FEED_GRID_MIN_WIDTH -> FeedLayout.WideList
     else -> FeedLayout.Grid
 }
 
 /** Feed list rows under 380dp use [ListTitleCompactStyle]. */
 internal fun feedCompactTitleFor(width: androidx.compose.ui.unit.Dp): Boolean = width < 380.dp
 
-/** Max-item-width model: the FEWEST columns (≥2) keeping every card ≤ [GRID_CARD_MAX_WIDTH], with
- *  the gutter between columns counted. Cards shrink toward the next column, never past the max. */
+/** Min-item-width model: the MOST columns (≥2) keeping every card ≥ [GRID_CARD_MIN_WIDTH], with
+ *  the gutter between columns counted. Cards grow toward the next column, never below the min. */
 internal fun gridColumnsFor(width: androidx.compose.ui.unit.Dp): Int {
     val metrics = gridMetricsFor(width)
-    return kotlin.math.ceil((width - metrics.margin * 2 + metrics.gutter) / (GRID_CARD_MAX_WIDTH + metrics.gutter))
+    return kotlin.math.floor((width - metrics.margin * 2 + metrics.gutter) / (GRID_CARD_MIN_WIDTH + metrics.gutter))
         .toInt()
         .coerceAtLeast(2)
 }

@@ -40,6 +40,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,12 +50,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -289,7 +296,7 @@ fun FeedListItem(
                 Text(sub, style = ListSubStyle, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
             }
         }
-        if (actions.entries.isNotEmpty()) MoreMenu(actions, Modifier.align(Alignment.Top).padding(top = 2.dp))
+        if (actions.entries.isNotEmpty()) MoreMenu(actions, Modifier.align(Alignment.Top).padding(top = 2.dp), inFocusableItem = onClick != null)
     }
 }
 
@@ -344,11 +351,7 @@ fun FeedGridCard(
                 if (isAvailableOffline(item)) AvailableOfflineMark(Modifier.align(Alignment.TopStart))
             }
         }
-        Row(
-            Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f).clearAndSetSemantics {}) {
                 Text(item.title, style = GridTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val sub = listOfNotNull(item.subtitleLine1, item.subtitleLine2).joinToString(" · ")
@@ -356,8 +359,23 @@ fun FeedGridCard(
                     Text(sub, style = GridSubStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                 }
             }
-            if (actions.entries.isNotEmpty()) MoreMenu(actions, Modifier.padding(top = 1.dp))
+            if (actions.entries.isNotEmpty()) {
+                MoreMenu(
+                    actions,
+                    Modifier.overhangEnd(inset).padding(top = 5.dp),
+                    inFocusableItem = onClick != null,
+                    hitSize = GRID_MENU_HIT,
+                )
+            }
         }
+    }
+}
+
+/** Lays the element out [overhang] narrower than it measures, its end spilling past its slot. */
+private fun Modifier.overhangEnd(overhang: Dp): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints.copy(minWidth = 0))
+    layout((placeable.width - overhang.roundToPx()).coerceAtLeast(0), placeable.height) {
+        placeable.placeRelative(0, 0)
     }
 }
 
@@ -396,7 +414,7 @@ private fun ChannelGridCard(
                 )
             }
         }
-        if (actions.entries.isNotEmpty()) MoreMenu(actions, Modifier.align(Alignment.TopEnd))
+        if (actions.entries.isNotEmpty()) MoreMenu(actions, Modifier.align(Alignment.TopEnd), inFocusableItem = onClick != null)
     }
 }
 
@@ -428,19 +446,19 @@ fun ShowMoreButton(label: String, expanded: Boolean, onClick: () -> Unit, modifi
  *  buttons) rendered as a wrap of navigation pills — no artwork, each opens its browse via [onOpen]. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun TagFlow(items: List<YtFeedItem>, onOpen: ((YtFeedItem) -> Unit)?) {
+internal fun TagFlow(items: List<YtFeedItem>, onOpen: ((YtFeedItem) -> Unit)?, itemModifier: (Int) -> Modifier = { Modifier }) {
     FlowRow(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items.forEach { item -> TagPill(item.title, item.accent) { onOpen?.invoke(item) } }
+        items.forEachIndexed { index, item -> TagPill(item.title, item.accent, itemModifier(index)) { onOpen?.invoke(item) } }
     }
 }
 
 /** A [YtSection.LAYOUT_CAROUSEL] row: avatar-over-name cells scrolling horizontally at every width. */
 @Composable
-internal fun ChannelCarousel(items: List<YtFeedItem>, onOpen: ((YtFeedItem) -> Unit)?) {
+internal fun ChannelCarousel(items: List<YtFeedItem>, onOpen: ((YtFeedItem) -> Unit)?, itemModifier: (Int) -> Modifier = { Modifier }) {
     val rowState = rememberLazyListState()
     LazyRow(
         Modifier.horizontalMouseDragScroll(rowState),
@@ -454,6 +472,7 @@ internal fun ChannelCarousel(items: List<YtFeedItem>, onOpen: ((YtFeedItem) -> U
                 Modifier
                     .width(CAROUSEL_CELL_WIDTH)
                     .clip(RoundedCornerShape(12.dp))
+                    .then(itemModifier(i))
                     .then(if (onOpen != null) Modifier.clickable { onOpen(item) } else Modifier)
                     .padding(DesignSpacing.Space4),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -476,10 +495,10 @@ private val CAROUSEL_CELL_WIDTH = 80.dp
 /** One navigation pill: a rounded, softly-filled chip whose border takes the tag's backend accent
  *  colour (YouTube Music's per-mood/genre colour, 8-hex AARRGGBB) when present. */
 @Composable
-private fun TagPill(label: String, accent: String?, onClick: () -> Unit) {
+private fun TagPill(label: String, accent: String?, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(999.dp)
     val border = remember(accent) { accent?.let { runCatching { Color(it.toLong(16)) }.getOrNull() } } ?: DesignColors.OutlineSoft
-    ChipTapArea(onClick) { indication ->
+    ChipTapArea(onClick, modifier) { indication ->
         Text(
             label,
             style = TextStyle(fontSize = ChipTextSize, fontWeight = FontWeight.Medium, color = DesignColors.Ink),
@@ -497,18 +516,61 @@ private fun TagPill(label: String, accent: String?, onClick: () -> Unit) {
     }
 }
 
+internal val MoreMenuHitSize = 40.dp
+
+/**
+ * A ⋮ menu. In a focusable item ([inFocusableItem]) it is not a focus stop, so Tab moves item to
+ * item: the keyboard opens it with Shift+F10 or the context-menu key on its item (in an [itemList]),
+ * a screen reader through the item's custom action, which merges into the item. A TV remote has
+ * neither key nor Tab, so there it stays focusable, entered from its item (see [itemList]).
+ */
 @Composable
-internal fun MoreMenu(actions: ItemActions, modifier: Modifier = Modifier) {
+internal fun MoreMenu(
+    actions: ItemActions,
+    modifier: Modifier = Modifier,
+    inFocusableItem: Boolean = true,
+    hitSize: Dp = MoreMenuHitSize,
+) {
     var open by remember { mutableStateOf(false) }
-    Box(modifier) {
+    var openedByKey by remember { mutableStateOf(false) }
+    val moreLabel = stringResource(Res.string.cd_more)
+    val itemMenu = if (inFocusableItem) {
+        Modifier
+            .itemMenuAnchor {
+                openedByKey = true
+                open = true
+            }
+            .semantics {
+                customActions = listOf(
+                    CustomAccessibilityAction(moreLabel) {
+                        open = true
+                        true
+                    },
+                )
+            }
+    } else {
+        Modifier
+    }
+    Box(modifier.then(itemMenu)) {
         ActionIcon(
             Icons.Default.MoreVert,
-            stringResource(Res.string.cd_more),
+            moreLabel,
+            modifier = if (inFocusableItem) {
+                Modifier.focusProperties { canFocus = platformIsTelevision }.tvExitSideways()
+            } else {
+                Modifier
+            },
+            hitSize = hitSize,
             tint = DesignColors.IconDots,
             onClick = { open = true },
         )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            actions.entries.forEach { (label, action) ->
+        val dismiss = {
+            open = false
+            openedByKey = false
+        }
+        DropdownMenu(expanded = open, onDismissRequest = dismiss) {
+            val firstEntry = remember { FocusRequester() }
+            actions.entries.forEachIndexed { index, (label, action) ->
                 DropdownMenuItem(
                     text = { Text(label) },
                     trailingIcon = if (label in actions.checked) {
@@ -516,8 +578,12 @@ internal fun MoreMenu(actions: ItemActions, modifier: Modifier = Modifier) {
                     } else {
                         null
                     },
-                    onClick = { action(); open = false },
+                    onClick = { action(); dismiss() },
+                    modifier = if (index == 0) Modifier.focusRequester(firstEntry) else Modifier,
                 )
+            }
+            if (openedByKey && actions.entries.isNotEmpty()) {
+                LaunchedEffect(Unit) { firstEntry.requestFocus() }
             }
         }
     }
@@ -590,13 +656,14 @@ private fun RectThumb(
     }
 }
 
-/** The card width grids aim for — the column count is however many of these fit. */
-// The widest a grid card may render; [gridColumnsFor] adds a column only when this would be
-// exceeded. 324 puts the 3rd column at 690dp.
-val GRID_CARD_MAX_WIDTH = 324.dp
+/** The narrowest a grid card may render — the column count is however many of these fit. */
+val GRID_CARD_MIN_WIDTH = 270.dp
 
 /** The hover/ripple's breathing room inside a grid card; grid gaps subtract it (2× between cards). */
 val GRID_CARD_INSET = 8.dp
+
+/** A grid card ⋮'s hit circle; its end overhangs into the card inset to bring the glyph to the edge. */
+val GRID_MENU_HIT = 32.dp
 
 /** YouTube's watch-progress bar along the thumbnail's bottom edge; nothing when unwatched. */
 @Composable

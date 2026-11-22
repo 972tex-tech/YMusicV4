@@ -22,13 +22,6 @@
     <string name="downloads_empty_paused">No paused downloads</string>
     <string name="downloads_empty_completed">No completed downloads yet</string>
     <string name="downloads_empty_error">No failed downloads</string>
-    <string name="downloads_selected_count">%1$d selected</string>
-    <string name="downloads_select_all">All</string>
-    <string name="downloads_remove_selected">Remove</string>
-    <string name="downloads_delete_selected">Delete files</string>
-    <string name="downloads_delete_selected_title">Delete files?</string>
-    <string name="downloads_delete_selected_message">%1$d selected downloads will be permanently deleted from this device. This cannot be undone.</string>
-    <string name="downloads_delete_selected_failed">%1$d downloads could not be deleted</string>
     <string name="downloads_pause_all">Pause all</string>
     <string name="downloads_resume_all">Resume all</string>
     <string name="downloads_unavailable">Downloads aren’t available on this device.</string>
@@ -267,6 +260,11 @@
     <string name="menu_remove_from_playlist">Remove from playlist</string>
     <string name="playlist_delete_title">Delete playlist?</string>
     <string name="playlist_delete_message">“%1$s” will be removed. The songs stay in your library.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">Remove %1$d song from playlist?</item>
+        <item quantity="other">Remove %1$d songs from playlist?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">The songs stay in your library.</string>
     <string name="add_to_playlist_new">New playlist…</string>
     <string name="playlist_recent_play">Recent play</string>
     <string name="playlist_top_tracks">Top tracks</string>
@@ -400,11 +398,15 @@
     <string name="cd_download">Download</string>
     <string name="cd_fullscreen">Full screen</string>
     <string name="cd_exit_fullscreen">Exit full screen</string>
+    <string name="cd_show_queue">Show queue</string>
+    <string name="cd_hide_queue">Hide queue</string>
     <string name="cd_minimize">Minimize</string>
     <string name="cd_fit_video">Fit video</string>
     <string name="cd_fill_video">Fill screen</string>
-    <string name="cd_lock_rotation">Lock rotation</string>
-    <string name="cd_unlock_rotation">Unlock rotation</string>
+    <string name="cd_screen_rotation">Screen rotation</string>
+    <string name="rotation_lock_landscape">Lock landscape</string>
+    <string name="rotation_lock_portrait">Lock portrait</string>
+    <string name="rotation_free">Free rotate</string>
     <string name="cd_rewind10">Rewind 10 seconds</string>
     <string name="cd_forward10">Forward 10 seconds</string>
     <string name="cd_repeat_off">Repeat: off</string>
@@ -518,6 +520,8 @@
     <string name="settings_audio_focus_apps">Pause when other apps play sound</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Automatically skip sponsored segments in YouTube videos. Segment data from SponsorBlock (sponsor.ajay.app), licensed CC BY-NC-SA 4.0. Turn off for a video from Now Playing.</string>
+    <string name="settings_stable_volume">Stable volume</string>
+    <string name="settings_stable_volume_hint">Evens out loud and quiet parts and plays every song at a similar loudness.</string>
     <string name="sponsor_block_included">SponsorBlock enabled for this video</string>
     <string name="sponsor_block_excluded">SponsorBlock disabled for this video</string>
     <string name="settings_sound">Sound</string>
@@ -844,4 +848,31 @@
     <string name="native_blocked_help">On a work or school PC, ask your administrator to allow YMusic. On your own PC, check Smart App Control in Windows Security.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">Refreshing</string>
+    <!-- A focused spinner while a page of items loads -->
+    <string name="a11y_loading">Loading</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">Select all</string>
+    <string name="downloads_action_select">Select</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">Remove %1$d download from the list?</item>
+        <item quantity="other">Remove %1$d downloads from the list?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">Finished files stay on this device.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">Delete %1$d file?</item>
+        <item quantity="other">Delete %1$d files?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">Deleted files can't be recovered.</string>
+    <string name="downloads_cancel_selected">Cancel downloads</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">Cancel %1$d download?</item>
+        <item quantity="other">Cancel %1$d downloads?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">What was downloaded so far is deleted.</string>
+    <string name="downloads_cancel_selected_keep">Keep</string>
+    <string name="data_dir_unusable">YMusic can't open its data folder, %1$s. Make sure it's a folder you can write to, then open YMusic again. (%2$s)</string>
 </resources>

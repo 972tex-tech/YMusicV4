@@ -9,7 +9,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.ymusic.mediastore.model.MediaStoreBucket
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
@@ -34,6 +34,7 @@ import io.ymusic.ui.resources.download_location_prompt_set_default
 import io.ymusic.ui.resources.download_location_read_only
 import io.ymusic.ui.resources.menu_download_location
 import kmpcommon.uri.Uri
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
@@ -74,7 +75,7 @@ private fun DownloadLocationRow(graph: AppGraph) {
 @Composable
 internal fun rememberDownloadLocationName(graph: AppGraph): String? {
     val mediaStore = graph.mediaStore ?: return null
-    val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
+    val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsStateWithLifecycle()
     var name by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(location, mediaStore) {
         name = if (location.isBlank()) {
@@ -96,14 +97,16 @@ internal fun rememberDownloadLocationName(graph: AppGraph): String? {
  * The picker hands back the folder's uri, so this works whether the folder is new, already present,
  * empty, or nested — no guessing which bucket appeared.
  */
-internal suspend fun pickDownloadFolder(graph: AppGraph, snackbar: (String) -> Unit, scans: ScanController?): Boolean {
-    val pick = graph.libraryFolderPicker ?: return false
-    val uri = pick() ?: return false // canceled
-    if (!assignDownloadFolder(graph, uri, snackbar)) return false
-    val rescan = graph.rescanLibrary
-    if (rescan != null && scans != null) scans.start { onProgress -> rescan(uri, onProgress) }
-    return true
-}
+internal suspend fun pickDownloadFolder(graph: AppGraph, snackbar: (String) -> Unit, scans: ScanController?): Boolean =
+    // Android may destroy the calling screen while the picker covers it; the pick must still land.
+    graph.processScope.async {
+        val pick = graph.libraryFolderPicker ?: return@async false
+        val uri = pick() ?: return@async false // canceled
+        if (!assignDownloadFolder(graph, uri, snackbar)) return@async false
+        val rescan = graph.rescanLibrary
+        if (rescan != null && scans != null) scans.start { onProgress -> rescan(uri, onProgress) }
+        true
+    }.await()
 
 /** Why a folder can't hold downloads, from [AppGraph.probeDownloadFolder]'s test write. */
 enum class FolderWriteProblem { NoPermission, Missing, CannotCreateFiles }
@@ -148,7 +151,7 @@ internal fun DefaultDownloadLocationPrompt(graph: AppGraph) {
     val mediaStore = graph.mediaStore ?: return
     if (graph.downloads == null) return
     val scope = rememberCoroutineScope()
-    val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
+    val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsStateWithLifecycle()
 
     var candidate by remember { mutableStateOf<MediaStoreBucket?>(null) }
     LaunchedEffect(mediaStore) {

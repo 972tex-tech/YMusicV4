@@ -199,6 +199,11 @@
     <string name="menu_remove_from_playlist">Pleylistdən sil</string>
     <string name="playlist_delete_title">Pleylist silinsin?</string>
     <string name="playlist_delete_message">“%1$s” silinəcək. Mahnılar kitabxananızda qalacaq.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">%1$d mahnı pleylistdən silinsin?</item>
+        <item quantity="other">%1$d mahnı pleylistdən silinsin?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">Mahnılar kitabxananızda qalacaq.</string>
     <string name="add_to_playlist_new">Yeni pleylist…</string>
     <string name="playlist_recent_play">Son oxudulanlar</string>
     <string name="playlist_top_tracks">Top mahnılar</string>
@@ -304,10 +309,14 @@
     <string name="cd_download">Yüklə</string>
     <string name="cd_fullscreen">Tam ekran</string>
     <string name="cd_exit_fullscreen">Tam ekrandan çıx</string>
+    <string name="cd_show_queue">Növbəni göstər</string>
+    <string name="cd_hide_queue">Növbəni gizlət</string>
     <string name="cd_fit_video">Videonu sığdır</string>
     <string name="cd_fill_video">Ekranı doldur</string>
-    <string name="cd_lock_rotation">Fırlanmanı kilidlə</string>
-    <string name="cd_unlock_rotation">Fırlanma kilidini aç</string>
+    <string name="cd_screen_rotation">Ekranın fırlanması</string>
+    <string name="rotation_lock_landscape">Üfüqi rejimi kilidlə</string>
+    <string name="rotation_lock_portrait">Şaquli rejimi kilidlə</string>
+    <string name="rotation_free">Sərbəst fırlanma</string>
     <string name="cd_rewind10">10 saniyə geri</string>
     <string name="cd_forward10">10 saniyə irəli</string>
     <string name="cd_repeat_off">Təkrarla: söndürülüb</string>
@@ -416,6 +425,8 @@
     <string name="settings_audio_focus_apps">Digər tətbiqlər səs çalanda dayandır</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube videolarında sponsorlu hissələri avtomatik keçir. Bir video üçün İndi oxudulur ekranından söndürün.</string>
+    <string name="settings_stable_volume">Sabit səs səviyyəsi</string>
+    <string name="settings_stable_volume_hint">Yüksək və sakit hissələri bərabərləşdirir, hər mahnını oxşar səs səviyyəsində oxudur.</string>
     <string name="sponsor_block_included">SponsorBlock bu video üçün aktivdir</string>
     <string name="sponsor_block_excluded">SponsorBlock bu video üçün deaktivdir</string>
     <string name="settings_sound">Səs</string>
@@ -660,4 +671,30 @@
     <string name="native_blocked_help">İş və ya məktəb kompüterində administratordan YMusic-ə icazə verməsini xahiş edin. Öz kompüterinizdə Windows Security bölməsində Smart App Control-u yoxlayın.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">Yenilənir</string>
+    <string name="a11y_loading">Yüklənir</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">Hamısını seç</string>
+    <string name="downloads_action_select">Seç</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">%1$d seçildi</item>
+        <item quantity="other">%1$d seçildi</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">%1$d yükləmə siyahıdan silinsin?</item>
+        <item quantity="other">%1$d yükləmə siyahıdan silinsin?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">Tamamlanmış fayllar bu cihazda qalır.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">%1$d fayl silinsin?</item>
+        <item quantity="other">%1$d fayl silinsin?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">Silinmiş faylları bərpa etmək mümkün deyil.</string>
+    <string name="downloads_cancel_selected">Yükləmələri ləğv et</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">%1$d yükləmə ləğv edilsin?</item>
+        <item quantity="other">%1$d yükləmə ləğv edilsin?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">İndiyədək yüklənənlər silinəcək.</string>
+    <string name="downloads_cancel_selected_keep">Saxla</string>
+    <string name="data_dir_unusable">YMusic məlumat qovluğunu (%1$s) aça bilmir. Bunun yaza biləcəyiniz qovluq olduğuna əmin olun, sonra YMusic-i yenidən açın. (%2$s)</string>
 </resources>

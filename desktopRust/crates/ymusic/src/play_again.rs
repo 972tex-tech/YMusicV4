@@ -2,22 +2,25 @@
 
 use std::sync::Arc;
 
-use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme, Icon, IconName, StyledExt, h_flex, v_flex};
+use gpui_kit::component::menu::PopupMenuItem;
+use gpui_kit::component::{ActiveTheme, Icon, StyledExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use ym_history::{PlayAgainSession, PlayHistory};
 use ym_i18n::{Str, t, tf};
+use ym_image_loader::async_image::async_image_of;
 
 use crate::a11y::{FocusList, alert, announced, list_item};
 use crate::action_icon::action_icon;
+use crate::assets::MaterialIcon;
 use crate::graph::{AppGraph, on_core};
-use crate::local_art::{self, from_jvm_art};
+use crate::item_menu::{ItemMenu, on_right_click};
+use crate::lazy_rows::LazyRows;
 use crate::mini_player::clock;
 use crate::play_history::decode_items;
 use crate::playback::{QueueItem, Source};
+use crate::youtube_thumbnails::art_request_sources;
 
 /// Resume this saved queue.
 pub struct ResumeQueue {
@@ -25,6 +28,8 @@ pub struct ResumeQueue {
     pub items: Vec<QueueItem>,
     pub index: usize,
     pub start_ms: i64,
+    /// Where the queue's playlist or radio continues.
+    pub source_token: Option<String>,
 }
 
 pub struct PlayAgainView {
@@ -33,6 +38,7 @@ pub struct PlayAgainView {
     error: Option<String>,
     scroll: ScrollHandle,
     focus: FocusList,
+    rows: LazyRows,
     /// The error's or the empty state's message, then Retry.
     message_focus: FocusList,
 }
@@ -47,7 +53,8 @@ impl PlayAgainView {
             sessions: Vec::new(),
             error: None,
             scroll: scroll.clone(),
-            focus: FocusList::new(Some(scroll)),
+            focus: FocusList::new(Some(scroll.clone())),
+            rows: LazyRows::new(scroll, SESSION_ROW_ESTIMATE),
             message_focus: FocusList::new(None),
         };
         view.refresh(cx);
@@ -87,37 +94,25 @@ impl PlayAgainView {
             if let Some(Ok(Ok(sessions))) = load.await
                 && let Some(newest) = sessions.into_iter().next()
             {
-                this.update(cx, |view, cx| view.resume(newest, cx)).ok();
+                this.update(cx, |view, cx| view.resume(newest, false, cx)).ok();
             }
         })
         .detach();
     }
 
-    /// The sessions with the JVM app's `art://` thumbnails resolved.
     fn load_sessions(
         &self,
         cx: &mut Context<Self>,
     ) -> impl std::future::Future<
         Output = Option<Result<rusqlite::Result<Vec<PlayAgainSession>>, tokio::task::JoinError>>,
     > + use<> {
-        let (history, media) = (self.history.clone(), cx.global::<AppGraph>().media.clone());
-        on_core(cx, async move {
-            tokio::task::spawn_blocking(move || {
-                let mut sessions = history.sessions()?;
-                for session in &mut sessions {
-                    session.thumbnail_url =
-                        session.thumbnail_url.take().and_then(|url| from_jvm_art(&url, &media, local_art::PLAYER_PX));
-                    for thumb in &mut session.strip_thumbs {
-                        *thumb = thumb.take().and_then(|url| from_jvm_art(&url, &media, local_art::ROW_PX));
-                    }
-                }
-                Ok(sessions)
-            })
-            .await
-        })
+        let history = self.history.clone();
+        on_core(cx, async move { tokio::task::spawn_blocking(move || history.sessions()).await })
     }
 
-    fn resume(&mut self, session: PlayAgainSession, cx: &mut Context<Self>) {
+    /// The JVM PlaybackCoordinator.playAgain: the saved item, mid-item only for long content unless
+    /// `from_beginning`.
+    fn resume(&mut self, session: PlayAgainSession, from_beginning: bool, cx: &mut Context<Self>) {
         let (history, media) = (self.history.clone(), cx.global::<AppGraph>().media.clone());
         let queue_id = session.queue_id.clone();
         let load = on_core(cx, async move {
@@ -133,9 +128,10 @@ impl PlayAgainView {
             this.update(cx, |view, cx| match loaded {
                 Some(Ok(Ok(Some((saved, decoded))))) => match decoded {
                     Ok(items) if !items.is_empty() => {
-                        let start_ms = if saved.resumes_mid_item() { saved.position_ms } else { 0 };
+                        let start_ms = if !from_beginning && saved.resumes_mid_item() { saved.position_ms } else { 0 };
                         let index = saved.queue_index.min(items.len() - 1);
-                        cx.emit(ResumeQueue { queue_id: saved.queue_id, items, index, start_ms });
+                        let (queue_id, source_token) = (saved.queue_id, saved.source_token);
+                        cx.emit(ResumeQueue { queue_id, items, index, start_ms, source_token });
                     }
                     Ok(_) => view.refresh(cx),
                     Err(message) => view.failed(&message, cx),
@@ -153,6 +149,7 @@ impl PlayAgainView {
 
 const CARD_MIN: f32 = 340.;
 const GAP: f32 = 16.;
+const SESSION_ROW_ESTIMATE: f32 = 160.;
 const TILE: f32 = 30.;
 const TILE_GAP: f32 = 4.;
 /// Room the Resume pill takes beside the strip.
@@ -161,7 +158,7 @@ const MORE_LABEL: f32 = 32.;
 
 impl PlayAgainView {
     fn play_from_beginning(&mut self, session: PlayAgainSession, cx: &mut Context<Self>) {
-        self.resume(PlayAgainSession { queue_index: 0, position_ms: 0, ..session }, cx);
+        self.resume(session, true, cx);
     }
 
     fn remove(&mut self, queue_id: String, cx: &mut Context<Self>) {
@@ -202,7 +199,10 @@ impl PlayAgainView {
                     .when(current == Some(offset), |tile| tile.border_1().border_color(theme.primary))
                     .when_some(thumb.clone(), |tile, url| {
                         tile.child(
-                            img(SharedString::from(url)).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover),
+                            async_image_of(Some(art_request_sources(&url)))
+                                .size_full()
+                                .rounded(px(6.))
+                                .object_fit(ObjectFit::Cover),
                         )
                     }),
             );
@@ -214,32 +214,35 @@ impl PlayAgainView {
 
     fn card(&self, position: usize, session: &PlayAgainSession, card_width: f32, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
-        let resume_label =
-            session.resumes_mid_item().then(|| tf(Str::PlayAgainResumeAt, &[&clock(session.position_ms)]));
-        let track = tf(Str::PlayAgainTrackOf, &[&(session.queue_index + 1), &session.queue_size]);
-        let detail = [session.subtitle.clone(), Some(track), resume_label].into_iter().flatten().collect::<Vec<_>>();
+        // The JVM sessionLine: "Resume at" for long content left mid-item (under a second reads 0:00,
+        // the track's start), else "N of M".
+        let place = if session.resumes_mid_item() && session.position_ms >= 1_000 {
+            tf(Str::PlayAgainResumeAt, &[&clock(session.position_ms)])
+        } else {
+            tf(Str::PlayAgainTrackOf, &[&(session.queue_index + 1), &session.queue_size])
+        };
+        let detail = [session.subtitle.clone(), Some(place)].into_iter().flatten().collect::<Vec<_>>();
         let detail = detail.join(" · ");
         let view = cx.entity().downgrade();
         let (from_start, removed) = (session.clone(), session.queue_id.clone());
-        let more = action_icon(("play-again-more", position), IconName::EllipsisVertical, t(Str::CdMore));
-        let more = self.focus.trailing_button(position, 0, more, cx).dropdown_menu_with_anchor(
-            Anchor::TopRight,
-            move |menu, _, _| {
-                let (restart, remove) = (view.clone(), view.clone());
-                let (from_start, removed) = (from_start.clone(), removed.clone());
-                menu.item(PopupMenuItem::new(t(Str::MenuPlayFromBeginning)).on_click(move |_, _, cx| {
-                    restart.update(cx, |view, cx| view.play_from_beginning(from_start.clone(), cx)).ok();
-                }))
-                .item(PopupMenuItem::new(t(Str::MenuRemove)).on_click(move |_, _, cx| {
-                    remove.update(cx, |view, cx| view.remove(removed.clone(), cx)).ok();
-                }))
-            },
-        );
+        let more = action_icon(("play-again-more", position), MaterialIcon::MoreVert, t(Str::CdMore));
+        let menu = ItemMenu::new(move |menu, _, _| {
+            let (restart, remove) = (view.clone(), view.clone());
+            let (from_start, removed) = (from_start.clone(), removed.clone());
+            menu.item(PopupMenuItem::new(t(Str::MenuPlayFromBeginning)).on_click(move |_, _, cx| {
+                restart.update(cx, |view, cx| view.play_from_beginning(from_start.clone(), cx)).ok();
+            }))
+            .item(PopupMenuItem::new(t(Str::MenuRemove)).on_click(move |_, _, cx| {
+                remove.update(cx, |view, cx| view.remove(removed.clone(), cx)).ok();
+            }))
+        });
+        let more = menu.dropdown(self.focus.menu_button(position, more, cx), Anchor::TopRight);
         let target = session.clone();
         let strip_width = card_width - 16. - 4. - 8. - 8. - RESUME_PILL;
         let base = list_item(v_flex().id(("play-again", position)), position)
             .aria_label(format!("{}, {detail}", session.title));
-        self.focus
+        let card = self
+            .focus
             .item(position, base, cx)
             .rounded(px(6.))
             .bg(theme.secondary)
@@ -264,7 +267,7 @@ impl PlayAgainView {
                             .bg(theme.muted)
                             .when_some(session.thumbnail_url.clone(), |frame, url| {
                                 frame.child(
-                                    img(SharedString::from(url))
+                                    async_image_of(Some(art_request_sources(&url)))
                                         .size_full()
                                         .rounded(px(10.))
                                         .object_fit(ObjectFit::Cover),
@@ -287,12 +290,12 @@ impl PlayAgainView {
                     Button::new(("resume", position))
                         .outline()
                         .rounded_full()
-                        .icon(Lucide::Play)
+                        .icon(MaterialIcon::PlayArrow)
                         .label(t(Str::PlayAgainResume))
-                        .on_click(cx.listener(move |view, _, _, cx| view.resume(target.clone(), cx))),
+                        .on_click(cx.listener(move |view, _, _, cx| view.resume(target.clone(), false, cx))),
                 ),
-            )
-            .into_any_element()
+            );
+        on_right_click(card, Some(&menu)).into_any_element()
     }
 }
 
@@ -321,7 +324,11 @@ impl Render for PlayAgainView {
                 .justify_center()
                 .gap_2()
                 .p_6()
-                .child(Icon::new(Lucide::RotateCcwClock).size(px(56.)).text_color(theme.muted_foreground))
+                .child(
+                    div()
+                        .pb_1()
+                        .child(Icon::new(MaterialIcon::InboxOutlined).size(px(52.)).text_color(theme.muted_foreground)),
+                )
                 .child(
                     div().max_w(px(420.)).child(
                         announced("play-again-empty", t(Str::PlayAgainEmpty))
@@ -336,8 +343,9 @@ impl Render for PlayAgainView {
         let card_width = (width - 2. * GAP - GAP * (columns - 1) as f32) / columns as f32;
         let sessions = self.sessions.clone();
         let stops = self.focus.list_stops(0..sessions.len(), window, cx);
-        let mut grid = v_flex().id("play-again-sessions").w_full().p_4().gap_4();
-        for (row_index, row) in sessions.chunks(columns).enumerate() {
+        let kept: Vec<usize> = stops.kept().into_iter().map(|position| position / columns).collect();
+        let rows = self.rows.render(sessions.len().div_ceil(columns), GAP, kept, window, |row_index| {
+            let row = &sessions[row_index * columns..((row_index + 1) * columns).min(sessions.len())];
             let mut cells = h_flex().w_full().gap_4().items_start();
             for (offset, session) in row.iter().enumerate() {
                 cells = cells.child(div().flex_1().min_w_0().child(self.card(
@@ -350,8 +358,9 @@ impl Render for PlayAgainView {
             for _ in row.len()..columns {
                 cells = cells.child(div().flex_1());
             }
-            grid = grid.child(cells);
-        }
+            cells.into_any_element()
+        });
+        let grid = div().id("play-again-sessions").w_full().p_4().child(rows);
         let grid = stops.wrap(grid, Some(t(Str::SectionPlayAgain).into()), cx);
         div()
             .id("play-again-scroll")
@@ -363,22 +372,15 @@ impl Render for PlayAgainView {
     }
 }
 
-/// Blocking. A local item the Library knows plays as its Library item (its history code and art);
-/// a JVM app `art://` thumbnail of any other item is resolved.
+/// Blocking. A local item the Library knows plays as its Library item (its history code and art).
 fn adopt_items(items: Vec<QueueItem>, media: &ym_store::MediaStore) -> Vec<QueueItem> {
     items
         .into_iter()
-        .map(|mut item| {
+        .map(|item| {
             if let Source::Local(path) = &item.source
                 && let Ok(Some((known, false))) = media.find_item_by_uri(&path.to_string_lossy())
             {
                 return QueueItem::from_local(&known);
-            }
-            for thumb in &mut item.thumbs {
-                let px = thumb.w.map_or(local_art::PLAYER_PX, |width| width.max(0) as u32);
-                if let Some(url) = from_jvm_art(&thumb.url, media, px) {
-                    thumb.url = url;
-                }
             }
             item
         })

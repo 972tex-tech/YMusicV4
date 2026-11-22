@@ -34,6 +34,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Album
@@ -43,9 +44,11 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlaylistRemove
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -57,17 +60,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -75,7 +80,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -86,6 +93,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.model.MediaStoreBucket
 import io.ymusic.mediastore.model.MediaStoreItem
@@ -105,6 +113,7 @@ import io.ymusic.ui.resources.delete_from_disk_confirm
 import io.ymusic.ui.resources.delete_from_disk_message
 import io.ymusic.ui.resources.delete_from_disk_title
 import io.ymusic.ui.resources.dialog_cancel
+import io.ymusic.ui.resources.downloads_action_select
 import io.ymusic.ui.resources.library_add_folder
 import io.ymusic.ui.resources.library_crumb_root
 import io.ymusic.ui.resources.library_empty
@@ -148,6 +157,8 @@ import io.ymusic.ui.resources.playlist_name_hint
 import io.ymusic.ui.resources.playlist_new
 import io.ymusic.ui.resources.playlist_recent_play
 import io.ymusic.ui.resources.playlist_recent_play_desc
+import io.ymusic.ui.resources.playlist_remove_selected_message
+import io.ymusic.ui.resources.playlist_remove_selected_title
 import io.ymusic.ui.resources.playlist_rename_confirm
 import io.ymusic.ui.resources.playlist_rename_title
 import io.ymusic.ui.resources.playlist_top_tracks
@@ -166,6 +177,7 @@ import io.ymusic.ui.resources.unknown_album
 import io.ymusic.ui.resources.unknown_artist
 import io.ymusic.ui.resources.unknown_genre
 import kmpcommon.log.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
@@ -176,15 +188,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import projectcommon.error.TechnicalException
 import projectcommon.error.errorCode
 
-private enum class LibraryTab(val label: StringResource) {
-    Folders(Res.string.library_tab_folders),
-    Playlists(Res.string.library_tab_playlists),
-    Songs(Res.string.library_tab_songs),
-    Artists(Res.string.library_tab_artists),
-    Albums(Res.string.library_tab_albums),
-    Genres(Res.string.library_tab_genres),
+/** [key] is what a restart resumes by: fixed, shared with the Rust app, never renamed. */
+private enum class LibraryTab(val key: String, val label: StringResource) {
+    Folders("folders", Res.string.library_tab_folders),
+    Playlists("playlists", Res.string.library_tab_playlists),
+    Songs("songs", Res.string.library_tab_songs),
+    Artists("artists", Res.string.library_tab_artists),
+    Albums("albums", Res.string.library_tab_albums),
+    Genres("genres", Res.string.library_tab_genres),
 }
 
 /** Everything the tabs render from, reloaded on any items/buckets change. Identity doubles as the
@@ -222,6 +236,9 @@ internal val LocalPlaylistRemove = compositionLocalOf<((MediaStoreItem) -> Unit)
 /** A song's "Remove" action on Library Top tracks — drops the local watch-time row. Null elsewhere. */
 internal val LocalRemoveFromPlayHistory = compositionLocalOf<((MediaStoreItem) -> Unit)?> { null }
 
+/** The Library tab row's [AppBarSlot]: a tab's selection bar takes the tab row's place, and holds the Library on that tab. */
+private val LocalLibraryTabRowSlot = staticCompositionLocalOf<AppBarSlot?> { null }
+
 /** The local library over [AppGraph.mediaStore]: an empty state with the scan action until the first
  *  scan lands, then the Folders/Playlists/Songs/Artists/Albums/Genres tabs. Styled with
  *  design/final/library.html's chips + section-header + list-row language (the account half of that
@@ -248,7 +265,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 // bucket row (145k on a Downloads scan) just to test non-empty and stalls the UI.
                 LibraryContent(store.allItems(), store.childBuckets(null).isNotEmpty())
             }
-    }.collectAsState(initial = null)
+    }.collectAsStateWithLifecycle(initialValue = null)
 
     // App-level so a scan survives leaving the Library screen and still notifies on completion.
     val scanController = LocalScanController.current
@@ -262,7 +279,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             // menu re-designates it. Only meaningful when the shell can download.
             val dlScope = rememberCoroutineScope()
             val snackbar = LocalSnackbar.current
-            val downloadLocationRaw by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
+            val downloadLocationRaw by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsStateWithLifecycle()
             val downloadLocation: String? = downloadLocationRaw.takeIf { graph.downloads != null && it.isNotBlank() }
             val onToggleDownloadLocation: ((MediaStoreBucket) -> Unit)? = if (graph.downloads == null) {
                 null
@@ -278,20 +295,68 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                     }
                 }
             }
-            var tab by rememberSaveable { mutableStateOf(LibraryTab.Folders) }
+            var tab by rememberSaveable {
+                val saved = graph.settings.flow(AppSettings.lastLibraryTab).value
+                mutableStateOf(LibraryTab.entries.firstOrNull { it.key == saved } ?: LibraryTab.Folders)
+            }
+            LaunchedEffect(tab) { graph.settings.put(AppSettings.lastLibraryTab, tab.key) }
+            // A multi-select (the Songs tab's, an opened playlist's or folder's) holds the Library on its tab until it ends.
+            val songSelection = rememberMultiSelection<Long>()
+            val tabRowSlot = remember { AppBarSlot() }
+            val songsSort = rememberSortState("songs", graph.settings)
+            val sortedSongs by remember(loaded.songs, songsSort) { derivedStateOf { songsSort.sort(loaded.songs, songSortOptions) } }
+            // Keyed on membership: a re-sort keeps what Select all restores.
+            val songIdSet = remember(loaded.songs) { loaded.songs.mapTo(HashSet()) { it.id } }
+            LaunchedEffect(songIdSet) {
+                songSelection.retain(songIdSet)
+                songSelection.forgetSelectAll()
+            }
+            LaunchedEffect(tab) { if (tab != LibraryTab.Songs) songSelection.abandon() }
+            val selectingSongs = tab == LibraryTab.Songs && songSelection.active
+            val tabRowReplacement = tabRowSlot.replacement
+            val holdingTab = selectingSongs || tabRowReplacement != null
+            val selectTab: (LibraryTab) -> Unit = { if (!holdingTab) tab = it }
+            val revealTab: (LibraryTab) -> Unit = {
+                songSelection.abandon()
+                tab = it
+            }
+            val currentSelectTab by rememberUpdatedState(selectTab)
+            val currentHoldingTab by rememberUpdatedState(holdingTab)
             DisposableEffect(Unit) {
                 val entries = LibraryTab.entries
                 val remove = GlobalShortcutActions.pushTabHandler { i ->
-                    entries.getOrNull(i - 1)?.let { tab = it; true } ?: false
+                    if (currentHoldingTab) return@pushTabHandler false
+                    entries.getOrNull(i - 1)?.let { currentSelectTab(it); true } ?: false
                 }
                 onDispose { remove() }
+            }
+            var songSelectionDialog by remember { mutableStateOf<SongSelectionDialog?>(null) }
+            songSelectionDialog?.let { dialog ->
+                val dismiss = { songSelectionDialog = null }
+                val finish = {
+                    songSelectionDialog = null
+                    dialog.onDone()
+                }
+                when (dialog) {
+                    is SongSelectionDialog.AddToPlaylist ->
+                        AddToPlaylistDialog(store, dialog.songs, onDismiss = dismiss, onAdded = dialog.onDone)
+                    is SongSelectionDialog.Delete -> DeleteSelectedFilesDialog(
+                        graph,
+                        dialog.targets,
+                        fallbackCode = "E50013",
+                        log = { itemId -> graph.logger?.fork("library", mapOf("itemId" to itemId.toString())) },
+                        afterDelete = {},
+                        onDismiss = dismiss,
+                        onDone = finish,
+                    )
+                }
             }
             // A song's "Show in folder" jump: the bucket to open, consumed by the Folders tab once
             // it composes, then cleared.
             var revealBucket by remember { mutableStateOf<Long?>(null) }
             val reveal: (MediaStoreItem) -> Unit = { item ->
                 item.bucketId?.let { revealBucket = it }
-                tab = LibraryTab.Folders
+                revealTab(LibraryTab.Folders)
             }
             // A cross-section reveal (Downloads → "Reveal in Library"): open the requested folder here
             // and clear the request so it fires once.
@@ -299,7 +364,7 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             LaunchedEffect(folderReveal?.value) {
                 val bucketId = folderReveal?.value ?: return@LaunchedEffect
                 revealBucket = bucketId
-                tab = LibraryTab.Folders
+                revealTab(LibraryTab.Folders)
                 folderReveal.value = null
             }
             // "Go to artist/album" from anywhere: open that group's tab drilled into it, then clear the request.
@@ -308,10 +373,12 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
             LaunchedEffect(groupReveal?.value) {
                 val request = groupReveal?.value ?: return@LaunchedEffect
                 revealGroup = request
-                tab = when (request.kind) {
-                    LibraryGroupKind.Artist -> LibraryTab.Artists
-                    LibraryGroupKind.Album -> LibraryTab.Albums
-                }
+                revealTab(
+                    when (request.kind) {
+                        LibraryGroupKind.Artist -> LibraryTab.Artists
+                        LibraryGroupKind.Album -> LibraryTab.Albums
+                    },
+                )
                 groupReveal.value = null
             }
             // Keeps each tab's saveable state (folder path, scroll) while another tab is showing.
@@ -322,7 +389,29 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                 // The tab row is pinned under the app bar and elevates with it (one continuous
                 // surface); each tab's sort/breadcrumb scroll away with the content below.
                 ElevatedBarColumn {
-                    LibraryTabRow(tab, tabDrag) { tab = it }
+                    if (selectingSongs) {
+                        val canDelete = LocalSongActions.current?.canDelete == true
+                        SongSelectionBar(
+                            songSelection,
+                            sortedSongs,
+                            coordinator,
+                            onAddToPlaylist = { selected ->
+                                songSelectionDialog = SongSelectionDialog.AddToPlaylist(selected, songSelection::end)
+                            },
+                            onDelete = if (canDelete) {
+                                { selected ->
+                                    val targets = selected.associateBy { it.id }
+                                    songSelectionDialog = SongSelectionDialog.Delete(targets) { songSelection.endRemoving(targets.keys) }
+                                }
+                            } else {
+                                null
+                            },
+                        )
+                    } else if (tabRowReplacement != null) {
+                        tabRowReplacement()
+                    } else {
+                        LibraryTabRow(tab, tabDrag, onSelect = selectTab)
+                    }
                     HorizontalDivider(color = DesignColors.Divider)
                 }
                 Box(Modifier.weight(1f)) {
@@ -331,15 +420,19 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                         SwipeTabSwitcher(
                             tab,
                             LibraryTab.entries,
-                            onSelect = { tab = it },
+                            onSelect = selectTab,
                             onDragProgress = { tabDrag = it },
                             leadingEdgeReserve = NavDrawerEdgeReserve,
                             onLeadingEdgeSwipe = openDrawer,
+                            swipeEnabled = !holdingTab,
                         ) { current ->
                             tabStateHolder.SaveableStateProvider(current.name) {
                                 when (current) {
                                     // Its songs are already shown in their folder: no "Show in folder".
-                                    LibraryTab.Folders -> CompositionLocalProvider(LocalLibraryReveal provides null) {
+                                    LibraryTab.Folders -> CompositionLocalProvider(
+                                        LocalLibraryReveal provides null,
+                                        LocalLibraryTabRowSlot provides tabRowSlot,
+                                    ) {
                                         FoldersTab(
                                             store,
                                             loaded,
@@ -352,19 +445,22 @@ fun LibraryScreen(graph: AppGraph, coordinator: PlaybackCoordinator) {
                                             downloadLocation = downloadLocation,
                                             onToggleDownloadLocation = onToggleDownloadLocation,
                                             settings = graph.settings,
+                                            openSelectionDialog = { songSelectionDialog = it },
                                         )
                                     }
-                                    LibraryTab.Playlists -> PlaylistsTab(store, graph, loaded, coordinator, graph.playHistory)
+                                    LibraryTab.Playlists -> CompositionLocalProvider(LocalLibraryTabRowSlot provides tabRowSlot) {
+                                        PlaylistsTab(store, graph, loaded, coordinator, graph.playHistory) { songSelectionDialog = it }
+                                    }
                                     LibraryTab.Songs -> if (loaded.songs.isEmpty()) {
                                         EmptyState(stringResource(Res.string.library_no_songs), onReload = null)
                                     } else {
-                                        val sort = rememberSortState("songs", graph.settings)
-                                        val songs = sort.sort(loaded.songs, songSortOptions)
+                                        val songs = sortedSongs
                                         SongList(
                                             songs,
                                             coordinator,
+                                            selection = songSelection,
                                             header = {
-                                                SortBar(songSortOptions.map { it.label }, sort) {
+                                                SortBar(songSortOptions.map { it.label }, songsSort) {
                                                     LibraryChip(stringResource(Res.string.shuffle_all), selected = false, icon = Icons.Default.Shuffle) {
                                                         coordinator.playLocal(songs, songs.indices.random(), shuffle = true)
                                                     }
@@ -471,35 +567,47 @@ private fun FoldersTab(
     downloadLocation: String?,
     onToggleDownloadLocation: ((MediaStoreBucket) -> Unit)?,
     settings: SettingsStore,
+    openSelectionDialog: (SongSelectionDialog) -> Unit,
 ) {
     fun isDownloadLocation(bucket: MediaStoreBucket) =
         downloadLocation != null && bucket.uri.toString() == downloadLocation
     // (id, displayName) instead of the bucket itself so the browse position survives the section
     // leaving composition (saveable): coming back from Discover reopens the same folder.
     var path by rememberSaveable(stateSaver = CrumbPathSaver) { mutableStateOf(listOf<Pair<Long, String>>()) }
+    // Until seeded from the setting or a reveal, nothing loads or writes back: root would overwrite the saved folder.
+    var pathRestored by rememberSaveable { mutableStateOf(false) }
     NestedBackHandler(enabled = path.isNotEmpty()) { path = path.dropLast(1) }
+    val songSelection = remember(path.lastOrNull()?.first) { MultiSelection<Long>() }
     var folders by remember { mutableStateOf<List<MediaStoreBucket>?>(null) }
     var items by remember { mutableStateOf<List<MediaStoreItem>>(emptyList()) }
     val folderListState = rememberLazyListState()
     val folderGridState = rememberLazyGridState()
 
-    // "Show in folder": open the requested bucket by walking its ancestor chain up to a root.
+    // "Show in folder" opens the requested bucket and wins over the saved folder.
     LaunchedEffect(revealBucket) {
-        val target = revealBucket ?: return@LaunchedEffect
-        val byId = store.allBuckets().associateBy { it.id }
-        val chain = mutableListOf<Pair<Long, String>>()
-        var id: Long? = target
-        while (id != null) {
-            val bucket = byId[id] ?: break
-            chain.add(0, bucket.id to bucket.displayName)
-            id = bucket.parentId
+        val target = revealBucket
+        if (target != null) {
+            path = crumbChain(store, target).orEmpty()
+            pathRestored = true
+            onRevealHandled()
+        } else if (!pathRestored) {
+            val savedId = settings.flow(AppSettings.libraryFoldersOpen).value.toLongOrNull()
+            path = savedId?.let { crumbChain(store, it) }.orEmpty()
+            pathRestored = true
         }
-        path = chain
-        onRevealHandled()
     }
 
-    LaunchedEffect(path, content) {
+    LaunchedEffect(path, pathRestored) {
+        if (pathRestored) settings.put(AppSettings.libraryFoldersOpen, path.lastOrNull()?.first?.toString().orEmpty())
+    }
+
+    LaunchedEffect(path, content, pathRestored) {
+        if (!pathRestored) return@LaunchedEffect
         val currentId = path.lastOrNull()?.first
+        if (currentId != null && store.findBucket(currentId) == null) {
+            path = emptyList()
+            return@LaunchedEffect
+        }
         folders = store.childBuckets(currentId)
         items = store.itemsInBucket(currentId)
     }
@@ -529,7 +637,33 @@ private fun FoldersTab(
         }
         val sort = rememberSortState("folders", settings)
         val sortedFolders = sort.sort(children, folderSortOptions)
+        // While selecting, folders stay in place but don't open: that would end the selection.
+        val foldersInert = songSelection.active
         val sortedItems = sort.sort(items, songSortOptions)
+        val songIds = sortedItems.map { it.id }
+        // Keyed on membership: a re-sort keeps what Select all restores.
+        val songIdSet = songIds.toSet()
+        LaunchedEffect(songIdSet) {
+            songSelection.retain(songIdSet)
+            songSelection.forgetSelectAll()
+        }
+        val canDelete = LocalSongActions.current?.canDelete == true
+        ReplaceAppBar(enabled = songSelection.active, slot = LocalLibraryTabRowSlot.current) {
+            SongSelectionBar(
+                songSelection,
+                sortedItems,
+                coordinator,
+                onAddToPlaylist = { selected -> openSelectionDialog(SongSelectionDialog.AddToPlaylist(selected, songSelection::end)) },
+                onDelete = if (canDelete) {
+                    { selected ->
+                        val targets = selected.associateBy { it.id }
+                        openSelectionDialog(SongSelectionDialog.Delete(targets) { songSelection.endRemoving(targets.keys) })
+                    }
+                } else {
+                    null
+                },
+            )
+        }
         val folderId = path.lastOrNull()?.first
         val scopedRescan: ScanAction? = rescan?.let { action ->
             { onProgress ->
@@ -591,12 +725,23 @@ private fun FoldersTab(
                 // sized — full-width when tight, splitting as the screen grows — and rendered as
                 // full-width weighted rows so they stay gap-free whatever the folder column count.
                 val layoutWidth = railStableWidth(maxWidth)
-                if (layoutWidth >= LibraryGridMinWidth) {
+                val asGrid = layoutWidth >= LibraryGridMinWidth
+                // Items ahead of the songs: the header, then one per folder.
+                val songsStart = 1 + sortedFolders.size
+                MultiSelectionEffects(songSelection, songIds) { index ->
+                    if (asGrid) {
+                        val item = songsStart + index / librarySongColumns(layoutWidth)
+                        if (folderGridState.layoutInfo.visibleItemsInfo.none { it.index == item }) folderGridState.scrollToItem(item)
+                    } else if (folderListState.layoutInfo.visibleItemsInfo.none { it.index == songsStart + index }) {
+                        folderListState.scrollToItem(songsStart + index)
+                    }
+                }
+                if (asGrid) {
                     val columns = libraryGridColumns(layoutWidth)
                     val songsPerRow = librarySongColumns(layoutWidth)
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(columns),
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().itemList(),
                         contentPadding = PaddingValues(start = LibraryGridPadding, end = LibraryGridPadding, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                         state = folderGridState,
                     ) {
@@ -607,9 +752,13 @@ private fun FoldersTab(
                                 artUrl = null,
                                 title = bucket.displayName,
                                 subtitle = stringResource(Res.string.library_folder),
-                                dimmed = bucket.excluded,
+                                dimmed = bucket.excluded || foldersInert,
                                 marked = isDownloadLocation(bucket),
-                                menu = folderActions(bucket, onRemove, onExclude, onInclude, isDownloadLocation(bucket), onToggleDownloadLocation),
+                                menu = if (foldersInert) {
+                                    null
+                                } else {
+                                    folderActions(bucket, onRemove, onExclude, onInclude, isDownloadLocation(bucket), onToggleDownloadLocation)
+                                },
                             ) { openFolder(bucket) }
                         }
                         // Full-span rows break the flow onto a fresh line below the folders.
@@ -620,24 +769,27 @@ private fun FoldersTab(
                         ) { group ->
                             Row(Modifier.bleedGridPadding()) {
                                 group.forEach { i ->
-                                    Box(Modifier.weight(1f)) { SongRow(sortedItems[i], coordinator) { coordinator.playLocal(sortedItems, i) } }
+                                    Box(Modifier.weight(1f)) {
+                                        SongRow(sortedItems[i], coordinator, songSelection) { coordinator.playLocal(sortedItems, i) }
+                                    }
                                 }
                                 repeat(songsPerRow - group.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
                     }
                 } else {
-                    LazyColumn(Modifier.fillMaxSize(), state = folderListState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
+                    LazyColumn(Modifier.fillMaxSize().itemList(), state = folderListState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
                         item { header() }
                         items(sortedFolders, key = { "b${it.id}" }) { bucket ->
                             FolderRow(
                                 bucket,
                                 folderActions(bucket, onRemove, onExclude, onInclude, isDownloadLocation(bucket), onToggleDownloadLocation),
                                 isDownloadLocation = isDownloadLocation(bucket),
+                                inert = foldersInert,
                             ) { openFolder(bucket) }
                         }
                         itemsIndexed(sortedItems, key = { _, s -> s.id }) { index, song ->
-                            SongRow(song, coordinator) { coordinator.playLocal(sortedItems, index) }
+                            SongRow(song, coordinator, songSelection) { coordinator.playLocal(sortedItems, index) }
                         }
                     }
                 }
@@ -731,6 +883,18 @@ private val groupSortOptions = listOf(
     SortOption(Res.string.sort_date_created, compareBy { it.second.minOfOrNull { m -> m.createdAt } ?: 0L }),
 )
 
+/** The crumb path from a root down to [bucketId], or null when it or any ancestor is gone. */
+private suspend fun crumbChain(store: BetterMediaStore, bucketId: Long): List<Pair<Long, String>>? {
+    val chain = mutableListOf<Pair<Long, String>>()
+    var id: Long? = bucketId
+    while (id != null) {
+        val bucket = store.findBucket(id) ?: return null
+        chain.add(0, bucket.id to bucket.displayName)
+        id = bucket.parentId
+    }
+    return chain
+}
+
 /** Saves the folder browse path as a flat [id, name, id, name, …] list. */
 private val CrumbPathSaver = listSaver<List<Pair<Long, String>>, Any>(
     save = { path -> path.flatMap { (id, name) -> listOf(id, name) } },
@@ -785,12 +949,18 @@ private fun CrumbText(label: String, last: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun FolderRow(bucket: MediaStoreBucket, menu: ItemActions, isDownloadLocation: Boolean, onOpen: () -> Unit) {
-    val contentAlpha = if (bucket.excluded) 0.4f else 1f
+private fun FolderRow(
+    bucket: MediaStoreBucket,
+    menu: ItemActions,
+    isDownloadLocation: Boolean,
+    inert: Boolean = false,
+    onOpen: () -> Unit,
+) {
+    val contentAlpha = if (bucket.excluded || inert) 0.4f else 1f
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = !bucket.excluded, onClick = onOpen)
+            .clickable(enabled = !bucket.excluded && !inert, onClick = onOpen)
             .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
@@ -808,7 +978,12 @@ private fun FolderRow(bucket: MediaStoreBucket, menu: ItemActions, isDownloadLoc
                 modifier = Modifier.padding(top = 10.dp).size(18.dp).spokenAs(stringResource(Res.string.menu_download_location)),
             )
         }
-        MoreMenu(menu, Modifier.padding(top = 2.dp))
+        if (inert) {
+            // Holds the ⋮'s width so the row's text doesn't reflow.
+            Spacer(Modifier.width(MoreMenuHitSize))
+        } else {
+            MoreMenu(menu, Modifier.padding(top = 2.dp), inFocusableItem = !bucket.excluded)
+        }
     }
 }
 
@@ -952,11 +1127,13 @@ private fun PlaylistsTab(
     content: LibraryContent,
     coordinator: PlaybackCoordinator,
     playHistory: PlayHistoryStore?,
+    openSelectionDialog: (SongSelectionDialog) -> Unit,
 ) {
     // (id, name) — saveable, so the opened playlist survives the tab leaving composition. Negative ids
     // are the system playlists; the name is the resolved display title.
     var selected by rememberSaveable(stateSaver = OpenPlaylistSaver) { mutableStateOf<Pair<Long, String>?>(null) }
     NestedBackHandler(enabled = selected != null) { selected = null }
+    val playlistSelection = remember(selected?.first) { MultiSelection<Long>() }
     var userLists by remember { mutableStateOf<List<Pair<Playlist, Int>>?>(null) }
     // Each user playlist's thumbnail: the art of its most recently added song that has artwork.
     var userArt by remember { mutableStateOf<Map<Long, String?>>(emptyMap()) }
@@ -978,7 +1155,7 @@ private fun PlaylistsTab(
     LaunchedEffect(content, refreshTick) {
         val loaded = store.playlists().map { it to store.playlistItemDetails(it.id) }
         userArt = loaded.associate { (playlist, details) ->
-            playlist.id to details.sortedByDescending { it.addedAt }.firstNotNullOfOrNull { localArtUrl(it.mediaItem) }
+            playlist.id to details.sortedByDescending { it.addedAt }.firstOrNull { hasArtSource(it.mediaItem) }?.let { localArtUrl(it.mediaItem) }
         }
         userLists = loaded.map { (playlist, details) -> playlist to details.size }
     }
@@ -1096,9 +1273,61 @@ private fun PlaylistsTab(
     }
     // A user playlist offers "Remove from playlist" on each song row; Top tracks offers "Remove"
     // (drops the watch-time row). Other system lists and the playlist index have neither.
-    val removeFromPlaylist: ((MediaStoreItem) -> Unit)? = remember(open?.first) {
+    val snackbar = LocalSnackbar.current
+    val currentUserItems by rememberUpdatedState(userItems)
+    val removeFromPlaylist: ((List<MediaStoreItem>) -> Unit)? = remember(open?.first, snackbar) {
         val id = open?.first
-        if (id != null && id > 0) ({ song: MediaStoreItem -> scope.launch { store.removeFromPlaylist(id, song.playlistCode) }; Unit }) else null
+        if (id != null && id > 0) {
+            { songs: List<MediaStoreItem> ->
+                val ids = songs.mapTo(HashSet()) { it.id }
+                // The rows' own codes: a file's current code moves once a rescan tags it with a video id.
+                val codes = currentUserItems.orEmpty().filter { it.mediaItem.id in ids }.map { it.code }
+                removeFromLocalPlaylist(graph, store, id, codes, snackbar)
+            }
+        } else {
+            null
+        }
+    }
+    val removeSongFromPlaylist: ((MediaStoreItem) -> Unit)? = remember(removeFromPlaylist) {
+        removeFromPlaylist?.let { remove -> { song: MediaStoreItem -> remove(listOf(song)) } }
+    }
+    val songIds = songs.map { it.id }
+    // Keyed on membership: a re-sort or rearrange keeps what Select all restores.
+    val songIdSet = songIds.toSet()
+    LaunchedEffect(songIdSet) {
+        playlistSelection.retain(songIdSet)
+        playlistSelection.forgetSelectAll()
+    }
+    val selection = playlistSelection.takeIf { isUser }
+    val canDelete = LocalSongActions.current?.canDelete == true
+    var confirmingRemove by remember(playlistSelection) { mutableStateOf<List<MediaStoreItem>?>(null) }
+    confirmingRemove?.let { doomed ->
+        RemoveFromPlaylistDialog(
+            doomed.size,
+            onDismiss = { confirmingRemove = null },
+            onConfirm = {
+                confirmingRemove = null
+                // The selection ends as the removed rows leave the list, so focus never returns to one of them.
+                removeFromPlaylist?.invoke(doomed)
+            },
+        )
+    }
+    ReplaceAppBar(enabled = selection?.active == true, slot = LocalLibraryTabRowSlot.current) {
+        PlaylistSelectionBar(
+            playlistSelection,
+            songs,
+            coordinator,
+            onRemoveFromPlaylist = { selected -> confirmingRemove = selected },
+            onDelete = if (canDelete) {
+                { selected ->
+                    val targets = selected.associateBy { it.id }
+                    openSelectionDialog(SongSelectionDialog.Delete(targets) { playlistSelection.endRemoving(targets.keys) })
+                }
+            } else {
+                null
+            },
+            onAddToPlaylist = { selected -> openSelectionDialog(SongSelectionDialog.AddToPlaylist(selected, playlistSelection::end)) },
+        )
     }
     val removeFromPlayHistory: ((MediaStoreItem) -> Unit)? = remember(open?.first, playHistory) {
         val history = playHistory
@@ -1111,15 +1340,26 @@ private fun PlaylistsTab(
 
     TrackScroll { listState.canScrollBackward || gridState.canScrollBackward }
     CompositionLocalProvider(
-        LocalPlaylistRemove provides removeFromPlaylist,
+        LocalPlaylistRemove provides removeSongFromPlaylist,
         LocalRemoveFromPlayHistory provides removeFromPlayHistory,
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val layoutWidth = railStableWidth(maxWidth)
-            if (layoutWidth >= LibraryGridMinWidth) {
+            val asGrid = layoutWidth >= LibraryGridMinWidth
+            if (selection != null) {
+                MultiSelectionEffects(selection, songIds) { index ->
+                    if (asGrid) {
+                        val item = index / librarySongColumns(layoutWidth) + 1
+                        if (gridState.layoutInfo.visibleItemsInfo.none { it.index == item }) gridState.scrollToItem(item)
+                    } else if (listState.layoutInfo.visibleItemsInfo.none { it.index == index + 1 }) {
+                        listState.scrollToItem(index + 1)
+                    }
+                }
+            }
+            if (asGrid) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(libraryGridColumns(layoutWidth)),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().itemList(),
                     contentPadding = PaddingValues(start = LibraryGridPadding, end = LibraryGridPadding, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                     state = gridState,
                 ) {
@@ -1137,14 +1377,14 @@ private fun PlaylistsTab(
                             span = { GridItemSpan(maxLineSpan) },
                         ) { group ->
                             Row(Modifier.bleedGridPadding()) {
-                                group.forEach { i -> Box(Modifier.weight(1f)) { SongRow(songs[i], coordinator) { coordinator.playLocal(songs, i) } } }
+                                group.forEach { i -> Box(Modifier.weight(1f)) { SongRow(songs[i], coordinator, selection) { coordinator.playLocal(songs, i) } } }
                                 repeat(perRow - group.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
                     }
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
+                LazyColumn(Modifier.fillMaxSize().itemList(), state = listState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
                     item { header() }
                     if (open == null) {
                         items(entries, key = { it.id }) { entry ->
@@ -1153,11 +1393,32 @@ private fun PlaylistsTab(
                         if (showEmptyHint) item("empty") { NoPlaylistsHint(transfer) }
                     } else {
                         itemsIndexed(songs, key = { _, s -> s.id }) { i, song ->
-                            SongRow(song, coordinator) { coordinator.playLocal(songs, i) }
+                            SongRow(song, coordinator, selection) { coordinator.playLocal(songs, i) }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/** On the process scope: leaving the Library must not drop a confirmed removal. */
+private fun removeFromLocalPlaylist(
+    graph: AppGraph,
+    store: BetterMediaStore,
+    playlistId: Long,
+    codes: List<String>,
+    snackbar: (String) -> Unit,
+) {
+    graph.processScope.launch {
+        try {
+            store.removeCodesFromPlaylist(playlistId, codes)
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (failure: Exception) {
+            val wrapped = TechnicalException("E50014", "removing songs from a playlist failed", cause = failure)
+            graph.logger?.fork("library", mapOf("playlist" to playlistId.toString()))?.captureError(wrapped)
+            snackbar(errorText(wrapped.errorCode() ?: "E50014").load())
         }
     }
 }
@@ -1242,7 +1503,7 @@ private fun PlaylistsToolbar(sort: SortState, menu: ItemActions?, onCreate: () -
         LibraryChip(stringResource(Res.string.playlist_new), selected = false, onClick = onCreate)
         Spacer(Modifier.weight(1f))
         SortControl(playlistSortOptions.map { it.label }, sort)
-        if (menu != null) MoreMenu(menu)
+        if (menu != null) MoreMenu(menu, inFocusableItem = false)
     }
 }
 
@@ -1342,10 +1603,15 @@ private fun DeletePlaylistDialog(name: String, onDismiss: () -> Unit, delete: su
 }
 
 /** The "Add to playlist" picker, in the standard [ElevatedBarDialog] chrome: the user's playlists
- *  plus a "New playlist…" row. Picking a playlist appends [song] and closes; "New playlist…" swaps to
- *  the name dialog, then creates + appends. */
+ *  plus a "New playlist…" row. Picking a playlist appends [songs] and closes; "New playlist…" swaps to
+ *  the name dialog, then creates + appends. [onAdded] runs once they are in a playlist. */
 @Composable
-internal fun AddToPlaylistDialog(store: BetterMediaStore, song: MediaStoreItem, onDismiss: () -> Unit) {
+internal fun AddToPlaylistDialog(
+    store: BetterMediaStore,
+    songs: List<MediaStoreItem>,
+    onDismiss: () -> Unit,
+    onAdded: () -> Unit = {},
+) {
     val scope = rememberCoroutineScope()
     var lists by remember { mutableStateOf<List<Playlist>?>(null) }
     var creating by remember { mutableStateOf(false) }
@@ -1360,7 +1626,8 @@ internal fun AddToPlaylistDialog(store: BetterMediaStore, song: MediaStoreItem, 
             onDismiss = onDismiss,
             onConfirm = { name ->
                 val pl = store.createPlaylist(name)
-                store.addToPlaylist(pl.id, listOf(song))
+                store.addToPlaylist(pl.id, songs)
+                onAdded()
             },
         )
         return
@@ -1387,7 +1654,8 @@ internal fun AddToPlaylistDialog(store: BetterMediaStore, song: MediaStoreItem, 
                 items(loaded, key = { it.id }) { pl ->
                     PlaylistPickRow(Icons.AutoMirrored.Filled.PlaylistPlay, pl.name, DesignColors.Ink) {
                         scope.launch {
-                            store.addToPlaylist(pl.id, listOf(song))
+                            store.addToPlaylist(pl.id, songs)
+                            onAdded()
                             onDismiss()
                         }
                     }
@@ -1512,6 +1780,7 @@ internal fun SongList(
     songs: List<MediaStoreItem>,
     coordinator: PlaybackCoordinator,
     modifier: Modifier = Modifier,
+    selection: MultiSelection<Long>? = null,
     header: (@Composable () -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
@@ -1521,23 +1790,34 @@ internal fun SongList(
         // Same min-width sizing as the Folders tab's songs: as many columns as keep each song
         // ≥ LibrarySongMinWidth, dropping to a single full-width column when that's all that fits.
         val layoutWidth = railStableWidth(maxWidth)
-        if (layoutWidth >= LibraryGridMinWidth) {
+        val asGrid = layoutWidth >= LibraryGridMinWidth
+        if (selection != null) {
+            MultiSelectionEffects(selection, songs.map { it.id }) { index ->
+                val item = index + if (header != null) 1 else 0
+                if (asGrid) {
+                    if (gridState.layoutInfo.visibleItemsInfo.none { it.index == item }) gridState.scrollToItem(item)
+                } else if (listState.layoutInfo.visibleItemsInfo.none { it.index == item }) {
+                    listState.scrollToItem(item)
+                }
+            }
+        }
+        if (asGrid) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(librarySongColumns(layoutWidth)),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().itemList(),
                 state = gridState,
                 contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current),
             ) {
                 if (header != null) item(span = { GridItemSpan(maxLineSpan) }) { header() }
                 items(songs.size, key = { songs[it].id }) { index ->
-                    SongRow(songs[index], coordinator) { coordinator.playLocal(songs, index) }
+                    SongRow(songs[index], coordinator, selection) { coordinator.playLocal(songs, index) }
                 }
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
+            LazyColumn(Modifier.fillMaxSize().itemList(), state = listState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
                 if (header != null) item { header() }
                 itemsIndexed(songs, key = { _, s -> s.id }) { index, song ->
-                    SongRow(song, coordinator) { coordinator.playLocal(songs, index) }
+                    SongRow(song, coordinator, selection) { coordinator.playLocal(songs, index) }
                 }
             }
         }
@@ -1545,15 +1825,47 @@ internal fun SongList(
 }
 
 @Composable
-internal fun SongRow(song: MediaStoreItem, coordinator: PlaybackCoordinator? = null, onPlay: () -> Unit) {
+internal fun SongRow(
+    song: MediaStoreItem,
+    coordinator: PlaybackCoordinator? = null,
+    selection: MultiSelection<Long>? = null,
+    onPlay: () -> Unit,
+) {
     val sub = listOfNotNull(song.artist, song.album).joinToString(" · ")
     val length = song.durationMs?.takeIf { it > 0 }?.let { spokenDuration(it) }
+    val selecting = selection?.active == true
+    val selected = selection != null && song.id in selection.selected
+    val gesture = if (selection == null) {
+        Modifier.clickable(onClick = onPlay)
+    } else {
+        val shape = RoundedCornerShape(SongRowCorner)
+        // Inset so the fill and the focus ring sit inside the list's edges; [contentPadding] keeps the content in place.
+        Modifier
+            .padding(start = DesignSpacing.Space8, end = DesignSpacing.Space4, top = DesignSpacing.Space2, bottom = DesignSpacing.Space2)
+            .clip(shape)
+            .then(if (selected) Modifier.background(selectedItemFill()) else Modifier)
+            .multiSelectGesture(
+                selecting = selecting,
+                selected = selected,
+                shape = shape,
+                requestFocus = selection.focusTarget == song.id,
+                onFocusRequested = selection::focusHandled,
+                onToggle = { selection.toggle(song.id) },
+                onStartSelection = { selection.start(song.id) },
+                onClick = onPlay,
+            )
+    }
+    val contentPadding = if (selection == null) {
+        Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp)
+    } else {
+        Modifier.padding(start = DesignSpacing.Space8, top = SelectableSongRowVertical, bottom = SelectableSongRowVertical)
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onPlay)
+            .then(gesture)
             .a11yRowLabel(listOfNotNull(song.title, length, sub.ifEmpty { null }).joinToString(", "))
-            .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            .then(contentPadding),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {
@@ -1570,14 +1882,129 @@ internal fun SongRow(song: MediaStoreItem, coordinator: PlaybackCoordinator? = n
                 )
             }
         }
-        if (coordinator != null) MoreMenu(songActions(song, coordinator), Modifier.padding(top = 2.dp))
+        if (selecting) {
+            Box(Modifier.padding(top = 2.dp)) { SelectionCheck(selected) }
+        } else if (coordinator != null) {
+            val keyboardMode = LocalInputModeManager.current.inputMode == InputMode.Keyboard
+            val onSelect = selection?.let { { it.startKeepingFocus(song.id, keyboardMode) } }
+            MoreMenu(songActions(song, coordinator, onSelect), Modifier.padding(top = 2.dp))
+        }
     }
+}
+
+private val SongRowCorner = 10.dp
+private val SelectableSongRowVertical = 6.dp // 8dp less the 2dp inset: the same row height as elsewhere
+
+/** A selection action waiting on its dialog, over the songs it was opened for; [onDone] ends that selection. */
+private sealed interface SongSelectionDialog {
+    val onDone: () -> Unit
+
+    class AddToPlaylist(val songs: List<MediaStoreItem>, override val onDone: () -> Unit) : SongSelectionDialog
+    class Delete(val targets: Map<Long, MediaStoreItem>, override val onDone: () -> Unit) : SongSelectionDialog
+}
+
+/**
+ * The Songs tab's and an opened folder's selection bar, in the tab row's place: close · "N selected" · Select all · Add to playlist ·
+ * Remove from disk · ⋮ (Play, Queue next, Queue last). Each acts on the selected [songs] in their listed order.
+ */
+@Composable
+private fun SongSelectionBar(
+    selection: MultiSelection<Long>,
+    songs: List<MediaStoreItem>,
+    coordinator: PlaybackCoordinator,
+    onAddToPlaylist: (List<MediaStoreItem>) -> Unit,
+    onDelete: ((List<MediaStoreItem>) -> Unit)?,
+) {
+    val selected = songs.filter { it.id in selection.selected }
+    val ids = songs.map { it.id }
+    SelectionBar(selected.size, selection.allSelected(ids), selection::end, { selection.toggleAll(ids) }) {
+        ActionIcon(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(Res.string.cd_add_to_playlist)) { onAddToPlaylist(selected) }
+        onDelete?.let { delete ->
+            ActionIcon(Icons.Outlined.Delete, stringResource(Res.string.menu_remove_from_disk)) { delete(selected) }
+        }
+        SelectionPlayMenu(selection, selected, coordinator)
+    }
+}
+
+/**
+ * An opened playlist's selection bar, in the tab row's place: close · "N selected" · Select all · Remove from
+ * playlist · Remove from disk · Add to playlist · ⋮ (Play, Queue next, Queue last). Each acts on the selected
+ * [songs] in their listed order.
+ */
+@Composable
+private fun PlaylistSelectionBar(
+    selection: MultiSelection<Long>,
+    songs: List<MediaStoreItem>,
+    coordinator: PlaybackCoordinator,
+    onRemoveFromPlaylist: (List<MediaStoreItem>) -> Unit,
+    onDelete: ((List<MediaStoreItem>) -> Unit)?,
+    onAddToPlaylist: (List<MediaStoreItem>) -> Unit,
+) {
+    val selected = songs.filter { it.id in selection.selected }
+    val ids = songs.map { it.id }
+    SelectionBar(selected.size, selection.allSelected(ids), selection::end, { selection.toggleAll(ids) }) {
+        ActionIcon(Icons.Default.PlaylistRemove, stringResource(Res.string.menu_remove_from_playlist)) { onRemoveFromPlaylist(selected) }
+        onDelete?.let { delete ->
+            ActionIcon(Icons.Outlined.Delete, stringResource(Res.string.menu_remove_from_disk)) { delete(selected) }
+        }
+        ActionIcon(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(Res.string.cd_add_to_playlist)) { onAddToPlaylist(selected) }
+        SelectionPlayMenu(selection, selected, coordinator)
+    }
+}
+
+/** Confirms removing [count] selected songs from the opened playlist; their files stay. */
+@Composable
+private fun RemoveFromPlaylistDialog(count: Int, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    ElevatedBarDialog(
+        title = pluralText(Res.plurals.playlist_remove_selected_title, count, count),
+        onDismiss = onDismiss,
+        canScrollBackward = false,
+        canScrollForward = false,
+        buttons = {
+            DialogSecondaryButton(stringResource(Res.string.dialog_cancel), onClick = onDismiss)
+            TextButton(onClick = onConfirm) { Text(stringResource(Res.string.menu_remove), color = MaterialTheme.colorScheme.error) }
+        },
+    ) {
+        Text(
+            stringResource(Res.string.playlist_remove_selected_message),
+            style = MaterialTheme.typography.bodyMedium,
+            color = DesignColors.Ink,
+            modifier = Modifier.padding(horizontal = DesignSpacing.Space24, vertical = DesignSpacing.Space16),
+        )
+    }
+}
+
+/** A selection bar's ⋮: Play, Queue next, Queue last over [selected], each ending [selection]. */
+@Composable
+private fun SelectionPlayMenu(selection: MultiSelection<Long>, selected: List<MediaStoreItem>, coordinator: PlaybackCoordinator) {
+    val play = stringResource(Res.string.menu_play)
+    val next = stringResource(Res.string.queue_next)
+    val last = stringResource(Res.string.queue_last)
+    MoreMenu(
+        ItemActions(
+            listOf(
+                play to {
+                    coordinator.playLocal(selected, 0)
+                    selection.end()
+                },
+                next to {
+                    coordinator.queueLocalNext(selected)
+                    selection.end()
+                },
+                last to {
+                    coordinator.queueLocalLast(selected)
+                    selection.end()
+                },
+            ),
+        ),
+        inFocusableItem = false,
+    )
 }
 
 /** The local song overflow menu (the legacy app's song menu): play, queue, playlist, go to artist /
  *  album, reveal in its folder and remove from disk — each shown only where its host provides it. */
 @Composable
-private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator): ItemActions {
+private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator, onSelect: (() -> Unit)?): ItemActions {
     val play = stringResource(Res.string.menu_play)
     val next = stringResource(Res.string.queue_next)
     val last = stringResource(Res.string.queue_last)
@@ -1596,11 +2023,12 @@ private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator):
     val goToGroup = LocalGoToLibraryGroup.current
     val goToArtist = stringResource(Res.string.menu_go_to_artist)
     val goToAlbum = stringResource(Res.string.menu_go_to_album)
+    val selectLabel = stringResource(Res.string.downloads_action_select)
     return ItemActions(
         buildList {
             add(play to { coordinator.playLocalSingle(song) })
-            add(next to { coordinator.queueLocalNext(song) })
-            add(last to { coordinator.queueLocalLast(song) })
+            add(next to { coordinator.queueLocalNext(listOf(song)) })
+            add(last to { coordinator.queueLocalLast(listOf(song)) })
             if (addToPlaylist != null) add(addToPlaylistLabel to { addToPlaylist(song) })
             if (removeFromPlaylist != null) add(removeFromPlaylistLabel to { removeFromPlaylist(song) })
             if (removeFromHistory != null) add(removeFromTopTracks to { removeFromHistory(song) })
@@ -1613,6 +2041,7 @@ private fun songActions(song: MediaStoreItem, coordinator: PlaybackCoordinator):
                 add(revealInFileManagerLabel to { revealInFileManager.reveal(song.uri.toString()) })
             }
             if (requestDelete != null) add(removeFromDisk to { requestDelete(song) })
+            if (onSelect != null) add(selectLabel to onSelect)
         },
     )
 }
@@ -1689,7 +2118,7 @@ private fun GroupedList(
         if (layoutWidth >= LibraryGridMinWidth) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(libraryGridColumns(layoutWidth)),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().itemList(),
                 contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 4.dp + LocalMiniPlayerInset.current),
                 state = gridState,
             ) {
@@ -1711,7 +2140,7 @@ private fun GroupedList(
                 }
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
+            LazyColumn(Modifier.fillMaxSize().itemList(), state = listState, contentPadding = PaddingValues(bottom = LocalMiniPlayerInset.current)) {
                 item { header() }
                 if (selected == null) {
                     items(entries, key = { it.first }) { (name, members) -> GroupRow(icon, name, members) { group = name } }
@@ -1736,7 +2165,7 @@ private fun GroupRow(icon: ImageVector, name: String, members: List<MediaStoreIt
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        LibraryThumb(icon, badge = null, artUrl = members.firstNotNullOfOrNull(::localArtUrl))
+        LibraryThumb(icon, badge = null, artUrl = members.firstOrNull(::hasArtSource)?.let(::localArtUrl))
         Column(Modifier.weight(1f)) {
             Text(name, style = ListTitleStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(
@@ -1753,7 +2182,7 @@ private fun GroupRow(icon: ImageVector, name: String, members: List<MediaStoreIt
 private fun GroupCard(icon: ImageVector, name: String, members: List<MediaStoreItem>, onOpen: () -> Unit) {
     LibraryGridCard(
         icon = icon,
-        artUrl = members.firstNotNullOfOrNull(::localArtUrl),
+        artUrl = members.firstOrNull(::hasArtSource)?.let(::localArtUrl),
         title = name,
         subtitle = pluralText(Res.plurals.n_songs, members.size, members.size),
         onClick = onOpen,
@@ -1806,7 +2235,7 @@ private fun LibraryGridCard(
                         .spokenAs(stringResource(Res.string.menu_download_location)),
                 )
             }
-            if (menu != null) MoreMenu(menu, Modifier.align(Alignment.TopEnd))
+            if (menu != null) MoreMenu(menu, Modifier.align(Alignment.TopEnd), inFocusableItem = !dimmed)
         }
         Text(
             title,

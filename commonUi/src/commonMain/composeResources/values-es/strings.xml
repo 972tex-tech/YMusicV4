@@ -202,6 +202,12 @@
     <string name="menu_remove_from_playlist">Quitar de la lista</string>
     <string name="playlist_delete_title">¿Eliminar la lista?</string>
     <string name="playlist_delete_message">Se eliminará «%1$s». Las canciones se quedan en tu biblioteca.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">¿Quitar %1$d canción de la lista?</item>
+        <item quantity="many">¿Quitar %1$d canciones de la lista?</item>
+        <item quantity="other">¿Quitar %1$d canciones de la lista?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">Las canciones se quedan en tu biblioteca.</string>
     <string name="add_to_playlist_new">Nueva lista…</string>
     <string name="playlist_recent_play">Reproducidas recientemente</string>
     <string name="playlist_top_tracks">Más escuchadas</string>
@@ -308,10 +314,14 @@
     <string name="cd_download">Descargar</string>
     <string name="cd_fullscreen">Pantalla completa</string>
     <string name="cd_exit_fullscreen">Salir de pantalla completa</string>
+    <string name="cd_show_queue">Mostrar cola</string>
+    <string name="cd_hide_queue">Ocultar cola</string>
     <string name="cd_fit_video">Ajustar vídeo</string>
     <string name="cd_fill_video">Llenar pantalla</string>
-    <string name="cd_lock_rotation">Bloquear rotación</string>
-    <string name="cd_unlock_rotation">Desbloquear rotación</string>
+    <string name="cd_screen_rotation">Rotación de pantalla</string>
+    <string name="rotation_lock_landscape">Bloquear en horizontal</string>
+    <string name="rotation_lock_portrait">Bloquear en vertical</string>
+    <string name="rotation_free">Rotación libre</string>
     <string name="cd_rewind10">Retroceder 10 segundos</string>
     <string name="cd_forward10">Avanzar 10 segundos</string>
     <string name="cd_repeat_off">Repetir: desactivado</string>
@@ -420,6 +430,8 @@
     <string name="settings_audio_focus_apps">Pausar cuando otras apps reproduzcan sonido</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Omite automáticamente los segmentos patrocinados en los vídeos de YouTube. Puedes desactivarlo para un vídeo desde la pantalla de reproducción.</string>
+    <string name="settings_stable_volume">Volumen estable</string>
+    <string name="settings_stable_volume_hint">Iguala las partes fuertes y suaves y reproduce cada canción a un volumen parecido.</string>
     <string name="sponsor_block_included">SponsorBlock activado para este vídeo</string>
     <string name="sponsor_block_excluded">SponsorBlock desactivado para este vídeo</string>
     <string name="settings_sound">Sonido</string>
@@ -668,4 +680,34 @@
     <string name="native_blocked_help">En un PC del trabajo o de la escuela, pide a tu administrador que permita YMusic. En tu propio PC, revisa Control inteligente de aplicaciones en Seguridad de Windows.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">Actualizando</string>
+    <string name="a11y_loading">Cargando</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">Seleccionar todo</string>
+    <string name="downloads_action_select">Seleccionar</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">%1$d seleccionado</item>
+        <item quantity="many">%1$d seleccionados</item>
+        <item quantity="other">%1$d seleccionados</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">¿Quitar %1$d descarga de la lista?</item>
+        <item quantity="many">¿Quitar %1$d descargas de la lista?</item>
+        <item quantity="other">¿Quitar %1$d descargas de la lista?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">Los archivos terminados se quedan en este dispositivo.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">¿Eliminar %1$d archivo?</item>
+        <item quantity="many">¿Eliminar %1$d archivos?</item>
+        <item quantity="other">¿Eliminar %1$d archivos?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">Los archivos eliminados no se pueden recuperar.</string>
+    <string name="downloads_cancel_selected">Cancelar descargas</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">¿Cancelar %1$d descarga?</item>
+        <item quantity="many">¿Cancelar %1$d descargas?</item>
+        <item quantity="other">¿Cancelar %1$d descargas?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">Se eliminará lo descargado hasta ahora.</string>
+    <string name="downloads_cancel_selected_keep">Conservar</string>
+    <string name="data_dir_unusable">YMusic no puede abrir su carpeta de datos, %1$s. Asegúrate de que sea una carpeta en la que puedas escribir y vuelve a abrir YMusic. (%2$s)</string>
 </resources>

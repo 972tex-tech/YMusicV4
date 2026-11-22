@@ -3,30 +3,32 @@
 
 use std::sync::Arc;
 
-use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
-use gpui_kit::component::{
-    ActiveTheme, Disableable, Icon, IconName, Selectable, Sizable, StyledExt, WindowExt, h_flex, v_flex,
-};
+use gpui_kit::component::{ActiveTheme, Disableable, Icon, Selectable, Sizable, StyledExt, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use ym_common::log::Logger;
-use ym_engine::yt::{YtFeedItem, YtFeedPage, YtFilterGroup, YtPageHeader, YtSectionHeader, YtThumb};
+use ym_engine::yt::{YtFeedItem, YtFeedPage, YtFilterGroup, YtPageHeader, YtSectionHeader};
 use ym_engine::{DynamicEngine, EngineError, ErrorKind};
 use ym_i18n::{Str, t, tf};
+use ym_image_loader::async_image::async_image_of;
 
-use crate::a11y::{DragRow, FocusList, alert, announced, announced_as, heading, list_item};
-use crate::action_icon::{HIT, action_icon, sized_action_icon};
+use crate::a11y::{DragRow, FocusList, LoadMoreFocus, alert, announced, announced_as, heading, list_item};
+use crate::action_icon::{HIT, ICON, action_icon, auto_mirrored, sized_action_icon};
+use crate::assets::MaterialIcon;
 use crate::download_dialog::DownloadTarget;
 use crate::graph::{AppGraph, on_core};
+use crate::item_menu::{ItemMenu, on_right_click};
+use crate::lazy_rows::LazyRows;
 use crate::local_playlist::LocalPlaylistFromDownloads;
 use crate::offline::{OfflineMarks, offline_mark};
-use crate::playlist_download::PlaylistDownload;
+use crate::playlist_download::{OpenPlaylistDownload, PlaylistDownload};
 use crate::quick_download::saved_preset;
 use crate::settings_view::{HOVER_ALPHA, StackTones};
 use crate::spinner::{BusyButton, LoadingLine, Spinner};
 use crate::tab_row::tab_row;
+use crate::youtube_thumbnails::thumb_request_sources;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FeedSource {
@@ -116,8 +118,15 @@ impl FeedSource {
         match &self {
             Self::TopTracks => top_tracks(history).await,
             Self::Account => engine.account_library(continuation, &log).await,
-            Self::Home => engine.home_feed(continuation, refresh, &log).await,
-            Self::Trending => engine.trending_music_feed(&log).await,
+            // Home is a music app's front door: music first, per section (across sections would tear
+            // headers off their items).
+            Self::Home => engine.home_feed(continuation, refresh, &log).await.map(|mut page| {
+                for section in &mut page.sections {
+                    section.items = rank_music_first(std::mem::take(&mut section.items));
+                }
+                page
+            }),
+            Self::Trending => engine.trending_music_feed(refresh, &log).await,
             Self::Recommended => engine.recommended_feed(&log).await,
             Self::MusicHome => engine.music_home(continuation, refresh, &log).await,
             Self::MusicExplore => engine.music_explore(continuation, &log).await,
@@ -192,6 +201,11 @@ pub struct Play {
     pub item: YtFeedItem,
     pub queue: Option<Vec<YtFeedItem>>,
     pub shuffle: bool,
+    /// The playlist page whose list the queue continues past the loaded videos (the JVM
+    /// `queueSource` of a playlist page).
+    pub playlist: Option<String>,
+    /// That playlist's length, loaded or not, when its page says.
+    pub playlist_total: Option<i32>,
 }
 
 /// Something to do with a video besides opening it.
@@ -237,10 +251,13 @@ pub struct FeedView {
     phase: Phase,
     loading_more: bool,
     more_failed: Option<EngineError>,
+    more_focus: LoadMoreFocus,
     /// The chip or sort option whose page is loading; the current page stays up until it lands.
     refiltering: Option<Refilter>,
     /// An F5 reload is in flight; the page stays up under the loading line until it lands.
     refreshing: bool,
+    /// A loaded page's `partial_error_code`, shown once as a notification on the next render.
+    error_code: Option<String>,
     generation: u64,
     scroll: ScrollHandle,
     /// Collapsible sections the user expanded, by index.
@@ -263,10 +280,15 @@ pub struct FeedView {
     chips_drag: DragRow,
     tabs_drag: DragRow,
     carousel_drags: std::cell::RefCell<std::collections::HashMap<usize, DragRow>>,
+    /// Each list or grid section's lazily built rows, by section.
+    section_rows: std::cell::RefCell<std::collections::HashMap<usize, LazyRows>>,
+    carousel_rows: std::cell::RefCell<std::collections::HashMap<usize, LazyRows>>,
     offline: Entity<OfflineMarks>,
-    /// Channel items offer Subscribe / Unsubscribe only when signed in.
-    signed_in: bool,
+    /// False for a signed-in-only feed until its owner confirms a sign-in: it fetches nothing before
+    /// (the JVM Account and YT Music Library tabs build their session only once signed in).
+    gate_open: bool,
     _offline: Subscription,
+    _accounts: Subscription,
 }
 
 /// Which page header a detail page shows.
@@ -285,13 +307,16 @@ impl EventEmitter<Navigate> for FeedView {}
 impl EventEmitter<RequestSearch> for FeedView {}
 impl EventEmitter<Play> for FeedView {}
 impl EventEmitter<ItemAction> for FeedView {}
+impl EventEmitter<OpenPlaylistDownload> for FeedView {}
 
 impl FeedView {
     pub fn new(source: FeedSource, title: Option<SharedString>, cx: &mut Context<Self>) -> Self {
+        let source_needs_sign_in = matches!(source, FeedSource::Account | FeedSource::MusicLibrary);
         let scroll = ScrollHandle::new();
         OfflineMarks::refresh(cx);
         let offline = OfflineMarks::shared(cx);
         let observe_offline = cx.observe(&offline, |_, _, cx| cx.notify());
+        let observe_accounts = cx.observe(&crate::account::AccountController::global(cx), |_, _, cx| cx.notify());
         let mut view = Self {
             source,
             title,
@@ -299,8 +324,10 @@ impl FeedView {
             phase: Phase::Loading,
             loading_more: false,
             more_failed: None,
+            more_focus: LoadMoreFocus::new(cx),
             refiltering: None,
             refreshing: false,
+            error_code: None,
             generation: 0,
             scroll: scroll.clone(),
             expanded: std::collections::HashSet::new(),
@@ -315,16 +342,31 @@ impl FeedView {
             chips_drag: DragRow::default(),
             tabs_drag: DragRow::default(),
             carousel_drags: Default::default(),
+            section_rows: Default::default(),
+            carousel_rows: Default::default(),
             offline,
-            signed_in: false,
+            gate_open: !source_needs_sign_in,
             _offline: observe_offline,
+            _accounts: observe_accounts,
         };
-        view.reload(cx);
+        if view.gate_open {
+            view.reload(cx);
+        }
         view
+    }
+
+    /// Lets a signed-in-only feed fetch (true) or holds it (false).
+    pub fn open_gate(&mut self, open: bool) {
+        self.gate_open = open;
     }
 
     pub fn title(&self) -> Option<SharedString> {
         self.title.clone().or_else(|| self.page.page_header.as_ref()?.title.clone().map(Into::into))
+    }
+
+    /// A YouTube Music page (album, artist, playlist), whose search is music search.
+    pub fn is_music_page(&self) -> bool {
+        matches!(self.source, FeedSource::MusicBrowse(_))
     }
 
     /// Playlists title their bar "Playlist", not with the playlist's name.
@@ -365,7 +407,23 @@ impl FeedView {
             return;
         }
         let start = if shuffle { rand::Rng::random_range(&mut rand::rng(), 0..videos.len()) } else { 0 };
-        cx.emit(Play { item: videos[start].clone(), queue: Some(videos), shuffle });
+        let (playlist, playlist_total) = (self.playlist_url(), self.playlist_total());
+        cx.emit(Play { item: videos[start].clone(), queue: Some(videos), shuffle, playlist, playlist_total });
+    }
+
+    /// A playlist page's link, which its queue continues from.
+    fn playlist_total(&self) -> Option<i32> {
+        self.page.page_header.as_ref().and_then(|header| header.item_count)
+    }
+
+    fn playlist_url(&self) -> Option<String> {
+        if self.header_kind() != HeaderKind::Playlist {
+            return None;
+        }
+        match &self.source {
+            FeedSource::Playlist(url) | FeedSource::MusicBrowse(url) => Some(url.clone()),
+            _ => None,
+        }
     }
 
     fn share_page(&self) -> Option<String> {
@@ -454,7 +512,9 @@ impl FeedView {
         if local {
             LocalPlaylistFromDownloads::open(self.source.clone(), title, &self.page, window, cx);
         } else {
-            PlaylistDownload::open(self.source.clone(), title, &self.page, window, cx);
+            let (source, page) = (self.source.clone(), &self.page);
+            let view = cx.new(|cx| PlaylistDownload::new(source, title, page, cx));
+            cx.emit(OpenPlaylistDownload(view));
         }
         true
     }
@@ -482,6 +542,9 @@ impl FeedView {
 
     pub fn reload(&mut self, cx: &mut Context<Self>) {
         self.phase = Phase::Loading;
+        if !self.gate_open {
+            return;
+        }
         self.fetch(None, false, cx);
     }
 
@@ -489,6 +552,9 @@ impl FeedView {
     /// filter, the current list staying up under the loading line until the new one lands; a
     /// failure keeps it and says why.
     pub fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.gate_open {
+            return;
+        }
         if !matches!(self.phase, Phase::Ready) {
             return self.reload(cx);
         }
@@ -521,13 +587,53 @@ impl FeedView {
         .detach();
     }
 
-    fn load_more(&mut self, cx: &mut Context<Self>) {
+    fn load_more(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(continuation) = self.page.continuation.clone() else { return };
         if self.loading_more || self.more_failed.is_some() || self.refreshing {
             return;
         }
         self.loading_more = true;
+        let loaded = self.page.sections.iter().map(|section| section.items.len()).sum();
+        self.more_focus.start(loaded, window, cx);
         self.fetch(Some(continuation), true, cx);
+    }
+
+    /// Where focus goes once a page the user asked for settles: see [`LoadMoreFocus`].
+    fn settle_more_focus(&mut self, bands: Bands, window: &mut Window, cx: &mut Context<Self>) {
+        let total = self.page.sections.iter().map(|section| section.items.len()).sum();
+        let Some(settled) = self.more_focus.settle(self.loading_more, total, window) else { return };
+        let control = if self.more_failed.is_some() {
+            Some(self.actions.handle(ACTION_RETRY_MORE, cx))
+        } else if self.page.continuation.is_some() {
+            Some(self.chips.handle(CHIPS_SHOW_MORE, cx))
+        } else {
+            None
+        };
+        let item = |index| self.item_shown(index, bands).then(|| self.focus.handle(index, cx));
+        if let Some(target) = settled.target(item, control, None) {
+            window.focus(&target, cx);
+        }
+    }
+
+    /// Whether the item at `index` across all sections is on the page, not in a collapsed section's
+    /// hidden part.
+    fn item_shown(&self, index: usize, bands: Bands) -> bool {
+        let mut first = 0;
+        for (section_index, section) in self.page.sections.iter().enumerate() {
+            if index < first + section.items.len() {
+                return index - first < self.shown_count(section, section_index, bands);
+            }
+            first += section.items.len();
+        }
+        false
+    }
+
+    fn shown_count(&self, section: &ym_engine::yt::YtSection, section_index: usize, bands: Bands) -> usize {
+        if section.layout != "carousel" && section.collapsible && !self.expanded.contains(&section_index) {
+            collapsed_count(section, bands).min(section.items.len())
+        } else {
+            section.items.len()
+        }
     }
 
     /// A chip or sort option re-serves the page in place: the current page stays up, the option
@@ -613,7 +719,6 @@ impl FeedView {
                     Some(Ok(page)) if append => view.append(page),
                     Some(Ok(page)) => {
                         view.replace(page, false);
-                        view.check_signed_in(cx);
                     }
                     Some(Err(error)) if append => view.more_failed = Some(error),
                     Some(Err(error)) => view.phase = Phase::Failed(error),
@@ -644,37 +749,10 @@ impl FeedView {
             page.page_header = self.page.page_header.take();
             page.page_tabs = std::mem::take(&mut self.page.page_tabs);
         }
+        self.error_code = page.partial_error_code.clone();
         self.page = page;
         self.phase = Phase::Ready;
         self.more_failed = None;
-    }
-
-    /// Reads the cookie-only sign-in gate when the page has channel items to offer Subscribe on.
-    fn check_signed_in(&mut self, cx: &mut Context<Self>) {
-        let has_channels =
-            self.page.sections.iter().any(|section| section.items.iter().any(|item| item.kind == "channel"));
-        if !has_channels {
-            return;
-        }
-        let graph = cx.global::<AppGraph>();
-        let (engine, log) = (graph.engine(), graph.log.fork("feed-signed-in"));
-        let status = on_core(cx, async move {
-            let status = engine.login_status(&log).await;
-            if let Err(error) = &status {
-                log.warn("sign-in status could not be read", Some(error));
-            }
-            status
-        });
-        cx.spawn(async move |this, cx| {
-            if let Some(Ok(signed_in)) = status.await {
-                this.update(cx, |view, cx| {
-                    view.signed_in = signed_in;
-                    cx.notify();
-                })
-                .ok();
-            }
-        })
-        .detach();
     }
 
     /// Subscribe / Unsubscribe from a channel item's menu, reported by notification.
@@ -708,7 +786,12 @@ impl FeedView {
         let title = Some(SharedString::from(item.title.clone()));
         let source = match item.kind.as_str() {
             "video" => {
-                cx.emit(Play { item: item.clone(), queue, shuffle: false });
+                // On a playlist page a tap plays the page's list from that video (the JVM playAll with
+                // the page's queue source); elsewhere a section's own queue, or a radio.
+                let playlist = self.playlist_url();
+                let queue = if playlist.is_some() { Some(self.videos()) } else { queue };
+                let playlist_total = self.playlist_total();
+                cx.emit(Play { item: item.clone(), queue, shuffle: false, playlist, playlist_total });
                 return;
             }
             "playlist" => item
@@ -736,6 +819,13 @@ impl FeedView {
             self.source = source;
             self.phase = Phase::Loading;
             self.fetch(None, false, cx);
+        }
+    }
+
+    /// The Ctrl/Cmd+digit handler of a page with its own tab row (a channel's).
+    pub fn select_page_tab(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(url) = self.page.page_tabs.get(index).and_then(|tab| tab.url.clone()) {
+            self.open_tab(url, cx);
         }
     }
 }
@@ -772,19 +862,6 @@ fn section_title(header: &YtSectionHeader) -> Option<String> {
     localized.map(|key| t(key).to_owned()).or_else(|| header.title.clone())
 }
 
-/// The smallest variant at least `width` px wide, else the largest.
-pub fn thumb_for(thumbs: &[YtThumb], width: i32) -> Option<SharedString> {
-    thumbs
-        .iter()
-        .find(|thumb| thumb.w.is_some_and(|w| w >= width))
-        .or_else(|| thumbs.last())
-        .map(|thumb| absolute_url(&thumb.url).into())
-}
-
-fn absolute_url(url: &str) -> String {
-    if url.starts_with("//") { format!("https:{url}") } else { url.to_owned() }
-}
-
 fn centered(content: impl IntoElement) -> Div {
     div().size_full().flex().items_center().justify_center().child(content)
 }
@@ -817,7 +894,7 @@ impl FeedView {
             } else {
                 let save = action_icon(
                     "playlist-save",
-                    Icon::new(if saved { Lucide::ListCheck } else { Lucide::ListPlus }),
+                    auto_mirrored(if saved { MaterialIcon::PlaylistAddCheck } else { MaterialIcon::PlaylistAdd }),
                     label,
                 )
                 .selected(saved)
@@ -825,7 +902,7 @@ impl FeedView {
                 self.actions.button(ACTION_SAVE, save, cx).into_any_element()
             });
         }
-        let share = action_icon("playlist-share", Icon::new(Lucide::Share2), t(Str::CdShare))
+        let share = action_icon("playlist-share", MaterialIcon::ShareOutlined, t(Str::CdShare))
             .disabled(share.is_none())
             .on_click(move |_, window, cx| {
                 if let Some(link) = share.clone() {
@@ -834,13 +911,13 @@ impl FeedView {
                 }
             });
         actions = actions.child(self.actions.button(ACTION_SHARE, share, cx));
-        let download = action_icon("playlist-download", Icon::new(Lucide::Download), t(Str::CdDownload))
+        let download = action_icon("playlist-download", MaterialIcon::FileDownloadOutlined, t(Str::CdDownload))
             .disabled(!has_videos)
             .on_click(cx.listener(|view, _, window, cx| {
                 view.open_playlist_dialog(false, window, cx);
             }));
         actions = actions.child(self.actions.button(ACTION_DOWNLOAD, download, cx));
-        let local = action_icon("playlist-local", Icon::new(Lucide::LibraryBig), t(Str::LocalPlaylistCreate))
+        let local = action_icon("playlist-local", MaterialIcon::LibraryAddOutlined, t(Str::LocalPlaylistCreate))
             .disabled(!has_videos)
             .on_click(cx.listener(|view, _, window, cx| {
                 view.open_playlist_dialog(true, window, cx);
@@ -863,7 +940,7 @@ impl FeedView {
                 .text_color(theme.primary_foreground)
                 .when(has_videos, |circle| circle.cursor_pointer())
                 .when(!has_videos, |circle| circle.opacity(0.5))
-                .child(Icon::new(Lucide::Shuffle))
+                .child(Icon::new(MaterialIcon::Shuffle).size(px(20.)))
                 .on_click(cx.listener(|view, _, _, cx| view.play_all(true, cx))),
         );
         v_flex()
@@ -887,8 +964,8 @@ impl FeedView {
     /// The banner (when there is one), then avatar, name, meta and Subscribe.
     fn render_channel_header(&self, header: &YtPageHeader, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
-        let avatar = thumb_for(&header.thumbs, 128);
-        let banner = thumb_for(&header.banner, 1280);
+        let avatar = thumb_request_sources(&header.thumbs);
+        let banner = thumb_request_sources(&header.banner);
         let meta = [header.subtitle_line1.clone(), header.subtitle_line2.clone()]
             .into_iter()
             .flatten()
@@ -902,7 +979,7 @@ impl FeedView {
             self.actions.button(ACTION_SUBSCRIBE, pill, cx)
         });
         v_flex()
-            .when_some(banner, |column, url| {
+            .when_some(banner, |column, request| {
                 column.child(
                     div()
                         .mx_4()
@@ -911,7 +988,7 @@ impl FeedView {
                         .rounded(px(12.))
                         .overflow_hidden()
                         .bg(theme.secondary)
-                        .child(img(url).size_full().rounded(px(12.)).object_fit(ObjectFit::Cover)),
+                        .child(async_image_of(Some(request)).size_full().rounded(px(12.)).object_fit(ObjectFit::Cover)),
                 )
             })
             .child(
@@ -920,8 +997,14 @@ impl FeedView {
                     .py_2()
                     .gap_4()
                     .items_center()
-                    .when_some(avatar, |row, url| {
-                        row.child(img(url).size(px(64.)).rounded_full().object_fit(ObjectFit::Cover).flex_shrink_0())
+                    .when_some(avatar, |row, request| {
+                        row.child(
+                            async_image_of(Some(request))
+                                .size(px(64.))
+                                .rounded_full()
+                                .object_fit(ObjectFit::Cover)
+                                .flex_shrink_0(),
+                        )
                     })
                     .child(
                         v_flex()
@@ -958,7 +1041,7 @@ impl FeedView {
                     Button::new("play-all")
                         .primary()
                         .rounded_full()
-                        .icon(Lucide::Play)
+                        .icon(MaterialIcon::PlayArrow)
                         .label(t(Str::PlayAll))
                         .on_click(cx.listener(|view, _, _, cx| view.play_all(false, cx))),
                     cx,
@@ -970,7 +1053,7 @@ impl FeedView {
                     Button::new("shuffle-all")
                         .outline()
                         .rounded_full()
-                        .icon(Lucide::Shuffle)
+                        .icon(MaterialIcon::Shuffle)
                         .label(t(Str::ShuffleAll))
                         .on_click(cx.listener(|view, _, _, cx| view.play_all(true, cx))),
                     cx,
@@ -981,14 +1064,20 @@ impl FeedView {
 
     fn render_generic_header(&self, header: &YtPageHeader, cx: &App) -> AnyElement {
         let theme = cx.theme();
-        let avatar = thumb_for(&header.thumbs, 160);
+        let avatar = thumb_request_sources(&header.thumbs);
         h_flex()
             .px_4()
             .pt_2()
             .gap_4()
             .pb_2()
-            .when_some(avatar, |row, url| {
-                row.child(img(url).size(px(88.)).rounded_full().object_fit(ObjectFit::Cover).flex_shrink_0())
+            .when_some(avatar, |row, request| {
+                row.child(
+                    async_image_of(Some(request))
+                        .size(px(88.))
+                        .rounded_full()
+                        .object_fit(ObjectFit::Cover)
+                        .flex_shrink_0(),
+                )
             })
             .child(
                 v_flex()
@@ -1014,11 +1103,16 @@ struct Bands {
     columns: usize,
     margin: f32,
     gutter: f32,
-    /// List thumbnails: square below 320 wide, 16:9 below 470.
+    /// List thumbnails: square below 320 wide, 16:9 below [`GRID_MIN`].
     square: bool,
 }
 
-const CARD_MAX: f32 = 324.;
+/// The narrowest a grid card may render; the column count is however many of these fit.
+const CARD_MIN: f32 = 270.;
+const COMPACT_MARGIN: f32 = 16.;
+const COMPACT_GUTTER: f32 = 8.;
+/// Where the grid starts: two [`CARD_MIN`] cards fit at the compact margin and gutter.
+const GRID_MIN: f32 = 2. * CARD_MIN + COMPACT_GUTTER + 2. * COMPACT_MARGIN;
 /// The sort menu, after any chip.
 const CHIPS_SORT: usize = 63;
 /// The page header's buttons, the empty state's and the failed Show more's text and buttons, as
@@ -1036,15 +1130,19 @@ const ACTION_SEARCH: usize = 9;
 const ACTION_RETRY_MORE: usize = 10;
 /// The page's Show more, after any chip.
 const CHIPS_SHOW_MORE: usize = 64;
+/// A grid card ⋮'s hit circle; its end overhangs into the card inset to bring the glyph to the edge.
+const GRID_MENU_HIT: f32 = 32.;
 const ROW_GAP: f32 = 16.;
+const FEED_ROW_ESTIMATE: f32 = 112.;
+const CAROUSEL_CELL: f32 = 80.;
 
 impl Bands {
     fn for_width(width: f32) -> Self {
-        let (margin, gutter) = if width >= 840. { (24., 16.) } else { (16., 8.) };
-        let columns = if width < 470. {
+        let (margin, gutter) = if width >= 840. { (24., 16.) } else { (COMPACT_MARGIN, COMPACT_GUTTER) };
+        let columns = if width < GRID_MIN {
             1
         } else {
-            (((width - 2. * margin + gutter) / (CARD_MAX + gutter)).ceil() as usize).max(2)
+            (((width - 2. * margin + gutter) / (CARD_MIN + gutter)).floor() as usize).max(2)
         };
         Self { columns, margin, gutter, square: width < 320. }
     }
@@ -1129,72 +1227,72 @@ impl FeedView {
         item.kind == "video" && self.offline.read(cx).contains(&item.id)
     }
 
-    fn more_menu(&self, item: &YtFeedItem, key: (&'static str, usize), cx: &mut Context<Self>) -> AnyElement {
+    fn more_button(&self, menu: &ItemMenu, key: (&'static str, usize), hit: f32, cx: &mut Context<Self>) -> AnyElement {
+        let glyph = Icon::new(MaterialIcon::MoreVert).text_color(cx.theme().muted_foreground);
+        let more = sized_action_icon(key, glyph, t(Str::CdMore), ICON, hit);
+        menu.dropdown(self.focus.menu_button(key.1, more, cx), Anchor::TopRight).into_any_element()
+    }
+
+    fn item_menu(&self, item: &YtFeedItem, cx: &mut Context<Self>) -> ItemMenu {
         let view = cx.entity().downgrade();
         let target = item.clone();
         let top_tracks = matches!(self.source, FeedSource::TopTracks);
         let downloaded = self.downloaded(item, cx);
-        let channel_id = (item.kind == "channel" && self.signed_in)
+        let signed_in = crate::account::AccountController::global(cx).read(cx).signed_in;
+        let channel_id = (item.kind == "channel" && signed_in)
             .then(|| item.channel_id.clone().unwrap_or_else(|| item.id.clone()))
             .filter(|id| !id.is_empty());
-        let more = action_icon(
-            key,
-            Icon::new(IconName::EllipsisVertical).text_color(cx.theme().muted_foreground),
-            t(Str::CdMore),
-        );
-        self.focus
-            .trailing_button(key.1, 0, more, cx)
-            .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, cx| {
-                let video = target.kind == "video";
-                let mut actions: Vec<(Str, MenuAction)> = Vec::new();
-                if video {
-                    actions.push((Str::MenuPlaySingle, MenuAction::PlaySingle));
-                    actions.push((Str::MenuStartRadio, MenuAction::Feed(FeedAction::Radio)));
-                    actions.push((Str::QueueNext, MenuAction::Feed(FeedAction::QueueNext)));
-                    actions.push((Str::QueueLast, MenuAction::Feed(FeedAction::QueueLast)));
-                    if !target.live {
-                        actions.push((Str::DownloadTitle, MenuAction::Feed(FeedAction::Download)));
-                    }
-                    actions.push((Str::CdAddToPlaylist, MenuAction::AddToPlaylist));
+        ItemMenu::new(move |mut menu, _, cx| {
+            let video = target.kind == "video";
+            let mut actions: Vec<(Str, MenuAction)> = Vec::new();
+            if video {
+                actions.push((Str::MenuPlaySingle, MenuAction::PlaySingle));
+                actions.push((Str::MenuStartRadio, MenuAction::Feed(FeedAction::Radio)));
+                actions.push((Str::QueueNext, MenuAction::Feed(FeedAction::QueueNext)));
+                actions.push((Str::QueueLast, MenuAction::Feed(FeedAction::QueueLast)));
+                if !target.live {
+                    actions.push((Str::DownloadTitle, MenuAction::Feed(FeedAction::Download)));
                 }
-                if target.remove_token.is_some() {
-                    actions.push((Str::MenuRemoveFromPlaylist, MenuAction::RemoveFromPlaylist));
-                }
-                if channel_id.is_some() {
-                    actions.push((Str::Subscribe, MenuAction::Subscribe(true)));
-                    actions.push((Str::Unsubscribe, MenuAction::Subscribe(false)));
-                }
-                if share_link(&target).is_some() {
-                    actions.push((Str::CdShare, MenuAction::Share));
-                }
-                if video && top_tracks {
-                    actions.push((Str::MenuRemove, MenuAction::RemoveFromTop));
-                }
-                for (label, action) in actions {
-                    let (view, item) = (view.clone(), target.clone());
-                    menu = menu.item(PopupMenuItem::new(t(label)).on_click(move |_, window, cx| {
-                        let item = item.clone();
-                        view.update(cx, |view, cx| view.menu_action(item, action, window, cx)).ok();
-                    }));
-                    if matches!(action, MenuAction::Feed(FeedAction::Download)) {
-                        let item = target.clone();
-                        let label = tf(Str::QuickDownloadMenu, &[&saved_preset(cx).short_label()]);
-                        menu = menu.item(PopupMenuItem::new(label).on_click(move |_, window, cx| {
-                            crate::quick_download::launch(DownloadTarget::from_feed(&item), window, cx);
-                        }));
-                    }
-                }
-                if video && downloaded {
-                    let video_id = target.id.clone();
-                    menu = menu.separator().label(t(Str::SectionLibrary)).item(
-                        PopupMenuItem::new(t(Str::CdAddToPlaylist)).on_click(move |_, window, cx| {
-                            crate::library_playlist::AddToLocalPlaylist::open(vec![video_id.clone()], None, window, cx);
-                        }),
-                    );
-                }
-                menu
-            })
-            .into_any_element()
+                actions.push((Str::CdAddToPlaylist, MenuAction::AddToPlaylist));
+            }
+            if target.remove_token.is_some() {
+                actions.push((Str::MenuRemoveFromPlaylist, MenuAction::RemoveFromPlaylist));
+            }
+            if channel_id.is_some() {
+                actions.push((Str::Subscribe, MenuAction::Subscribe(true)));
+                actions.push((Str::Unsubscribe, MenuAction::Subscribe(false)));
+            }
+            if share_link(&target).is_some() {
+                actions.push((Str::CdShare, MenuAction::Share));
+            }
+            if video && top_tracks {
+                actions.push((Str::MenuRemove, MenuAction::RemoveFromTop));
+            }
+            for (label, action) in actions {
+                let (view, item) = (view.clone(), target.clone());
+                menu = menu.item(PopupMenuItem::new(t(label)).on_click(move |_, window, cx| {
+                    let item = item.clone();
+                    view.update(cx, |view, cx| view.menu_action(item, action, window, cx)).ok();
+                }));
+            }
+            // Kept last: quickest to reach with a screen reader (#340).
+            if video && !target.live {
+                let item = target.clone();
+                let label = tf(Str::QuickDownloadMenu, &[&saved_preset(cx).short_label()]);
+                menu = menu.item(PopupMenuItem::new(label).on_click(move |_, window, cx| {
+                    crate::quick_download::launch(DownloadTarget::from_feed(&item), window, cx);
+                }));
+            }
+            if video && downloaded {
+                let video_id = target.id.clone();
+                menu = menu.separator().label(t(Str::SectionLibrary)).item(
+                    PopupMenuItem::new(t(Str::CdAddToPlaylist)).on_click(move |_, window, cx| {
+                        crate::library_playlist::AddToLocalPlaylist::open(vec![video_id.clone()], None, window, cx);
+                    }),
+                );
+            }
+            menu
+        })
     }
 
     /// Takes the item off the viewer's own playlist, then off this page.
@@ -1225,7 +1323,13 @@ impl FeedView {
 
     fn menu_action(&mut self, item: YtFeedItem, action: MenuAction, window: &mut Window, cx: &mut Context<Self>) {
         match action {
-            MenuAction::PlaySingle => cx.emit(Play { item: item.clone(), queue: Some(vec![item]), shuffle: false }),
+            MenuAction::PlaySingle => cx.emit(Play {
+                item: item.clone(),
+                queue: Some(vec![item]),
+                shuffle: false,
+                playlist: None,
+                playlist_total: None,
+            }),
             MenuAction::Feed(action) => cx.emit(ItemAction { item, action }),
             MenuAction::Share => {
                 if let Some(link) = share_link(&item) {
@@ -1295,33 +1399,39 @@ impl FeedView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme().clone();
+        let hit = if item.kind == "channel" { HIT } else { GRID_MENU_HIT };
+        let menu = self.item_menu(item, cx);
+        let more = self.more_button(&menu, ("card-more", index), hit, cx);
         let card = self
             .clickable(("feed-card", index), position, item, queue, None, cx)
             .flex_1()
             .min_w_0()
             .p(px(bands.inset()));
         if item.kind == "channel" {
-            return card
+            let card = card
                 .relative()
                 .child(
                     v_flex()
                         .items_center()
                         .gap_1()
-                        .child(
-                            div().size(px(76.)).rounded_full().overflow_hidden().bg(theme.secondary).when_some(
-                                thumb_for(&item.thumbs, 152),
-                                |frame, url| {
-                                    frame.child(img(url).size_full().rounded_full().object_fit(ObjectFit::Cover))
-                                },
-                            ),
-                        )
+                        .child(div().size(px(76.)).rounded_full().overflow_hidden().bg(theme.secondary).when_some(
+                            thumb_request_sources(&item.thumbs),
+                            |frame, request| {
+                                frame.child(
+                                    async_image_of(Some(request))
+                                        .size_full()
+                                        .rounded_full()
+                                        .object_fit(ObjectFit::Cover),
+                                )
+                            },
+                        ))
                         .child(div().pt_1().text_sm().font_medium().truncate().child(item.title.clone()))
                         .when_some(subtitle(item), |column, line| {
                             column.child(div().text_xs().text_color(theme.muted_foreground).truncate().child(line))
                         }),
                 )
-                .child(div().absolute().top_0().right_0().child(self.more_menu(item, ("card-more", index), cx)))
-                .into_any_element();
+                .child(div().absolute().top_0().right_0().child(more));
+            return on_right_click(card, Some(&menu)).into_any_element();
         }
         let stack_tab = (item.kind == "playlist").then(|| cx.global::<StackTones>().tab);
         let thumbnail = div()
@@ -1331,8 +1441,8 @@ impl FeedView {
             .rounded(px(5.))
             .overflow_hidden()
             .bg(theme.secondary)
-            .when_some(thumb_for(&item.thumbs, 640), |frame, url| {
-                frame.child(img(url).size_full().rounded(px(5.)).object_fit(ObjectFit::Cover))
+            .when_some(thumb_request_sources(&item.thumbs), |frame, request| {
+                frame.child(async_image_of(Some(request)).size_full().rounded(px(5.)).object_fit(ObjectFit::Cover))
             })
             .when(self.downloaded(item, cx), |frame| frame.child(offline_mark(theme.primary, 5.)))
             .when_some(badge(item), |frame, text| {
@@ -1351,31 +1461,34 @@ impl FeedView {
                         .child(text),
                 )
             });
-        card.child(
-            div()
-                .relative()
-                .w_full()
-                .when_some(stack_tab, |art, color| art.child(playlist_tab(color)))
-                .child(thumbnail),
-        )
-        .child(
-            h_flex()
-                .pt_2()
-                .gap_2()
-                .items_start()
-                .child(
-                    v_flex()
-                        .flex_1()
-                        .min_w_0()
-                        .gap_1()
-                        .child(div().text_sm().font_medium().line_clamp(2).child(item.title.clone()))
-                        .when_some(subtitle(item), |column, line| {
-                            column.child(div().text_xs().text_color(theme.muted_foreground).truncate().child(line))
-                        }),
-                )
-                .child(self.more_menu(item, ("card-more", index), cx)),
-        )
-        .into_any_element()
+        let card = card
+            .child(
+                div()
+                    .relative()
+                    .w_full()
+                    .when_some(stack_tab, |art, color| art.child(playlist_tab(color)))
+                    .child(thumbnail),
+            )
+            .child(
+                h_flex()
+                    .pt_2()
+                    .items_start()
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_1()
+                            .child(div().text_sm().font_medium().line_clamp(2).child(item.title.clone()))
+                            .when_some(subtitle(item), |column, line| {
+                                column.child(div().text_xs().text_color(theme.muted_foreground).truncate().child(line))
+                            }),
+                    )
+                    .child({
+                        let slot = div().mt(px(5.)).child(more);
+                        if ym_i18n::is_rtl() { slot.ml(px(-bands.inset())) } else { slot.mr(px(-bands.inset())) }
+                    }),
+            );
+        on_right_click(card, Some(&menu)).into_any_element()
     }
 
     /// A list row: thumbnail (square, 16:9, or a channel circle), then title and subtitle, ⋮ at the end.
@@ -1389,6 +1502,8 @@ impl FeedView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let theme = cx.theme().clone();
+        let menu = self.item_menu(item, cx);
+        let more = self.more_button(&menu, ("row-more", index), HIT, cx);
         let (width, height, round) = match item.kind.as_str() {
             "channel" => (74., 74., true),
             _ if bands.square => (92., 92., false),
@@ -1402,8 +1517,8 @@ impl FeedView {
             .bg(theme.secondary)
             .when(round, |frame| frame.rounded_full())
             .when(!round, |frame| frame.rounded(px(6.)))
-            .when_some(thumb_for(&item.thumbs, (width * 2.) as i32), |frame, url| {
-                let picture = img(url).size_full().object_fit(ObjectFit::Cover);
+            .when_some(thumb_request_sources(&item.thumbs), |frame, request| {
+                let picture = async_image_of(Some(request)).size_full().object_fit(ObjectFit::Cover);
                 frame.child(if round { picture.rounded_full() } else { picture.rounded(px(6.)) })
             })
             .when(self.downloaded(item, cx), |frame| frame.child(offline_mark(theme.primary, 6.)))
@@ -1422,43 +1537,41 @@ impl FeedView {
                         .child(text),
                 )
             });
-        self.clickable(("feed-row", index), position, item, queue, None, cx)
-            .child(
-                h_flex()
-                    .pl_4()
-                    .pr_1()
-                    .py(px(10.))
-                    .gap_4()
-                    .items_start()
-                    .child(
-                        div()
-                            .relative()
-                            .flex_shrink_0()
-                            .w(px(width))
-                            .h(px(height))
-                            .children(stack.into_iter().flatten())
-                            .child(thumbnail),
-                    )
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap_1()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_medium()
-                                    .line_clamp(if bands.square { 2 } else { 3 })
-                                    .child(item.title.clone()),
-                            )
-                            .when_some(subtitle(item), |column, line| {
-                                column
-                                    .child(div().text_xs().text_color(theme.muted_foreground).line_clamp(2).child(line))
-                            }),
-                    )
-                    .child(self.more_menu(item, ("row-more", index), cx)),
-            )
-            .into_any_element()
+        let row = self.clickable(("feed-row", index), position, item, queue, None, cx).child(
+            h_flex()
+                .pl_4()
+                .pr_1()
+                .py(px(10.))
+                .gap_4()
+                .items_start()
+                .child(
+                    div()
+                        .relative()
+                        .flex_shrink_0()
+                        .w(px(width))
+                        .h(px(height))
+                        .children(stack.into_iter().flatten())
+                        .child(thumbnail),
+                )
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_medium()
+                                .line_clamp(if bands.square { 2 } else { 3 })
+                                .child(item.title.clone()),
+                        )
+                        .when_some(subtitle(item), |column, line| {
+                            column.child(div().text_xs().text_color(theme.muted_foreground).line_clamp(2).child(line))
+                        }),
+                )
+                .child(more),
+        );
+        on_right_click(row, Some(&menu)).into_any_element()
     }
 
     /// Accent tick, optional avatar, title, count, then "View all" or the collapse chevron.
@@ -1472,7 +1585,7 @@ impl FeedView {
     ) -> AnyElement {
         let theme = cx.theme().clone();
         let title = header.and_then(section_title);
-        let avatar = header.and_then(|header| thumb_for(&header.icon_thumbs, 52));
+        let avatar = header.and_then(|header| thumb_request_sources(&header.icon_thumbs));
         let count = header.and_then(|header| header.count.clone());
         let cta = header.and_then(|header| header.cta_deeplink.clone().zip(header.cta_text.clone()));
         h_flex()
@@ -1482,7 +1595,9 @@ impl FeedView {
             .gap_2()
             .items_center()
             .child(div().w(px(4.)).h(px(16.)).rounded_sm().bg(theme.primary))
-            .when_some(avatar, |row, url| row.child(img(url).size(px(26.)).rounded_full().object_fit(ObjectFit::Cover)))
+            .when_some(avatar, |row, request| {
+                row.child(async_image_of(Some(request)).size(px(26.)).rounded_full().object_fit(ObjectFit::Cover))
+            })
             .child(
                 match title.clone() {
                     Some(title) => heading(("section-title", section_index), 2, title),
@@ -1501,12 +1616,13 @@ impl FeedView {
                     .ghost()
                     .small()
                     .label(label)
-                    .icon(Icon::new(IconName::ChevronRight))
+                    .icon(auto_mirrored(MaterialIcon::KeyboardArrowRight))
                     .on_click(cx.listener(move |view, _, _, cx| view.open_link(&link, title.clone(), cx)));
                 row.child(self.controls.button(section_index * 3, button, cx))
             })
             .when(collapsible, |row| {
-                let chevron = Icon::new(if expanded { IconName::ChevronUp } else { IconName::ChevronDown })
+                let chevron = Icon::new(MaterialIcon::KeyboardArrowDown)
+                    .when(expanded, |chevron| chevron.rotate(percentage(0.5)))
                     .text_color(theme.muted_foreground);
                 let label = t(if expanded { Str::CdCollapse } else { Str::CdExpand });
                 let button = sized_action_icon(("collapse", section_index), chevron, label, 20., HIT)
@@ -1516,11 +1632,33 @@ impl FeedView {
             .into_any_element()
     }
 
+    fn new_rows(&self) -> LazyRows {
+        LazyRows::new(self.scroll.clone(), FEED_ROW_ESTIMATE)
+    }
+
     fn toggle_section(&mut self, section_index: usize, cx: &mut Context<Self>) {
         if !self.expanded.remove(&section_index) {
             self.expanded.insert(section_index);
         }
         cx.notify();
+    }
+
+    /// A section's Show more (N) / Show less: expanding focuses the first revealed item, collapsing
+    /// keeps focus on the toggle and scrolls it back into view.
+    fn toggle_more(
+        &mut self,
+        section_index: usize,
+        first_revealed: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let expanding = !self.expanded.contains(&section_index);
+        self.toggle_section(section_index, cx);
+        if expanding {
+            window.focus(&self.focus.handle(first_revealed, cx), cx);
+        } else {
+            self.controls.reveal(section_index * 3 + 2, cx);
+        }
     }
 
     fn render_section(
@@ -1549,10 +1687,10 @@ impl FeedView {
             ));
         }
         let queue = (section.play_mode.as_deref() == Some("queue")).then(|| std::rc::Rc::new(section.items.clone()));
+        let collapsed = collapsed_count(section, bands);
+        let shown = self.shown_count(section, section_index, bands);
         match section.layout.as_str() {
             "tags" => {
-                let shown =
-                    if section.collapsible && !expanded { 10.min(section.items.len()) } else { section.items.len() };
                 let stops = self.focus.list_stops(first_item..first_item + shown, window, cx);
                 let mut pills = h_flex().id(("section-items", section_index)).flex_wrap().gap_2().px_4().py_1();
                 for (offset, item) in section.items.iter().take(shown).enumerate() {
@@ -1570,18 +1708,20 @@ impl FeedView {
                         }));
                     pills = pills.child(self.focus.button(first_item + offset, tag, cx));
                 }
-                if section.collapsible && section.items.len() > 10 {
+                if section.collapsible && section.items.len() > collapsed {
                     let label = if expanded {
                         t(Str::ShowLess).to_owned()
                     } else {
-                        tf(Str::ShowMoreN, &[&(section.items.len() - 10)])
+                        tf(Str::ShowMoreN, &[&(section.items.len() - collapsed)])
                     };
                     let more = Button::new(("tags-more", section_index))
                         .small()
                         .outline()
                         .rounded_full()
                         .label(label)
-                        .on_click(cx.listener(move |view, _, _, cx| view.toggle_section(section_index, cx)));
+                        .on_click(cx.listener(move |view, _, window, cx| {
+                            view.toggle_more(section_index, first_item + collapsed, window, cx)
+                        }));
                     pills = pills.child(self.controls.button(section_index * 3 + 2, more, cx));
                 }
                 return block.child(stops.wrap(pills, title, cx)).into_any_element();
@@ -1590,24 +1730,16 @@ impl FeedView {
                 let drag = self.carousel_drags.borrow_mut().entry(section_index).or_default().clone();
                 let row_scroll = drag.scroll().clone();
                 let stops = self.focus.list_stops(first_item..first_item + section.items.len(), window, cx);
-                let mut row = h_flex()
-                    .id(("carousel-scroll", section_index))
-                    .track_scroll(&row_scroll)
-                    .overflow_x_scroll()
-                    .restrict_scroll_to_axis()
-                    .gap_1()
-                    .px_3();
-                for (offset, item) in section.items.iter().enumerate() {
-                    row = row.child(
-                        self.clickable(
-                            ("carousel", first_item + offset),
-                            offset,
-                            item,
-                            None,
-                            Some(row_scroll.clone()),
-                            cx,
-                        )
-                        .w(px(80.))
+                let cells = self
+                    .carousel_rows
+                    .borrow_mut()
+                    .entry(section_index)
+                    .or_insert_with(|| LazyRows::horizontal(row_scroll.clone(), CAROUSEL_CELL))
+                    .clone();
+                let cells = cells.render(section.items.len(), 4., stops.kept(), window, |offset| {
+                    let item = &section.items[offset];
+                    self.clickable(("carousel", first_item + offset), offset, item, None, Some(row_scroll.clone()), cx)
+                        .w(px(CAROUSEL_CELL))
                         .flex_shrink_0()
                         .p_1()
                         .child(
@@ -1616,40 +1748,45 @@ impl FeedView {
                                 .gap_1()
                                 .child(
                                     div().size(px(64.)).rounded_full().overflow_hidden().bg(theme.secondary).when_some(
-                                        thumb_for(&item.thumbs, 128),
-                                        |frame, url| {
-                                            frame
-                                                .child(img(url).size_full().rounded_full().object_fit(ObjectFit::Cover))
+                                        thumb_request_sources(&item.thumbs),
+                                        |frame, request| {
+                                            frame.child(
+                                                async_image_of(Some(request))
+                                                    .size_full()
+                                                    .rounded_full()
+                                                    .object_fit(ObjectFit::Cover),
+                                            )
                                         },
                                     ),
                                 )
                                 .child(div().w_full().text_xs().text_center().truncate().child(item.title.clone())),
-                        ),
-                    );
-                }
+                        )
+                        .into_any_element()
+                });
+                let row = h_flex()
+                    .id(("carousel-scroll", section_index))
+                    .track_scroll(&row_scroll)
+                    .overflow_x_scroll()
+                    .restrict_scroll_to_axis()
+                    .px_3()
+                    .child(cells);
                 return block.child(drag.wrap(stops.wrap(row, title, cx))).into_any_element();
             }
             _ => {}
         }
-        // A collapsed section keeps columns x rows, rows from the engine's ladder or 4/3/2.
-        let ladder: Vec<usize> = if section.collapsed_rows.is_empty() {
-            vec![4, 3, 2]
-        } else {
-            section.collapsed_rows.iter().map(|rows| (*rows).max(1) as usize).collect()
-        };
-        let rows = ladder.get(bands.columns - 1).or(ladder.last()).copied().unwrap_or(2);
-        let limit = bands.columns * rows;
-        let shown = if section.collapsible && !expanded { limit.min(section.items.len()) } else { section.items.len() };
         let items = &section.items[..shown];
         let stops = self.focus.list_stops(first_item..first_item + shown, window, cx);
-        let mut list = v_flex().id(("section-items", section_index)).w_full();
-        if bands.columns == 1 {
-            for (offset, item) in items.iter().enumerate() {
-                list = list.child(self.render_row(item, first_item + offset, offset, bands, queue.clone(), cx));
-            }
-        } else {
-            let inset = bands.inset();
-            for (chunk_index, chunk) in items.chunks(bands.columns).enumerate() {
+        let columns = bands.columns;
+        let lines = shown.div_ceil(columns);
+        let kept: Vec<usize> = stops.kept().into_iter().map(|position| position / columns).collect();
+        let rows = self.section_rows.borrow_mut().entry(section_index).or_insert_with(|| self.new_rows()).clone();
+        let inset = bands.inset();
+        let list = rows
+            .render(lines, 0., kept, window, |line| {
+                if columns == 1 {
+                    return self.render_row(&items[line], first_item + line, line, bands, queue.clone(), cx);
+                }
+                let chunk = &items[line * columns..((line + 1) * columns).min(shown)];
                 let mut row = h_flex()
                     .w_full()
                     .items_start()
@@ -1657,35 +1794,55 @@ impl FeedView {
                     .pb(px(ROW_GAP - 2. * inset))
                     .gap(px(bands.gutter - 2. * inset));
                 for (offset, item) in chunk.iter().enumerate() {
-                    let position = chunk_index * bands.columns + offset;
+                    let position = line * columns + offset;
                     row = row.child(self.render_card(item, first_item + position, position, bands, queue.clone(), cx));
                 }
-                for _ in chunk.len()..bands.columns {
+                for _ in chunk.len()..columns {
                     row = row.child(div().flex_1().min_w_0());
                 }
-                list = list.child(row);
-            }
-        }
+                row.into_any_element()
+            })
+            .id(("section-items", section_index));
         block = block.child(stops.wrap(list, title, cx));
-        if section.collapsible && section.items.len() > limit {
+        if section.collapsible && section.items.len() > collapsed {
             let label = if expanded {
                 t(Str::ShowLess).to_owned()
             } else {
-                tf(Str::ShowMoreN, &[&(section.items.len() - limit)])
+                tf(Str::ShowMoreN, &[&(section.items.len() - collapsed)])
             };
             let more = Button::new(("section-more", section_index))
                 .outline()
                 .rounded_full()
                 .w_full()
                 .label(label)
-                .icon(Icon::new(if expanded { IconName::ChevronUp } else { IconName::ChevronDown }))
-                .on_click(cx.listener(move |view, _, _, cx| view.toggle_section(section_index, cx)));
+                .icon(
+                    Icon::new(MaterialIcon::KeyboardArrowDown)
+                        .when(expanded, |chevron| chevron.rotate(percentage(0.5))),
+                )
+                .on_click(cx.listener(move |view, _, window, cx| {
+                    view.toggle_more(section_index, first_item + collapsed, window, cx)
+                }));
             block = block.child(
                 div().px(px(bands.margin)).child(self.controls.button(section_index * 3 + 2, more, cx).w_full()),
             );
         }
         block.into_any_element()
     }
+}
+
+/// How many items a collapsible section shows collapsed: ten tags, or columns x rows, rows from the
+/// engine's ladder or 4/3/2.
+fn collapsed_count(section: &ym_engine::yt::YtSection, bands: Bands) -> usize {
+    if section.layout == "tags" {
+        return 10;
+    }
+    let ladder: Vec<usize> = if section.collapsed_rows.is_empty() {
+        vec![4, 3, 2]
+    } else {
+        section.collapsed_rows.iter().map(|rows| (*rows).max(1) as usize).collect()
+    };
+    let rows = ladder.get(bands.columns - 1).or(ladder.last()).copied().unwrap_or(2);
+    bands.columns * rows
 }
 
 impl FeedView {
@@ -1706,7 +1863,7 @@ impl FeedView {
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(RequestSearch)));
             h_flex()
                 .gap_2()
-                .child(self.actions.button(ACTION_RELOAD, reload.outline().icon(Lucide::RefreshCw), cx))
+                .child(self.actions.button(ACTION_RELOAD, reload.outline().icon(MaterialIcon::Refresh), cx))
                 .child(self.actions.button(ACTION_SEARCH, search, cx))
         } else {
             h_flex().child(self.actions.button(ACTION_RELOAD, reload.primary(), cx))
@@ -1721,7 +1878,7 @@ impl FeedView {
                 v_flex()
                     .items_center()
                     .gap_2()
-                    .child(div().pb_1().child(Icon::new(Lucide::Inbox).size(px(52.)).text_color(muted)))
+                    .child(div().pb_1().child(Icon::new(MaterialIcon::InboxOutlined).size(px(52.)).text_color(muted)))
                     .when_some(self.page.empty_title.clone(), |empty, title| {
                         empty.child(
                             heading("empty-title", 2, title).text_base().font_semibold().text_color(ink).text_center(),
@@ -1753,12 +1910,13 @@ impl FeedView {
             .outline()
             .small()
             .rounded_full()
-            .when(!busy, |button| button.icon(Lucide::ArrowUpDown))
+            .when(!busy, |button| button.icon(auto_mirrored(MaterialIcon::Sort)))
             .label(current.clone())
             .busy(busy)
             .accessibility_label(format!("{}, {current}", t(Str::CdSort)))
             .track_focus(&self.chips.handle(CHIPS_SORT, cx))
-            .dropdown_menu_with_anchor(Anchor::TopLeft, move |mut menu, _, _| {
+            .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, _| {
+                let mut menu = crate::settings_view::sort_menu(menu);
                 for (index, option) in options.iter().enumerate() {
                     let (view, token, selected) = (view.clone(), option.token.clone(), option.selected);
                     menu = menu.item(PopupMenuItem::new(option.title.clone()).checked(selected).on_click(
@@ -1788,19 +1946,55 @@ enum MenuAction {
 }
 
 fn share_link(item: &YtFeedItem) -> Option<String> {
-    match item.kind.as_str() {
-        "video" => Some(format!("https://youtu.be/{}", item.id)),
-        "playlist" if !item.id.is_empty() => Some(format!("https://www.youtube.com/playlist?list={}", item.id)),
-        "channel" => {
-            item.channel_id.as_ref().or(Some(&item.id)).map(|id| format!("https://www.youtube.com/channel/{id}"))
+    youtube_share_link(&item.kind, &item.id)
+}
+
+/// The JVM `rankMusicFirst`: YouTube Mixes (RD radios), then music videos, then videos from an
+/// official artist channel, then verified channels, then the rest; every other item keeps its slot
+/// while the ranked ones reorder through the remaining slots, stable within each band.
+fn rank_music_first(items: Vec<YtFeedItem>) -> Vec<YtFeedItem> {
+    fn band(item: &YtFeedItem) -> Option<u8> {
+        if item.kind == "playlist" && item.id.starts_with("RD") {
+            return Some(0);
         }
-        _ => None,
+        if item.kind != "video" {
+            return None;
+        }
+        Some(match item.owner_badge.as_deref() {
+            _ if item.music_video => 1,
+            Some("artist") => 2,
+            Some("verified") => 3,
+            _ => 4,
+        })
     }
+    let mut movable: Vec<YtFeedItem> = items.iter().filter(|item| band(item).is_some()).cloned().collect();
+    movable.sort_by_key(band);
+    let mut ranked = movable.into_iter();
+    items.into_iter().map(|item| if band(&item).is_some() { ranked.next().unwrap_or(item) } else { item }).collect()
+}
+
+/// The JVM `youtubeShareLink`: the YouTube web link of a video, playlist or channel on the app's own
+/// domain; a YouTube Music browse id (an album's MPREb…) has no www page and keeps its music url.
+pub fn youtube_share_link(kind: &str, id: &str) -> Option<String> {
+    if kind == "playlist" && (id.starts_with("MPRE") || id.starts_with("FE")) {
+        return Some(format!("https://music.youtube.com/browse/{id}"));
+    }
+    let path = match kind {
+        "video" => format!("watch?v={id}"),
+        "playlist" => format!("playlist?list={}", id.strip_prefix("VL").unwrap_or(id)),
+        "channel" if id.starts_with("UC") => format!("channel/{id}"),
+        _ => return None,
+    };
+    Some(format!("https://www.ymusicapp.com/{path}"))
 }
 
 impl Render for FeedView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         crate::shell::track_scroll(&self.scroll, cx);
+        if let Some(code) = self.error_code.take() {
+            let message = error_text(&EngineError::site(&code, "partial page failure"));
+            window.defer(cx, move |window, cx| window.push_notification(message, cx));
+        }
         match &self.phase {
             Phase::Loading => return centered(Spinner::new().large()).into_any_element(),
             Phase::Failed(error) => {
@@ -1827,6 +2021,7 @@ impl Render for FeedView {
             Phase::Ready => {}
         }
         let bands = Bands::for_width(feed_width(window));
+        self.settle_more_focus(bands, window, cx);
         let theme = cx.theme().clone();
         let mut column = v_flex().w_full().pb_4().children(self.top.clone());
         let tabs = self.page.page_tabs.clone();
@@ -1898,16 +2093,21 @@ impl Render for FeedView {
             first_item += section.items.len();
         }
         if self.loading_more {
-            column = column.child(h_flex().justify_center().p_3().child(Spinner::new()));
+            column = column.child(h_flex().justify_center().p_3().child(self.more_focus.indicator(
+                "more-loading",
+                t(Str::A11yLoading),
+                Spinner::new(),
+                cx,
+            )));
         } else if let Some(error) = &self.more_failed {
             column = column.child(
                 v_flex().items_center().gap_2().py_4().child(alert("more-error", error_text(error)).text_sm()).child(
                     self.actions.button(
                         ACTION_RETRY_MORE,
                         Button::new("retry-more").small().label(t(Str::Retry)).on_click(cx.listener(
-                            |view, _, _, cx| {
+                            |view, _, window, cx| {
                                 view.more_failed = None;
-                                view.load_more(cx);
+                                view.load_more(window, cx);
                             },
                         )),
                         cx,
@@ -1925,7 +2125,7 @@ impl Render for FeedView {
                                 .rounded_full()
                                 .w_full()
                                 .label(t(Str::ShowMore))
-                                .on_click(cx.listener(|view, _, _, cx| view.load_more(cx))),
+                                .on_click(cx.listener(|view, _, window, cx| view.load_more(window, cx))),
                             cx,
                         )
                         .w_full(),
@@ -1937,18 +2137,29 @@ impl Render for FeedView {
             .relative()
             .children(tab_row)
             .child(
-                div().id("feed-scroll").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.scroll).child(column),
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .relative()
+                    .child(
+                        div()
+                            .id("feed-scroll")
+                            .size_full()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll)
+                            .child(column),
+                    )
+                    .when(self.refreshing, |content| {
+                        content.child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .right_0()
+                                .child(LoadingLine::new("feed-refreshing", t(Str::A11yRefreshing))),
+                        )
+                    }),
             )
-            .when(self.refreshing, |feed| {
-                feed.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .right_0()
-                        .child(LoadingLine::new("feed-refreshing", t(Str::A11yRefreshing))),
-                )
-            })
             .into_any_element()
     }
 }

@@ -81,7 +81,7 @@ fn title_bar(window: &mut Window, cx: &mut App) -> GrayscaleText {
         .pl(px(ICON_START))
         .gap(px(TITLE_GAP))
         .window_control_area(WindowControlArea::Drag)
-        .child(img(crate::assets::logo_path(logo_px)).size(px(ICON_SIZE)).flex_shrink_0().rounded_full())
+        .children(crate::assets::logo(logo_px, cx).map(|logo| logo.size(px(ICON_SIZE)).flex_shrink_0().rounded_full()))
         .child(
             div()
                 .min_w_0()
@@ -89,7 +89,7 @@ fn title_bar(window: &mut Window, cx: &mut App) -> GrayscaleText {
                 .font_family("Segoe UI")
                 .text_size(px(TITLE_SIZE))
                 .text_color(ink.rest)
-                .child(t(Str::AppName)),
+                .child(crate::dev_instance::window_title()),
         );
     let pin = Button::new("always-on-top")
         .custom(

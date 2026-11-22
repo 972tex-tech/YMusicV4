@@ -4,22 +4,23 @@
 
 use std::rc::Rc;
 
-use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{ActiveTheme, Disableable, Icon, IconName, Sizable, WindowExt, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme, Disableable, Icon, Sizable, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use ym_i18n::{Str, t, tf};
 use ym_store::{MediaItem, MediaStore, Playlist, PlaylistItemDetail};
 
 use crate::a11y::FocusList;
-use crate::action_icon::{HIT, sized_action_icon};
+use crate::action_icon::{HIT, auto_mirrored, sized_action_icon};
+use crate::assets::MaterialIcon;
 use crate::elevated_dialog::{
     ConfirmDialog, DEFAULT_WIDTH, ROW_HORIZONTAL, ROW_VERTICAL, bar_spinner, button_bar, chrome, message, press,
     scroll_body, text_button, title_bar, title_bar_with,
 };
 use crate::graph::{AppGraph, on_core};
+use crate::lazy_rows::LazyRows;
 use crate::reorder::{Reorder, ReorderEvent};
 use crate::settings_view::HOVER_ALPHA;
 use crate::spinner::Spinner;
@@ -84,6 +85,7 @@ pub struct AddToLocalPlaylist {
     changed: Option<Changed>,
     focus: FocusList,
     scroll: ScrollHandle,
+    rows: LazyRows,
     focused_first: bool,
     busy: bool,
 }
@@ -98,6 +100,7 @@ impl AddToLocalPlaylist {
                 failed: false,
                 changed,
                 focus: FocusList::modal(Some(scroll.clone()), cx),
+                rows: LazyRows::new(scroll.clone(), PICK_ROW_ESTIMATE),
                 scroll,
                 focused_first: false,
                 busy: false,
@@ -207,24 +210,26 @@ impl Render for AddToLocalPlaylist {
                 }
                 let new_row = pick_row(
                     "new-local-playlist",
-                    Icon::new(IconName::Plus),
+                    Icon::new(MaterialIcon::Add),
                     t(Str::AddToPlaylistNew).to_owned(),
                     true,
                     cx,
                 )
                 .on_click(cx.listener(|view, _, window, cx| view.activate(0, window, cx)));
-                let mut list = v_flex().w_full().child(self.focus.item(0, new_row, cx));
-                for (index, playlist) in playlists.into_iter().enumerate() {
+                let kept = self.focus.kept_stops(1..playlists.len() + 1, window);
+                let rows = self.rows.render(playlists.len(), 0., kept, window, |index| {
+                    let playlist = &playlists[index];
                     let row = pick_row(
                         ("local-playlist", index),
-                        Icon::new(Lucide::ListMusic),
+                        auto_mirrored(MaterialIcon::PlaylistPlay),
                         playlist.name.clone(),
                         false,
                         cx,
                     )
                     .on_click(cx.listener(move |view, _, window, cx| view.activate(index + 1, window, cx)));
-                    list = list.child(self.focus.item(index + 1, row, cx));
-                }
+                    self.focus.item(index + 1, row, cx).into_any_element()
+                });
+                let list = v_flex().w_full().child(self.focus.item(0, new_row, cx)).child(rows);
                 scroll_body("local-playlists", &self.scroll, list, window, cx).into_any_element()
             }
         };
@@ -589,10 +594,13 @@ pub struct ArrangePlaylist {
     focus: FocusList,
     scroll: ScrollHandle,
     reorder: Reorder,
+    rows: LazyRows,
     focused_first: bool,
 }
 
 const ARRANGE_ICON: f32 = 22.;
+const PICK_ROW_ESTIMATE: f32 = 48.;
+const ARRANGE_ROW_ESTIMATE: f32 = 52.;
 const CONTROL_UNDO: usize = 0;
 const CONTROL_CANCEL: usize = 1;
 const CONTROL_SAVE: usize = 2;
@@ -626,6 +634,7 @@ impl ArrangePlaylist {
                 busy: false,
                 focus: FocusList::modal(Some(scroll.clone()), cx),
                 reorder: Reorder::new(scroll.clone()),
+                rows: LazyRows::new(scroll.clone(), ARRANGE_ROW_ESTIMATE),
                 scroll,
                 focused_first: false,
             }
@@ -708,9 +717,7 @@ impl ArrangePlaylist {
         let removed = self.state.removed_codes();
         let arranged: Vec<String> = self.state.items.iter().map(|item| item.code.clone()).collect();
         let request = store_call(cx, move |store| {
-            for code in &removed {
-                store.remove_from_playlist(playlist_id, code)?;
-            }
+            store.remove_codes_from_playlist(playlist_id, &removed)?;
             let shown: std::collections::HashSet<&String> = arranged.iter().collect();
             let unresolved: Vec<String> =
                 store.playlist_codes(playlist_id)?.into_iter().filter(|code| !shown.contains(code)).collect();
@@ -756,7 +763,7 @@ impl ArrangePlaylist {
             .justify_center()
             .cursor_grab()
             .tooltip(|window, cx| gpui_kit::component::tooltip::Tooltip::new(t(Str::CdDragToReorder)).build(window, cx))
-            .child(Icon::new(Lucide::GripVertical).size(px(20.)).text_color(theme.muted_foreground))
+            .child(Icon::new(MaterialIcon::DragHandle).size(px(20.)).text_color(theme.muted_foreground))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |view, event: &MouseDownEvent, window, cx| {
@@ -778,8 +785,8 @@ impl ArrangePlaylist {
                     .items_center()
                     .justify_center()
                     .child(crate::library::art_or_icon(
-                        Lucide::Music,
-                        crate::local_art::art_url(song, crate::local_art::ROW_PX),
+                        Icon::new(MaterialIcon::MusicNote),
+                        Some(crate::local_art::local_art_url(song.id).into()),
                         px(18.),
                         6.,
                         cx,
@@ -803,13 +810,18 @@ impl ArrangePlaylist {
                         .child((index + 1).to_string()),
                 )
             });
-        let top =
-            sized_action_icon(("arrange-top", index), Lucide::ArrowUpToLine, t(Str::CdMoveToTop), ARRANGE_ICON, HIT)
-                .disabled(stacked || self.busy)
-                .on_click(cx.listener(move |view, _, _, cx| view.move_to_top(index, cx)));
+        let top = sized_action_icon(
+            ("arrange-top", index),
+            MaterialIcon::VerticalAlignTop,
+            t(Str::CdMoveToTop),
+            ARRANGE_ICON,
+            HIT,
+        )
+        .disabled(stacked || self.busy)
+        .on_click(cx.listener(move |view, _, _, cx| view.move_to_top(index, cx)));
         let remove = sized_action_icon(
             ("arrange-remove", index),
-            Lucide::CircleMinus,
+            MaterialIcon::RemoveCircleOutlineOutlined,
             t(Str::MenuRemoveFromPlaylist),
             ARRANGE_ICON,
             HIT,
@@ -864,7 +876,11 @@ impl Render for ArrangePlaylist {
             window.defer(cx, move |window, cx| window.focus(&first, cx));
         }
         let items = self.state.items.clone();
-        let rows: Vec<AnyElement> = items.iter().enumerate().map(|(index, item)| self.row(index, item, cx)).collect();
+        let focused_row =
+            self.focus.focused(window).filter(|stop| *stop >= CONTROL_ROWS).map(|stop| (stop - CONTROL_ROWS) / 3);
+        // Each row is its own Tab stop: the first and last stay built for Tab and Shift+Tab entering the list.
+        let kept = [Some(0), items.len().checked_sub(1), focused_row, self.reorder.lifted()].into_iter().flatten();
+        let rows = self.rows.render(items.len(), 4., kept, window, |index| self.row(index, &items[index], cx));
         let stacking = (self.state.stack > 0).then(|| {
             let label = tf(Str::ArrangeStacking, &[&self.state.stack]);
             let chip = Button::new("arrange-reset-stacking")
@@ -872,7 +888,7 @@ impl Render for ArrangePlaylist {
                 .outline()
                 .rounded_full()
                 .label(label.clone())
-                .icon(IconName::Close)
+                .icon(MaterialIcon::Close)
                 .accessibility_label(format!("{label}, {}", t(Str::CdResetStacking)))
                 .tooltip(t(Str::CdResetStacking))
                 .on_click(cx.listener(|view, _, _, cx| view.edit(cx, |state| state.stack = 0)));
@@ -895,8 +911,7 @@ impl Render for ArrangePlaylist {
             .aria_size_of_set(items.len())
             .w_full()
             .py_1()
-            .gap_1()
-            .children(rows)
+            .child(rows)
             .child(tracker);
         let can_undo = !self.busy && !self.state.history.is_empty();
         let footer = h_flex()

@@ -202,6 +202,12 @@
     <string name="menu_remove_from_playlist">Elimină din playlist</string>
     <string name="playlist_delete_title">Ștergi playlistul?</string>
     <string name="playlist_delete_message">„%1$s” va fi eliminat. Melodiile rămân în biblioteca ta.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">Elimini %1$d melodie din playlist?</item>
+        <item quantity="few">Elimini %1$d melodii din playlist?</item>
+        <item quantity="other">Elimini %1$d de melodii din playlist?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">Melodiile rămân în biblioteca ta.</string>
     <string name="add_to_playlist_new">Playlist nou…</string>
     <string name="playlist_recent_play">Redate recent</string>
     <string name="playlist_top_tracks">Piese de top</string>
@@ -308,10 +314,14 @@
     <string name="cd_download">Descarcă</string>
     <string name="cd_fullscreen">Ecran complet</string>
     <string name="cd_exit_fullscreen">Ieși din ecranul complet</string>
+    <string name="cd_show_queue">Afișează coada</string>
+    <string name="cd_hide_queue">Ascunde coada</string>
     <string name="cd_fit_video">Încadrează videoclipul</string>
     <string name="cd_fill_video">Umple ecranul</string>
-    <string name="cd_lock_rotation">Blochează rotirea</string>
-    <string name="cd_unlock_rotation">Deblochează rotirea</string>
+    <string name="cd_screen_rotation">Rotirea ecranului</string>
+    <string name="rotation_lock_landscape">Blochează pe orizontală</string>
+    <string name="rotation_lock_portrait">Blochează pe verticală</string>
+    <string name="rotation_free">Rotire liberă</string>
     <string name="cd_rewind10">Înapoi 10 secunde</string>
     <string name="cd_forward10">Înainte 10 secunde</string>
     <string name="cd_repeat_off">Repetă: dezactivat</string>
@@ -420,6 +430,8 @@
     <string name="settings_audio_focus_apps">Întrerupe când alte aplicații redau sunet</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Omite automat segmentele sponsorizate din videoclipurile YouTube. Dezactivează pentru un videoclip din Se redă acum.</string>
+    <string name="settings_stable_volume">Volum stabil</string>
+    <string name="settings_stable_volume_hint">Echilibrează pasajele puternice și cele încete și redă fiecare melodie la un volum asemănător.</string>
     <string name="sponsor_block_included">SponsorBlock activat pentru acest videoclip</string>
     <string name="sponsor_block_excluded">SponsorBlock dezactivat pentru acest videoclip</string>
     <string name="settings_sound">Sunet</string>
@@ -668,4 +680,34 @@
     <string name="native_blocked_help">Pe un PC de la serviciu sau școală, cere administratorului să permită YMusic. Pe PC-ul tău, verifică Smart App Control în Securitate Windows.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">Se reîmprospătează</string>
+    <string name="a11y_loading">Se încarcă</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">Selectează tot</string>
+    <string name="downloads_action_select">Selectează</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">%1$d selectat</item>
+        <item quantity="few">%1$d selectate</item>
+        <item quantity="other">%1$d selectate</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">Elimini %1$d descărcare din listă?</item>
+        <item quantity="few">Elimini %1$d descărcări din listă?</item>
+        <item quantity="other">Elimini %1$d de descărcări din listă?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">Fișierele finalizate rămân pe acest dispozitiv.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">Ștergi %1$d fișier?</item>
+        <item quantity="few">Ștergi %1$d fișiere?</item>
+        <item quantity="other">Ștergi %1$d de fișiere?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">Fișierele șterse nu pot fi recuperate.</string>
+    <string name="downloads_cancel_selected">Anulează descărcările</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">Anulezi %1$d descărcare?</item>
+        <item quantity="few">Anulezi %1$d descărcări?</item>
+        <item quantity="other">Anulezi %1$d de descărcări?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">Ce s-a descărcat până acum va fi șters.</string>
+    <string name="downloads_cancel_selected_keep">Păstrează</string>
+    <string name="data_dir_unusable">YMusic nu își poate deschide dosarul de date, %1$s. Asigură-te că este un dosar în care poți scrie, apoi deschide din nou YMusic. (%2$s)</string>
 </resources>

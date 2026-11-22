@@ -202,6 +202,12 @@
     <string name="menu_remove_from_playlist">Treu de la llista</string>
     <string name="playlist_delete_title">Vols suprimir la llista?</string>
     <string name="playlist_delete_message">Se suprimirà «%1$s». Les cançons es queden a la teva biblioteca.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">Vols treure %1$d cançó de la llista?</item>
+        <item quantity="many">Vols treure %1$d cançons de la llista?</item>
+        <item quantity="other">Vols treure %1$d cançons de la llista?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">Les cançons es queden a la teva biblioteca.</string>
     <string name="add_to_playlist_new">Llista nova…</string>
     <string name="playlist_recent_play">Reproduït recentment</string>
     <string name="playlist_top_tracks">Cançons més escoltades</string>
@@ -308,10 +314,14 @@
     <string name="cd_download">Descarrega</string>
     <string name="cd_fullscreen">Pantalla completa</string>
     <string name="cd_exit_fullscreen">Surt de la pantalla completa</string>
+    <string name="cd_show_queue">Mostra la cua</string>
+    <string name="cd_hide_queue">Amaga la cua</string>
     <string name="cd_fit_video">Ajusta el vídeo</string>
     <string name="cd_fill_video">Omple la pantalla</string>
-    <string name="cd_lock_rotation">Bloqueja la rotació</string>
-    <string name="cd_unlock_rotation">Desbloqueja la rotació</string>
+    <string name="cd_screen_rotation">Rotació de la pantalla</string>
+    <string name="rotation_lock_landscape">Bloqueja en horitzontal</string>
+    <string name="rotation_lock_portrait">Bloqueja en vertical</string>
+    <string name="rotation_free">Rotació lliure</string>
     <string name="cd_rewind10">Enrere 10 segons</string>
     <string name="cd_forward10">Endavant 10 segons</string>
     <string name="cd_repeat_off">Repeteix: desactivat</string>
@@ -420,6 +430,8 @@
     <string name="settings_audio_focus_apps">Posa en pausa quan altres apps reprodueixin so</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Omet automàticament els segments patrocinats dels vídeos de YouTube. Desactiva-ho per a un vídeo des d'Ara sona.</string>
+    <string name="settings_stable_volume">Volum estable</string>
+    <string name="settings_stable_volume_hint">Iguala les parts fortes i suaus i reprodueix cada cançó amb un volum semblant.</string>
     <string name="sponsor_block_included">SponsorBlock activat per a aquest vídeo</string>
     <string name="sponsor_block_excluded">SponsorBlock desactivat per a aquest vídeo</string>
     <string name="settings_sound">So</string>
@@ -668,4 +680,34 @@
     <string name="native_blocked_help">En un PC de la feina o de l'escola, demana a l'administrador que permeti YMusic. Al teu PC, comprova Smart App Control a Seguretat del Windows.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">S'està actualitzant</string>
+    <string name="a11y_loading">S'està carregant</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">Selecciona-ho tot</string>
+    <string name="downloads_action_select">Selecciona</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">%1$d seleccionat</item>
+        <item quantity="many">%1$d seleccionats</item>
+        <item quantity="other">%1$d seleccionats</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">Vols treure %1$d descàrrega de la llista?</item>
+        <item quantity="many">Vols treure %1$d descàrregues de la llista?</item>
+        <item quantity="other">Vols treure %1$d descàrregues de la llista?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">Els fitxers acabats es queden en aquest dispositiu.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">Vols suprimir %1$d fitxer?</item>
+        <item quantity="many">Vols suprimir %1$d fitxers?</item>
+        <item quantity="other">Vols suprimir %1$d fitxers?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">Els fitxers suprimits no es poden recuperar.</string>
+    <string name="downloads_cancel_selected">Cancel·la les descàrregues</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">Vols cancel·lar %1$d descàrrega?</item>
+        <item quantity="many">Vols cancel·lar %1$d descàrregues?</item>
+        <item quantity="other">Vols cancel·lar %1$d descàrregues?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">S'eliminarà el que s'ha baixat fins ara.</string>
+    <string name="downloads_cancel_selected_keep">Mantén</string>
+    <string name="data_dir_unusable">YMusic no pot obrir la seva carpeta de dades, %1$s. Comprova que sigui una carpeta on puguis escriure i torna a obrir YMusic. (%2$s)</string>
 </resources>

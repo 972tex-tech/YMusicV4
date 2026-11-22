@@ -199,6 +199,11 @@
     <string name="menu_remove_from_playlist">प्लेलिस्ट से हटाएं</string>
     <string name="playlist_delete_title">प्लेलिस्ट मिटाएं?</string>
     <string name="playlist_delete_message">“%1$s” हटा दी जाएगी। गाने आपकी लाइब्रेरी में रहेंगे।</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">प्लेलिस्ट से %1$d गाना हटाएं?</item>
+        <item quantity="other">प्लेलिस्ट से %1$d गाने हटाएं?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">गाने आपकी लाइब्रेरी में रहेंगे।</string>
     <string name="add_to_playlist_new">नई प्लेलिस्ट…</string>
     <string name="playlist_recent_play">हाल में चलाए गए</string>
     <string name="playlist_top_tracks">टॉप ट्रैक</string>
@@ -304,10 +309,14 @@
     <string name="cd_download">डाउनलोड करें</string>
     <string name="cd_fullscreen">फ़ुल स्क्रीन</string>
     <string name="cd_exit_fullscreen">फ़ुल स्क्रीन से बाहर निकलें</string>
+    <string name="cd_show_queue">कतार दिखाएं</string>
+    <string name="cd_hide_queue">कतार छिपाएं</string>
     <string name="cd_fit_video">वीडियो फ़िट करें</string>
     <string name="cd_fill_video">स्क्रीन भरें</string>
-    <string name="cd_lock_rotation">रोटेशन लॉक करें</string>
-    <string name="cd_unlock_rotation">रोटेशन अनलॉक करें</string>
+    <string name="cd_screen_rotation">स्क्रीन रोटेशन</string>
+    <string name="rotation_lock_landscape">लैंडस्केप में लॉक करें</string>
+    <string name="rotation_lock_portrait">पोर्ट्रेट में लॉक करें</string>
+    <string name="rotation_free">मुक्त रोटेशन</string>
     <string name="cd_rewind10">10 सेकंड पीछे</string>
     <string name="cd_forward10">10 सेकंड आगे</string>
     <string name="cd_repeat_off">दोहराएं: बंद</string>
@@ -416,6 +425,8 @@
     <string name="settings_audio_focus_apps">दूसरे ऐप आवाज़ चलाएं तो रोकें</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube वीडियो में स्पॉन्सर वाले हिस्से अपने-आप छोड़ें। किसी वीडियो के लिए प्लेयर स्क्रीन से बंद करें।</string>
+    <string name="settings_stable_volume">स्थिर वॉल्यूम</string>
+    <string name="settings_stable_volume_hint">तेज़ और धीमे हिस्सों को बराबर करता है और हर गाना लगभग एक जैसी आवाज़ में चलाता है।</string>
     <string name="sponsor_block_included">इस वीडियो के लिए SponsorBlock चालू है</string>
     <string name="sponsor_block_excluded">इस वीडियो के लिए SponsorBlock बंद है</string>
     <string name="settings_sound">साउंड</string>
@@ -660,4 +671,30 @@
     <string name="native_blocked_help">ऑफ़िस या स्कूल के PC पर, अपने एडमिनिस्ट्रेटर से YMusic को अनुमति देने को कहें। अपने PC पर, Windows Security में Smart App Control जाँचें।</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">रीफ़्रेश हो रहा है</string>
+    <string name="a11y_loading">लोड हो रहा है</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">सभी चुनें</string>
+    <string name="downloads_action_select">चुनें</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">%1$d चुने गए</item>
+        <item quantity="other">%1$d चुने गए</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">सूची से %1$d डाउनलोड हटाएं?</item>
+        <item quantity="other">सूची से %1$d डाउनलोड हटाएं?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">पूरी हो चुकी फ़ाइलें इस डिवाइस पर रहेंगी।</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">%1$d फ़ाइल मिटाएं?</item>
+        <item quantity="other">%1$d फ़ाइलें मिटाएं?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">मिटाई गई फ़ाइलें वापस नहीं लाई जा सकतीं।</string>
+    <string name="downloads_cancel_selected">डाउनलोड रद्द करें</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">%1$d डाउनलोड रद्द करें?</item>
+        <item quantity="other">%1$d डाउनलोड रद्द करें?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">अब तक डाउनलोड किया गया हिस्सा मिटा दिया जाएगा।</string>
+    <string name="downloads_cancel_selected_keep">रखें</string>
+    <string name="data_dir_unusable">YMusic अपना डेटा फ़ोल्डर, %1$s, नहीं खोल पा रहा है। पक्का करें कि यह ऐसा फ़ोल्डर है जिसमें आप लिख सकते हैं, फिर YMusic को फिर से खोलें। (%2$s)</string>
 </resources>

@@ -35,9 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -54,10 +52,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtLocaleOption
 import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.model.Playlist
+import io.ymusic.settings.SettingsStore
 import io.ymusic.ui.resources.Res
 import io.ymusic.ui.resources.a11y_downloaded
 import io.ymusic.ui.resources.a11y_kind_live
@@ -93,6 +93,7 @@ import org.jetbrains.compose.resources.stringResource
  * A playlist download page's retained state. It shares the playlist page's [pager], so the videos
  * already loaded there are listed at once and "Load more" extends both. [preset] holds the picks every
  * checked video is downloaded with — languages, not tracks, resolved per video like Quick download.
+ * Every video, including those Load more adds, starts unchecked.
  */
 @Stable
 class PlaylistDownloadSession(val title: String, val pager: Pager, initialPreset: QuickDownloadPreset) {
@@ -104,23 +105,14 @@ class PlaylistDownloadSession(val title: String, val pager: Pager, initialPreset
 
     /** The Library playlist the downloads join (each song shows up there as it lands); null = none. */
     var targetPlaylist by mutableStateOf<Playlist?>(null)
-
-    /** Every video id listed so far: a newly loaded page arrives checked, a seen one keeps its box. */
-    private val seen = mutableSetOf<String>()
-
-    internal fun onLoaded(videos: List<YtFeedItem>) {
-        val fresh = videos.filter { seen.add(it.id) }
-        if (fresh.isNotEmpty()) checked = checked + fresh.filter { !it.live }.map { it.id }
-    }
 }
 
 @Composable
 fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, onBack: () -> Unit) {
     val downloads = graph.downloads ?: return
-    val state by session.pager.state.collectAsState()
+    val state by session.pager.state.collectAsStateWithLifecycle()
     val ready = state as? Pager.State.Ready
     val videos = ready?.sections.orEmpty().flatMap { it.items }.filter { it.kind == YtFeedItem.KIND_VIDEO }.distinctBy { it.id }
-    LaunchedEffect(videos) { session.onLoaded(videos) }
     val offline = LocalAvailableOffline.current
     val languages = rememberYtLanguages(graph)
     val scope = rememberCoroutineScope()
@@ -146,6 +138,8 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
         }
     }
     val locationName = rememberDownloadLocationName(graph)
+    val loadFocus = remember(session) { LoadMoreFocus() }
+    loadFocus.Settle(ready?.loadingMore == true, videos.size, controlShown = ready?.continuation != null)
 
     Column(Modifier.fillMaxSize().background(DesignColors.Surface)) {
         ElevatedBarColumn {
@@ -156,13 +150,14 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             item {
-                LoadedHeader(session, ready, videos, offline)
+                LoadedHeader(session, ready, videos, offline, loadFocus)
             }
             item {
                 OptionsCard(
                     session,
                     languages,
                     ffmpegAvailable = downloads.ffmpegAvailable,
+                    settings = graph.settings,
                     locationName = locationName,
                     onPickLocation = { scope.launch { pickDownloadFolder(graph, snackbar, scans) } },
                     libraryStore = graph.mediaStore,
@@ -174,6 +169,7 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
                     position = (index + 1).takeIf { session.indexPrefix },
                     checked = video.id in session.checked,
                     downloaded = video.id in offline,
+                    modifier = loadFocus.item(index),
                 ) { on ->
                     session.checked = if (on) session.checked + video.id else session.checked - video.id
                 }
@@ -217,7 +213,13 @@ fun PlaylistDownloadScreen(graph: AppGraph, session: PlaylistDownloadSession, on
 private val CONTENT_MAX_WIDTH = 760.dp
 
 @Composable
-private fun LoadedHeader(session: PlaylistDownloadSession, ready: Pager.State.Ready?, videos: List<YtFeedItem>, offline: Set<String>) {
+private fun LoadedHeader(
+    session: PlaylistDownloadSession,
+    ready: Pager.State.Ready?,
+    videos: List<YtFeedItem>,
+    offline: Set<String>,
+    loadFocus: LoadMoreFocus,
+) {
     var menuOpen by remember { mutableStateOf(false) }
     Column(
         Modifier.widthIn(max = CONTENT_MAX_WIDTH).fillMaxWidth().padding(horizontal = DesignSpacing.Space16, vertical = DesignSpacing.Space8),
@@ -232,8 +234,15 @@ private fun LoadedHeader(session: PlaylistDownloadSession, ready: Pager.State.Re
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
             FeedChip(pluralText(Res.plurals.playlist_videos_loaded, videos.size, videos.size), selected = false, onClick = null)
             when {
-                ready?.loadingMore == true -> CircularProgressIndicator(Modifier.size(18.dp), color = DesignColors.Accent, strokeWidth = 2.dp)
-                ready?.continuation != null -> FeedChip(stringResource(Res.string.playlist_load_more), selected = true, choice = false) { session.pager.loadMore() }
+                ready?.loadingMore == true -> LoadingMoreIndicator(loadFocus) {
+                    CircularProgressIndicator(Modifier.size(18.dp), color = DesignColors.Accent, strokeWidth = 2.dp)
+                }
+                ready?.continuation != null -> Box(loadFocus.control) {
+                    FeedChip(stringResource(Res.string.playlist_load_more), selected = true, choice = false) {
+                        loadFocus.start(videos.size)
+                        session.pager.loadMore()
+                    }
+                }
             }
             Box(Modifier.weight(1f))
             Box {
@@ -266,6 +275,7 @@ private fun OptionsCard(
     session: PlaylistDownloadSession,
     languages: List<YtLocaleOption>,
     ffmpegAvailable: Boolean,
+    settings: SettingsStore,
     locationName: String?,
     onPickLocation: () -> Unit,
     libraryStore: BetterMediaStore?,
@@ -284,7 +294,7 @@ private fun OptionsCard(
             stringResource(Res.string.playlist_options).uppercase(),
             style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp, color = DesignColors.InkSecondary),
         )
-        QuickPresetFields(session.preset, languages, ffmpegAvailable) { session.preset = it }
+        QuickPresetFields(session.preset, languages, ffmpegAvailable, settings) { session.preset = it }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DesignSpacing.Space16)) {
             Text(
                 stringResource(Res.string.download_save_to),
@@ -361,7 +371,14 @@ private fun OptionsCard(
 }
 
 @Composable
-private fun VideoCheckRow(video: YtFeedItem, position: Int?, checked: Boolean, downloaded: Boolean, onToggle: (Boolean) -> Unit) {
+private fun VideoCheckRow(
+    video: YtFeedItem,
+    position: Int?,
+    checked: Boolean,
+    downloaded: Boolean,
+    modifier: Modifier = Modifier,
+    onToggle: (Boolean) -> Unit,
+) {
     val title = if (position != null) "$position. ${video.title}" else video.title
     val label = listOfNotNull(
         title,
@@ -375,7 +392,7 @@ private fun VideoCheckRow(video: YtFeedItem, position: Int?, checked: Boolean, d
         if (downloaded) stringResource(Res.string.a11y_downloaded) else null,
     ).joinToString(", ")
     Row(
-        Modifier
+        modifier
             .widthIn(max = CONTENT_MAX_WIDTH)
             .fillMaxWidth()
             .toggleable(value = checked, enabled = !video.live, role = Role.Checkbox, onValueChange = onToggle)

@@ -2,7 +2,6 @@ package io.ymusic.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -14,6 +13,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.settings.AppSettings
 import io.ymusic.settings.flow
@@ -57,6 +57,7 @@ private val DIALOG_MIN_WINDOW_HEIGHT = 600.dp
 internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss: () -> Unit) {
     val downloads = graph.downloads ?: return
     val video = pending ?: return
+    HoldVideoOverlay(true)
     val snackbar = LocalSnackbar.current
     val scans = LocalScanController.current
 
@@ -64,7 +65,7 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
     // folder was removed/excluded — go straight to the OS folder picker; a pick sets the location (this
     // recomposes into the format dialog), a cancel cancels the download. Validated only here, at start
     // time, so nothing has to watch the store. (No gate when the shell can't pick a folder.)
-    val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsState()
+    val location by remember(graph) { graph.settings.flow(AppSettings.downloadLocation) }.collectAsStateWithLifecycle()
     if (graph.mediaStore != null && graph.libraryFolderPicker != null) {
         val usable by produceState<Boolean?>(null, video, location) { value = hasUsableDownloadLocation(graph) }
         when (usable) {
@@ -84,6 +85,7 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
             video = video,
             downloads = downloads,
             preferredCaptionLanguage = graph.quickDownload.value.captionLanguage,
+            settings = graph.settings,
         )
     }
     LaunchedEffect(state) { state.load(log) }
@@ -103,13 +105,11 @@ internal fun DownloadDialogHost(graph: AppGraph, pending: YtFeedItem?, onDismiss
     val onDownload = { if (alreadyDownloaded) confirming = true else start() }
     val onPickLocation: () -> Unit = { scope.launch { pickDownloadFolder(graph, snackbar, scans) } }
     val onRetry: () -> Unit = { scope.launch { state.load(log) } }
-    // Signed out: sign in, then reopen these options for a fresh probe under the account.
     val signIn = LocalSignInResolver.current?.takeIf { !it.signedIn }
-    val launcher = LocalDownloadLauncher.current
     val onSignIn: (() -> Unit)? = signIn?.let { resolver ->
         {
             onDismiss()
-            resolver.signIn { launcher?.launch(video) }
+            resolver.signIn {}
         }
     }
     val window = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.toSize().toDpSize() }

@@ -35,10 +35,22 @@ R20021 D player/mintPo answered without a content PO token
 R20022 D engine manager: no engine bundle candidate to boot
 R20023 D log/capture: the cache entry the bundle named (the bg-session dump) could not be read; the report goes without it (logged)
 R20024 D player/remintPo answered "reminted" without a content PO token
-R30001 D remote config: the cached config was unreadable and was dropped (logged; defaults used)
+R20025 D engine manager: a remote (untrusted) bundle did not boot and pass its health check within 10 s; the next candidate boots, or the swap is dropped (the JVM E20022)
+R30001 D remote config: the cached config was unreadable and was dropped (captured; defaults used)
 R30002 D remote config: the fetched config could not be written to the cache (logged)
 R30003 D remote config: fetching /v1/config failed (logged; the held config stays)
 R30004 D js bundle: the cached remote bundle failed its signature and was deleted (logged; embedded used)
+R31801 D remote config: /v1/config refused this build (a 4xx other than 403 or 429; captured, the held config stays)
+R31802 D remote config: /v1/config answered a config this build cannot read (captured, the held config stays)
+R40001 D ffmpeg: no ffmpeg binary found (YMUSIC_FFMPEG, beside the executable, the dev build)
+R40002 D ffmpeg: the ffmpeg binary could not be started
+R40003 D ffmpeg: a metadata or image run passed its timeout and was killed
+R40004 D ffmpeg: reading the child's stdout/stderr failed
+R40005 D ffmpeg: waiting for the child failed
+R40006 D ffmpeg: an image run wrote more than the byte cap (killed)
+R40007 D ffmpeg metadata: the `ffmpeg -i` dump has no `Input #` block (not openable as media; stderr tail in the message)
+R40008 D ffmpeg: no attached picture written (the file has no cover)
+R40009 D ffmpeg: no thumbnail frame written (no decodable video)
 R90001 D app boot: the engine cache store could not be opened (data dir I/O, index)
 R90002 D playback: the native MSE host could not be created
 R90003 D playback: the player reported an error state without a code of its own
@@ -57,6 +69,8 @@ R90450 D cookies (Linux): no Secret Service answered; the cookie key is kept in 
 R90600 D download location: the picked folder could not be added to the Library (media store), or the core runtime stopped
 R90650 D player cache: the player-cache folder or its cache-index.db could not be opened (playback streams uncached), or the open task died
 R90651 D player cache: applying the size cap failed (eviction: cache-index.db or span files)
+R91801 D bundles: a published engine.js failed its signature (captured, never tried again; the running one stays)
+R91802 D bundles: a published player.js failed its signature (captured, never tried again; the running one stays)
 R90700 D http cache: a cache entry could not be read (journal or value file I/O); the request goes to the network
 R90701 D http cache: a response's metadata could not be written into the cache; the response is still delivered
 R90702 D http cache: the journal is corrupt; the cache folder is emptied and starts over (as OkHttp does)
@@ -131,16 +145,37 @@ R90028 D Sentry Logs: Sentry refused a batch of log lines (HTTP status, rate lim
 R90029 D Sentry Logs: delivered log lines could not be marked sent in logs.db (logged; they may go again)
 R90030 D media session: an update could not be published to MPRIS (property change or Seeked signal on the session bus; logged)
 R90031 D media session: an update could not be posted to the Windows SMTC thread (logged)
+R90032 D playback: a YouTube load the player took showed neither progress nor details within 5 s (the JVM E60051); the item fails and the next load starts a new session (logged)
+R90033 D player session: player/init was not done within 30 s; the boot fails and the engine closes (the JVM E60066)
+R90034 D downloads: the download list could not be read from downloads.db; the screen shows the code with Retry (the JVM E70081, logged)
+R90035 D Linux dock menu: the quicklist could not be served on the session bus (logged; the dock shows only its own entries)
+R90036 D Linux dock menu: a quicklist update could not be published (LayoutUpdated or the LauncherEntry Update signal; logged)
+R90037 D telemetry: the previous launch ended without a clean quit or a reported panic (a native crash, a stack overflow, a kill); one fatal event at the next launch, with that launch's log lines (captured). Not for a launch the OS booted after (a shutdown or restart ended it)
+R90038 D telemetry: an earlier launch's log lines could not be claimed for its unclean-exit event (logged; the event goes without them)
+R90039 D telemetry: the running-launch marker could not be read or written at launch; an unclean exit of this launch goes unreported (logged)
 R90040 D Linux file dialog: the Tokio task driving the portal dialog failed (logged; treated as canceled)
+R90041 D downloads: Remove from disk on the selection bar could not delete a selected file or its Library row; the dialog keeps it and shows the code (the JVM E70082, captured)
+R90042 D telemetry: the running-launch marker could not be removed at quit; the next launch reports an unclean exit (logged)
+R90043 D library: the one-time Library rescan after the probe moved to the ffmpeg binary failed (flag unsaved or a store error); fire and forget, resumed at the next launch (logged)
+R90044 D library: the one-time Library rescan did not start because its flag could not be read from the settings (logged; tried again at the next launch)
+R90045 D library: the one-time Library rescan could not index some files of a Library folder (a probe failure, e.g. a missing or quarantined ffmpeg); their items stay marked for a probe by a later scan (logged, with the count and the first error)
+R90046 D signals: the SIGTERM/SIGINT handling (pipe, thread or sigaction) did not install on macOS or Linux; those signals end the process without the quit hooks (logged)
+R90047 D library: play history did not follow a file whose playlist code a re-probe moved (local_play_history rekey failed); that file's watch-time rank stays under the old code (logged)
 R90200 D data dir: a database this app's earlier builds named differently could not take the JVM app's name (logged; retried next launch)
 R90201 D data dir: the window bounds kept in app.db could not move to window.properties (logged)
 R90202 D data dir: the old window.bounds setting could not be removed from app.db (logged)
 R90203 D data dir: a setting kept under an earlier build's key could not move to the JVM app's key (logged)
+R90204 D data dir: a setting no build reads any more could not be removed from app.db (logged)
 R90400 D data dir: the 4.0.6-and-earlier settings.properties could not be read (logged; imported as no settings, then removed, as the JVM app does)
 R90401 D data dir: a 4.0.6-and-earlier loose cookie file could not be read (logged; the import is retried next launch)
 R90402 D data dir: the 4.0.6-and-earlier loose files could not be imported into app.db (logged; retried next launch)
 R90403 D data dir: an imported 4.0.6-and-earlier loose file could not be removed (logged)
 R90404 D data dir: a cache folder of this app's earlier builds could not be removed (logged; retried next launch)
+R90405 D data dir: the data dir is a symlink to a folder that was gone; the folder was made again where the link points, empty (the JVM E92001, logged)
+R90406 D data dir: a database SQLite reports corrupt or not a database was moved aside as <name>.corrupt-<time> and a new one started (the JVM E92002, captured; app.db, logs.db, media-store.db, play-history.db, sponsor-block.db, downloads.db, download-segments.db, engine-cache.db)
+R90407 D data dir: an unreadable database could not be moved aside; its store fails to open as before (the JVM E92003, logged)
+R90408 D data dir: the data dir cannot be used (a file in the way, not writable, a link into a folder that is gone); the launch shows the code and quits (the JVM E92004, captured)
+R90409 D app log: logs.db did not open; the app log stays in memory for this launch (the JVM E92005, logged)
 R90300 D self-update: the config's update entry does not verify against the pinned update key (UpdateService.accept)
 R90301 D self-update: the downloaded installer's size or sha256 differs from the signed entry
 R90302 D self-update: the installer download failed (disk I/O other than full storage)
@@ -153,7 +188,8 @@ R90751 D usage stats: POST /v1/pulse failed (logged; the queue waits for the nex
 R90752 D usage stats: stat-queue.json was not rewritten after a send (logged; a restart may resend)
 R90753 D usage stats: stat-queue.json could not be read (logged; removed, queue starts over)
 R90754 D usage stats: the unreadable stat-queue.json could not be removed (logged)
-R92000 D playlist download: the downloads could not be added to the chosen Library playlist
+R91100 D app boot: the seeded UI language could not be saved to app.db (JVM ensureUiLanguage)
+R92000D playlist download: the downloads could not be added to the chosen Library playlist
 R92001 D Library playlist: a new playlist could not be created
 R92002 D local playlist from downloads: the playlist could not be created or filled
 R93000 D settings: a setting could not be saved
@@ -164,10 +200,12 @@ R94002 D library: saving a local playlist's arrangement failed
 R94003 D library: deleting a file from disk failed (file removal or its media-store row)
 R94004 D library: removing, excluding or including a folder failed (media store)
 R94005 D library: a Top tracks play-history row could not be removed
+R94006 D library: Remove from disk on the Songs selection bar could not delete a selected file or its Library row; the dialog keeps it and shows the code (the JVM E50013, captured)
 R95000 D now playing: a local queue item could not be looked up in the library to open its artist or album
 R96000 D single instance: another process holds the data dir's instance lock but took no request
 R96001 D single instance: the lock, loopback listener or port file could not be set up
 R96002 D open with: none of the files the OS asked the app to open could be read
+R96010 - debug workspace: the worktree's .ymusic-dev-data is unreadable or lacks name= / an absolute root= (logged; the default dev data dir is used)
 R98000 D cookies: the cookie store (app.db secret) could not be read at launch
 R98001 D cookies: sealing the saved sign-in under a password failed
 R98002 D cookies: the unlock screen's unlock, guest or sign-out failed for a reason other than a wrong password
@@ -181,3 +219,4 @@ R99011 D rename file: the file could not be renamed on disk
 R99012 D rename file: the Library row could not be moved to the new path (media store)
 R99013 D rename file: the finished download could not be moved to the new path (downloads.db)
 R99014 D rename file: the core runtime stopped before the rename finished
+R91200 D playback: a queue page (radio / playlist continuation) ended without a result or engine error (the tokio task died); Up next shows the code with Retry (the JVM E60063, logged)

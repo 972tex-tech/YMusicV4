@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -62,7 +64,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -108,6 +109,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.ymusic.download.DownloadFormat
 import io.ymusic.dynamicengine.yt.YtFeedItem
 import io.ymusic.dynamicengine.yt.YtFeedPage
@@ -118,7 +120,6 @@ import io.ymusic.dynamicengine.yt.extractHomeFeed
 import io.ymusic.dynamicengine.yt.extractMusicBrowse
 import io.ymusic.dynamicengine.yt.extractTrendingMusicFeed
 import io.ymusic.dynamicengine.yt.getRecommendedFeed
-import io.ymusic.dynamicengine.yt.resolveLink
 import io.ymusic.imageloader.AsyncImage
 import io.ymusic.player.PlayableItem
 import io.ymusic.player.isEnded
@@ -135,9 +136,6 @@ import io.ymusic.ui.resources.discover_no_anonymous_home
 import io.ymusic.ui.resources.discover_no_recommendations
 import io.ymusic.ui.resources.discover_no_top_tracks
 import io.ymusic.ui.resources.discover_no_trending
-import io.ymusic.ui.resources.error_captcha
-import io.ymusic.ui.resources.error_generic
-import io.ymusic.ui.resources.error_network
 import io.ymusic.ui.resources.link_open_failed
 import io.ymusic.ui.resources.link_queued_last
 import io.ymusic.ui.resources.link_queued_next
@@ -170,24 +168,24 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
-import projectcommon.error.errorCode
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** App-level sections — the drawer's three groups (design/final/drawer.html). */
 /** [id] is persisted (the section a restart resumes): stable, never reused, independent of entry order. */
-enum class AppSection(val id: Int, val label: StringResource, val icon: ImageVector, val group: Int) {
-    Discover(1, Res.string.section_discover, Icons.Outlined.OndemandVideo, 0),
-    YtMusic(2, Res.string.section_yt_music, Icons.Default.PlayCircleOutline, 0),
-    Library(3, Res.string.section_library, Icons.Outlined.LibraryMusic, 0),
-    Subscriptions(11, Res.string.section_subscriptions, Icons.Outlined.Subscriptions, 0),
-    PlayAgain(4, Res.string.section_play_again, Icons.Outlined.History, 1),
-    Downloads(5, Res.string.section_downloads, Icons.Outlined.FileDownload, 1),
-    Settings(6, Res.string.section_settings, Icons.Outlined.Settings, 1),
-    Catalogue(7, Res.string.section_catalogue, Icons.Outlined.Palette, 1),
-    Donate(8, Res.string.section_donate, Icons.Outlined.FavoriteBorder, 2),
-    Telegram(9, Res.string.section_telegram, TelegramIcon, 2),
-    Feedback(10, Res.string.section_feedback, Icons.AutoMirrored.Outlined.Chat, 2),
+/** [key] is what a restart resumes by: fixed, shared with the Rust app, never renamed. */
+enum class AppSection(val key: String, val label: StringResource, val icon: ImageVector, val group: Int) {
+    Discover("discover", Res.string.section_discover, Icons.Outlined.OndemandVideo, 0),
+    YtMusic("ytmusic", Res.string.section_yt_music, Icons.Default.PlayCircleOutline, 0),
+    Library("library", Res.string.section_library, Icons.Outlined.LibraryMusic, 0),
+    Subscriptions("subscriptions", Res.string.section_subscriptions, Icons.Outlined.Subscriptions, 0),
+    PlayAgain("play_again", Res.string.section_play_again, Icons.Outlined.History, 1),
+    Downloads("downloads", Res.string.section_downloads, Icons.Outlined.FileDownload, 1),
+    Settings("settings", Res.string.section_settings, Icons.Outlined.Settings, 1),
+    Catalogue("catalogue", Res.string.section_catalogue, Icons.Outlined.Palette, 1),
+    Donate("donate", Res.string.section_donate, Icons.Outlined.FavoriteBorder, 2),
+    Telegram("telegram", Res.string.section_telegram, TelegramIcon, 2),
+    Feedback("feedback", Res.string.section_feedback, Icons.AutoMirrored.Outlined.Chat, 2),
 }
 
 /** Switch the top-level section from within a screen (e.g. Downloads → "Reveal in Library"); no-op
@@ -225,7 +223,7 @@ private val ResumableSections = setOf(AppSection.Discover, AppSection.Library, A
 @Composable
 fun rememberStartSection(graph: AppGraph): androidx.compose.runtime.MutableState<AppSection> = rememberSaveable {
     val saved = graph.settings.flow(AppSettings.lastSection).value
-    mutableStateOf(ResumableSections.firstOrNull { it.id == saved } ?: AppSection.Discover)
+    mutableStateOf(ResumableSections.firstOrNull { it.key == saved } ?: AppSection.Discover)
 }
 
 /** [sectionState] hoisted for tests and for shells that deep-link from platform surfaces (a
@@ -239,15 +237,15 @@ fun App(
     sectionState: androidx.compose.runtime.MutableState<AppSection>,
     catalogue: (@Composable () -> Unit)? = null,
 ) {
-    val tag by graph.uiLanguage.collectAsState()
-    val themePref by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsState()
-    val accentPref by remember(graph) { graph.settings.flow(AppSettings.themeAccent) }.collectAsState()
+    val tag by graph.uiLanguage.collectAsStateWithLifecycle()
+    val themePref by remember(graph) { graph.settings.flow(AppSettings.theme) }.collectAsStateWithLifecycle()
+    val accentPref by remember(graph) { graph.settings.flow(AppSettings.themeAccent) }.collectAsStateWithLifecycle()
     val palette = designPaletteFor(themePref, androidx.compose.foundation.isSystemInDarkTheme(), accentPref)
     var section by sectionState
     LaunchedEffect(graph.settings) {
         snapshotFlow { sectionState.value }
             .filter { it in ResumableSections }
-            .collect { graph.settings.put(AppSettings.lastSection, it.id) }
+            .collect { graph.settings.put(AppSettings.lastSection, it.key) }
     }
     key(tag) {
         val direction = if (isRtlLanguage(Locale.current.language)) LayoutDirection.Rtl else LayoutDirection.Ltr
@@ -357,9 +355,9 @@ private fun AppRoot(
     run {
         val scope = rememberCoroutineScope()
         val coordinator = graph.playback
-        val inPip by graph.pip.inPip.collectAsState()
+        val inPip by graph.pip.inPip.collectAsStateWithLifecycle()
         if (inPip) {
-            val pipStatus by graph.player.status.collectAsState()
+            val pipStatus by graph.player.status.collectAsStateWithLifecycle()
             KeepScreenOn(pipStatus.state.isPlaying() && !pipStatus.state.isEnded() && !showsAudioOnly(graph.player))
             PictureHidden(graph, hidden = false)
             Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -373,14 +371,16 @@ private fun AppRoot(
         val libraryGroupReveal = remember { androidx.compose.runtime.mutableStateOf<LibraryGroupReveal?>(null) }
         // Signed-in state, derived from the engine's cookie gate. Bumps loginEpoch on sign-in/out.
         val accountController = graph.account
-        val signedIn by accountController.signedIn.collectAsState()
-        val account by accountController.account.collectAsState()
-        val profileReady by accountController.profileReady.collectAsState()
-        val loginEpoch by accountController.loginEpoch.collectAsState()
+        val signedIn by accountController.signedIn.collectAsStateWithLifecycle()
+        val account by accountController.account.collectAsStateWithLifecycle()
+        val profileReady by accountController.profileReady.collectAsStateWithLifecycle()
+        val loginEpoch by accountController.loginEpoch.collectAsStateWithLifecycle()
         // App-level so a scan started in Library keeps running (and still notifies) across sections.
         val scanController = graph.scans
         val drawer = rememberDrawerState(DrawerValue.Closed)
-        var railToggled by rememberSaveable { mutableStateOf<Boolean?>(null) }
+        var railToggled by rememberSaveable {
+            mutableStateOf(graph.settings.flow(AppSettings.railExpanded).value.toBooleanStrictOrNull())
+        }
         var usesRail by remember { mutableStateOf(false) }
         if (catalogue == null) {
             LaunchedEffect(section) {
@@ -391,12 +391,12 @@ private fun AppRoot(
         var discoverTab by rememberSaveable {
             val saved = graph.settings.flow(AppSettings.lastDiscoverTab).value
             // Trending music on a fresh install — Home stays empty until YouTube has watch history.
-            mutableStateOf(discoverTabs.firstOrNull { it.id == saved } ?: DiscoverTab.Music)
+            mutableStateOf(discoverTabs.firstOrNull { it.key == saved } ?: DiscoverTab.Music)
         }
-        LaunchedEffect(discoverTab) { graph.settings.put(AppSettings.lastDiscoverTab, discoverTab.id) }
+        LaunchedEffect(discoverTab) { graph.settings.put(AppSettings.lastDiscoverTab, discoverTab.key) }
         // Live swipe progress (−1..1) so the Discover underline tracks the drag, not just the commit.
         var discoverDrag by remember { mutableFloatStateOf(0f) }
-        val nowPlayingOpen by graph.pip.nowPlayingOpen.collectAsState()
+        val nowPlayingOpen by graph.pip.nowPlayingOpen.collectAsStateWithLifecycle()
         var nowPlayingPeeking by remember { mutableStateOf(false) }
         val snackbarHostState = remember { SnackbarHostState() }
         // Snackbars sit above the mini player, which is drawn deep in the shell.
@@ -478,7 +478,7 @@ private fun AppRoot(
         // ([AppGraph.localeEpoch], bumped by the Settings pickers) and throws the cached pages
         // away. It lives here, not in DiscoverFeed: that composable is disposed while a search or
         // detail layer is open, and a remember there would re-clear the cache on every return.
-        val localeEpoch by graph.localeEpoch.collectAsState()
+        val localeEpoch by graph.localeEpoch.collectAsStateWithLifecycle()
         // A sign-in/out changes what every feed CONTAINS (personalized vs anonymous), same as a
         // locale change — so it clears the caches too, and the feeds refetch under the new identity.
         remember(localeEpoch, loginEpoch) {
@@ -706,6 +706,8 @@ private fun AppRoot(
         // The hotkey lands in the input even over submitted results (the results bar takes no typing).
         val hotkeySearch: () -> Unit = {
             if (sectionSearch != null) {
+                graph.pip.nowPlayingOpen.value = false
+                nowPlayingPeeking = false
                 sectionSearch()
                 (layers.lastOrNull() as? AppLayer.Search)?.session?.editing = true
             }
@@ -749,26 +751,19 @@ private fun AppRoot(
         LaunchedEffect(graph, coordinator) {
             IncomingLinks.links.collect { (url, action) ->
                 val log = graph.logger?.fork("IncomingLink", mapOf("action" to action.name))
-                val target = try {
-                    graph.engines.resolveLink(url, log)
-                } catch (c: kotlinx.coroutines.CancellationException) {
-                    throw c
-                } catch (e: Exception) {
-                    log?.log(kmpcommon.log.Logger.Level.WARN, "resolve link failed", e)
-                    showSnackbar(
-                        when (val code = e.errorCode() ?: "E20113") {
-                            "network" -> getString(Res.string.error_network)
-                            CAPTCHA_CODE -> getString(Res.string.error_captcha)
-                            else -> getString(Res.string.error_generic, code)
-                        },
-                    )
-                    return@collect
+                val target = when (val resolved = resolveIncomingLink(graph, url, log)) {
+                    is LinkResolution.Failed -> {
+                        showSnackbar(linkFailureMessage(resolved.code))
+                        return@collect
+                    }
+                    is LinkResolution.Resolved -> resolved.target
                 }
                 when (target) {
                     is YtLinkTarget.Video -> {
                         val video = target.item
                         val queueEmpty = coordinator.player.queue.value.items.isEmpty()
                         val downloads = graph.downloads
+                        val quickFormat = downloads?.let { action.quickDownloadFormat(it) }
                         when {
                             action == LinkAction.PLAY_SINGLE || (queueEmpty && action in QueueActions) ->
                                 coordinator.player.setQueue(
@@ -784,10 +779,7 @@ private fun AppRoot(
                                 coordinator.playLater(video)
                                 showSnackbar(linkQueuedLast)
                             }
-                            action == LinkAction.DOWNLOAD_M4A && downloads != null ->
-                                pendingFormatDownload = video to DownloadFormat.M4A
-                            action == LinkAction.DOWNLOAD_MP3 && downloads != null && downloads.ffmpegAvailable ->
-                                pendingFormatDownload = video to DownloadFormat.MP3
+                            quickFormat != null -> pendingFormatDownload = video to quickFormat
                             action in DownloadActions && downloads != null -> pendingDownload = video
                             else -> {
                                 val playlist = target.playlistUrl
@@ -820,7 +812,7 @@ private fun AppRoot(
         // "Check for update" from the drawer; a found update bumps [updateRecheck] so the prompt
         // shows it even after an earlier "Ask later".
         val uriHandler = LocalUriHandler.current
-        val config by remember(graph) { graph.remoteConfig ?: emptyFlow() }.collectAsState(initial = null)
+        val config by remember(graph) { graph.remoteConfig ?: emptyFlow() }.collectAsStateWithLifecycle(initialValue = null)
         var checkingUpdate by remember { mutableStateOf(false) }
         // Feedback sends the app logs on arrival, so with anonymous reports off it stays closed
         // until the user agrees in this dialog.
@@ -865,7 +857,7 @@ private fun AppRoot(
                 openLibraryRoot()
             },
         )
-        val premium by graph.premium.collectAsState()
+        val premium by graph.premium.collectAsStateWithLifecycle()
         var updateRecheck by remember { mutableStateOf(0) }
         // The system back gesture/button walks the same path as the in-app back arrows: overlays
         // close first (drawer, Now Playing); the search input steps back to its results; then one
@@ -902,9 +894,9 @@ private fun AppRoot(
         // Keep the shared video surface hosted while a YouTube item or a pictured local item is
         // current. Now Playing hosts it while open; otherwise the mini player's art tile does, so
         // playback keeps going (the same single container re-parents, which the engines tolerate).
-        val queue by graph.player.queue.collectAsState()
-        val playbackConfig by graph.player.config.collectAsState()
-        val quality by graph.player.videoQuality.collectAsState()
+        val queue by graph.player.queue.collectAsStateWithLifecycle()
+        val playbackConfig by graph.player.config.collectAsStateWithLifecycle()
+        val quality by graph.player.videoQuality.collectAsStateWithLifecycle()
         val needsSurface = queue.currentItem is PlayableItem.YtMedia ||
             (queue.currentItem != null && showsVideo(playbackConfig, quality))
         // Every mini player shows the cover over the hosted surface: only Now Playing (or PiP, above) shows the picture.
@@ -915,6 +907,7 @@ private fun AppRoot(
         // The shell owns app-bar elevation: content reports its scroll via TrackScroll into this host, and the
         // bar, the rail and the status-bar strip read it. (Content never touches them directly.)
         val scrollHost = remember { ScrollHost() }
+        val appBarSlot = remember { AppBarSlot() }
         Box(
             Modifier.fillMaxSize()
                 .then(if (desktopLayoutHole) Modifier else Modifier.background(DesignColors.Surface))
@@ -958,8 +951,12 @@ private fun AppRoot(
                 val railStartsOpen = windowStartsRailOpen(maxWidth)
                 val railExpanded = railToggled ?: railStartsOpen
                 SideEffect { usesRail = railWindow }
-                LaunchedEffect(railWindow, railStartsOpen) {
-                    railToggled = null
+                var railStartsOpenSeen by remember { mutableStateOf(railStartsOpen) }
+                LaunchedEffect(railStartsOpen) {
+                    if (railStartsOpen != railStartsOpenSeen) {
+                        railStartsOpenSeen = railStartsOpen
+                        railToggled = null
+                    }
                 }
                 // design/final/home.html: landscape (or any window this wide) puts the tab row inline in the app bar.
                 val shellWidth = if (railWindow) maxWidth - DesignSpacing.RailExpandedWidth else maxWidth
@@ -998,14 +995,16 @@ private fun AppRoot(
                                     sections = listedSections(catalogue != null, graph.guest, graph.openDonation != null),
                                     appVersion = graph.appVersion,
                                     premium = premium,
-                                    updateWaiting = graph.updates?.status?.collectAsState()?.value is AppUpdateStatus.Offered,
+                                    updateWaiting = graph.updates?.status?.collectAsStateWithLifecycle()?.value is AppUpdateStatus.Offered,
                                     onCheckUpdate = onCheckUpdate,
                                     websiteUrl = AppLinks(config).website,
                                     onSelect = selectSection,
                                 ),
                                 expanded = railExpanded,
                                 onToggle = {
-                                    railToggled = !railExpanded
+                                    val expanded = !railExpanded
+                                    railToggled = expanded
+                                    scope.launch { graph.settings.put(AppSettings.railExpanded, expanded.toString()) }
                                 },
                                 coordinator = coordinator,
                                 surface = if (needsSurface && !nowPlayingOpen) graph.playerSurface else null,
@@ -1033,6 +1032,8 @@ private fun AppRoot(
                                         updates = graph.updates,
                                         onCheckUpdate = onCheckUpdate,
                                         open = drawer.isOpen,
+                                        startInset = WindowInsets.safeDrawing.asPaddingValues()
+                                            .calculateStartPadding(LocalLayoutDirection.current),
                                     )
                                 },
                                 content = shell,
@@ -1083,6 +1084,7 @@ private fun AppRoot(
                         }
                         CompositionLocalProvider(
                             LocalScrollHost provides scrollHost,
+                            LocalAppBarSlot provides appBarSlot,
                             LocalSnackbar provides showSnackbar,
                             LocalScanController provides scanController,
                             LocalOpenNavDrawer provides if (railWindow) null else { { scope.launch { drawer.open() } } },
@@ -1104,7 +1106,10 @@ private fun AppRoot(
                                 contentWindowInsets = WindowInsets(0),
                                 topBar = {
                                     // Search and the detail pages carry their own app bars.
-                                    if (layers.isEmpty()) {
+                                    val replacementBar = appBarSlot.replacement
+                                    if (layers.isEmpty() && replacementBar != null) {
+                                        ElevatedBarColumn { replacementBar() }
+                                    } else if (layers.isEmpty()) {
                                         // Library's tab row lives in its own body (it needs the loaded state),
                                         // so the shell bar drops its shadow there and lets that row cast it —
                                         // keeping bar + tabs one continuous elevated surface.
@@ -1309,7 +1314,7 @@ private fun AppRoot(
                                         if (!railWindow) mini(Modifier.fillMaxWidth())
                                     }
                                 } else {
-                                    val miniVisible = !railWindow && coordinator.player.queue.collectAsState().value.currentItem != null
+                                    val miniVisible = !railWindow && coordinator.player.queue.collectAsStateWithLifecycle().value.currentItem != null
                                     val miniInset = if (miniVisible) with(LocalDensity.current) { miniHeightPx.toDp() } else 0.dp
                                     // A screen reader takes a row painted over by the bar as visible, focusing it without
                                     // scrolling and skipping its ⋮; with one on, the content ends above the bar instead.
@@ -1421,12 +1426,13 @@ private fun SwipeableSnackbar(data: SnackbarData) {
 /** Discover's five feed tabs (design §1). Home and Music have anonymous backing feeds;
  *  Recommended and Top tracks are built from local play; Account is the signed-in library. [id] is
  *  persisted (the tab a restart resumes): stable, never reused, independent of entry order. */
-enum class DiscoverTab(val id: Int, val label: StringResource, val icon: ImageVector, val hasFeed: Boolean) {
-    Home(1, Res.string.tab_home, Icons.Outlined.Home, hasFeed = true),
-    Music(2, Res.string.tab_music, Icons.Outlined.MusicNote, hasFeed = true),
-    Recommended(3, Res.string.tab_recommended, Icons.Default.StarBorder, hasFeed = true),
-    TopTracks(4, Res.string.tab_top_tracks, Icons.AutoMirrored.Outlined.TrendingUp, hasFeed = true),
-    Account(5, Res.string.tab_account_library, Icons.Outlined.Person, hasFeed = false),
+/** [key] is what a restart resumes by: fixed, shared with the Rust app, never renamed. */
+enum class DiscoverTab(val key: String, val label: StringResource, val icon: ImageVector, val hasFeed: Boolean) {
+    Home("home", Res.string.tab_home, Icons.Outlined.Home, hasFeed = true),
+    Music("music", Res.string.tab_music, Icons.Outlined.MusicNote, hasFeed = true),
+    Recommended("recommended", Res.string.tab_recommended, Icons.Default.StarBorder, hasFeed = true),
+    TopTracks("top_tracks", Res.string.tab_top_tracks, Icons.AutoMirrored.Outlined.TrendingUp, hasFeed = true),
+    Account("account", Res.string.tab_account_library, Icons.Outlined.Person, hasFeed = false),
 }
 
 /** A guest has no account and keeps no YouTube play history: no Account, no Top tracks. */
@@ -1601,7 +1607,13 @@ private fun DiscoverFeed(
                     FeedSession(
                         scope,
                         log,
-                        reloadFetch = if (tab == DiscoverTab.Music) null else { continuation -> home(continuation, true) },
+                        reloadFetch = { continuation ->
+                            if (tab == DiscoverTab.Music) {
+                                graph.engines.extractTrendingMusicFeed(logger = log, refresh = true)
+                            } else {
+                                home(continuation, true)
+                            }
+                        },
                     ) { continuation ->
                         when (tab) {
                             // The region's music charts — one page, no continuation ever arrives.

@@ -193,9 +193,9 @@ impl PlayHistory {
         Ok(())
     }
 
-    /// A snapshot for the YouTube chart; a card without a duration only fills in what is missing.
-    pub fn save_youtube_metadata(&self, video: &VideoMetadata) -> rusqlite::Result<()> {
-        if video.video_id.is_empty() || video.title.is_empty() {
+    /// A snapshot for the YouTube chart, live streams left out; a card without a duration only fills in what is missing.
+    pub fn save_youtube_metadata(&self, video: &VideoMetadata, live: bool) -> rusqlite::Result<()> {
+        if live || video.video_id.is_empty() || video.title.is_empty() {
             return Ok(());
         }
         let connection = self.connection.lock().unwrap();
@@ -278,6 +278,24 @@ impl PlayHistory {
     pub fn delete_local(&self, code: &str) -> rusqlite::Result<()> {
         self.connection.lock().unwrap().execute("DELETE FROM local_play_history WHERE code = ?", [code])?;
         Ok(())
+    }
+
+    /// A local file's watch time moves to its new playlist code, added to any the new code has.
+    pub fn rekey_local(&self, old_code: &str, new_code: &str) -> rusqlite::Result<()> {
+        if old_code == new_code {
+            return Ok(());
+        }
+        let mut connection = self.connection.lock().unwrap();
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO local_play_history(code, watch_time, tracked_at) \
+             SELECT ?2, watch_time, tracked_at FROM local_play_history WHERE code = ?1 \
+             ON CONFLICT(code) DO UPDATE SET watch_time = watch_time + excluded.watch_time, \
+             tracked_at = MAX(tracked_at, excluded.tracked_at)",
+            [old_code, new_code],
+        )?;
+        transaction.execute("DELETE FROM local_play_history WHERE code = ?", [old_code])?;
+        transaction.commit()
     }
 
     pub fn delete_youtube(&self, video_id: &str) -> rusqlite::Result<()> {

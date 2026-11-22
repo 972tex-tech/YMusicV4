@@ -53,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -123,6 +124,7 @@ import io.ymusic.ui.resources.playback_sign_in_required
 import io.ymusic.ui.resources.playback_unavailable
 import io.ymusic.ui.resources.retry
 import io.ymusic.ui.resources.signin_button
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import projectcommon.error.Playability
 import projectcommon.error.playabilityOf
@@ -341,12 +343,14 @@ private fun QualityGrid(state: DownloadOptionsState) {
     var expanded by remember { mutableStateOf(false) }
     val collapsible = video.size > QUALITY_COLLAPSE_OVER
     val shown = if (collapsible && !expanded) video.take(QUALITY_COLLAPSE_OVER - 1) else video
+    val focus = remember { LoadMoreFocus() }
+    focus.Settle(loading = false, count = video.size, controlShown = true)
     Column(verticalArrangement = Arrangement.spacedBy(DesignSpacing.Space8)) {
         SectionLabel(stringResource(Res.string.download_quality))
         val tiles: List<@Composable (Modifier) -> Unit> = buildList {
-            shown.forEach { option ->
+            shown.forEachIndexed { index, option ->
                 add { modifier ->
-                    Tile(option.label(), formatDownloadSize(if (state.format == DownloadFormat.VIDEO_WEBM) option.webmBytes ?: 0 else option.mp4Bytes), option.height == state.height, modifier) {
+                    Tile(option.label(), formatDownloadSize(if (state.format == DownloadFormat.VIDEO_WEBM) option.webmBytes ?: 0 else option.mp4Bytes), option.height == state.height, modifier.then(focus.item(index))) {
                         state.height = option.height
                     }
                 }
@@ -354,13 +358,19 @@ private fun QualityGrid(state: DownloadOptionsState) {
             if (collapsible) {
                 add { modifier ->
                     if (expanded) {
-                        MoreTile(stringResource(Res.string.download_less), null, modifier) { expanded = false }
+                        MoreTile(stringResource(Res.string.download_less), null, modifier.then(focus.control)) {
+                            focus.collapse()
+                            expanded = false
+                        }
                     } else {
                         MoreTile(
                             stringResource(Res.string.download_more_qualities, video.size - shown.size),
                             stringResource(Res.string.download_down_to, video.last().label()),
-                            modifier,
-                        ) { expanded = true }
+                            modifier.then(focus.control),
+                        ) {
+                            focus.reveal(shown.size)
+                            expanded = true
+                        }
                     }
                 }
             }
@@ -547,10 +557,30 @@ internal fun containerChoices(state: DownloadOptionsState): List<Choice> =
         Choice(container.displayName(), state.format == container) { state.container = container }
     }
 
+/** Off, the selected track, the tracks in the recent caption languages (the video's own, uploaded before
+ *  auto-generated, else its auto-translation), then the rest. Picking a track records its language, as Now
+ *  Playing does. */
 @Composable
-internal fun captionChoices(state: DownloadOptionsState): List<Choice> =
-    listOf(Choice(stringResource(Res.string.download_captions_off), state.caption == null) { state.caption = null }) +
-        state.options?.captions.orEmpty().map { track -> Choice(track.displayName(), track.key == state.caption) { state.caption = track.key } }
+internal fun captionChoices(state: DownloadOptionsState): List<Choice> {
+    val recent = rememberRecentCaptionLanguages(state.settings)
+    val scope = rememberCoroutineScope()
+    val tracks = state.options?.captions.orEmpty()
+    val selected = tracks.firstOrNull { it.key == state.caption }
+    val own = tracks.filter { !it.isTranslated }.sortedBy { it.isAsr }
+    val translated = tracks.filter { it.isTranslated }
+    val recentTracks = recent.mapNotNull { code ->
+        own.inRecentCaptionLanguages(listOf(code)) { it.languageCode }.firstOrNull()
+            ?: translated.inRecentCaptionLanguages(listOf(code)) { it.languageCode }.firstOrNull()
+    }
+    val ordered = (listOfNotNull(selected) + recentTracks + tracks).distinct()
+    return listOf(Choice(stringResource(Res.string.download_captions_off), state.caption == null) { state.caption = null }) +
+        ordered.map { track ->
+            Choice(track.displayName(), track.key == state.caption) {
+                state.caption = track.key
+                scope.launch { state.settings.recordRecentCaptionLanguage(track.languageCode) }
+            }
+        }
+}
 
 /** The track's name, marked when it is one of YouTube's auto-translations. */
 @Composable

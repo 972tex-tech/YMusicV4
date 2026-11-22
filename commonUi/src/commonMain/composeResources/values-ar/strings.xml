@@ -243,6 +243,15 @@
     <string name="menu_remove_from_playlist">إزالة من قائمة التشغيل</string>
     <string name="playlist_delete_title">حذف قائمة التشغيل؟</string>
     <string name="playlist_delete_message">ستتم إزالة “%1$s”. تبقى الأغاني في مكتبتك.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="zero">إزالة %1$d أغنية من قائمة التشغيل؟</item>
+        <item quantity="one">إزالة أغنية واحدة من قائمة التشغيل؟</item>
+        <item quantity="two">إزالة أغنيتين من قائمة التشغيل؟</item>
+        <item quantity="few">إزالة %1$d أغانٍ من قائمة التشغيل؟</item>
+        <item quantity="many">إزالة %1$d أغنية من قائمة التشغيل؟</item>
+        <item quantity="other">إزالة %1$d أغنية من قائمة التشغيل؟</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">تبقى الأغاني في مكتبتك.</string>
     <string name="add_to_playlist_new">قائمة تشغيل جديدة…</string>
     <string name="playlist_recent_play">المشغَّلة مؤخرًا</string>
     <string name="playlist_top_tracks">أفضل المقاطع</string>
@@ -363,11 +372,15 @@
     <string name="cd_download">تنزيل</string>
     <string name="cd_fullscreen">ملء الشاشة</string>
     <string name="cd_exit_fullscreen">الخروج من ملء الشاشة</string>
+    <string name="cd_show_queue">إظهار قائمة الانتظار</string>
+    <string name="cd_hide_queue">إخفاء قائمة الانتظار</string>
     <string name="cd_minimize">تصغير</string>
     <string name="cd_fit_video">ملاءمة الفيديو</string>
     <string name="cd_fill_video">ملء الشاشة</string>
-    <string name="cd_lock_rotation">قفل التدوير</string>
-    <string name="cd_unlock_rotation">إلغاء قفل التدوير</string>
+    <string name="cd_screen_rotation">تدوير الشاشة</string>
+    <string name="rotation_lock_landscape">قفل الوضع الأفقي</string>
+    <string name="rotation_lock_portrait">قفل الوضع العمودي</string>
+    <string name="rotation_free">تدوير حر</string>
     <string name="cd_rewind10">إرجاع 10 ثوانٍ</string>
     <string name="cd_forward10">تقديم 10 ثوانٍ</string>
     <string name="cd_repeat_off">التكرار: إيقاف</string>
@@ -406,6 +419,8 @@
     <string name="settings_audio_focus_apps">الإيقاف المؤقت عند تشغيل تطبيقات أخرى للصوت</string>
     <string name="settings_sponsor_block">مانع الإعلانات</string>
     <string name="settings_sponsor_block_hint">تخطي مقاطع الرعاية في فيديوهات يوتيوب تلقائيًا. يمكن إيقافه لفيديو من قيد التشغيل.</string>
+    <string name="settings_stable_volume">مستوى صوت ثابت</string>
+    <string name="settings_stable_volume_hint">يوازن بين الأجزاء العالية والهادئة ويشغّل كل أغنية بمستوى صوت متقارب.</string>
     <string name="sponsor_block_included">حجب الإعلانات المموَّلة لهذا الفيديو</string>
     <string name="sponsor_block_excluded">عرض الإعلانات المموَّلة لهذا الفيديو</string>
     <string name="settings_sound">الصوت</string>
@@ -824,4 +839,46 @@
     <string name="native_blocked_help">على جهاز العمل أو المدرسة، اطلب من المسؤول السماح بتشغيل YMusic. على جهازك الشخصي، تحقق من Smart App Control في أمان Windows.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">جارٍ التحديث</string>
+    <string name="a11y_loading">جارٍ التحميل</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">تحديد الكل</string>
+    <string name="downloads_action_select">تحديد</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="zero">تم تحديد %1$d</item>
+        <item quantity="one">تم تحديد %1$d</item>
+        <item quantity="two">تم تحديد %1$d</item>
+        <item quantity="few">تم تحديد %1$d</item>
+        <item quantity="many">تم تحديد %1$d</item>
+        <item quantity="other">تم تحديد %1$d</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="zero">إزالة %1$d تنزيل من القائمة؟</item>
+        <item quantity="one">إزالة تنزيل واحد من القائمة؟</item>
+        <item quantity="two">إزالة تنزيلين من القائمة؟</item>
+        <item quantity="few">إزالة %1$d تنزيلات من القائمة؟</item>
+        <item quantity="many">إزالة %1$d تنزيلًا من القائمة؟</item>
+        <item quantity="other">إزالة %1$d تنزيل من القائمة؟</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">تبقى الملفات المكتملة على هذا الجهاز.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="zero">حذف %1$d ملف؟</item>
+        <item quantity="one">حذف ملف واحد؟</item>
+        <item quantity="two">حذف ملفين؟</item>
+        <item quantity="few">حذف %1$d ملفات؟</item>
+        <item quantity="many">حذف %1$d ملفًا؟</item>
+        <item quantity="other">حذف %1$d ملف؟</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">لا يمكن استعادة الملفات المحذوفة.</string>
+    <string name="downloads_cancel_selected">إلغاء التنزيلات</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="zero">إلغاء %1$d تنزيل؟</item>
+        <item quantity="one">إلغاء تنزيل واحد؟</item>
+        <item quantity="two">إلغاء تنزيلين؟</item>
+        <item quantity="few">إلغاء %1$d تنزيلات؟</item>
+        <item quantity="many">إلغاء %1$d تنزيلًا؟</item>
+        <item quantity="other">إلغاء %1$d تنزيل؟</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">سيُحذف ما تم تنزيله حتى الآن.</string>
+    <string name="downloads_cancel_selected_keep">إبقاء</string>
+    <string name="data_dir_unusable">لا يمكن لـ YMusic فتح مجلد البيانات الخاص به، %1$s. تأكد من أنه مجلد يمكنك الكتابة فيه، ثم افتح YMusic مرة أخرى. (%2$s)</string>
 </resources>

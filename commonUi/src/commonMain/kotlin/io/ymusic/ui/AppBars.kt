@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -67,7 +68,10 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -178,6 +182,41 @@ internal fun TrackScroll(scrolled: () -> Boolean) {
         onDispose { host.release(token) }
     }
     LaunchedEffect(host, token) { snapshotFlow(scrolled).collect { host.report(token, it) } }
+}
+
+/**
+ * A bar's stand-in: while a screen holds a mode of its own (Downloads' selection), it draws its bar here through
+ * [ReplaceAppBar] and the bar's owner shows that instead of its own. The app shell owns the one for its app bar
+ * ([LocalAppBarSlot]); the Library owns one for its tab row.
+ */
+@Stable
+internal class AppBarSlot {
+    var replacement: (@Composable () -> Unit)? by mutableStateOf(null)
+        private set
+
+    fun claim(bar: @Composable () -> Unit) {
+        replacement = bar
+    }
+
+    fun release(bar: @Composable () -> Unit) {
+        if (replacement === bar) replacement = null
+    }
+}
+
+/** The app shell's [AppBarSlot]; null outside the shell. */
+internal val LocalAppBarSlot = staticCompositionLocalOf<AppBarSlot?> { null }
+
+/** Shows [bar] in [slot]'s place (by default the shell's app bar) while [enabled] and this call stays composed. */
+@Composable
+internal fun ReplaceAppBar(enabled: Boolean, slot: AppBarSlot? = LocalAppBarSlot.current, bar: @Composable () -> Unit) {
+    slot ?: return
+    val latest by rememberUpdatedState(bar)
+    DisposableEffect(slot, enabled) {
+        if (!enabled) return@DisposableEffect onDispose {}
+        val claimed: @Composable () -> Unit = { latest() }
+        slot.claim(claimed)
+        onDispose { slot.release(claimed) }
+    }
 }
 
 /** The app chrome's tone, shared by the app bars and the rail so they read as one layer. */
@@ -311,15 +350,20 @@ internal fun <T : Any> UnderlineTabRow(
 /** A text tab label for [UnderlineTabRow] — accent + semibold when active, faint otherwise. */
 @Composable
 internal fun TabLabel(text: String, active: Boolean) {
+    // Both weights are always laid out, one hidden, so selecting a tab never changes its width.
+    Box(Modifier.padding(horizontal = 8.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
+        TabLabelText(text, FontWeight.Medium, DesignColors.InkFaint, shown = !active)
+        TabLabelText(text, FontWeight.SemiBold, DesignColors.Accent, shown = active)
+    }
+}
+
+@Composable
+private fun TabLabelText(text: String, weight: FontWeight, color: Color, shown: Boolean) {
     Text(
         text,
-        style = TextStyle(
-            fontSize = 13.sp,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (active) DesignColors.Accent else DesignColors.InkFaint,
-        ),
+        style = TextStyle(fontSize = 13.sp, fontWeight = weight, color = color),
         maxLines = 1,
-        modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+        modifier = if (shown) Modifier else Modifier.alpha(0f).clearAndSetSemantics {},
     )
 }
 
@@ -327,10 +371,15 @@ internal fun TabLabel(text: String, active: Boolean) {
  *  the glyphs keep the mockups' 16dp margins; vertical paddings are the mockup values unshaved
  *  (5/7dp, top +1 standing in for the under-status-bar margin) because the title and the search
  *  pill carry no inset — shaving the bottom made non-icon content sit visibly low in the bar. */
+
+/** [ActionIcon]'s default hit box: the height of an app bar row's content. */
+private val AppBarIconHitSize = 40.dp
+
 @Composable
 internal fun AppBarRow(content: @Composable RowScope.() -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 7.dp),
+        // A bar without icon buttons (Settings, Downloads in rail mode) keeps their height.
+        Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 7.dp).heightIn(min = AppBarIconHitSize),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
@@ -622,6 +671,8 @@ internal fun <T> SwipeTabSwitcher(
     leadingEdgeReserve: Dp = 0.dp,
     // Invoked when a drag begins in the leading-edge zone and heads toward centre (open the drawer).
     onLeadingEdgeSwipe: (() -> Unit)? = null,
+    // False holds the current entry: a drag switches nothing (the leading edge still opens the drawer).
+    swipeEnabled: Boolean = true,
     content: @Composable (T) -> Unit,
 ) {
     val layoutDirection = LocalLayoutDirection.current
@@ -647,7 +698,7 @@ internal fun <T> SwipeTabSwitcher(
         modifier
             .fillMaxSize()
             .clipToBounds()
-            .pointerInput(selected, entries, rtl, backStart, backEnd, drawerZone, onLeadingEdgeSwipe) {
+            .pointerInput(selected, entries, rtl, backStart, backEnd, drawerZone, onLeadingEdgeSwipe, swipeEnabled) {
                 val distance = SwipeSwitchDistance.toPx()
                 val velocity = SwipeSwitchVelocity.toPx()
                 val k = RubberPeekStiffness.toPx()
@@ -678,6 +729,12 @@ internal fun <T> SwipeTabSwitcher(
                     }
                     // No drawer here → still reserve the leading OS back inset.
                     if (drawerZone == 0f && distFromStart < backStart) return@awaitEachGesture
+                    if (!swipeEnabled) {
+                        // Still claimed, so the drag is not a tap on the item under it.
+                        val past = awaitHorizontalTouchSlopOrCancellation(down.id) { change, _ -> change.consume() }
+                        if (past != null) horizontalDrag(down.id) { it.consume() }
+                        return@awaitEachGesture
+                    }
                     var dx = 0f
                     val tracker = VelocityTracker()
                     tracker.addPosition(down.uptimeMillis, down.position)

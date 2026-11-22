@@ -7,17 +7,18 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use gpui_kit::assets::IconName as Lucide;
-use gpui_kit::component::{ActiveTheme, Icon, IconName, StyledExt, WindowExt, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme, Icon, StyledExt, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use ym_i18n::{Str, t, tf};
 
 use crate::a11y::{DragRow, FocusList, focusable};
+use crate::account::{AccountController, Accounts};
 use crate::account_view::AccountView;
-use crate::action_icon::action_icon;
+use crate::action_icon::{HIT, action_icon, auto_mirrored};
+use crate::assets::MaterialIcon;
 use crate::download_dialog::{DownloadPicker, DownloadTarget};
-use crate::downloads_view::{DownloadsView, RevealInLibrary};
+use crate::downloads_view::{DownloadsView, RevealInLibrary, SelectionModeChanged};
 use crate::feed::{FeedAction, FeedSource, FeedView, ItemAction, Navigate, Play, RequestSearch};
 use crate::feedback_view::FeedbackView;
 use crate::graph::{AppGraph, on_core};
@@ -28,13 +29,15 @@ use crate::mini_player::{MiniPlayer, ToggleNowPlaying};
 use crate::now_playing::{NowPlaying, NowPlayingEvent};
 use crate::play_again::{PlayAgainView, ResumeQueue};
 use crate::play_history::HistoryRecorder;
-use crate::playback::{Playback, QueueItem};
+use crate::playback::{Playback, PlaybackState, QueueItem};
+use crate::playlist_download::{OpenPlaylistDownload, PlaylistDownload, PlaylistDownloadDone};
 use crate::search_view::{SearchEvent, SearchMode, SearchView};
 use crate::settings_view::HOVER_ALPHA;
 use crate::settings_view::{LocaleChanged, SettingsView};
 use crate::signin::AccountChanged;
 use crate::signin_dialog::{SignInEvent, SignInView};
 use crate::sponsor_block::SponsorBlock;
+use crate::spring::Spring;
 use crate::tab_row::tab_row;
 
 mod incoming;
@@ -42,9 +45,11 @@ mod tray;
 
 const RAIL_COLLAPSED: f32 = 72.;
 const DRAWER_ICON_START: f32 = 20.;
+const DRAWER_ICON: f32 = 24.;
 /// Centres the expanded rail's section icons on the collapsed rail's centre line.
-const RAIL_ICON_START: f32 = RAIL_COLLAPSED / 2. - SECTION_ICON / 2.;
-const SECTION_ICON: f32 = 16.;
+const RAIL_ICON_START: f32 = RAIL_COLLAPSED / 2. - DRAWER_ICON / 2.;
+/// Outside the rail's width (the JVM app's `VerticalDivider`), or it pulls the collapsed icons off the toggle's line.
+const RAIL_DIVIDER: f32 = 1.;
 const RAIL_EXPANDED: f32 = 280.;
 /// The rail's logo, larger than the JVM rail's 24 so the mark reads at a glance.
 const RAIL_LOGO: f32 = 32.;
@@ -79,6 +84,19 @@ pub fn chrome_tone(cx: &App) -> Hsla {
     if cx.global::<ScrollHost>().lifted.get() { tones.lifted } else { tones.flat }
 }
 
+/// A section's top bar: icon buttons and the page title in a row on the chrome tone.
+pub fn top_bar(cx: &App) -> Div {
+    h_flex()
+        .gap_2()
+        .px_2()
+        .pt(px(BAR_PAD_TOP))
+        .pb(px(BAR_PAD_BOTTOM))
+        // A bar without icon buttons (Settings in rail mode) keeps their height.
+        .min_h(px(BAR_PAD_TOP + HIT + BAR_PAD_BOTTOM))
+        .items_center()
+        .bg(chrome_tone(cx))
+}
+
 /// The shadow a lifted bar casts on the page below it, laid over the page's top edge.
 pub fn bar_shadow(cx: &App) -> Option<Div> {
     cx.global::<ScrollHost>().lifted.get().then(|| elevation_shadow(false))
@@ -101,9 +119,15 @@ const SHADOW_REACH: f32 = 12.;
 const BAR_PAD_TOP: f32 = 2.;
 const BAR_PAD_BOTTOM: f32 = 3.;
 
-/// Shared with the JVM app: the section and Discover tab a restart resumes, by their stable ids.
-const LAST_SECTION_KEY: &str = "app.lastSection";
-const LAST_DISCOVER_TAB_KEY: &str = "app.lastDiscoverTab";
+/// Shared with the JVM app: the section and Discover tab a restart resumes, by their keys.
+const LAST_SECTION_KEY: &str = "nav.lastSection";
+const LAST_DISCOVER_TAB_KEY: &str = "discover.lastTab";
+/// Shared with the JVM app: the rail's state as the user last toggled it, `true` = expanded; absent = never toggled.
+const RAIL_EXPANDED_KEY: &str = "nav.railExpanded";
+/// The sections a restart resumes; any other resumes the last of these (the JVM `ResumableSections`).
+const RESUMABLE_SECTIONS: [Section; 3] = [Section::Discover, Section::Library, Section::YtMusic];
+/// Shared with the JVM app: the YT Music tab a restart resumes, by [MusicTab::key].
+const LAST_YTMUSIC_TAB_KEY: &str = "ytmusic.lastTab";
 const SEEK_STEP_MS: i64 = 10_000;
 const VOLUME_STEP: f32 = 0.05;
 const DOUBLE_ESCAPE: Duration = Duration::from_millis(500);
@@ -148,13 +172,27 @@ impl Section {
             .collect()
     }
 
-    /// The persisted id (the Compose `AppSection.id`): stable, never reused.
     fn id(self) -> i32 {
         Self::ALL.iter().position(|section| *section == self).unwrap_or(0) as i32 + 1
     }
 
-    fn from_id(id: i32) -> Option<Self> {
-        Self::ALL.get(usize::try_from(id - 1).ok()?).copied()
+    /// Fixed and shared with the JVM app's AppSection.key: never renamed.
+    fn key(self) -> &'static str {
+        match self {
+            Section::Discover => "discover",
+            Section::YtMusic => "ytmusic",
+            Section::Library => "library",
+            Section::PlayAgain => "play_again",
+            Section::Downloads => "downloads",
+            Section::Settings => "settings",
+            Section::Donate => "donate",
+            Section::Telegram => "telegram",
+            Section::Feedback => "feedback",
+        }
+    }
+
+    fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|section| section.key() == key)
     }
 
     fn label(self) -> &'static str {
@@ -171,17 +209,17 @@ impl Section {
         })
     }
 
-    fn icon(self) -> Lucide {
+    fn icon(self) -> Icon {
         match self {
-            Section::Discover => Lucide::MonitorPlay,
-            Section::YtMusic => Lucide::CirclePlay,
-            Section::Library => Lucide::LibraryBig,
-            Section::PlayAgain => Lucide::RotateCcwClock,
-            Section::Downloads => Lucide::Download,
-            Section::Settings => Lucide::Settings,
-            Section::Donate => Lucide::Heart,
-            Section::Telegram => Lucide::Send,
-            Section::Feedback => Lucide::MessageCircle,
+            Section::Discover => Icon::new(MaterialIcon::OndemandVideoOutlined),
+            Section::YtMusic => Icon::new(MaterialIcon::PlayCircleOutline),
+            Section::Library => Icon::new(MaterialIcon::LibraryMusicOutlined),
+            Section::PlayAgain => Icon::new(MaterialIcon::HistoryOutlined),
+            Section::Downloads => Icon::new(MaterialIcon::FileDownloadOutlined),
+            Section::Settings => Icon::new(MaterialIcon::SettingsOutlined),
+            Section::Donate => Icon::new(MaterialIcon::FavoriteBorderOutlined),
+            Section::Telegram => Icon::empty().path(crate::assets::TELEGRAM_ICON),
+            Section::Feedback => auto_mirrored(MaterialIcon::ChatOutlined),
         }
     }
 }
@@ -199,6 +237,21 @@ enum MusicTab {
 impl MusicTab {
     const ALL: [MusicTab; 5] =
         [MusicTab::Home, MusicTab::Explore, MusicTab::NewReleases, MusicTab::Charts, MusicTab::Library];
+
+    /// Fixed and shared with the JVM app's YtMusicTab.key: never renamed.
+    fn key(self) -> &'static str {
+        match self {
+            MusicTab::Home => "home",
+            MusicTab::Explore => "explore",
+            MusicTab::NewReleases => "new_releases",
+            MusicTab::Charts => "charts",
+            MusicTab::Library => "library",
+        }
+    }
+
+    fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|tab| tab.key() == key)
+    }
 
     /// A guest has no account library.
     fn listed(guest: bool) -> Vec<MusicTab> {
@@ -252,7 +305,6 @@ impl DiscoverTab {
             .collect()
     }
 
-    /// The persisted id (the Compose `DiscoverTab.id`).
     fn id(self) -> i32 {
         match self {
             DiscoverTab::Home => 1,
@@ -263,18 +315,29 @@ impl DiscoverTab {
         }
     }
 
-    fn icon(self) -> Lucide {
+    fn icon(self) -> Icon {
         match self {
-            DiscoverTab::Home => Lucide::House,
-            DiscoverTab::Trending => Lucide::Music,
-            DiscoverTab::Recommended => Lucide::Star,
-            DiscoverTab::TopTracks => Lucide::TrendingUp,
-            DiscoverTab::Account => Lucide::User,
+            DiscoverTab::Home => Icon::new(MaterialIcon::HomeOutlined),
+            DiscoverTab::Trending => Icon::new(MaterialIcon::MusicNoteOutlined),
+            DiscoverTab::Recommended => Icon::new(MaterialIcon::StarBorder),
+            DiscoverTab::TopTracks => auto_mirrored(MaterialIcon::TrendingUpOutlined),
+            DiscoverTab::Account => Icon::new(MaterialIcon::PersonOutlined),
         }
     }
 
-    fn from_id(id: i32) -> Option<Self> {
-        Self::ALL.into_iter().find(|tab| tab.id() == id)
+    /// Fixed and shared with the JVM app's DiscoverTab.key: never renamed.
+    fn key(self) -> &'static str {
+        match self {
+            DiscoverTab::Home => "home",
+            DiscoverTab::Trending => "music",
+            DiscoverTab::Recommended => "recommended",
+            DiscoverTab::TopTracks => "top_tracks",
+            DiscoverTab::Account => "account",
+        }
+    }
+
+    fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|tab| tab.key() == key)
     }
 
     fn label(self) -> &'static str {
@@ -335,13 +398,21 @@ enum SoundDialog {
     Equalizer,
 }
 
-/// A surface pushed over a section's root; each draws its own back bar.
+/// A surface pushed over a section's root; each draws its own back bar. A stack holds at most one
+/// search layer: opening search again raises it.
 enum Layer {
     Feed { view: Entity<FeedView>, title: SharedString },
     Search(Entity<SearchView>),
     LibrarySearch(Entity<LibrarySearchView>),
-    Results { view: Entity<FeedView>, query: String },
     SignIn(Entity<SignInView>),
+    PlaylistDownload(Entity<PlaylistDownload>),
+}
+
+/// What a pushed page's search button does.
+enum LayerSearch {
+    /// The search layer's results bar: back to its input.
+    Edit(Entity<SearchView>),
+    Open(SearchMode),
 }
 
 #[derive(Default)]
@@ -360,10 +431,12 @@ pub struct Shell {
     music_tab: MusicTab,
     roots: HashMap<FeedSource, Entity<FeedView>>,
     stacks: HashMap<Section, Stack>,
-    /// The rail's state the user chose; cleared when a width breakpoint flips.
-    rail_manual: Option<bool>,
-    /// The (rail mode, expanded-by-width) the window last had.
-    rail_auto: Option<(bool, bool)>,
+    /// The rail's state the user chose, restored at start; cleared when the expanded-by-width breakpoint flips.
+    rail_toggled: Option<bool>,
+    /// Whether the window was wide enough to start the rail expanded, when last laid out.
+    rail_starts_open_seen: Option<bool>,
+    /// The rail panel's width easing to its state's; none while the rail is not shown.
+    rail_width: Option<Spring>,
     drawer_open: bool,
     /// Holds keyboard focus when nothing else does, so the shortcuts always reach the Shell.
     focus: FocusHandle,
@@ -424,7 +497,14 @@ pub struct Shell {
 
 impl Shell {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let playback = cx.new(|cx| Playback::new(cx));
+        let accounts = cx.new(AccountController::new);
+        cx.set_global(Accounts(accounts.clone()));
+        let account_changed = cx.subscribe(&accounts, |shell, _, _: &AccountChanged, cx| shell.account_changed(cx));
+        let playback = cx.new(|cx| {
+            let playback = Playback::new(cx);
+            Playback::warm_up_later(cx);
+            playback
+        });
         let mini_player = cx.new(|cx| MiniPlayer::new(playback.clone(), window, cx));
         let sponsor_block = cx.new(|cx| SponsorBlock::new(playback.clone(), cx));
         let now_playing = cx.new(|cx| NowPlaying::new(playback.clone(), sponsor_block.clone(), window, cx));
@@ -446,6 +526,7 @@ impl Shell {
                     shell.push(source, Some(SharedString::from(title.clone())), cx);
                 }
                 NowPlayingEvent::LibraryGroup { album, name } => {
+                    shell.stacks.entry(Section::Library).or_default().pushed.clear();
                     shell.select_section(Section::Library, cx);
                     let view = shell.library_view(cx);
                     let (album, name) = (*album, name.clone());
@@ -454,7 +535,10 @@ impl Shell {
                             let kind = if album { GroupKind::Album } else { GroupKind::Artist };
                             library.reveal_group(kind, name, cx)
                         }
-                        None => library.select_tab_index(if album { 4 } else { 3 }, cx),
+                        None => {
+                            library.abandon_selection(cx);
+                            library.select_tab_index(if album { 4 } else { 3 }, cx)
+                        }
                     });
                 }
                 NowPlayingEvent::SignIn => {
@@ -526,17 +610,31 @@ impl Shell {
         });
         let (settings, guest) = (cx.global::<AppGraph>().settings.clone(), cx.global::<AppGraph>().guest);
         let section = settings
-            .int(LAST_SECTION_KEY, 1)
+            .get_raw(LAST_SECTION_KEY)
             .ok()
-            .and_then(Section::from_id)
-            .filter(|section| !guest || *section != Section::PlayAgain)
+            .flatten()
+            .as_deref()
+            .and_then(Section::from_key)
+            .filter(|section| RESUMABLE_SECTIONS.contains(section))
             .unwrap_or(Section::Discover);
         let discover_tab = settings
-            .int(LAST_DISCOVER_TAB_KEY, 1)
+            .get_raw(LAST_DISCOVER_TAB_KEY)
             .ok()
-            .and_then(DiscoverTab::from_id)
+            .flatten()
+            .as_deref()
+            .and_then(DiscoverTab::from_key)
             .filter(|tab| DiscoverTab::listed(guest).contains(tab))
-            .unwrap_or(DiscoverTab::Home);
+            // Trending music on a fresh install: Home stays empty until YouTube has watch history.
+            .unwrap_or(DiscoverTab::Trending);
+        let music_tab = settings
+            .get_raw(LAST_YTMUSIC_TAB_KEY)
+            .ok()
+            .flatten()
+            .as_deref()
+            .and_then(MusicTab::from_key)
+            .filter(|tab| MusicTab::listed(guest).contains(tab))
+            .unwrap_or(MusicTab::Home);
+        let rail_toggled = settings.get_raw(RAIL_EXPANDED_KEY).ok().flatten().and_then(|raw| raw.parse().ok());
         let focus = cx.focus_handle();
         crate::a11y::track_root(&focus, cx);
         cx.set_global(ScrollHost::default());
@@ -568,11 +666,12 @@ impl Shell {
             _sponsor_block: sponsor_block,
             section,
             discover_tab,
-            music_tab: MusicTab::Home,
+            music_tab,
             roots: HashMap::new(),
             stacks: HashMap::new(),
-            rail_manual: None,
-            rail_auto: None,
+            rail_toggled,
+            rail_starts_open_seen: None,
+            rail_width: None,
             drawer_open: false,
             focus,
             nav_focus: FocusList::new(None),
@@ -590,7 +689,16 @@ impl Shell {
             tray_popup_closed_at: None,
             hidden_to_tray: false,
             _save_bounds: None,
-            _subscriptions: vec![toggle, now_playing_events, visibility, activation, bounds, tray_state, focus_lost],
+            _subscriptions: vec![
+                toggle,
+                now_playing_events,
+                visibility,
+                activation,
+                bounds,
+                tray_state,
+                focus_lost,
+                account_changed,
+            ],
         }
     }
 
@@ -621,20 +729,31 @@ impl Shell {
     }
 
     pub fn show_window(&mut self, cx: &mut Context<Self>) {
+        self.show_window_with_token(None, cx);
+    }
+
+    /// `activation_token`: the XDG activation token of the user action, minted by the client it
+    /// happened in (the tray host).
+    fn show_window_with_token(&mut self, activation_token: Option<String>, cx: &mut Context<Self>) {
         if cfg!(target_os = "linux") {
-            // The compositor may refuse to raise the minimized window (GNOME on Wayland without a
-            // fresh input serial), so it counts as back only once it is active.
+            // The compositor may refuse to raise the minimized window (GNOME on Wayland without an
+            // activation token), so it counts as back only once it is active.
             let window = self.window;
             // The caller may be inside this window's update; activating it has to wait for that.
             cx.defer(move |cx| {
-                window.update(cx, |_, window, _| window.activate_window()).ok();
+                window
+                    .update(cx, |_, window, _| match activation_token {
+                        Some(token) => window.activate_window_with_token(token),
+                        None => window.activate_window(),
+                    })
+                    .ok();
             });
             return;
         }
         // Back to a regular app before activating: AppKit can drop an activation made as an accessory app.
         self.window_shown(cx);
         crate::desktop::show_main_window();
-        cx.activate(true);
+        crate::desktop::activate_app(cx);
     }
 
     fn window_shown(&mut self, cx: &mut Context<Self>) {
@@ -655,6 +774,15 @@ impl Shell {
         }
     }
 
+    /// F8, K, or Space in Now Playing: play/pause, and an open Now Playing shows its controls with
+    /// Play focused.
+    fn toggle_play_from_key(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.playback.update(cx, |playback, cx| playback.toggle(cx));
+        if self.now_playing_open {
+            self.now_playing.update(cx, |now_playing, cx| now_playing.take_focus(window, cx));
+        }
+    }
+
     fn quit(window: &Window, cx: &mut App) {
         let log = cx.global::<AppGraph>().log.fork("window");
         crate::desktop::save_bounds(window, log, cx);
@@ -665,9 +793,9 @@ impl Shell {
         use crate::desktop::TrayCommand;
         match command {
             TrayCommand::Popup(anchor) => self.toggle_tray_popup(anchor, cx),
-            TrayCommand::Open => {
+            TrayCommand::Open(activation_token) => {
                 self.close_tray_popup(cx);
-                self.show_window(cx);
+                self.show_window_with_token(activation_token, cx);
             }
             TrayCommand::TogglePlay => self.playback.update(cx, |playback, cx| playback.toggle(cx)),
             TrayCommand::Stop => {
@@ -679,6 +807,7 @@ impl Shell {
                 }
             }
             TrayCommand::Quit => Self::quit(window, cx),
+            TrayCommand::CompleteActivation(token) => window.complete_activation_token(token),
             TrayCommand::Lost => {
                 if self.hidden_to_tray {
                     self.show_window(cx);
@@ -778,7 +907,7 @@ impl Shell {
         }
         let Ok(route) = std::env::var("YMUSIC_DEV_ROUTE") else { return };
         match route.split_once(':') {
-            Some(("search", query)) => self.show_results(query.to_owned(), cx),
+            Some(("search", query)) => self.dev_search(query.to_owned(), window, cx),
             Some(("searchfilter", spec)) => self.dev_search_filter(spec, window, cx),
             Some(("musictab", index)) => {
                 self.section = Section::YtMusic;
@@ -848,12 +977,8 @@ impl Shell {
             }
             Some(("quickdownload", video_id)) => {
                 self.section = Section::Downloads;
-                let target = DownloadTarget {
-                    video_id: video_id.to_owned(),
-                    title: video_id.to_owned(),
-                    artist: None,
-                    thumbnail_url: None,
-                };
+                let target =
+                    DownloadTarget { video_id: video_id.to_owned(), title: video_id.to_owned(), thumbnail_url: None };
                 window.defer(cx, move |window, cx| crate::quick_download::launch(target, window, cx));
             }
             _ if route == "quickpreset" => {
@@ -864,7 +989,6 @@ impl Shell {
                 self.pending_download = Some(DownloadTarget {
                     video_id: video_id.to_owned(),
                     title: video_id.to_owned(),
-                    artist: None,
                     thumbnail_url: Some(format!("https://i.ytimg.com/vi/{video_id}/hqdefault.jpg")),
                 });
             }
@@ -897,7 +1021,7 @@ impl Shell {
                 let tabs = DiscoverTab::listed(self.guest);
                 self.discover_tab = tabs[index.parse::<usize>().unwrap_or(0).min(tabs.len() - 1)];
             }
-            _ if route == "searchinput" => self.open_search(String::new(), window, cx),
+            _ if route == "searchinput" => self.section_search(window, cx),
             _ if route == "drawer" => self.drawer_open = true,
             _ if route == "music" => self.section = Section::YtMusic,
             _ if route == "playagain" => self.section = Section::PlayAgain,
@@ -969,8 +1093,7 @@ impl Shell {
                 root.update(cx, |root, cx| root.reload(cx));
             }
         });
-        let account = cx.subscribe(&view, |shell, _, _: &AccountChanged, cx| shell.account_changed(cx));
-        self._subscriptions.extend([locale, account]);
+        self._subscriptions.push(locale);
         self.settings = Some(view.clone());
         view
     }
@@ -982,8 +1105,8 @@ impl Shell {
         let service = cx.global::<AppGraph>().downloads.clone();
         let view = cx.new(|cx| DownloadsView::new(service, cx));
         let play = cx.subscribe(&view, |shell, _, event: &PlayLocal, cx| {
-            let (items, index) = (event.items.clone(), event.index);
-            shell.playback.update(cx, |playback, cx| playback.play_queue(items, index, cx));
+            let (items, index, shuffle) = (event.items.clone(), event.index, event.shuffle);
+            shell.playback.update(cx, |playback, cx| playback.play_queue(items, index, shuffle, cx));
         });
         let reveal = cx.subscribe(&view, |shell, _, event: &RevealInLibrary, cx| {
             shell.stacks.entry(Section::Library).or_default().pushed.clear();
@@ -992,7 +1115,8 @@ impl Shell {
             let file = event.file.clone();
             library.update(cx, |library, cx| library.reveal_file(file, cx));
         });
-        self._subscriptions.extend([play, reveal]);
+        let selection = cx.subscribe(&view, |_, _, _: &SelectionModeChanged, cx| cx.notify());
+        self._subscriptions.extend([play, reveal, selection]);
         self.downloads = Some(view.clone());
         view
     }
@@ -1006,7 +1130,10 @@ impl Shell {
         let resume = cx.subscribe(&view, |shell, _, event: &ResumeQueue, cx| {
             let (queue_id, items, index, start_ms) =
                 (event.queue_id.clone(), event.items.clone(), event.index, event.start_ms);
-            shell.playback.update(cx, |playback, cx| playback.resume_queue(queue_id, items, index, start_ms, cx));
+            let source_token = event.source_token.clone();
+            shell
+                .playback
+                .update(cx, |playback, cx| playback.resume_queue(queue_id, items, index, start_ms, source_token, cx));
         });
         self._subscriptions.push(resume);
         self.play_again = Some(view.clone());
@@ -1020,16 +1147,15 @@ impl Shell {
         let store = cx.global::<AppGraph>().media.clone();
         let view = cx.new(|cx| LibraryView::new(store, cx));
         let play = cx.subscribe(&view, |shell, _, event: &PlayLocal, cx| {
-            let (items, index) = (event.items.clone(), event.index);
-            shell.playback.update(cx, |playback, cx| playback.play_queue(items, index, cx));
+            let (items, index, shuffle) = (event.items.clone(), event.index, event.shuffle);
+            shell.playback.update(cx, |playback, cx| playback.play_queue(items, index, shuffle, cx));
         });
-        let queue =
-            cx.subscribe(&view, |shell, _, event: &QueueLocal, cx| {
-                let (item, next) = (event.item.clone(), event.next);
-                shell.playback.update(cx, |playback, cx| {
-                    if next { playback.queue_next(item, cx) } else { playback.queue_last(item, cx) }
-                });
+        let queue = cx.subscribe(&view, |shell, _, event: &QueueLocal, cx| {
+            let (items, next) = (event.items.clone(), event.next);
+            shell.playback.update(cx, |playback, cx| {
+                if next { playback.queue_next(items, cx) } else { playback.queue_last(items, cx) }
             });
+        });
         self._subscriptions.extend([play, queue]);
         self.library = Some(view.clone());
         view
@@ -1043,14 +1169,18 @@ impl Shell {
             let text = tokio::fs::read_to_string(&path).await.unwrap_or_default();
             let cookies = ym_signin::parse_cookie_paste(&text);
             log.info(&format!("paste parsed {} cookies", cookies.len()));
-            match crate::signin::sign_in_with_cookies(cookies, jar, engines, &log).await {
-                Ok(account) => log.info(&format!("signed in as {}", account.name.unwrap_or_default())),
-                Err(error) => log.warn("sign-in failed", Some(&error)),
+            let result = crate::signin::sign_in_with_cookies(cookies, jar, engines, &log).await;
+            if let Err(error) = &result {
+                log.warn("sign-in failed", Some(error));
             }
+            result.is_ok()
         });
-        cx.spawn(async move |this, cx| {
-            done.await;
-            this.update(cx, |shell, cx| shell.account_changed(cx)).ok();
+        cx.spawn(async move |_, cx| {
+            if done.await == Some(true) {
+                cx.update(|cx| {
+                    AccountController::global(cx).update(cx, |controller, cx| controller.on_login_complete(cx))
+                });
+            }
         })
         .detach();
     }
@@ -1144,6 +1274,7 @@ impl Shell {
         let graph = cx.global::<AppGraph>();
         let (downloads, settings, media, log) =
             (graph.downloads.clone(), graph.settings.clone(), graph.media.clone(), graph.log.fork("dev-download"));
+        let history = graph.history.clone();
         let (format, video_id) = spec.split_once(':').unwrap_or(("M4A", spec));
         let Some(format) = ym_download::DownloadFormat::from_name(format) else {
             log.warn(&format!("unknown download format {format}"), None);
@@ -1160,11 +1291,11 @@ impl Shell {
                 log.warn(&format!("the dev download folder could not be saved: {error}"), None);
             }
             if let Some(dir) = std::env::var_os("YMUSIC_DEV_DOWNLOAD_DIR").map(std::path::PathBuf::from) {
-                let (media, register_log) = (media.clone(), log.clone());
+                let (media, history, register_log) = (media.clone(), history.clone(), log.clone());
                 let registered =
                     tokio::task::spawn_blocking(move || {
                         match crate::downloads::register_download_folder(&media, &dir) {
-                            Ok(()) => crate::downloads::scan_download_folder(&media, &dir, &register_log),
+                            Ok(()) => crate::downloads::scan_download_folder(&media, &history, &dir, &register_log),
                             Err(error) => register_log
                                 .warn("the dev download folder could not be added to the Library", Some(&error)),
                         }
@@ -1227,7 +1358,7 @@ impl Shell {
                 Ok(offer) => {
                     log.info(&format!("scan {} and confirm {}", offer.qr_payload(), offer.confirmation_code()));
                     match crate::signin::await_device_link(service, offer, jar, engines, &log).await {
-                        Ok(account) => log.info(&format!("signed in as {}", account.name.unwrap_or_default())),
+                        Ok(()) => log.info("signed in"),
                         Err(error) => log.warn("device link failed", Some(&error)),
                     }
                 }
@@ -1237,21 +1368,7 @@ impl Shell {
     }
 
     fn dev_sign_out(&mut self, cx: &mut Context<Self>) {
-        let graph = cx.global::<AppGraph>();
-        let (jar, engines, log) = (graph.cookies.clone(), graph.engines.clone(), graph.log.fork("signout"));
-        let done = on_core(cx, async move {
-            let result = crate::signin::sign_out(jar, engines, &log).await;
-            match &result {
-                Ok(()) => log.info("signed out"),
-                Err(error) => log.warn("sign-out failed", Some(error)),
-            }
-            result
-        });
-        cx.spawn(async move |this, cx| {
-            done.await;
-            this.update(cx, |shell, cx| shell.account_changed(cx)).ok();
-        })
-        .detach();
+        AccountController::global(cx).update(cx, |controller, cx| controller.sign_out(cx));
     }
 
     /// Resolves a shared YouTube link and plays it when it names a video.
@@ -1286,10 +1403,15 @@ impl Shell {
         });
         let play = cx.subscribe(&view, |shell, _, event: &Play, cx| {
             let (item, queue, shuffle) = (event.item.clone(), event.queue.clone(), event.shuffle);
+            let (playlist, playlist_total) = (event.playlist.clone(), event.playlist_total);
             shell.playback.update(cx, |playback, cx| {
-                playback.play_feed(item, queue, cx);
+                // The JVM playAll sets the shuffle mode before the queue starts.
                 if shuffle {
                     playback.set_shuffle(true, cx);
+                }
+                match (playlist, queue) {
+                    (Some(url), Some(items)) => playback.play_playlist(item, items, url, playlist_total, cx),
+                    (_, queue) => playback.play_feed(item, queue, cx),
                 }
             });
         });
@@ -1297,17 +1419,16 @@ impl Shell {
             let item = event.item.clone();
             match event.action {
                 FeedAction::QueueNext => {
-                    shell.playback.update(cx, |playback, cx| playback.queue_next(QueueItem::from_feed(&item), cx))
+                    shell.playback.update(cx, |playback, cx| playback.queue_next(vec![QueueItem::from_feed(&item)], cx))
                 }
                 FeedAction::QueueLast => {
-                    shell.playback.update(cx, |playback, cx| playback.queue_last(QueueItem::from_feed(&item), cx))
+                    shell.playback.update(cx, |playback, cx| playback.queue_last(vec![QueueItem::from_feed(&item)], cx))
                 }
                 FeedAction::Radio => shell.playback.update(cx, |playback, cx| playback.play_feed(item, None, cx)),
                 FeedAction::Download => {
                     shell.pending_download = Some(DownloadTarget {
                         video_id: item.id.clone(),
                         title: item.title.clone(),
-                        artist: item.channel_title.clone().or_else(|| item.subtitle_line1.clone()),
                         thumbnail_url: item.thumbs.last().map(|thumb| {
                             if thumb.url.starts_with("//") { format!("https:{}", thumb.url) } else { thumb.url.clone() }
                         }),
@@ -1316,8 +1437,22 @@ impl Shell {
                 }
             }
         });
-        self._subscriptions.extend([navigate, search, play, action]);
+        let download = cx.subscribe(&view, |shell, _, event: &OpenPlaylistDownload, cx| {
+            shell.open_playlist_download(event.0.clone(), cx);
+        });
+        self._subscriptions.extend([navigate, search, play, action, download]);
         view
+    }
+
+    fn open_playlist_download(&mut self, view: Entity<PlaylistDownload>, cx: &mut Context<Self>) {
+        let done = cx.subscribe(&view, |shell, view, _: &PlaylistDownloadDone, cx| {
+            for stack in shell.stacks.values_mut() {
+                stack.pushed.retain(|layer| !matches!(layer, Layer::PlaylistDownload(open) if *open == view));
+            }
+            cx.notify();
+        });
+        self._subscriptions.push(done);
+        self.push_layer(Layer::PlaylistDownload(view), cx);
     }
 
     fn root(&mut self, source: FeedSource, cx: &mut Context<Self>) -> Entity<FeedView> {
@@ -1330,9 +1465,13 @@ impl Shell {
     }
 
     /// The feed on screen: the top layer's, else the section root's.
-    fn visible_feed(&self) -> Option<Entity<FeedView>> {
+    fn visible_feed(&self, cx: &App) -> Option<Entity<FeedView>> {
         match self.stacks.get(&self.section).and_then(|stack| stack.pushed.last()) {
-            Some(Layer::Feed { view, .. } | Layer::Results { view, .. }) => Some(view.clone()),
+            Some(Layer::Feed { view, .. }) => Some(view.clone()),
+            Some(Layer::Search(view)) => {
+                let search = view.read(cx);
+                if search.editing() { None } else { search.results().cloned() }
+            }
             Some(_) => None,
             None => match self.section {
                 Section::Discover => self.roots.get(&self.discover_tab.source()).cloned(),
@@ -1344,6 +1483,11 @@ impl Shell {
 
     fn push_layer(&mut self, layer: Layer, cx: &mut Context<Self>) {
         self.now_playing_open = false;
+        if self.section == Section::Library
+            && let Some(view) = &self.library
+        {
+            view.update(cx, |view, cx| view.abandon_selection(cx));
+        }
         self.stacks.entry(self.section).or_default().pushed.push(layer);
         cx.notify();
     }
@@ -1363,12 +1507,28 @@ impl Shell {
         {
             return;
         }
+        if let Some(Layer::Search(view)) = self.stacks.get(&self.section).and_then(|stack| stack.pushed.last()) {
+            let search = view.read(cx);
+            if search.editing() && search.submitted().is_some() {
+                view.clone().update(cx, |view, cx| view.back(cx));
+                cx.notify();
+                return;
+            }
+        }
         if self.stacks.entry(self.section).or_default().pushed.pop().is_some() {
+            self.rebuild_local_discover(cx);
             cx.notify();
-        } else if self.section == Section::Library
+            return;
+        }
+        if self.section == Section::Library
             && let Some(library) = self.library.clone()
+            && library.update(cx, |library, cx| library.back(cx))
         {
-            library.update(cx, |library, cx| library.back(cx));
+            return;
+        }
+        // The JVM onBack's last step: any other section goes back to Discover.
+        if self.section != Section::Discover {
+            self.select_section(Section::Discover, cx);
         }
     }
 
@@ -1382,7 +1542,7 @@ impl Shell {
                 stack.pushed.retain(|layer| !matches!(layer, Layer::SignIn(open) if *open == view));
             }
             if matches!(event, SignInEvent::Done) {
-                shell.account_changed(cx);
+                AccountController::global(cx).update(cx, |controller, cx| controller.on_login_complete(cx));
             }
             cx.notify();
         });
@@ -1390,50 +1550,112 @@ impl Shell {
         self.push_layer(Layer::SignIn(view), cx);
     }
 
-    /// Everything that shows who is signed in re-checks, and every feed reloads under the new
-    /// identity (the Account and YT Music Library feeds reload through their views' re-check).
+    /// Every feed reloads under the new identity (the Account and YT Music Library feeds through
+    /// their views, which follow the account controller).
     fn account_changed(&mut self, cx: &mut Context<Self>) {
+        let signed_in = AccountController::global(cx).read(cx).signed_in;
+        // The JVM AccountController: the next YouTube load re-inits under the new identity, and after a
+        // sign-in an item that failed for want of one (or a captcha) plays again.
+        self.playback.update(cx, |playback, cx| {
+            playback.refresh_on_next();
+            let blocked = matches!(&playback.state, PlaybackState::Error(failure) if failure.needs_sign_in() || failure.code == "captcha");
+            if signed_in && blocked {
+                playback.play(cx);
+            }
+        });
         for (source, root) in &self.roots {
             if !matches!(source, FeedSource::Account | FeedSource::MusicLibrary) {
                 root.update(cx, |root, cx| root.reload(cx));
             }
         }
-        for view in [self.account.clone(), self.music_library.clone()].into_iter().flatten() {
-            view.update(cx, |view, cx| view.refresh(cx));
-        }
-        if let Some(settings) = &self.settings {
-            settings.update(cx, |settings, cx| settings.refresh_account(cx));
-        }
-        if let Some(downloads) = &self.downloads {
+        if signed_in && let Some(downloads) = &self.downloads {
             downloads.update(cx, |downloads, _| downloads.signed_in());
         }
     }
 
     /// The section's own search: YouTube on Discover, YouTube Music on YT Music, local files on Library.
-    fn open_search(&mut self, query: String, window: &mut Window, cx: &mut Context<Self>) {
-        let mode = match self.section {
-            Section::Library => return self.open_library_search(window, cx),
-            Section::YtMusic => SearchMode::Music,
-            _ => SearchMode::YouTube,
-        };
-        let view = cx.new(|cx| SearchView::new(&query, mode, window, cx));
-        let events = cx.subscribe(&view, |shell, _, event: &SearchEvent, cx| match event {
-            SearchEvent::Submit(query) => shell.show_results(query.clone(), cx),
+    fn section_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match self.section {
+            Section::Library => self.open_library_search(window, cx),
+            Section::YtMusic => self.open_search(SearchMode::Music, window, cx),
+            Section::Discover => self.open_search(SearchMode::YouTube, window, cx),
+            _ => {}
+        }
+    }
+
+    /// Moves the stack's first layer that `find` picks to the top; false when there is none.
+    fn raise_layer(&mut self, find: impl Fn(&Layer) -> bool, cx: &mut Context<Self>) -> bool {
+        let stack = self.stacks.entry(self.section).or_default();
+        let Some(index) = stack.pushed.iter().position(find) else { return false };
+        if index + 1 < stack.pushed.len() {
+            let layer = stack.pushed.remove(index);
+            if let Layer::Search(view) = &layer {
+                view.update(cx, |view, cx| view.raised(cx));
+            }
+            stack.pushed.push(layer);
+        }
+        self.now_playing_open = false;
+        cx.notify();
+        true
+    }
+
+    /// Raises the stack's search layer with its query and results, or pushes a new one in `mode`.
+    fn open_search(&mut self, mode: SearchMode, window: &mut Window, cx: &mut Context<Self>) {
+        if self.raise_layer(|layer| matches!(layer, Layer::Search(_)), cx) {
+            return;
+        }
+        let view = cx.new(|cx| SearchView::new(mode, window, cx));
+        let events = cx.subscribe_in(&view, window, |shell, view, event: &SearchEvent, window, cx| match event {
+            SearchEvent::Submit(query) => shell.run_search(view, query.clone(), window, cx),
             SearchEvent::Back => shell.back(cx),
         });
         self._subscriptions.push(events);
         self.push_layer(Layer::Search(view), cx);
     }
 
+    /// Shows `query`'s results in the search layer, in the service it searches.
+    fn run_search(&mut self, view: &Entity<SearchView>, query: String, window: &mut Window, cx: &mut Context<Self>) {
+        let source = match view.read(cx).mode() {
+            SearchMode::Music => FeedSource::MusicSearch(query.clone(), None),
+            SearchMode::YouTube => FeedSource::Search(query.clone(), None),
+        };
+        let results = self.feed_view(source, None, cx);
+        view.update(cx, |view, cx| view.show_results(query, results, window, cx));
+        cx.notify();
+    }
+
+    fn top_search(&self) -> Option<Entity<SearchView>> {
+        match self.stacks.get(&self.section).and_then(|stack| stack.pushed.last()) {
+            Some(Layer::Search(view)) => Some(view.clone()),
+            _ => None,
+        }
+    }
+
+    /// Runs `query` in Discover's search layer, as the JVM searchOnline does.
+    fn search_online(&mut self, query: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.select_section(Section::Discover, cx);
+        self.open_search(SearchMode::YouTube, window, cx);
+        if let Some(view) = self.top_search() {
+            self.run_search(&view, query, window, cx);
+        }
+    }
+
+    fn dev_search(&mut self, query: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.section_search(window, cx);
+        if let Some(view) = self.top_search() {
+            self.run_search(&view, query, window, cx);
+        }
+    }
+
     fn open_library_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.raise_layer(|layer| matches!(layer, Layer::LibrarySearch(_)), cx) {
+            return;
+        }
         let store = cx.global::<AppGraph>().media.clone();
         let view = cx.new(|cx| LibrarySearchView::new(store, window, cx));
-        let events = cx.subscribe(&view, |shell, _, event: &LibrarySearchEvent, cx| match event {
+        let events = cx.subscribe_in(&view, window, |shell, _, event: &LibrarySearchEvent, window, cx| match event {
             LibrarySearchEvent::Back => shell.back(cx),
-            LibrarySearchEvent::SearchOnline(query) => {
-                shell.select_section(Section::Discover, cx);
-                shell.show_results(query.clone(), cx);
-            }
+            LibrarySearchEvent::SearchOnline(query) => shell.search_online(query.clone(), window, cx),
             LibrarySearchEvent::GoTo(kind, name) => {
                 shell.back(cx);
                 let (kind, name) = (*kind, name.clone());
@@ -1446,16 +1668,15 @@ impl Shell {
             }
         });
         let play = cx.subscribe(&view, |shell, _, event: &PlayLocal, cx| {
-            let (items, index) = (event.items.clone(), event.index);
-            shell.playback.update(cx, |playback, cx| playback.play_queue(items, index, cx));
+            let (items, index, shuffle) = (event.items.clone(), event.index, event.shuffle);
+            shell.playback.update(cx, |playback, cx| playback.play_queue(items, index, shuffle, cx));
         });
-        let queue =
-            cx.subscribe(&view, |shell, _, event: &QueueLocal, cx| {
-                let (item, next) = (event.item.clone(), event.next);
-                shell.playback.update(cx, |playback, cx| {
-                    if next { playback.queue_next(item, cx) } else { playback.queue_last(item, cx) }
-                });
+        let queue = cx.subscribe(&view, |shell, _, event: &QueueLocal, cx| {
+            let (items, next) = (event.items.clone(), event.next);
+            shell.playback.update(cx, |playback, cx| {
+                if next { playback.queue_next(items, cx) } else { playback.queue_last(items, cx) }
             });
+        });
         self._subscriptions.extend([events, play, queue]);
         self.push_layer(Layer::LibrarySearch(view), cx);
     }
@@ -1463,12 +1684,11 @@ impl Shell {
     fn dev_search_filter(&mut self, spec: &str, window: &mut Window, cx: &mut Context<Self>) {
         let (option, query) = spec.split_once(':').unwrap_or(("0", spec));
         let option = option.parse::<usize>().unwrap_or(0);
-        self.show_results(query.to_owned(), cx);
-        let Some(Layer::Results { view, .. }) = self.stacks.get(&self.section).and_then(|stack| stack.pushed.last())
-        else {
+        self.dev_search(query.to_owned(), window, cx);
+        let Some(view) = self.top_search().and_then(|search| search.read(cx).results().cloned()) else {
             return;
         };
-        let (view, executor) = (view.clone(), cx.background_executor().clone());
+        let executor = cx.background_executor().clone();
         cx.spawn_in(window, async move |_, cx| {
             let wait_for_groups = async |cx: &mut AsyncWindowContext| {
                 for _ in 0..60 {
@@ -1494,21 +1714,6 @@ impl Shell {
         .detach();
     }
 
-    /// Results replace the search input they came from, and search the section's service.
-    fn show_results(&mut self, query: String, cx: &mut Context<Self>) {
-        let stack = self.stacks.entry(self.section).or_default();
-        if matches!(stack.pushed.last(), Some(Layer::Search(_))) {
-            stack.pushed.pop();
-        }
-        let source = if self.section == Section::YtMusic {
-            FeedSource::MusicSearch(query.clone(), None)
-        } else {
-            FeedSource::Search(query.clone(), None)
-        };
-        let view = self.feed_view(source, None, cx);
-        self.push_layer(Layer::Results { view, query }, cx);
-    }
-
     fn select_section(&mut self, section: Section, cx: &mut Context<Self>) {
         if section == Section::Telegram {
             let url =
@@ -1518,17 +1723,31 @@ impl Shell {
         }
         self.now_playing_open = false;
         self.drawer_open = false;
-        if self.section == section {
-            // Re-selecting the current section returns to its root.
-            self.stacks.entry(section).or_default().pushed.clear();
-        }
+        let previous = self.section;
         self.section = section;
         if section == Section::PlayAgain
             && let Some(view) = &self.play_again
         {
             view.update(cx, |view, cx| view.refresh(cx));
         }
-        persist_setting(cx, LAST_SECTION_KEY, section.id().to_string());
+        if RESUMABLE_SECTIONS.contains(&section) {
+            persist_setting(cx, LAST_SECTION_KEY, section.key().to_owned());
+        }
+        if previous != section {
+            self.rebuild_local_discover(cx);
+        }
+        if previous == Section::Downloads
+            && section != Section::Downloads
+            && let Some(view) = &self.downloads
+        {
+            view.update(cx, |view, cx| view.abandon_selection(cx));
+        }
+        if previous == Section::Library
+            && section != Section::Library
+            && let Some(view) = &self.library
+        {
+            view.update(cx, |view, cx| view.abandon_selection(cx));
+        }
         cx.notify();
     }
 
@@ -1554,9 +1773,29 @@ impl Shell {
     fn render_main(&mut self, rail_mode: bool, wide: bool, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let top = self.stacks.get(&self.section).and_then(|stack| stack.pushed.last());
         match top {
-            Some(Layer::Search(view)) => return page(view.clone(), window),
+            Some(Layer::Search(search)) => {
+                let search = search.clone();
+                let state = search.read(cx);
+                let shown =
+                    (!state.editing()).then(|| state.submitted().map(str::to_owned).zip(state.results().cloned()));
+                let Some((query, view)) = shown.flatten() else { return page(search, window) };
+                let filter = (!view.read(cx).filter_groups().is_empty()).then(|| view.clone());
+                return v_flex()
+                    .size_full()
+                    .child(self.detail_bar(query.into(), Some(LayerSearch::Edit(search)), filter, cx))
+                    .child(div().flex_1().min_h_0().relative().child(page(view, window)).children(bar_shadow(cx)))
+                    .into_any_element();
+            }
             Some(Layer::LibrarySearch(view)) => return page(view.clone(), window),
             Some(Layer::SignIn(view)) => return page(view.clone(), window),
+            Some(Layer::PlaylistDownload(view)) => {
+                let view = view.clone();
+                return v_flex()
+                    .size_full()
+                    .child(self.detail_bar(t(Str::PlaylistDownloadTitle).into(), None, None, cx))
+                    .child(div().flex_1().min_h_0().relative().child(page(view, window)).children(bar_shadow(cx)))
+                    .into_any_element();
+            }
             Some(Layer::Feed { view, title }) => {
                 let view = view.clone();
                 // A channel's name arrives with its page header.
@@ -1567,45 +1806,40 @@ impl Shell {
                 } else {
                     title.clone()
                 };
+                let mode = if view.read(cx).is_music_page() { SearchMode::Music } else { SearchMode::YouTube };
                 return v_flex()
                     .size_full()
-                    .child(self.detail_bar(title, None, None, cx))
-                    .child(div().flex_1().min_h_0().relative().child(page(view, window)).children(bar_shadow(cx)))
-                    .into_any_element();
-            }
-            Some(Layer::Results { view, query }) => {
-                let (view, query) = (view.clone(), query.clone());
-                let filter = (!view.read(cx).filter_groups().is_empty()).then(|| view.clone());
-                return v_flex()
-                    .size_full()
-                    .child(self.detail_bar(query.clone().into(), Some(query), filter, cx))
+                    .child(self.detail_bar(title, Some(LayerSearch::Open(mode)), None, cx))
                     .child(div().flex_1().min_h_0().relative().child(page(view, window)).children(bar_shadow(cx)))
                     .into_any_element();
             }
             None => {}
         }
         let content = self.root_content(window, cx);
+        // Selecting downloads, their selection bar stands in for this bar and casts the shadow.
+        let downloads_selecting =
+            self.section == Section::Downloads && self.downloads.as_ref().is_some_and(|view| view.read(cx).selecting());
         let tab_row = match self.section {
             Section::Discover if !wide => Some(self.discover_tabs(false, cx)),
             Section::YtMusic => Some(self.music_tabs(cx)),
             _ => None,
         };
         // Library's own tab row, under this bar, casts the shadow.
-        let shadow = (self.section != Section::Library).then(|| bar_shadow(cx)).flatten();
+        let shadow = (self.section != Section::Library && !downloads_selecting).then(|| bar_shadow(cx)).flatten();
         v_flex()
             .size_full()
-            .child(self.root_bar(rail_mode, wide, cx))
+            .when(!downloads_selecting, |main| main.child(self.root_bar(rail_mode, wide, cx)))
             .children(tab_row)
             .child(div().flex_1().min_h_0().relative().child(content).children(shadow))
             .into_any_element()
     }
 
-    /// Back, title and search, for a pushed page. `search_query` reopens the input with it;
-    /// `filter` adds the search filter button for those results.
+    /// Back, title and search (when the page has it), for a pushed page. `filter` adds the search
+    /// filter button for those results.
     fn detail_bar(
         &self,
         title: SharedString,
-        search_query: Option<String>,
+        search: Option<LayerSearch>,
         filter: Option<Entity<FeedView>>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -1618,7 +1852,7 @@ impl Shell {
             .child(
                 self.chrome_focus.button(
                     CHROME_BACK,
-                    action_icon("layer-back", Icon::new(IconName::ArrowLeft), t(Str::CdBack))
+                    action_icon("layer-back", auto_mirrored(MaterialIcon::ArrowBack), t(Str::CdBack))
                         .on_click(cx.listener(|shell, _, _, cx| shell.back(cx))),
                     cx,
                 ),
@@ -1630,19 +1864,27 @@ impl Shell {
                 bar.child(
                     self.chrome_focus.button(
                         CHROME_FILTER,
-                        action_icon("layer-filter", Icon::new(Lucide::Funnel), t(Str::CdFilter))
+                        action_icon("layer-filter", MaterialIcon::FilterAltOutlined, t(Str::CdFilter))
                             .on_click(move |_, window, cx| open_search_filter(&view, window, cx)),
                         cx,
                     ),
                 )
             })
-            .child(self.chrome_focus.button(
-                CHROME_LAYER_SEARCH,
-                action_icon("layer-search", Icon::new(IconName::Search), t(Str::CdSearch)).on_click(cx.listener(
-                    move |shell, _, window, cx| shell.open_search(search_query.clone().unwrap_or_default(), window, cx),
-                )),
-                cx,
-            ))
+            .when_some(search, |bar, search| {
+                bar.child(self.chrome_focus.button(
+                    CHROME_LAYER_SEARCH,
+                    action_icon("layer-search", MaterialIcon::Search, t(Str::CdSearch)).on_click(cx.listener(
+                        move |shell, _, window, cx| match &search {
+                            LayerSearch::Edit(view) => {
+                                view.update(cx, |view, cx| view.edit(cx));
+                                cx.notify();
+                            }
+                            LayerSearch::Open(mode) => shell.open_search(*mode, window, cx),
+                        },
+                    )),
+                    cx,
+                ))
+            })
             .into_any_element()
     }
 
@@ -1653,17 +1895,11 @@ impl Shell {
         let searchable = matches!(self.section, Section::Discover | Section::YtMusic | Section::Library);
         // The title slot keeps the widest tab label's room, so the inline tabs never shift.
         let reserve = DiscoverTab::ALL.iter().map(|tab| tab.label().chars().count()).max().unwrap_or(0) as f32 * 9.5;
-        h_flex()
-            .gap_2()
-            .px_2()
-            .pt(px(BAR_PAD_TOP))
-            .pb(px(BAR_PAD_BOTTOM))
-            .items_center()
-            .bg(chrome_tone(cx))
+        top_bar(cx)
             .when(!rail_mode, |bar| {
                 bar.child(self.chrome_focus.button(
                     CHROME_DRAWER,
-                    action_icon("open-drawer", Icon::new(Lucide::Menu), t(Str::CdMenu)).on_click(cx.listener(
+                    action_icon("open-drawer", MaterialIcon::Menu, t(Str::CdMenu)).on_click(cx.listener(
                         |shell, _, _, cx| {
                             shell.drawer_open = true;
                             cx.notify();
@@ -1690,8 +1926,8 @@ impl Shell {
                 bar.child(
                     self.chrome_focus.button(
                         CHROME_SEARCH,
-                        action_icon("open-search", Icon::new(IconName::Search), t(Str::CdSearch))
-                            .on_click(cx.listener(|shell, _, window, cx| shell.open_search(String::new(), window, cx))),
+                        action_icon("open-search", MaterialIcon::Search, t(Str::CdSearch))
+                            .on_click(cx.listener(|shell, _, window, cx| shell.section_search(window, cx))),
                         cx,
                     ),
                 )
@@ -1723,7 +1959,11 @@ impl Shell {
                 .relative()
                 .cursor_pointer()
                 .hover(|style| style.bg(theme.primary.opacity(HOVER_ALPHA)))
-                .child(Icon::new(tab.icon()).text_color(if selected { theme.primary } else { theme.muted_foreground }))
+                .child(tab.icon().size(px(24.)).text_color(if selected {
+                    theme.primary
+                } else {
+                    theme.muted_foreground
+                }))
                 .when(selected, |cell| {
                     cell.child(div().absolute().bottom_0().left_2().right_2().h(px(2.)).bg(theme.primary))
                 })
@@ -1756,7 +1996,7 @@ impl Shell {
                     if let Some(tab) = tabs.get(index).copied() {
                         shell
                             .update(cx, |shell, cx| {
-                                shell.music_tab = tab;
+                                shell.set_music_tab(tab, cx);
                                 cx.notify();
                             })
                             .ok();
@@ -1768,7 +2008,8 @@ impl Shell {
     }
 
     fn toggle_rail(&mut self, expanded: bool, cx: &mut Context<Self>) {
-        self.rail_manual = Some(!expanded);
+        self.rail_toggled = Some(!expanded);
+        persist_setting(cx, RAIL_EXPANDED_KEY, (!expanded).to_string());
         cx.notify();
     }
 
@@ -1778,9 +2019,12 @@ impl Shell {
         h_flex()
             .gap_2()
             .items_center()
-            .child(div().size(px(logo)).flex_shrink_0().child(
-                img(crate::assets::logo_path((logo * self.scale_factor).round() as u32)).size_full().rounded_full(),
-            ))
+            .child(
+                div().size(px(logo)).flex_shrink_0().children(
+                    crate::assets::logo((logo * self.scale_factor).round() as u32, cx)
+                        .map(|logo| logo.size_full().rounded_full()),
+                ),
+            )
             .child(
                 v_flex().min_w_0().child(div().font_semibold().child(t(Str::AppName))).child(
                     div()
@@ -1810,7 +2054,7 @@ impl Shell {
             .on_click(cx.listener(move |shell, _, _, cx| shell.select_section(section, cx)));
         let position = Section::groups(self.guest).iter().flatten().position(|entry| *entry == section);
         let entry = self.nav_focus.item(position.unwrap_or(0), entry, cx);
-        let tint = if selected { theme.primary } else { theme.foreground };
+        let tint = if selected { container.ink } else { theme.foreground };
         if !labelled {
             return entry
                 .size(px(48.))
@@ -1818,7 +2062,7 @@ impl Shell {
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(Icon::new(section.icon()).text_color(tint))
+                .child(section.icon().size(px(24.)).text_color(tint))
                 .into_any_element();
         }
         entry
@@ -1830,7 +2074,7 @@ impl Shell {
                     .pr(px(DRAWER_ICON_START))
                     .py(px(11.))
                     .items_center()
-                    .child(Icon::new(section.icon()).text_color(tint))
+                    .child(section.icon().size(px(DRAWER_ICON)).text_color(tint))
                     .child(
                         div()
                             .flex_1()
@@ -1878,11 +2122,12 @@ impl Shell {
         list.into_any_element()
     }
 
-    fn render_rail(&self, expanded: bool, cx: &mut Context<Self>) -> AnyElement {
+    /// The rail laid out `expanded` or not, in a panel `width` wide on its way there.
+    fn render_rail(&self, expanded: bool, width: f32, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
         let update_waiting = !expanded
             && cx.try_global::<crate::app_update::UpdatesHandle>().is_some_and(|handle| handle.0.read(cx).waiting());
-        let toggle = action_icon("rail-toggle", Icon::new(Lucide::Menu), t(Str::CdMenu))
+        let toggle = action_icon("rail-toggle", MaterialIcon::Menu, t(Str::CdMenu))
             .when(update_waiting, |toggle| toggle.tooltip(t(Str::UpdateAvailableTitle)))
             .on_click(cx.listener(move |shell, _, _, cx| shell.toggle_rail(expanded, cx)));
         let toggle = self.chrome_focus.button(CHROME_RAIL_TOGGLE, toggle, cx).when(update_waiting, |toggle| {
@@ -1911,15 +2156,11 @@ impl Shell {
             .then(|| crate::app_update::check_link("rail-check-update", cx))
             .flatten()
             .map(|link| div().ml(px(RAIL_ICON_START - 4.)).child(link));
-        v_flex()
-            .id("rail")
-            .role(Role::Navigation)
+        // Laid out at the final width and clipped by the panel as it eases there: the labels never reflow.
+        let contents = v_flex()
             .w(px(if expanded { RAIL_EXPANDED } else { RAIL_COLLAPSED }))
             .h_full()
             .flex_shrink_0()
-            .bg(chrome_tone(cx))
-            .border_r_1()
-            .border_color(theme.border)
             .child(div().pt_1().child(header))
             .child(
                 div()
@@ -1930,9 +2171,20 @@ impl Shell {
                     .when(!expanded, |list| list.px_2())
                     .py_1()
                     .child(self.section_groups(expanded, RAIL_ICON_START, cx))
-                    .children(website)
-                    .children(check_update),
-            )
+                    .children(check_update)
+                    .children(website),
+            );
+        div()
+            .id("rail")
+            .role(Role::Navigation)
+            .w(px(width + RAIL_DIVIDER))
+            .h_full()
+            .flex_shrink_0()
+            .overflow_hidden()
+            .bg(chrome_tone(cx))
+            .border_r(px(RAIL_DIVIDER))
+            .border_color(theme.border)
+            .child(contents)
             .into_any_element()
     }
 
@@ -1992,7 +2244,6 @@ impl Shell {
         }
         let feed = self.root(FeedSource::Account, cx);
         let view = cx.new(|cx| AccountView::new(feed, true, cx));
-        self._subscriptions.push(cx.subscribe(&view, |shell, _, _: &AccountChanged, cx| shell.account_changed(cx)));
         self.account = Some(view.clone());
         view
     }
@@ -2003,30 +2254,50 @@ impl Shell {
         }
         let feed = self.root(FeedSource::MusicLibrary, cx);
         let view = cx.new(|cx| AccountView::new(feed, false, cx));
-        self._subscriptions.push(cx.subscribe(&view, |shell, _, _: &AccountChanged, cx| shell.account_changed(cx)));
         self.music_library = Some(view.clone());
         view
     }
 
-    /// Recommended and Top tracks are built from local play, so they rebuild on every visit; the
-    /// Account tab re-checks who is signed in.
+    fn set_music_tab(&mut self, tab: MusicTab, cx: &mut Context<Self>) {
+        self.music_tab = tab;
+        persist_setting(cx, LAST_YTMUSIC_TAB_KEY, tab.key().to_owned());
+    }
+
+    /// Recommended and Top tracks are built from local play, so they rebuild on every visit.
     fn set_discover_tab(&mut self, tab: DiscoverTab, cx: &mut Context<Self>) {
         self.discover_tab = tab;
-        persist_setting(cx, LAST_DISCOVER_TAB_KEY, tab.id().to_string());
-        if tab == DiscoverTab::Account
-            && let Some(view) = &self.account
-        {
-            view.update(cx, |view, cx| view.refresh(cx));
-        }
-        if matches!(tab, DiscoverTab::Recommended | DiscoverTab::TopTracks)
-            && let Some(view) = self.roots.get(&tab.source())
-        {
-            view.update(cx, |view, cx| view.reload(cx));
-        }
+        persist_setting(cx, LAST_DISCOVER_TAB_KEY, tab.key().to_owned());
+        self.rebuild_local_discover(cx);
         cx.notify();
     }
 
+    /// Recommended and Top tracks rebuild whenever they come into view: a tab switch, a return to
+    /// Discover, or the page above them closing (the JVM DiscoverFeed's fresh local session).
+    fn rebuild_local_discover(&mut self, cx: &mut Context<Self>) {
+        let showing = self.section == Section::Discover
+            && self.stacks.get(&Section::Discover).is_none_or(|stack| stack.pushed.is_empty());
+        if showing
+            && matches!(self.discover_tab, DiscoverTab::Recommended | DiscoverTab::TopTracks)
+            && let Some(view) = self.roots.get(&self.discover_tab.source())
+        {
+            view.update(cx, |view, cx| view.reload(cx));
+        }
+    }
+
+    /// Ctrl/Cmd+digit, for the tab row on screen only: a channel page's own tabs, else the section
+    /// root's; nothing under Now Playing or any other pushed page.
     fn select_tab(&mut self, index: usize, cx: &mut Context<Self>) {
+        if self.now_playing_open && self.playback.read(cx).current().is_some() {
+            return;
+        }
+        match self.stacks.get(&self.section).and_then(|stack| stack.pushed.last()) {
+            Some(Layer::Feed { view, .. }) => {
+                view.clone().update(cx, |view, cx| view.select_page_tab(index, cx));
+                return;
+            }
+            Some(_) => return,
+            None => {}
+        }
         match self.section {
             Section::Discover => {
                 if let Some(tab) = DiscoverTab::listed(self.guest).get(index).copied() {
@@ -2035,7 +2306,7 @@ impl Shell {
             }
             Section::YtMusic => {
                 if let Some(tab) = MusicTab::listed(self.guest).get(index).copied() {
-                    self.music_tab = tab;
+                    self.set_music_tab(tab, cx);
                 }
             }
             Section::Library => {
@@ -2047,8 +2318,8 @@ impl Shell {
         cx.notify();
     }
 
-    /// Peels back full screen, Now Playing, then the drawer; with none open, a second Esc within
-    /// the double-click window goes back.
+    /// Peels back full screen, Now Playing, the drawer, then the downloads or Library songs
+    /// selection; with none open, a second Esc within the double-click window goes back.
     fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if window.is_fullscreen() {
             window.toggle_fullscreen();
@@ -2056,6 +2327,14 @@ impl Shell {
             self.now_playing_open = false;
         } else if self.drawer_open {
             self.drawer_open = false;
+        } else if self.section == Section::Downloads
+            && let Some(view) = self.downloads.clone().filter(|view| view.read(cx).selecting())
+        {
+            view.update(cx, |view, cx| view.clear_selection(cx));
+        } else if self.section == Section::Library
+            && let Some(view) = self.library.clone().filter(|view| view.read(cx).selecting())
+        {
+            view.update(cx, |view, cx| view.clear_selection(cx));
         } else if let Some(Layer::SignIn(view)) = self.stacks.get(&self.section).and_then(|stack| stack.pushed.last()) {
             view.clone().update(cx, |view, cx| view.back(cx));
             return;
@@ -2073,7 +2352,20 @@ impl Shell {
         use crate::shortcuts::*;
         crate::a11y::root_arrows(root.track_focus(&self.focus), self.focus.clone())
             .key_context(CONTEXT)
-            .on_action(cx.listener(|shell, _: &TogglePlay, _, cx| shell.playback.update(cx, |p, cx| p.toggle(cx))))
+            .on_action(cx.listener(|shell, _: &TogglePlay, window, cx| shell.toggle_play_from_key(window, cx)))
+            .on_key_down(cx.listener(|shell, event: &KeyDownEvent, window, cx| {
+                let keystroke = &event.keystroke;
+                let nothing_focused = shell.focus.is_focused(window) || window.focused(cx).is_none();
+                if keystroke.key == "space"
+                    && !keystroke.modifiers.modified()
+                    && !event.is_held
+                    && shell.now_playing_open
+                    && nothing_focused
+                {
+                    shell.toggle_play_from_key(window, cx);
+                    cx.stop_propagation();
+                }
+            }))
             .on_action(cx.listener(|shell, _: &SeekBackward, _, cx| {
                 shell.playback.update(cx, |p, cx| p.seek_by(-SEEK_STEP_MS, cx))
             }))
@@ -2099,23 +2391,21 @@ impl Shell {
                 }
             }))
             .on_action(cx.listener(|shell, _: &Refresh, window, cx| {
-                if let Some(feed) = shell.visible_feed() {
+                if let Some(feed) = shell.visible_feed(cx) {
                     feed.update(cx, |feed, cx| feed.refresh(window, cx));
                 }
             }))
             .on_action(cx.listener(|shell, _: &OpenSearch, window, cx| {
-                let searchable = matches!(shell.section, Section::Discover | Section::YtMusic | Section::Library);
-                let searching = matches!(
-                    shell.stacks.get(&shell.section).and_then(|stack| stack.pushed.last()),
-                    Some(Layer::Search(_) | Layer::LibrarySearch(_))
-                );
-                if searchable && !searching {
-                    shell.open_search(String::new(), window, cx);
+                // The input even over submitted results, holding their query.
+                shell.section_search(window, cx);
+                if let Some(view) = shell.top_search() {
+                    view.update(cx, |view, cx| view.edit(cx));
                 }
             }))
             .on_action(cx.listener(|_, _: &ToggleFullscreen, window, _| window.toggle_fullscreen()))
             .on_action(cx.listener(|shell, _: &Escape, window, cx| shell.escape(window, cx)))
             .on_action(cx.listener(|shell, _: &OpenSignIn, window, cx| shell.open_sign_in(window, cx)))
+            .on_action(cx.listener(|_, _: &Quit, window, cx| Self::quit(window, cx)))
             .on_action(
                 cx.listener(|_, _: &ShowShortcuts, window, cx| crate::shortcuts_help::ShortcutsHelp::open(window, cx)),
             )
@@ -2125,6 +2415,9 @@ impl Shell {
             .on_action(cx.listener(|shell, _: &SelectTab4, _, cx| shell.select_tab(3, cx)))
             .on_action(cx.listener(|shell, _: &SelectTab5, _, cx| shell.select_tab(4, cx)))
             .on_action(cx.listener(|shell, _: &SelectTab6, _, cx| shell.select_tab(5, cx)))
+            .on_action(cx.listener(|shell, _: &SelectTab7, _, cx| shell.select_tab(6, cx)))
+            .on_action(cx.listener(|shell, _: &SelectTab8, _, cx| shell.select_tab(7, cx)))
+            .on_action(cx.listener(|shell, _: &SelectTab9, _, cx| shell.select_tab(8, cx)))
     }
 }
 
@@ -2148,7 +2441,7 @@ impl Render for Shell {
             self.open_sign_in(window, cx);
         }
         if std::mem::take(&mut self.pending_search) {
-            self.open_search(String::new(), window, cx);
+            self.open_search(SearchMode::YouTube, window, cx);
         }
         if let Some(video_id) = self.pending_details.take() {
             let view = crate::video_details::VideoDetailsView::open(video_id, window, cx);
@@ -2162,15 +2455,27 @@ impl Render for Shell {
         let viewport = window.viewport_size();
         let (width, height) = (f32::from(viewport.width), f32::from(viewport.height));
         let rail_mode = width >= 750. && height >= 480.;
-        let auto_expanded = width >= 1200.;
-        if self.rail_auto != Some((rail_mode, auto_expanded)) {
-            self.rail_auto = Some((rail_mode, auto_expanded));
-            self.rail_manual = None;
+        let rail_starts_open = width >= 1200.;
+        if self.rail_starts_open_seen.replace(rail_starts_open).is_some_and(|seen| seen != rail_starts_open) {
+            self.rail_toggled = None;
         }
         if rail_mode {
             self.drawer_open = false;
         }
-        let expanded = self.rail_manual.unwrap_or(auto_expanded);
+        let expanded = self.rail_toggled.unwrap_or(rail_starts_open);
+        let rail_target = if expanded { RAIL_EXPANDED } else { RAIL_COLLAPSED };
+        let rail_width = if rail_mode && !crate::reorder::reduce_motion(cx) {
+            let now = Instant::now();
+            let spring = self.rail_width.get_or_insert_with(|| Spring::at_rest(rail_target, now));
+            spring.retarget(rail_target, now);
+            if !spring.settled(now) {
+                window.request_animation_frame();
+            }
+            spring.value(now)
+        } else {
+            self.rail_width = None;
+            rail_target
+        };
         // Measured as if the rail were expanded, so toggling it never moves the tabs.
         let shell_width = if rail_mode { width - RAIL_EXPANDED } else { width };
         let wide = (shell_width > height && shell_width >= 600.) || shell_width >= 650.;
@@ -2212,7 +2517,7 @@ impl Render for Shell {
             let main = self.render_main(rail_mode, wide, window, cx);
             h_flex()
                 .size_full()
-                .when(rail_mode, |row| row.child(self.render_rail(expanded, cx)))
+                .when(rail_mode, |row| row.child(self.render_rail(expanded, rail_width, cx)))
                 .child(div().flex_1().min_w_0().h_full().child(main))
                 .into_any_element()
         };
@@ -2223,9 +2528,46 @@ impl Render for Shell {
             .when(!now_playing, |shell| shell.bg(cx.theme().background))
             .child(crate::a11y::frame_marker())
             .child(div().flex_1().min_h_0().w_full().child(body))
-            .when(!covered, |shell| shell.child(self.mini_player.clone()))
+            .map(|shell| {
+                if covered {
+                    place_notifications(px(0.), window, cx);
+                    shell
+                } else {
+                    shell.child(
+                        div().relative().w_full().child(self.mini_player.clone()).child(
+                            canvas(
+                                |bounds, window, cx| place_notifications(bounds.size.height, window, cx),
+                                |_, _, _, _| {},
+                            )
+                            .absolute()
+                            .size_full(),
+                        ),
+                    )
+                }
+            })
             .children(drawer)
     }
+}
+
+/// Material's snackbar margin, which the JVM app's `SnackbarHost` keeps from the window's edges.
+const SNACKBAR_MARGIN: f32 = 12.;
+/// Material's snackbar `ContainerMaxWidth`.
+const NOTIFICATION_WIDTH: f32 = 600.;
+
+/// Notifications sit where the JVM app's snackbar does: bottom centre, `lift` above the window's
+/// bottom edge (the player bar's height while it shows).
+fn place_notifications(lift: Pixels, window: &mut Window, cx: &mut App) {
+    let bottom = px(SNACKBAR_MARGIN) + lift;
+    let width = px(NOTIFICATION_WIDTH).min(window.viewport_size().width - px(2. * SNACKBAR_MARGIN));
+    let settings = &cx.theme().notification;
+    if settings.placement == Anchor::BottomCenter && settings.margins.bottom == bottom && settings.width == width {
+        return;
+    }
+    let settings = &mut gpui_kit::component::Theme::global_mut(cx).notification;
+    settings.placement = Anchor::BottomCenter;
+    settings.margins.bottom = bottom;
+    settings.width = width;
+    window.refresh();
 }
 
 /// A page view drawn from its last frame until it notifies: the player bar's progress ticks redraw
@@ -2237,12 +2579,14 @@ fn page<V: Render>(view: Entity<V>, window: &Window) -> AnyElement {
     crate::a11y::cached_view(view, style, window)
 }
 
-/// Writes a setting off the UI thread; a failed write is logged, the UI state stands.
-fn persist_setting(cx: &App, key: &'static str, value: String) {
+/// Writes a setting off the UI thread, the last call's value winning; a failed write is logged, the
+/// UI state stands.
+pub(crate) fn persist_setting(cx: &App, key: &'static str, value: String) {
     let graph = cx.global::<AppGraph>();
     let (settings, log) = (graph.settings.clone(), graph.log.clone());
+    settings.stage_raw(key, value);
     graph.tokio.spawn_blocking(move || {
-        if let Err(error) = settings.put_raw(key, value) {
+        if let Err(error) = settings.commit(key) {
             log.warn(&format!("R90006 setting {key} not saved"), Some(error.as_ref()));
         }
     });

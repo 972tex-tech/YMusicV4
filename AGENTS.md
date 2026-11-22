@@ -65,6 +65,9 @@ When the user asks **why** / **what** / **how** / **wtf is** (explain a path, a 
 - Never rename or remove a wire field, command, or native in one step; add the new one and keep the old one until every app version using it is below the support floor.
 - **Bump the bundle revision with every fix or feature in it**, in the same commit, without being asked: `Versions.engineJsVersion` for engine.js, `Versions.playerJsVersion` for player.js (`buildSrc/.../Dependencies.kt`); shared code (`transport.ts`, `protocol/`) bumps both.
 
+### Rust app mirrors Kotlin
+`desktopRust/` follows the Kotlin implementation's design, not only its visible result: the same state, the same names for it, the same semantics (Kotlin's `playWhenReadyIntent` is a `play_when_ready` intent in Rust, not a one-shot flag that happens to work). Read the Kotlin code before porting and say what it does; never infer the JVM app's behavior. **Any deliberate difference needs the user's confirmation first.**
+
 ### Coroutines
 - **Suspend functions must be safe to call from the main thread.** Use `withContext(Dispatchers.IO)` for I/O or `withContext(Dispatchers.Default)` for CPU-bound work.
 - **Don't fake async.** A purely-blocking function (SQLite, files) whose body is `withContext(Dispatchers.X) { … }` with no real suspend point inside should NOT be `suspend` — that just advertises "safe from main" while hopping a dispatcher the caller could hop itself. Declare it a plain `fun` annotated `@WorkerThread` (in `kmpcommon`) and let the caller — already off the main thread — own threading. Reserve `suspend` for genuine suspend points (network, channels, async `Source` reads). A `suspend` fn may freely call these blocking ones. Reference: `MediaBlobCache` / `BlobIndex` / `SegmentIndex` in `:yt-media` are non-suspend `@WorkerThread`; their SABR-session / proxy callers are what suspend.
@@ -103,6 +106,8 @@ Commit every change before the session ends. One logical change per commit.
 Never leave a working tree of mixed experiments uncommitted: later we cannot
 tell what used to work, what broke it, or why (engine-js vs native MSE vs player vs UI).
 
+- **One branch per feature or fix area**, cut from `master` and merged back with `git merge --no-ff`, so each change lands as a single merge commit — the one link its changelog line points to. Related work shares one branch (all of a topic's fixes and follow-ups, e.g. every local-thumbnail fix, as commits on one branch) — never a branch per small commit or stacked branch chains. Never batch unrelated work on one branch; a follow-up to an already-merged feature gets its own branch.
+- **Worktrees for desktop work:** create them with `tools/dev-worktree.sh new <branch>`, or run `tools/dev-worktree.sh setup` inside one a harness made. It links the gitignored build inputs and gives the checkout its own copy of `~/.ymusic` (`tools/dev-data.sh`), so dev builds of several branches run side by side; `tools/dev-worktree.sh remove` deletes both again.
 - Message: what changed and why, not a diary of tool calls.
 - **Every commit message carries one `Rust:` line** — `Rust: ported` (its desktopRust/ side is in this commit or this branch) or `Rust: n/a. <why it does not apply>`. There is no todo: port it in the same branch. The commit-msg hook (`.githooks/commit-msg`) rejects anything else; merge commits are exempt.
 - Do not mix unrelated work (engine-js vs `:mse` host vs player vs UI) in one commit.
@@ -115,7 +120,7 @@ tell what used to work, what broke it, or why (engine-js vs native MSE vs player
 ### Release flow
 On the current working branch:
 1. Bump `ymusic.versionName` and `ymusic.versionCode` +1 in `gradle.properties` — the one version for Android, desktop (the Rust app reports it too) and iOS.
-2. In `CHANGELOG.md`, rename `## Unreleased` to the version. It covers the desktop app in `desktopRust/` too.
+2. In `CHANGELOG.md`, rename `## Unreleased` to the version. It covers the desktop app in `desktopRust/` too. Sections go NEW, FIXED, IMPROVED. Each entry is one short user-readable line saying what is new or what was fixed — never why it broke or how it was fixed (advanced readers follow the link) — followed by its link: the branch's merge commit, plus single commits only for work that didn't come through its own branch.
 3. In `error-codes.txt` and `desktopRust/error-codes.txt`, flip shipped `-` rows to `D`.
 4. Tag the commit: `hotfix-v<version>` for a hotfix, `release-v<version>` for a release, `prerelease-v<version>` for a test build (same full artifact set in a draft GitHub prerelease, no CHANGELOG section, Sentry environment `beta`; steps 1–3 don't apply). The tag message is the update dialog's release notes, **per platform**: each platform's lines go under its `[android]` / `[macos]` / `[windows]` / `[linux]` header (repeat a line under each header it applies to); a message without headers goes to every platform, and an unknown header fails the release job. Each platform's notes: at most 7 lines of ≤40 chars (the dialog cuts off the rest), no title (the dialog shows the version); when there is more, the last line says so and points to the full changelog:
    ```

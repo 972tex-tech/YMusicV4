@@ -2,20 +2,22 @@
 
 use std::rc::Rc;
 
-use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::base::slider::{SliderEvent, SliderState};
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::slider::Slider;
-use gpui_kit::component::{ActiveTheme, Disableable, Icon, StyledExt, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme, Icon, StyledExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use ym_i18n::{Str, t, tf};
+use ym_image_loader::async_image::async_image_of;
 
 use crate::a11y::{FocusList, SliderStop};
-use crate::action_icon::{HIT, action_icon, lucide_size, sized_action_icon};
-use crate::playback::{PlayState, Playback, QueueItem};
+use crate::action_icon::{HIT, action_icon, auto_mirrored, sized_action_icon};
+use crate::assets::MaterialIcon;
+use crate::playback::{Playback, PlaybackState, QueueItem};
 use crate::queue_nav::LoopMode;
 use crate::spinner::Spinner;
+use crate::youtube_thumbnails::art_request_sources;
 
 /// The user asked to open (or close) Now Playing.
 pub struct ToggleNowPlaying;
@@ -25,6 +27,8 @@ pub struct MiniPlayer {
     seek: Entity<SliderState>,
     volume: Entity<SliderState>,
     dragging_seek: bool,
+    /// Where a seek-bar drag points; the clock shows it while dragging (the JVM scrubMs).
+    scrub_ms: Option<i64>,
     /// What the bar last drew from playback.
     shown: Option<Shown>,
     /// Arrow keys move between the bar's controls.
@@ -38,7 +42,8 @@ pub struct MiniPlayer {
 #[derive(PartialEq)]
 struct Shown {
     item: Option<QueueItem>,
-    state: PlayState,
+    state: PlaybackState,
+    play_when_ready: bool,
     second: i64,
     duration_ms: i64,
     buffered_second: i64,
@@ -59,6 +64,7 @@ impl Shown {
         Self {
             item: playback.current().cloned(),
             state: playback.state.clone(),
+            play_when_ready: playback.play_when_ready(),
             second: playback.position_ms / 1000,
             duration_ms: playback.duration_ms,
             buffered_second: playback.buffered_ms / 1000,
@@ -107,12 +113,14 @@ impl MiniPlayer {
             }),
             cx.subscribe(&seek, |player, _, event: &SliderEvent, cx| match event {
                 // A redraw moves the skip marks' gap with the dragged thumb.
-                SliderEvent::Change(_) => {
+                SliderEvent::Change(value) => {
                     player.dragging_seek = true;
+                    player.scrub_ms = Some((player.playback.read(cx).duration_ms as f32 * value.end()) as i64);
                     cx.notify();
                 }
                 SliderEvent::Release(value) => {
                     player.dragging_seek = false;
+                    player.scrub_ms = None;
                     let fraction = value.end();
                     player.playback.update(cx, |playback, cx| {
                         let target = (playback.duration_ms as f32 * fraction) as i64;
@@ -131,6 +139,7 @@ impl MiniPlayer {
             seek,
             volume,
             dragging_seek: false,
+            scrub_ms: None,
             shown: None,
             focus: FocusList::new(None),
             _subscriptions: subscriptions,
@@ -150,8 +159,8 @@ const STOP_SLEEP: usize = 8;
 const STOP_SEEK: usize = 9;
 const STOP_VOLUME: usize = 10;
 const STOP_LIVE: usize = 11;
-/// One arrow press on the bar's seek slider and volume.
-const SEEK_STEP_MS: i64 = 10_000;
+/// One arrow press on the bar's seek slider and volume (the JVM `SEEK_KEY_STEP_MS`).
+const SEEK_STEP_MS: i64 = 5_000;
 const VOLUME_STEP: f32 = 0.05;
 
 impl MiniPlayer {
@@ -164,7 +173,7 @@ impl MiniPlayer {
         let armed = remaining.is_some() || after_current;
         self.focus.button(
             STOP_SLEEP,
-            action_icon("sleep-timer", Lucide::Timer, t(Str::CdSleepTimer))
+            action_icon("sleep-timer", MaterialIcon::SleepTimer, t(Str::CdSleepTimer))
                 .toggled(armed)
                 .when(armed, |button| button.text_color(cx.theme().primary))
                 .tooltip(tooltip)
@@ -269,34 +278,32 @@ impl MiniPlayer {
     }
 
     /// The artist, or the failure in its place.
-    fn subtitle(item: &QueueItem, state: &PlayState, cx: &App) -> Option<(String, Hsla)> {
+    fn subtitle(item: &QueueItem, state: &PlaybackState, cx: &App) -> Option<(String, Hsla)> {
         let theme = cx.theme();
         match state {
-            PlayState::Failed(failure) => Some((failure.text(), theme.danger)),
+            PlaybackState::Error(failure) => Some((failure.text(), theme.danger)),
             _ => item.artist.clone().map(|artist| (artist, theme.muted_foreground)),
         }
     }
 
     fn cover(item: &QueueItem, corner_radius: f32, cx: &App) -> Div {
-        div()
-            .overflow_hidden()
-            .rounded(px(corner_radius))
-            .bg(cx.theme().secondary)
-            .flex_shrink_0()
-            .when_some(item.thumb(320), |frame, url| {
-                frame.child(img(url).size_full().rounded(px(corner_radius)).object_fit(ObjectFit::Cover))
-            })
+        let art = item.display_thumbnail_url().map(|url| {
+            async_image_of(Some(art_request_sources(&url)))
+                .size_full()
+                .rounded(px(corner_radius))
+                .object_fit(ObjectFit::Cover)
+        });
+        div().overflow_hidden().rounded(px(corner_radius)).bg(cx.theme().secondary).flex_shrink_0().children(art)
     }
 
-    fn play_label(state: &PlayState) -> &'static str {
-        t(if matches!(state, PlayState::Playing | PlayState::Buffering) { Str::CdPause } else { Str::CdPlay })
+    fn play_label(playing: bool) -> &'static str {
+        t(if playing { Str::CdPause } else { Str::CdPlay })
     }
 
     /// The bar's filled play circle.
-    fn play_circle(&self, state: &PlayState, cx: &mut Context<Self>) -> impl IntoElement {
+    fn play_circle(&self, playing: bool, loading: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let playing = matches!(state, PlayState::Playing | PlayState::Buffering);
-        let circle = div().id("play-pause").role(Role::Button).aria_label(Self::play_label(state));
+        let circle = div().id("play-pause").role(Role::Button).aria_label(Self::play_label(playing));
         self.focus
             .item(STOP_PLAY, circle, cx)
             .size(px(BAR_PLAY))
@@ -308,11 +315,11 @@ impl MiniPlayer {
             .cursor_pointer()
             .bg(theme.foreground)
             .text_color(theme.background)
-            .child(if *state == PlayState::Buffering {
+            .child(if loading {
                 Spinner::new().small().into_any_element()
             } else {
-                Icon::new(if playing { Lucide::Pause } else { Lucide::Play })
-                    .size(px(lucide_size(BAR_SMALL_ICON)))
+                Icon::new(if playing { MaterialIcon::Pause } else { MaterialIcon::PlayArrow })
+                    .size(px(BAR_SMALL_ICON))
                     .into_any_element()
             })
             .on_click(cx.listener(|player, _, _, cx| {
@@ -329,15 +336,18 @@ impl MiniPlayer {
         let theme = cx.theme().clone();
         let state = playback.state.clone();
         let duration = playback.duration_ms;
-        let play_clock = PlayClock::of(playback);
+        let play_clock = match self.scrub_ms {
+            Some(scrub) => PlayClock::new(scrub, playback.duration_ms, playback.live),
+            None => PlayClock::of(playback),
+        };
         let seekable = playback.seekable;
         let buffered = playback.buffered_fraction();
-        let has_next = playback.has_next();
         let (loop_mode, shuffle) = (playback.nav.loop_mode, playback.nav.shuffle);
         let sleep_remaining = playback.sleep_remaining();
         let sleep_after_current = playback.sleep_after_current;
         let volume = playback.volume;
         let tuned = (playback.effects.speed, playback.effects.pitch) != (1.0, 1.0);
+        let (playing, loading) = (playback.is_playing(), playback.is_buffering_or_loading());
         let subtitle = Self::subtitle(&item, &state, cx);
         let side = width >= BAR_SIDE_MIN;
         let sleep = width >= BAR_SLEEP_MIN;
@@ -379,12 +389,13 @@ impl MiniPlayer {
                 h_flex()
                     .gap_2()
                     .items_center()
+                    .layout_direction(LayoutDirection::Ltr)
                     .child(
                         self.focus.button(
                             STOP_SHUFFLE,
                             sized_action_icon(
                                 "shuffle",
-                                Lucide::Shuffle,
+                                MaterialIcon::Shuffle,
                                 t(Str::CdShuffle),
                                 BAR_SMALL_ICON,
                                 BAR_SMALL_HIT,
@@ -399,15 +410,15 @@ impl MiniPlayer {
                     )
                     .child(self.focus.button(
                         STOP_PREVIOUS,
-                        action_icon("previous", Lucide::SkipBack, t(Str::CdPrevious)).on_click(cx.listener(
+                        action_icon("previous", MaterialIcon::SkipPrevious, t(Str::CdPrevious)).on_click(cx.listener(
                             |player, _, _, cx| player.playback.update(cx, |playback, cx| playback.previous(cx)),
                         )),
                         cx,
                     ))
-                    .child(self.play_circle(&state, cx))
+                    .child(self.play_circle(playing, loading, cx))
                     .child(self.focus.button(
                         STOP_NEXT,
-                        action_icon("next", Lucide::SkipForward, t(Str::CdNext)).disabled(!has_next).on_click(
+                        action_icon("next", MaterialIcon::SkipNext, t(Str::CdNext)).on_click(
                             cx.listener(|player, _, _, cx| {
                                 player.playback.update(cx, |playback, cx| playback.next(cx))
                             }),
@@ -419,7 +430,7 @@ impl MiniPlayer {
                             STOP_REPEAT,
                             sized_action_icon(
                                 "repeat",
-                                if loop_mode == LoopMode::One { Lucide::Repeat1 } else { Lucide::Repeat },
+                                if loop_mode == LoopMode::One { MaterialIcon::RepeatOne } else { MaterialIcon::Repeat },
                                 repeat_label,
                                 BAR_SMALL_ICON,
                                 BAR_SMALL_HIT,
@@ -439,6 +450,7 @@ impl MiniPlayer {
                 h_flex()
                     .w_full()
                     .max_w(px(BAR_SEEK_MAX))
+                    .layout_direction(LayoutDirection::Ltr)
                     .gap_2()
                     .items_center()
                     .child(
@@ -496,39 +508,44 @@ impl MiniPlayer {
             h_flex()
                 .flex_shrink_0()
                 .items_center()
-                .child(
-                    self.focus.button(
-                        STOP_EQUALIZER,
-                        sized_action_icon("equalizer", Lucide::SlidersHorizontal, t(Str::SoundEq), BAR_SMALL_ICON, HIT)
-                            .on_click(cx.listener(|player, _, window, cx| {
-                                crate::equalizer::EqualizerDialog::open(player.playback.clone(), window, cx)
-                            })),
-                        cx,
+                .child(self.focus.button(
+                    STOP_EQUALIZER,
+                    sized_action_icon("equalizer", MaterialIcon::Tune, t(Str::SoundEq), BAR_SMALL_ICON, HIT).on_click(
+                        cx.listener(|player, _, window, cx| {
+                            crate::equalizer::EqualizerDialog::open(player.playback.clone(), window, cx)
+                        }),
                     ),
-                )
+                    cx,
+                ))
                 .child(
                     self.focus.button(
                         STOP_SPEED,
-                        sized_action_icon("speed-pitch", Lucide::Gauge, t(Str::MenuSpeedPitch), BAR_SMALL_ICON, HIT)
-                            .toggled(tuned)
-                            .when(tuned, |button| button.text_color(cx.theme().primary))
-                            .on_click(cx.listener(|player, _, window, cx| {
-                                crate::speed_pitch::SpeedPitchDialog::open(player.playback.clone(), window, cx)
-                            })),
+                        sized_action_icon(
+                            "speed-pitch",
+                            MaterialIcon::SpeedOutlined,
+                            t(Str::MenuSpeedPitch),
+                            BAR_SMALL_ICON,
+                            HIT,
+                        )
+                        .toggled(tuned)
+                        .when(tuned, |button| button.text_color(cx.theme().primary))
+                        .on_click(cx.listener(|player, _, window, cx| {
+                            crate::speed_pitch::SpeedPitchDialog::open(player.playback.clone(), window, cx)
+                        })),
                         cx,
                     ),
                 )
                 .when(sleep, |row| row.child(self.sleep_button(sleep_remaining, sleep_after_current, cx)))
                 .child(
                     div().px_1().child(
-                        Icon::new(if volume <= 0. {
-                            Lucide::VolumeX
+                        auto_mirrored(if volume <= 0. {
+                            MaterialIcon::VolumeOff
                         } else if volume < 0.5 {
-                            Lucide::Volume1
+                            MaterialIcon::VolumeDown
                         } else {
-                            Lucide::Volume2
+                            MaterialIcon::VolumeUp
                         })
-                        .size(px(lucide_size(BAR_SMALL_ICON)))
+                        .size(px(BAR_SMALL_ICON))
                         .text_color(theme.muted_foreground),
                     ),
                 )
@@ -567,8 +584,7 @@ impl MiniPlayer {
         } else {
             0.
         };
-        let has_next = playback.has_next();
-        let playing = matches!(state, PlayState::Playing | PlayState::Buffering);
+        let (playing, loading) = (playback.is_playing(), playback.is_buffering_or_loading());
         let subtitle = Self::subtitle(&item, &state, cx);
         let toggle = h_flex().id("now-playing-toggle").role(Role::Button).aria_label(Self::now_playing_label(&item));
         self.focus
@@ -608,7 +624,7 @@ impl MiniPlayer {
                                         column.child(div().text_xs().text_color(color).truncate().child(line))
                                     }),
                             )
-                            .child(if state == PlayState::Buffering {
+                            .child(if loading {
                                 div()
                                     .size(px(HIT))
                                     .flex()
@@ -622,8 +638,8 @@ impl MiniPlayer {
                                         STOP_PLAY,
                                         action_icon(
                                             "play-pause",
-                                            if playing { Lucide::Pause } else { Lucide::Play },
-                                            Self::play_label(&state),
+                                            if playing { MaterialIcon::Pause } else { MaterialIcon::PlayArrow },
+                                            Self::play_label(playing),
                                         )
                                         .on_click(cx.listener(
                                             |player, _, _, cx| {
@@ -636,11 +652,9 @@ impl MiniPlayer {
                             })
                             .child(self.focus.button(
                                 STOP_NEXT,
-                                action_icon("next", Lucide::SkipForward, t(Str::CdNext)).disabled(!has_next).on_click(
-                                    cx.listener(|player, _, _, cx| {
-                                        player.playback.update(cx, |playback, cx| playback.next(cx))
-                                    }),
-                                ),
+                                action_icon("next", MaterialIcon::SkipNext, t(Str::CdNext)).on_click(cx.listener(
+                                    |player, _, _, cx| player.playback.update(cx, |playback, cx| playback.next(cx)),
+                                )),
                                 cx,
                             )),
                     ),

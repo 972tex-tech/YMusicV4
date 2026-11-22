@@ -3,7 +3,6 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 
 use futures::future::BoxFuture;
 use gpui_kit::component::WindowExt;
@@ -12,7 +11,7 @@ use serde_json::Value;
 use ym_common::log::Logger;
 use ym_download::spec::ResolvedVideo;
 use ym_download::streams::{SpecRemint, SpecResolver};
-use ym_download::{DownloadConfig, DownloadError, DownloadService, DownloadState};
+use ym_download::{DownloadConfig, DownloadError, DownloadService};
 use ym_engine::CookieJar;
 use ym_engine::player::ContentPoRemint;
 use ym_i18n::{Str, t, tf};
@@ -27,9 +26,6 @@ use crate::youtube_session::YoutubeSessions;
 /// Where finished downloads go: a `file://` folder URI, shared with the JVM app's key.
 pub const DOWNLOAD_LOCATION_KEY: &str = "download.location";
 const MAX_CONCURRENT: usize = 3;
-/// Every googlevideo request must carry the User-Agent player.js presents.
-const DESKTOP_CHROME_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 \
-    (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36";
 
 struct EngineResolver {
     sessions: Arc<YoutubeSessions>,
@@ -83,23 +79,29 @@ pub struct DownloadInputs {
 /// Blocking (opens SQLite): call from a worker.
 pub fn open(inputs: DownloadInputs) -> Result<DownloadService, String> {
     let log = inputs.log;
-    let store = ym_download::store::DownloadStore::open(&inputs.data_dir.join("downloads.db"), log.clone())
-        .map_err(|error| format!("downloads.db: {error}"))?;
-    let index = ym_ytmedia::segment_index::SegmentIndex::open(&inputs.data_dir.join("download-segments.db"))
-        .map_err(|error| format!("download-segments.db: {error}"))?;
+    let data_log = log.fork("data-dir");
+    let store = crate::data_files::open_database(&inputs.data_dir.join("downloads.db"), &data_log, |path| {
+        ym_download::store::DownloadStore::open(path, log.clone())
+    })
+    .map_err(|error| format!("downloads.db: {error}"))?;
+    let index = crate::data_files::open_database(
+        &inputs.data_dir.join("download-segments.db"),
+        &data_log,
+        ym_ytmedia::segment_index::SegmentIndex::open,
+    )
+    .map_err(|error| format!("download-segments.db: {error}"))?;
     if let Err(error) = index.cleanup() {
         log.warn("old download segments could not be pruned", Some(&error));
     }
-    let ffmpeg = ffmpeg_binary();
+    let ffmpeg = ym_ffmpeg::find_binary();
     if ffmpeg.is_none() {
         log.warn("no ffmpeg binary: downloads offer M4A only", None);
     }
     let cookies = inputs.cookies;
     let settings = inputs.settings;
-    let folder_settings = settings.clone();
+    let (folder_settings, completion_settings) = (settings.clone(), settings.clone());
     let media = inputs.media;
     let completion_log = log.fork("download-library");
-    let completion_tokio = inputs.tokio.clone();
     Ok(DownloadService::new(DownloadConfig {
         tokio: inputs.tokio,
         store: Arc::new(store),
@@ -107,7 +109,7 @@ pub fn open(inputs: DownloadInputs) -> Result<DownloadService, String> {
         resolver: Arc::new(EngineResolver { sessions: inputs.sessions, log: log.fork("download-resolver") }),
         sabr: SabrHttp {
             client: inputs.http.not_following.clone(),
-            user_agent: DESKTOP_CHROME_UA.to_owned(),
+            user_agent: ym_ytmedia::YOUTUBE_USER_AGENT.to_owned(),
             cookies: Some(Arc::new(move |url| {
                 let pairs = cookies.load_for_request(url).ok()?;
                 (!pairs.is_empty())
@@ -123,10 +125,19 @@ pub fn open(inputs: DownloadInputs) -> Result<DownloadService, String> {
         on_completed: Some(Arc::new(move |_, result| {
             let Some(file) = url::Url::parse(&result.uri).ok().and_then(|uri| uri.to_file_path().ok()) else {
                 completion_log.warn(&format!("a finished download has no file path: {}", result.uri), None);
-                return;
+                return Box::pin(async {});
             };
-            let (media, log) = (media.clone(), completion_log.clone());
-            completion_tokio.spawn_blocking(move || add_to_library(&media, &file, &log));
+            let (media, settings, log) = (media.clone(), completion_settings.clone(), completion_log.clone());
+            Box::pin(async move {
+                let blocking_log = log.clone();
+                let registered = tokio::task::spawn_blocking(move || {
+                    add_to_library(&media, settings.as_ref(), &file, &blocking_log)
+                })
+                .await;
+                if let Err(error) = registered {
+                    log.capture_error("registering a finished download in the library failed", &error);
+                }
+            })
         })),
         log,
     }))
@@ -189,9 +200,10 @@ pub fn register_download_folder(media: &MediaStore, folder: &Path) -> Result<(),
 }
 
 /// Blocking and long: what is already in the download folder shows up in the Library.
-pub fn scan_download_folder(media: &MediaStore, folder: &Path, log: &Logger) {
-    match ym_store::scan_folder(media, folder, &AtomicBool::new(false)) {
+pub fn scan_download_folder(media: &MediaStore, history: &ym_history::PlayHistory, folder: &Path, log: &Logger) {
+    match ym_store::scan_folder(media, ym_ffmpeg::FfmpegMetadataGetter::shared(), folder, &crate::QUITTING) {
         Ok(report) => {
+            crate::library::follow_recoded(history, &report.recoded, log);
             for error in &report.errors {
                 log.warn(&format!("scan skipped {}: {}", error.path.display(), error.message), None);
             }
@@ -205,6 +217,7 @@ pub fn scan_download_folder(media: &MediaStore, folder: &Path, log: &Logger) {
 pub fn assign_download_folder(folder: PathBuf, cx: &App) -> impl Future<Output = Result<(), String>> + use<> {
     let graph = cx.global::<AppGraph>();
     let (media, settings, log) = (graph.media.clone(), graph.settings.clone(), graph.log.fork("download-folder"));
+    let history = graph.history.clone();
     let assign = on_core(cx, async move {
         tokio::task::spawn_blocking(move || {
             probe_download_folder(&folder).map_err(|problem| t(problem).to_owned())?;
@@ -215,7 +228,7 @@ pub fn assign_download_folder(folder: PathBuf, cx: &App) -> impl Future<Output =
             if let Err(error) = settings.put_raw(DOWNLOAD_LOCATION_KEY, folder_uri(&folder)) {
                 log.warn(&format!("the download folder could not be saved: {error}"), None);
             }
-            tokio::task::spawn_blocking(move || scan_download_folder(&media, &folder, &log));
+            tokio::task::spawn_blocking(move || scan_download_folder(&media, &history, &folder, &log));
             Ok(())
         })
         .await
@@ -231,7 +244,8 @@ pub fn assign_download_folder(folder: PathBuf, cx: &App) -> impl Future<Output =
 /// The OS folder picker; a pick that can hold downloads becomes the download location (and a
 /// Library folder). None when canceled or refused, the reason shown in `window`.
 pub fn pick_download_folder(window: &mut Window, cx: &mut App) -> impl Future<Output = Option<PathBuf>> + use<> {
-    let pick = crate::desktop::file_dialog(rfd::AsyncFileDialog::new().set_title(t(Str::FolderPickerTitle)).pick_folder(), cx);
+    let pick =
+        crate::desktop::file_dialog(rfd::AsyncFileDialog::new().set_title(t(Str::FolderPickerTitle)).pick_folder(), cx);
     let (handle, mut async_cx) = (window.window_handle(), cx.to_async());
     async move {
         let folder = pick.await?.path().to_path_buf();
@@ -250,7 +264,8 @@ pub fn pick_download_folder(window: &mut Window, cx: &mut App) -> impl Future<Ou
 fn usable_folder(settings: &dyn SettingsStore, media: &MediaStore, log: &Logger) -> Option<PathBuf> {
     let folder = download_folder(settings).filter(|folder| folder.is_dir())?;
     match media.find_bucket_by_uri(&folder.to_string_lossy()) {
-        Ok(Some(bucket)) if !bucket.excluded => Some(folder),
+        // The JVM hasUsableDownloadLocation also needs the folder writable (canWriteFolder).
+        Ok(Some(bucket)) if !bucket.excluded && probe_download_folder(&folder).is_ok() => Some(folder),
         Ok(_) => None,
         Err(error) => {
             log.warn("the download folder's Library entry could not be read", Some(&error));
@@ -296,10 +311,11 @@ pub fn offer_download_location(folder: ym_store::Bucket, window: &mut Window, cx
         .open(window, cx, move |_, cx| save_download_folder(&path, cx));
 }
 
-/// Video ids already saved: Library files tagged with their YouTube id, and finished downloads.
+/// Video ids already saved: Library files tagged with their YouTube id (the JVM
+/// `rememberAvailableOffline`, `store.youtubeVideoIds()`).
 pub fn offline_ids(cx: &App) -> impl Future<Output = HashSet<String>> + use<> {
     let graph = cx.global::<AppGraph>();
-    let (media, service, log) = (graph.media.clone(), graph.downloads.clone(), graph.log.fork("available-offline"));
+    let (media, log) = (graph.media.clone(), graph.log.fork("available-offline"));
     let load = on_core(cx, async move {
         let mut ids = HashSet::new();
         match tokio::task::spawn_blocking(move || media.youtube_video_ids()).await {
@@ -307,33 +323,25 @@ pub fn offline_ids(cx: &App) -> impl Future<Output = HashSet<String>> + use<> {
             Ok(Err(error)) => log.warn("library video ids could not be read", Some(&error)),
             Err(error) => log.warn("library video ids could not be read", Some(&error)),
         }
-        match service.snapshot().await {
-            Ok(tasks) => ids.extend(
-                tasks.into_iter().filter(|task| task.state == DownloadState::Completed).map(|task| task.video_id),
-            ),
-            Err(error) => log.warn("finished downloads could not be read", Some(&error)),
-        }
         ids
     });
     async move { load.await.unwrap_or_default() }
 }
 
-/// Files a finished download under its folder's Library bucket, probed like a scanned file; a
-/// folder outside the Library adds nothing (the JVM app's `registerCompletedDownload`).
-fn add_to_library(media: &MediaStore, file: &Path, log: &Logger) {
-    let Some(folder) = file.parent() else { return };
+/// Files a finished download under the download location's Library bucket, probed like a scanned
+/// file; no download location or no bucket for it adds nothing (the JVM app's
+/// `registerCompletedDownload`).
+fn add_to_library(media: &MediaStore, settings: &dyn SettingsStore, file: &Path, log: &Logger) {
+    let Some(folder) = download_folder(settings) else { return };
     let bucket = match media.find_bucket_by_uri(&folder.to_string_lossy()) {
-        Ok(Some(bucket)) if !bucket.excluded => bucket,
-        Ok(_) => {
-            log.info("a finished download is outside the Library folders");
-            return;
-        }
+        Ok(Some(bucket)) => bucket,
+        Ok(None) => return,
         Err(error) => {
             log.capture_error("registering a finished download in the library failed", &error);
             return;
         }
     };
-    match ym_store::scan_file(media, file, bucket.id) {
+    match ym_store::scan_file(media, ym_ffmpeg::FfmpegMetadataGetter::shared(), file, bucket.id) {
         Ok(report) => {
             for error in &report.errors {
                 log.warn(&format!("a finished download was not indexed: {}", error.message), None);
@@ -341,16 +349,4 @@ fn add_to_library(media: &MediaStore, file: &Path, log: &Logger) {
         }
         Err(error) => log.capture_error("registering a finished download in the library failed", &error),
     }
-}
-
-/// `YMUSIC_FFMPEG`, else next to the executable (packaged), else the dev build's.
-fn ffmpeg_binary() -> Option<PathBuf> {
-    let candidates = [
-        std::env::var_os("YMUSIC_FFMPEG").map(PathBuf::from),
-        std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(|dir| dir.join(format!("ffmpeg{}", std::env::consts::EXE_SUFFIX)))),
-        option_env!("YM_FFMPEG_BIN").map(PathBuf::from),
-    ];
-    candidates.into_iter().flatten().find(|path| path.is_file())
 }

@@ -21,6 +21,11 @@ Our own simple Compose image loader (jvm + android + compose-iOS targets).
   Concurrent loads of one key+size share one fetch; a NotFound source is not retried for 10 minutes in-process.
   `prefetch(request)` warms a request in the background.
 
+- **Stand-ins** — a fetcher may answer with an image it drew instead of failing (the app's `art:` fallback art):
+  `DecodedImage.retention` `Memory` keeps it in the memory LRU only, `None` caches it nowhere (a failure that may
+  pass, e.g. offline). Neither reaches the scaled cache or the variant index; `loadFile` serves one from
+  `ScaledImageCache.transientFile` (`<scaled dir>-transient`, cleared at the first write of a process).
+
 - **Failures** — `ImageLoadException(reason)`: `NotFound` (404/410, absent file or picture), `Network`, `Undecodable`
   (incl. the byte cap), `Unsupported` (no fetcher). Use `decodeChecked` in custom fetchers to classify decode errors.
 
@@ -45,7 +50,7 @@ Our own simple Compose image loader (jvm + android + compose-iOS targets).
 - **Concurrency** — two **LIFO gates**: http(s) sources and local ones (files, `art:`) get separate pools, so a slow
   download never holds up a local cover. Newest request first; a load whose every caller cancelled frees its slot.
 
-- **Memory budget** — `defaultMemoryCacheBudget()`: desktop ~1/128 of physical RAM (32–128MB; 64MB when the jlinked
+- **Memory budget** — `defaultMemoryCacheBudget()`: desktop ~1/128 of physical RAM (16–30MB; 30MB when the jlinked
   runtime lacks `jdk.management`), Android a slice of the heap class (16–256MB).
 
 - **AsyncImage** — `AsyncImage(loader, url, …)` or `AsyncImage(loader, key, sources, …)` measures itself and loads

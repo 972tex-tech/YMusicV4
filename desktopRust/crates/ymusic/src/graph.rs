@@ -1,5 +1,6 @@
 //! The app's long-lived services, shared by every view through a gpui global.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -13,7 +14,9 @@ use ym_engine::{
     CookieJar, DEFAULT_HTTP_CACHE_BYTES, DiskCacheStore, DynamicEngine, EngineConfig, EngineError, EngineManager,
     HttpCache,
 };
-use ym_remote_config::{ApiIdentity, BundleSource, RemoteConfig, StatUsage, VerifiedBundle};
+use ym_remote_config::{
+    ApiIdentity, BundleError, BundleSource, BundleVersion, RemoteConfig, StatUsage, VerifiedBundle,
+};
 use ym_settings::{AppDb, SettingsStore};
 use ym_store::MediaStore;
 
@@ -31,6 +34,10 @@ pub const APP_VERSION: i32 = version_code(env!("YM_VERSION_CODE"));
 pub const APP_VERSION_NAME: &str = env!("YM_VERSION_NAME");
 /// A bundle in use refreshes a config older than this.
 const BUNDLE_CONFIG_MAX_AGE: Duration = Duration::from_secs(10 * 60);
+/// The newest bundle revisions this device ran (the JVM AppSettings.lastLoaded*JsVer): the floor the
+/// config service is told before a bundle boots.
+const LAST_LOADED_ENGINE_KEY: &str = "telemetry.lastLoadedEngineJsVer";
+const LAST_LOADED_PLAYER_KEY: &str = "telemetry.lastLoadedPlayerJsVer";
 
 pub struct AppGraph {
     pub engines: Arc<EngineManager>,
@@ -62,6 +69,8 @@ pub struct AppGraph {
     pub player_cache: Option<Arc<ym_ytmedia::cache::MediaCache>>,
     pub downloads: DownloadService,
     pub history: Arc<ym_history::PlayHistory>,
+    /// Files opened from outside the Library (Open with), kept out of Play again for the process.
+    pub temporary_uris: Arc<Mutex<HashSet<PathBuf>>>,
     pub sponsor_block: Arc<ym_history::sponsor::SponsorBlockStore>,
     /// The self-updater; `None` in a build without the update key.
     pub updates: Option<Arc<ym_update::UpdateService>>,
@@ -86,7 +95,9 @@ impl AppGraph {
         let cache_dir = session.cache_root.join(ENGINE_CACHE_DIR);
         let cache_log = log.clone();
         let cache = tokio::task::spawn_blocking(move || {
-            DiskCacheStore::open(&cache_dir.join("engine-cache.db"), cache_dir.join("blobs"), cache_log)
+            crate::data_files::open_database(&cache_dir.join("engine-cache.db"), &cache_log.fork("data-dir"), |path| {
+                DiskCacheStore::open(path, cache_dir.join("blobs"), cache_log.clone())
+            })
         })
         .await
         .map_err(|error| boot_error("R90001", "engine cache")(error.to_string()))?
@@ -100,10 +111,13 @@ impl AppGraph {
         let device_id = crate::telemetry::device_id(app_db.as_ref());
         let settings: Arc<dyn SettingsStore> = app_db;
         let media_path = data_dir.join("media-store.db");
-        let media = tokio::task::spawn_blocking(move || MediaStore::open(&media_path))
-            .await
-            .map_err(|error| boot_error("R90010", "media store")(error.to_string()))?
-            .map_err(|error| boot_error("R90010", "media store")(error.to_string()))?;
+        let media_log = log.fork("data-dir");
+        let media = tokio::task::spawn_blocking(move || {
+            crate::data_files::open_database(&media_path, &media_log, MediaStore::open)
+        })
+        .await
+        .map_err(|error| boot_error("R90010", "media store")(error.to_string()))?
+        .map_err(|error| boot_error("R90010", "media store")(error.to_string()))?;
 
         // Debug: `YMUSIC_DEV_REMOTE_CONFIG_URL` points the config service (and the update feed) at a
         // test server.
@@ -129,6 +143,11 @@ impl AppGraph {
                 .await
                 .map_err(|error| boot_error("R90011", "remote config")(error.to_string()))?,
         );
+        let floor = |embedded: &str, key: &str| {
+            i64::from(embedded.parse::<i32>().unwrap_or(0).max(settings.int(key, 0).unwrap_or(0)))
+        };
+        remote.set_running_engine(floor(ENGINE_JS_VERSION, LAST_LOADED_ENGINE_KEY));
+        remote.set_running_player(floor(PLAYER_JS_VERSION, LAST_LOADED_PLAYER_KEY));
         let stats_settings = settings.clone();
         let stats = StatUsage::start(
             remote.clone(),
@@ -173,10 +192,10 @@ impl AppGraph {
         }
         candidates.push((ENGINE_JS.to_owned(), format!("embedded v{ENGINE_JS_VERSION}")));
         let engines = Arc::new(EngineManager::start(candidates, template).await?);
-        remote.set_running_bundles(Some(i64::from(engines.backend_version())), None);
-        ym_telemetry::set_engine_version(engines.backend_version());
+        engine_running(&remote, &settings, engines.backend_version(), &log);
 
         let pending_player: Arc<Mutex<Option<VerifiedBundle>>> = Arc::new(Mutex::new(None));
+        let rejected_player: Arc<Mutex<Vec<BundleVersion>>> = Arc::default();
         let media = Arc::new(media);
         let mut player_config = template_for("player", &http, &http_cache, &log, &cookies, &settings, &cache, &remote);
         player_config.main = Some({
@@ -201,8 +220,33 @@ impl AppGraph {
             let (pending, source) = (pending_player.clone(), player_source.clone());
             Arc::new(move || player_candidates(&pending, &source))
         };
-        let youtube =
-            Arc::new(YoutubeSessions::new(player_config, candidates, player_source.clone(), log.fork("youtube")));
+        let player_running: crate::youtube_session::VersionSink = {
+            let (remote, settings, log) = (remote.clone(), settings.clone(), log.clone());
+            Arc::new(move |version| {
+                remote.set_running_player(version);
+                remember_loaded(&settings, LAST_LOADED_PLAYER_KEY, version, &log);
+            })
+        };
+        let check_config: crate::youtube_session::ConfigCheck = {
+            let (remote, tokio) = (remote.clone(), tokio.clone());
+            Arc::new(move || {
+                let remote = remote.clone();
+                tokio.spawn(async move { remote.check_update(BUNDLE_CONFIG_MAX_AGE).await });
+            })
+        };
+        let reject_staged: crate::youtube_session::RejectSink = {
+            let rejected = rejected_player.clone();
+            Arc::new(move |bundle| rejected.lock().unwrap().push(bundle))
+        };
+        let youtube = Arc::new(YoutubeSessions::new(
+            player_config,
+            candidates,
+            player_source.clone(),
+            player_running,
+            check_config,
+            reject_staged,
+            log.fork("youtube"),
+        ));
         let download_inputs = DownloadInputs {
             tokio: tokio.clone(),
             data_dir: data_dir.clone(),
@@ -221,17 +265,25 @@ impl AppGraph {
 
         let history_path = data_dir.join("play-history.db");
         let history = Arc::new(
-            tokio::task::spawn_blocking(move || ym_history::PlayHistory::open(&history_path))
-                .await
-                .map_err(|error| boot_error("R90016", "play history")(error.to_string()))?
-                .map_err(|error| boot_error("R90016", "play history")(error.to_string()))?,
+            tokio::task::spawn_blocking({
+                let log = log.fork("data-dir");
+                move || crate::data_files::open_database(&history_path, &log, ym_history::PlayHistory::open)
+            })
+            .await
+            .map_err(|error| boot_error("R90016", "play history")(error.to_string()))?
+            .map_err(|error| boot_error("R90016", "play history")(error.to_string()))?,
         );
         let sponsor_path = data_dir.join("sponsor-block.db");
         let sponsor_block = Arc::new(
-            tokio::task::spawn_blocking(move || ym_history::sponsor::SponsorBlockStore::open(&sponsor_path))
-                .await
-                .map_err(|error| boot_error("R90018", "sponsorblock store")(error.to_string()))?
-                .map_err(|error| boot_error("R90018", "sponsorblock store")(error.to_string()))?,
+            tokio::task::spawn_blocking({
+                let log = log.fork("data-dir");
+                move || {
+                    crate::data_files::open_database(&sponsor_path, &log, ym_history::sponsor::SponsorBlockStore::open)
+                }
+            })
+            .await
+            .map_err(|error| boot_error("R90018", "sponsorblock store")(error.to_string()))?
+            .map_err(|error| boot_error("R90018", "sponsorblock store")(error.to_string()))?,
         );
 
         let updates = ym_update::UpdateService::start(
@@ -268,10 +320,11 @@ impl AppGraph {
             player_cache,
             downloads,
             history,
+            temporary_uris: Arc::default(),
             sponsor_block,
             updates,
         };
-        graph.follow_published_bundles(engine_source);
+        graph.follow_published_bundles(engine_source, rejected_player);
         Ok(graph)
     }
 
@@ -285,38 +338,81 @@ impl AppGraph {
 
     /// Refreshes the config, then swaps in a newer published engine bundle (cached once it
     /// booted) and stages a newer player bundle for the next playback session.
-    fn follow_published_bundles(&self, engine_source: Arc<BundleSource>) {
-        let (remote, engines, player_source, pending) =
-            (self.remote.clone(), self.engines.clone(), self.player_source.clone(), self.pending_player.clone());
+    fn follow_published_bundles(
+        &self,
+        engine_source: Arc<BundleSource>,
+        rejected_player: Arc<Mutex<Vec<BundleVersion>>>,
+    ) {
+        let (remote, engines, player_source, pending, settings) = (
+            self.remote.clone(),
+            self.engines.clone(),
+            self.player_source.clone(),
+            self.pending_player.clone(),
+            self.settings.clone(),
+        );
         let log = self.log.fork("bundles");
         self.tokio.spawn(async move {
             let mut published = remote.subscribe();
-            remote.check_update(BUNDLE_CONFIG_MAX_AGE).await;
+            remote.check_update(ym_remote_config::REMOTE_CONFIG_MIN_INTERVAL).await;
+            // Every config received is acted on, as the JVM followPublished / bundleWatch: a bundle
+            // already running or staged is skipped, a download that failed is retried by the next
+            // config, and one that failed its signature or boot is never tried again.
+            let mut rejected_engine: Vec<BundleVersion> = Vec::new();
             loop {
                 let config = published.borrow_and_update().clone();
-                if let Some(remote_engine) =
-                    config.engine_js.filter(|bundle| bundle.version > i64::from(engines.backend_version()))
-                {
+                let engine_ref = engine_source.published(config.engine_js);
+                if let Some(remote_engine) = engine_ref.filter(|bundle| {
+                    !rejected_engine.contains(bundle) && bundle.version > i64::from(engines.backend_version())
+                }) {
                     match engine_source.download(&remote_engine).await {
                         Ok(bundle) => match engines.swap(bundle.source.clone()).await {
                             Ok(version) => {
                                 let source = engine_source.clone();
-                                let _ = tokio::task::spawn_blocking(move || source.store(&bundle)).await;
-                                remote.set_running_bundles(Some(i64::from(version)), None);
-                                ym_telemetry::set_engine_version(version);
+                                if let Ok(Err(error)) = tokio::task::spawn_blocking(move || source.store(&bundle)).await
+                                {
+                                    log.warn(
+                                        &format!("engine v{version} is live but could not be cached"),
+                                        Some(&error),
+                                    );
+                                }
+                                engine_running(&remote, &settings, version, &log);
                             }
-                            Err(error) => log
-                                .warn(&format!("R90012 engine v{} did not boot", remote_engine.version), Some(&error)),
+                            Err(error) => {
+                                rejected_engine.push(remote_engine.clone());
+                                log.warn(
+                                    &format!("R90012 engine v{} did not boot", remote_engine.version),
+                                    Some(&error),
+                                )
+                            }
                         },
+                        Err(error @ BundleError::Signature { .. }) => {
+                            rejected_engine.push(remote_engine.clone());
+                            log.capture_error("R91801 engine.js update rejected", &error);
+                        }
                         Err(error) => {
                             log.warn(&format!("R90012 engine v{} not taken", remote_engine.version), Some(&error))
                         }
                     }
                 }
-                let embedded_player = player_source.embedded().1;
-                if let Some(remote_player) = config.player_js.filter(|bundle| bundle.version > embedded_player) {
+                let player_ref = player_source.published(config.player_js);
+                let source = player_source.clone();
+                let cached_player = tokio::task::spawn_blocking(move || source.cached().map(|(_, version)| version))
+                    .await
+                    .ok()
+                    .flatten();
+                let local_player = player_source.embedded().1.max(cached_player.unwrap_or(0));
+                let staged = pending.lock().unwrap().as_ref().map(|bundle| bundle.remote.clone());
+                if let Some(remote_player) = player_ref.filter(|bundle| {
+                    !rejected_player.lock().unwrap().contains(bundle)
+                        && staged.as_ref() != Some(bundle)
+                        && bundle.version > local_player
+                }) {
                     match player_source.download(&remote_player).await {
                         Ok(bundle) => *pending.lock().unwrap() = Some(bundle),
+                        Err(error @ BundleError::Signature { .. }) => {
+                            rejected_player.lock().unwrap().push(remote_player.clone());
+                            log.capture_error("R91802 player.js update rejected", &error);
+                        }
                         Err(error) => {
                             log.warn(&format!("R90012 player v{} not taken", remote_player.version), Some(&error))
                         }
@@ -328,6 +424,24 @@ impl AppGraph {
             }
         });
     }
+}
+
+/// An engine bundle went live (the JVM onBackendVersion): the config service, every Sentry event
+/// and the next launch's floor name it.
+fn engine_running(remote: &RemoteConfig, settings: &Arc<dyn SettingsStore>, version: i32, log: &Logger) {
+    remote.set_running_engine(i64::from(version));
+    ym_telemetry::set_engine_version(version);
+    remember_loaded(settings, LAST_LOADED_ENGINE_KEY, i64::from(version), log);
+}
+
+fn remember_loaded(settings: &Arc<dyn SettingsStore>, key: &'static str, version: i64, log: &Logger) {
+    let Ok(version) = i32::try_from(version) else { return };
+    let (settings, log) = (settings.clone(), log.clone());
+    tokio::task::spawn_blocking(move || {
+        if let Err(error) = settings.put(key, ym_settings::SettingValue::Int(version)) {
+            log.warn(&format!("{key} not saved"), Some(error.as_ref()));
+        }
+    });
 }
 
 /// The player bundles to try, best first: a staged newer one, the cached one, the embedded one.
@@ -384,8 +498,8 @@ const fn version_code(digits: &str) -> i32 {
 }
 
 /// Opens app.db; blocking.
-pub fn open_app_db(data_dir: &std::path::Path) -> Result<Arc<AppDb>, EngineError> {
-    AppDb::open(&data_dir.join("app.db"))
+pub fn open_app_db(data_dir: &std::path::Path, log: &Logger) -> Result<Arc<AppDb>, EngineError> {
+    crate::data_files::open_database(&data_dir.join("app.db"), &log.fork("data-dir"), AppDb::open)
         .map(Arc::new)
         .map_err(|error| boot_error("R90005", "app.db")(error.to_string()))
 }

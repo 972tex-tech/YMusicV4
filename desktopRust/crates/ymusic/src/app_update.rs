@@ -15,7 +15,7 @@ use futures::channel::mpsc;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::progress::Progress;
-use gpui_kit::component::{ActiveTheme, Icon, IconName, Sizable, StyledExt, WindowExt, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme, Icon, Sizable, StyledExt, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use ym_i18n::{Str, t, tf};
@@ -109,12 +109,14 @@ pub fn show_upgrade_notice(window: &mut Window, cx: &mut App) {
         .message(tf(Str::UpgradedMessage, &[&crate::graph::APP_VERSION_NAME]))
         .action(move |_, _, cx| {
             let changelog = changelog.clone();
-            Button::new("upgrade-changelog").primary().label(t(Str::UpgradedViewChangelog)).on_click(cx.listener(
-                move |notification, _, window, cx| {
+            Button::new("upgrade-changelog")
+                .ghost()
+                .text_color(crate::settings_view::snackbar_action(cx))
+                .label(t(Str::UpgradedViewChangelog))
+                .on_click(cx.listener(move |notification, _, window, cx| {
                     cx.open_url(&changelog);
                     notification.dismiss(window, cx);
-                },
-            ))
+                }))
         })
         // `action` turns autohide off; a hover or keyboard focus on the toast still pauses it.
         .autohide(true);
@@ -235,6 +237,7 @@ pub fn sync_prompt(window: &mut Window, cx: &mut App) {
 /// starts: it must wait for this process to exit, not hand its launch to it.
 fn install_and_restart(cx: &mut App) {
     let Some(service) = cx.global::<AppGraph>().updates.clone() else { return };
+    crate::desktop::yield_activation_to_relaunch();
     let started = on_core(cx, async move { service.install(crate::instance::stop_accepting).await });
     cx.spawn(async move |cx| {
         if started.await == Some(true) {
@@ -398,7 +401,7 @@ impl Render for UpdateDialog {
             );
         }
         let failure = match &state {
-            UpdateState::Failed { failure, trusted: true, .. } if requested => Some(failure),
+            UpdateState::Failed { failure, .. } if requested => Some(failure),
             UpdateState::InstallFailed { failure, .. } => Some(failure),
             _ => None,
         };
@@ -571,7 +574,9 @@ impl Render for CheckUpdateDialog {
             Some(CheckResult::UpToDate) => h_flex()
                 .gap_4()
                 .items_center()
-                .child(Icon::new(IconName::CircleCheck).text_color(theme.success))
+                .child(
+                    Icon::new(crate::assets::MaterialIcon::CheckCircleRounded).size(px(22.)).text_color(theme.success),
+                )
                 .child(div().text_size(px(14.)).child(t(Str::UpdateUpToDate))),
             Some(CheckResult::Failed) => h_flex()
                 .child(div().text_size(px(14.)).text_color(theme.muted_foreground).child(t(Str::UpdateCheckFailed))),

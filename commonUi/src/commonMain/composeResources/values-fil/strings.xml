@@ -199,6 +199,11 @@
     <string name="menu_remove_from_playlist">Alisin sa playlist</string>
     <string name="playlist_delete_title">I-delete ang playlist?</string>
     <string name="playlist_delete_message">Aalisin ang “%1$s”. Mananatili ang mga kanta sa iyong library.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">Alisin ang %1$d kanta sa playlist?</item>
+        <item quantity="other">Alisin ang %1$d kanta sa playlist?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">Mananatili ang mga kanta sa iyong library.</string>
     <string name="add_to_playlist_new">Bagong playlist…</string>
     <string name="playlist_recent_play">Kamakailang pinatugtog</string>
     <string name="playlist_top_tracks">Mga nangungunang track</string>
@@ -304,10 +309,14 @@
     <string name="cd_download">I-download</string>
     <string name="cd_fullscreen">Full screen</string>
     <string name="cd_exit_fullscreen">Lumabas sa full screen</string>
+    <string name="cd_show_queue">Ipakita ang queue</string>
+    <string name="cd_hide_queue">Itago ang queue</string>
     <string name="cd_fit_video">Ipagkasya ang video</string>
     <string name="cd_fill_video">Punuin ang screen</string>
-    <string name="cd_lock_rotation">I-lock ang pag-ikot</string>
-    <string name="cd_unlock_rotation">I-unlock ang pag-ikot</string>
+    <string name="cd_screen_rotation">Pag-ikot ng screen</string>
+    <string name="rotation_lock_landscape">I-lock sa landscape</string>
+    <string name="rotation_lock_portrait">I-lock sa portrait</string>
+    <string name="rotation_free">Malayang pag-ikot</string>
     <string name="cd_rewind10">I-rewind nang 10 segundo</string>
     <string name="cd_forward10">I-forward nang 10 segundo</string>
     <string name="cd_repeat_off">Ulitin: naka-off</string>
@@ -416,6 +425,8 @@
     <string name="settings_audio_focus_apps">I-pause kapag may tunog mula sa ibang app</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Awtomatikong laktawan ang mga sponsored na bahagi sa mga YouTube video. I-off para sa isang video mula sa Now Playing.</string>
+    <string name="settings_stable_volume">Stable na volume</string>
+    <string name="settings_stable_volume_hint">Pinapantay ang malalakas at mahihinang bahagi at pinapatugtog ang bawat kanta sa magkahawig na lakas.</string>
     <string name="sponsor_block_included">Naka-enable ang SponsorBlock para sa video na ito</string>
     <string name="sponsor_block_excluded">Naka-disable ang SponsorBlock para sa video na ito</string>
     <string name="settings_sound">Tunog</string>
@@ -660,4 +671,30 @@
     <string name="native_blocked_help">Sa PC sa trabaho o paaralan, hilingin sa administrator na payagan ang YMusic. Sa sarili mong PC, tingnan ang Smart App Control sa Windows Security.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">Nire-refresh</string>
+    <string name="a11y_loading">Naglo-load</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">Piliin lahat</string>
+    <string name="downloads_action_select">Piliin</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">%1$d ang napili</item>
+        <item quantity="other">%1$d ang napili</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">Alisin sa listahan ang %1$d download?</item>
+        <item quantity="other">Alisin sa listahan ang %1$d download?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">Mananatili sa device na ito ang mga natapos na file.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">I-delete ang %1$d file?</item>
+        <item quantity="other">I-delete ang %1$d file?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">Hindi na maibabalik ang mga na-delete na file.</string>
+    <string name="downloads_cancel_selected">Kanselahin ang mga download</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">Kanselahin ang %1$d download?</item>
+        <item quantity="other">Kanselahin ang %1$d download?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">Buburahin ang na-download na sa ngayon.</string>
+    <string name="downloads_cancel_selected_keep">Panatilihin</string>
+    <string name="data_dir_unusable">Hindi mabuksan ng YMusic ang data folder nito, %1$s. Tiyaking folder ito na kaya mong sulatan, pagkatapos ay buksan muli ang YMusic. (%2$s)</string>
 </resources>

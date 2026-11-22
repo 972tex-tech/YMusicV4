@@ -202,6 +202,12 @@
     <string name="menu_remove_from_playlist">הסר מרשימת ההשמעה</string>
     <string name="playlist_delete_title">למחוק את רשימת ההשמעה?</string>
     <string name="playlist_delete_message">“%1$s” תוסר. השירים יישארו בספרייה שלך.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">להסיר שיר אחד מרשימת ההשמעה?</item>
+        <item quantity="two">להסיר שני שירים מרשימת ההשמעה?</item>
+        <item quantity="other">להסיר %1$d שירים מרשימת ההשמעה?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">השירים יישארו בספרייה שלך.</string>
     <string name="add_to_playlist_new">רשימת השמעה חדשה…</string>
     <string name="playlist_recent_play">הושמעו לאחרונה</string>
     <string name="playlist_top_tracks">השירים המובילים</string>
@@ -308,10 +314,14 @@
     <string name="cd_download">הורדה</string>
     <string name="cd_fullscreen">מסך מלא</string>
     <string name="cd_exit_fullscreen">יציאה ממסך מלא</string>
+    <string name="cd_show_queue">הצגת התור</string>
+    <string name="cd_hide_queue">הסתרת התור</string>
     <string name="cd_fit_video">התאמת הסרטון</string>
     <string name="cd_fill_video">מילוי המסך</string>
-    <string name="cd_lock_rotation">נעילת סיבוב</string>
-    <string name="cd_unlock_rotation">ביטול נעילת סיבוב</string>
+    <string name="cd_screen_rotation">סיבוב מסך</string>
+    <string name="rotation_lock_landscape">נעילה לרוחב</string>
+    <string name="rotation_lock_portrait">נעילה לאורך</string>
+    <string name="rotation_free">סיבוב חופשי</string>
     <string name="cd_rewind10">10 שניות אחורה</string>
     <string name="cd_forward10">10 שניות קדימה</string>
     <string name="cd_repeat_off">חזרה על השמעה: כבויה</string>
@@ -420,6 +430,8 @@
     <string name="settings_audio_focus_apps">השהיה כשאפליקציות אחרות משמיעות צליל</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">דילוג אוטומטי על קטעי חסות בסרטוני YouTube. ניתן לכבות לסרטון מסוים מהמסך המתנגן כעת.</string>
+    <string name="settings_stable_volume">עוצמת קול יציבה</string>
+    <string name="settings_stable_volume_hint">מאזן בין קטעים רועשים ושקטים ומנגן כל שיר בעוצמה דומה.</string>
     <string name="sponsor_block_included">SponsorBlock הופעל לסרטון הזה</string>
     <string name="sponsor_block_excluded">SponsorBlock הושבת לסרטון הזה</string>
     <string name="settings_sound">צליל</string>
@@ -668,4 +680,34 @@
     <string name="native_blocked_help">במחשב של העבודה או בית הספר, בקש ממנהל המערכת לאפשר את YMusic. במחשב שלך, בדוק את Smart App Control באבטחת Windows.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">מרענן</string>
+    <string name="a11y_loading">בטעינה</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">בחירת הכול</string>
+    <string name="downloads_action_select">בחירה</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">נבחרו: %1$d</item>
+        <item quantity="two">נבחרו: %1$d</item>
+        <item quantity="other">נבחרו: %1$d</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">להסיר הורדה אחת מהרשימה?</item>
+        <item quantity="two">להסיר שתי הורדות מהרשימה?</item>
+        <item quantity="other">להסיר %1$d הורדות מהרשימה?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">קבצים שהושלמו יישארו במכשיר הזה.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">למחוק קובץ אחד?</item>
+        <item quantity="two">למחוק שני קבצים?</item>
+        <item quantity="other">למחוק %1$d קבצים?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">אי אפשר לשחזר קבצים שנמחקו.</string>
+    <string name="downloads_cancel_selected">ביטול ההורדות</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">לבטל הורדה אחת?</item>
+        <item quantity="two">לבטל שתי הורדות?</item>
+        <item quantity="other">לבטל %1$d הורדות?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">מה שהורד עד עכשיו יימחק.</string>
+    <string name="downloads_cancel_selected_keep">להשאיר</string>
+    <string name="data_dir_unusable">YMusic לא יכולה לפתוח את תיקיית הנתונים שלה, %1$s. ודא שזו תיקייה שאפשר לכתוב בה, ואז פתח שוב את YMusic. (%2$s)</string>
 </resources>

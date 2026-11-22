@@ -228,6 +228,10 @@
     <string name="menu_remove_from_playlist">Xóa khỏi danh sách phát</string>
     <string name="playlist_delete_title">Xóa danh sách phát?</string>
     <string name="playlist_delete_message">“%1$s” sẽ bị xóa. Các bài hát vẫn còn trong thư viện của bạn.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="other">Xóa %1$d bài hát khỏi danh sách phát?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">Các bài hát vẫn còn trong thư viện của bạn.</string>
     <string name="add_to_playlist_new">Danh sách phát mới…</string>
     <string name="playlist_recent_play">Nghe gần đây</string>
     <string name="playlist_top_tracks">Bài hát nổi bật</string>
@@ -343,11 +347,15 @@
     <string name="cd_download">Tải xuống</string>
     <string name="cd_fullscreen">Toàn màn hình</string>
     <string name="cd_exit_fullscreen">Thoát toàn màn hình</string>
+    <string name="cd_show_queue">Hiện hàng đợi</string>
+    <string name="cd_hide_queue">Ẩn hàng đợi</string>
     <string name="cd_minimize">Thu nhỏ</string>
     <string name="cd_fit_video">Vừa khít</string>
     <string name="cd_fill_video">Phóng đầy</string>
-    <string name="cd_lock_rotation">Khóa xoay</string>
-    <string name="cd_unlock_rotation">Mở khóa xoay</string>
+    <string name="cd_screen_rotation">Xoay màn hình</string>
+    <string name="rotation_lock_landscape">Khóa ngang</string>
+    <string name="rotation_lock_portrait">Khóa dọc</string>
+    <string name="rotation_free">Xoay tự do</string>
     <string name="cd_rewind10">Tua lùi 10 giây</string>
     <string name="cd_forward10">Tua tới 10 giây</string>
     <string name="cd_repeat_off">Lặp lại: tắt</string>
@@ -386,6 +394,8 @@
     <string name="settings_audio_focus_apps">Tạm dừng khi ứng dụng khác phát âm thanh</string>
     <string name="settings_sponsor_block">Chặn quảng cáo trong video</string>
     <string name="settings_sponsor_block_hint">Tự động bỏ qua các đoạn được tài trợ trong video YouTube. Tắt cho một video từ Đang phát.</string>
+    <string name="settings_stable_volume">Âm lượng ổn định</string>
+    <string name="settings_stable_volume_hint">Cân bằng đoạn to và nhỏ, phát mọi bài hát ở mức âm lượng tương tự nhau.</string>
     <string name="sponsor_block_included">Chặn quảng cáo trong video này</string>
     <string name="sponsor_block_excluded">Bỏ chặn quảng cáo trong video này</string>
     <string name="settings_sound">Âm thanh</string>
@@ -773,4 +783,26 @@
     <string name="native_blocked_help">Trên máy tính cơ quan hoặc trường học, hãy nhờ quản trị viên cho phép YMusic. Trên máy tính của bạn, hãy kiểm tra Smart App Control trong Bảo mật Windows.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">Đang làm mới</string>
+    <string name="a11y_loading">Đang tải</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">Chọn tất cả</string>
+    <string name="downloads_action_select">Chọn</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="other">Đã chọn %1$d</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="other">Gỡ %1$d mục tải xuống khỏi danh sách?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">Các tệp đã tải xong vẫn được giữ trên thiết bị này.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="other">Xóa %1$d tệp?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">Không thể khôi phục tệp đã xóa.</string>
+    <string name="downloads_cancel_selected">Hủy tải xuống</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="other">Hủy %1$d mục tải xuống?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">Phần đã tải xuống đến nay sẽ bị xóa.</string>
+    <string name="downloads_cancel_selected_keep">Giữ lại</string>
+    <string name="data_dir_unusable">YMusic không thể mở thư mục dữ liệu của ứng dụng, %1$s. Hãy đảm bảo đó là thư mục bạn có thể ghi vào, rồi mở lại YMusic. (%2$s)</string>
 </resources>

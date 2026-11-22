@@ -313,6 +313,19 @@ class AppGraph(
     /** Library scans, one per process so a scan outlives the screen and the activity that started it. */
     internal val scans by lazy { ScanController(processScope, logger?.fork("library-scan")) }
 
+    /**
+     * Applies a folder pick whose caller is gone: Android killed the process (or the screen) while the picker
+     * covered it, then delivered the picked [uri] to a fresh one. [asDownloadLocation] makes it the download
+     * location (the shell has registered its bucket already); either way the folder is then scanned.
+     */
+    fun adoptPickedFolder(uri: String, asDownloadLocation: Boolean) {
+        processScope.launch {
+            if (asDownloadLocation && !assignDownloadFolder(this@AppGraph, uri, scans::notify)) return@launch
+            val rescan = rescanLibrary ?: return@launch
+            scans.start { onProgress -> rescan(uri, onProgress) }
+        }
+    }
+
     private val appliedUiLanguage = MutableStateFlow(uiLanguageTag(settings).also(::applyUiLocale))
 
     /** The UI language in effect; the composition rebuilds on it (the platform locale is not snapshot state). */
@@ -340,8 +353,10 @@ class AppGraph(
                 appliedUiLanguage.value = tag
             }
         }
+        bindings.launch { AppSettings.retiredKeys.forEach { settings.remove(it) } }
         bindPlayerConfig(bindings)
         bindings.launch { pip.pictureHidden.collect { player.setVideoHidden(it) } }
+        bindings.launch { settings.flow(AppSettings.stableVolume).collect { player.setStableVolume(it) } }
         bindPlayerCacheLimit(bindings)
         SponsorBlockCoordinator(this, bindings)
         bindings.launch {
@@ -430,8 +445,8 @@ class AppGraph(
     /** Fullscreen only: stretch the picture to the hole. Mini / Now Playing always fit. */
     val videoFillScreen = mutableStateOf(false)
 
-    /** Fullscreen only: hold the current orientation regardless of the sensor and the system lock. */
-    val videoRotationLocked = mutableStateOf(false)
+    /** Fullscreen only: how the video follows the phone's rotation, regardless of the system lock. */
+    val videoRotation = mutableStateOf(VideoRotation.Free)
 
     val localeEpoch = MutableStateFlow(0)
 

@@ -9,7 +9,7 @@ use ym_common::log::{DeferredSink, Level, LogSink, Logger, StderrSink, TeeSink};
 use ym_logstore::{LogStore, LogStoreSink};
 use ym_remote_config::{RemoteConfig, RemoteConfigData};
 use ym_settings::SettingsStore;
-use ym_telemetry::{FeedbackReport, LogShipper, ReportPolicy, SentrySink, Telemetry, TelemetryConfig};
+use ym_telemetry::{ExitMarker, FeedbackReport, LogShipper, ReportPolicy, SentrySink, Telemetry, TelemetryConfig};
 
 use crate::graph::AppGraph;
 
@@ -22,6 +22,8 @@ const DEVICE_ID_KEY: &str = "telemetry.deviceId";
 /// Debug builds: the feedback report's envelopes go to this file instead of Sentry.
 const FEEDBACK_DRY_RUN_ENV: &str = "YMUSIC_DEV_FEEDBACK_ENVELOPE";
 const FEEDBACK_EXPORT_TIMEOUT: Duration = Duration::from_secs(15);
+/// SQLite's name for a database that lives in memory and goes with its connection.
+const IN_MEMORY_DATABASE: &str = ":memory:";
 
 /// The app log, for the feedback report.
 pub struct AppLogs(pub Option<Arc<LogStore>>);
@@ -110,15 +112,29 @@ pub struct LogSetup {
 
 /// The logger every layer uses: stderr, the app log (`logs.db`), and Sentry once it joins.
 pub fn logger(data_dir: &Path) -> LogSetup {
-    let logs = LogStore::open(&data_dir.join("logs.db")).ok();
+    let app_log = Arc::new(DeferredSink::default());
     let reports = Arc::new(DeferredSink::default());
     let stderr_level = if cfg!(debug_assertions) { Level::Info } else { Level::Warn };
-    let mut sinks: Vec<Arc<dyn LogSink>> = vec![Arc::new(StderrSink { min_level: stderr_level })];
+    let sinks: Vec<Arc<dyn LogSink>> =
+        vec![Arc::new(StderrSink { min_level: stderr_level }), app_log.clone(), reports.clone()];
+    let log = Logger::new(Arc::new(TeeSink { sinks }));
+    let opened = crate::data_files::open_database(&data_dir.join("logs.db"), &log.fork("data-dir"), LogStore::open);
+    let logs = opened
+        .or_else(|error| {
+            log.warn(
+                "R90409 the app log (logs.db) did not open: lines are kept in memory for this launch",
+                Some(&error),
+            );
+            LogStore::open(Path::new(IN_MEMORY_DATABASE))
+        })
+        .inspect_err(|error| {
+            log.warn("the in-memory app log did not open either: lines go to stderr only", Some(error))
+        })
+        .ok();
     if let Some(logs) = &logs {
-        sinks.push(Arc::new(LogStoreSink { store: logs.clone() }));
+        app_log.set(Arc::new(LogStoreSink { store: logs.clone() }));
     }
-    sinks.push(reports.clone());
-    LogSetup { log: Logger::new(Arc::new(TeeSink { sinks })), logs, reports }
+    LogSetup { log, logs, reports }
 }
 
 /// The remote config's report policy, its defaults until the booted graph hands the config over.
@@ -139,6 +155,10 @@ impl ReportPolicy for RemotePolicy {
     fn error_sample_rate(&self) -> f64 {
         self.config().error_sample_rate()
     }
+
+    fn error_filters(&self) -> Vec<String> {
+        self.config().error_filters()
+    }
 }
 
 /// Keeps reporting alive for the app's lifetime; [`Self::follow`] hands it the booted graph.
@@ -154,8 +174,16 @@ impl Reporting {
     /// Once the graph booted: the app log's size cap, the error policy and the events' tags come
     /// from its remote config.
     pub fn follow(&self, graph: &AppGraph) {
-        if let Some(logs) = &self.logs {
-            logs.set_max_lines(graph.remote.current().log_lines());
+        if let Some(logs) = self.logs.clone() {
+            let mut config = graph.remote.subscribe();
+            graph.tokio.spawn(async move {
+                loop {
+                    logs.set_max_lines(config.borrow_and_update().log_lines());
+                    if config.changed().await.is_err() {
+                        return;
+                    }
+                }
+            });
         }
         if let Some(policy) = &self.policy {
             // One graph boots per launch; a second follow would keep the first's config.
@@ -189,6 +217,7 @@ pub fn device_id(settings: &dyn SettingsStore) -> String {
 /// switch gates what leaves, live. Error events' log lines go out as Sentry Logs over `http`.
 pub fn start_reporting(
     setup: &LogSetup,
+    data_dir: &Path,
     settings: &dyn SettingsStore,
     tokio: &Handle,
     http: reqwest::Client,
@@ -199,7 +228,8 @@ pub fn start_reporting(
         return reporting;
     }
     device_id(settings);
-    let shipper = LogShipper::start(logs, dsn, crate::graph::APP_VERSION, http, tokio, setup.log.fork("sentry-logs"));
+    let shipper =
+        LogShipper::start(logs.clone(), dsn, crate::graph::APP_VERSION, http, tokio, setup.log.fork("sentry-logs"));
     let Some(telemetry) = Telemetry::init(telemetry_config(dsn, settings), crash_reports_allowed(settings)) else {
         return reporting;
     };
@@ -208,6 +238,7 @@ pub fn start_reporting(
             let policy = Arc::new(RemotePolicy::default());
             let sink = Arc::new(SentrySink { logs: shipper, policy: policy.clone() });
             sink.attach_logs_to_panics();
+            arm_exit_marker(data_dir, &logs.launch, &sink, &setup.log);
             setup.reports.set(sink);
             reporting.policy = Some(policy);
         }
@@ -217,6 +248,49 @@ pub fn start_reporting(
     }
     reporting._guard = Some(telemetry);
     reporting
+}
+
+/// The file that names the running launch until a clean quit ([`ExitMarker`]).
+const RUNNING_MARKER: &str = "running";
+static EXIT_MARKER: OnceLock<Arc<ExitMarker>> = OnceLock::new();
+
+/// Blocking: from here to a clean quit this launch is named running; one that died before its quit
+/// (a native crash, a kill) is reported now, and a panic marks the launch reported.
+fn arm_exit_marker(data_dir: &Path, launch: &str, sink: &SentrySink, log: &Logger) {
+    match ExitMarker::arm(data_dir.join(RUNNING_MARKER), launch) {
+        Ok((marker, previous)) => {
+            let marker = Arc::new(marker);
+            let panicking = marker.clone();
+            let next = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                panicking.mark_panicked();
+                next(info);
+            }));
+            let _ = EXIT_MARKER.set(marker);
+            match previous {
+                Some(previous) if previous.before_boot => {
+                    log.info("the previous launch ended with the OS (a shutdown or restart): not reported")
+                }
+                Some(previous) => sink.report_unclean_exit(&previous),
+                None => {}
+            }
+        }
+        Err(error) => {
+            log.warn("R90039 the running-launch marker is unusable: an unclean exit goes unreported", Some(&error))
+        }
+    }
+}
+
+/// Blocking: a clean quit, so the next launch has no unclean exit to report.
+pub fn disarm_exit_marker(log: &Logger) {
+    if let Some(marker) = EXIT_MARKER.get()
+        && let Err(error) = marker.disarm()
+    {
+        log.warn(
+            "R90042 the running-launch marker was not removed at quit: the next launch reports an unclean exit",
+            Some(&error),
+        );
+    }
 }
 
 /// Keeps the events' remote tags equal to the config's `sentryTags`, from the cached config on.

@@ -15,8 +15,25 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
 - **Navigation shell** — phones use the drawer and the bottom mini-player. Windows at least 750dp wide and 480dp tall
   use `AppRail` (`Rail.kt`) instead: a left rail carrying the same sections and the mini-player, which hosts the shared
   video surface in its art tile. The expanded rail always sits beside the content (expanding moves it over) and starts
-  open on desktop windows from 1200dp; touch windows start collapsed. A TV expands it while it holds focus. Now Playing and Search are the same screens on every size.
+  open on desktop windows from 1200dp; touch windows start collapsed. The user's toggle is saved
+  (`AppSettings.railExpanded`) and wins over that default at every start, until the window crosses 1200dp, which
+  hands it back to the width for the session; the drawer layout never touches it. A TV expands it while it holds focus. Now Playing and Search are the same screens on every size.
   Width-based layout reads `railStableWidth`, so expanding resizes cards without changing a column count.
+
+- **Screen-owned app bar** — a section screen with a mode of its own swaps the shell's app bar through
+  `ReplaceAppBar` (`AppBarSlot` in `AppBars.kt`); the shell draws the replacement in the same elevated bar and
+  restores its own when the call leaves composition. First user: the Download manager's multi-select (long press
+  or ⋮ → Select; X · "N selected" · Select all · Pause · Resume · Cancel · ⋮ Remove from list / Remove from disk;
+  Cancel asks first and stops only the unfinished ones: queued, running or paused).
+
+- **Multi-select** — `MultiSelection.kt` holds the shared selection state (Select all remembers what it replaced,
+  Back ends it, focus returns to the item that started it once removed items have left the list, never after
+  navigating away), the item gesture, the checkbox in the ⋮ slot, the bar's
+  start and the batch Remove from disk dialog. The Download manager's bar replaces the app bar; the Library's Songs
+  tab replaces its tab row instead (X · "N selected" · Select all · Add to playlist · Remove from disk · ⋮ Play /
+  Queue next / Queue last) and holds the Library on that tab: no swipe, no tab switch until it ends. An opened user
+  playlist does the same through the Library's tab-row `AppBarSlot` (X · "N selected" · Select all · Remove from
+  playlist · Remove from disk · Add to playlist · ⋮ Play / Queue next / Queue last); Remove from playlist asks first ("Remove N songs from playlist?"), the rest reuse the Songs tab's dialogs.
 
 - **SponsorBlock seam** — `ymusic.ui.sponsorblock`: `SponsorBlockApi` + `MockSponsorBlockApi` +
   SQLite cache/whitelist (`SponsorBlockStore`) + `SponsorBlockService` + `SponsorBlockCoordinator`
@@ -59,6 +76,11 @@ The shared Compose Multiplatform app UI (jvm + android; iOS later).
   by name), Back up (`createDocument` → a `ymusic.playlists` v1 JSON of every user playlist's codes) and Restore
   (`openDocument` → Merge by name or Replace all, via `BetterMediaStore.restorePlaylists`). Smart playlists are
   never included. Each action hides when its `AppGraph` seam is null.
+
+- **Loading more** — every Show more / Load more / more replies and its Retry goes through `LoadMoreFocus`
+  (`LoadMoreFocus.kt`): activating it focuses the spinner (`LoadingMoreIndicator`, read as "Loading"), and when the
+  page settles focus moves to the first new item, else to the control that is back, else to the last item. A collapsed
+  section's Show more (N) focuses the first revealed item; Show less keeps focus on the (keyed) toggle.
 
 - **Thumbnails** — render through `:image-loader` (`LocalImageLoader` provided from `AppGraph.imageLoader`; null
   keeps placeholder boxes).

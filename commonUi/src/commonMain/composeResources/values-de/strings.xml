@@ -199,6 +199,11 @@
     <string name="menu_remove_from_playlist">Aus Playlist entfernen</string>
     <string name="playlist_delete_title">Playlist löschen?</string>
     <string name="playlist_delete_message">„%1$s“ wird entfernt. Die Songs bleiben in deiner Mediathek.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">%1$d Song aus Playlist entfernen?</item>
+        <item quantity="other">%1$d Songs aus Playlist entfernen?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">Die Songs bleiben in deiner Mediathek.</string>
     <string name="add_to_playlist_new">Neue Playlist…</string>
     <string name="playlist_recent_play">Zuletzt gespielt</string>
     <string name="playlist_top_tracks">Top-Titel</string>
@@ -304,10 +309,14 @@
     <string name="cd_download">Herunterladen</string>
     <string name="cd_fullscreen">Vollbild</string>
     <string name="cd_exit_fullscreen">Vollbild beenden</string>
+    <string name="cd_show_queue">Warteschlange einblenden</string>
+    <string name="cd_hide_queue">Warteschlange ausblenden</string>
     <string name="cd_fit_video">Video einpassen</string>
     <string name="cd_fill_video">Bildschirm füllen</string>
-    <string name="cd_lock_rotation">Drehung sperren</string>
-    <string name="cd_unlock_rotation">Drehung entsperren</string>
+    <string name="cd_screen_rotation">Bildschirmdrehung</string>
+    <string name="rotation_lock_landscape">Querformat sperren</string>
+    <string name="rotation_lock_portrait">Hochformat sperren</string>
+    <string name="rotation_free">Freie Drehung</string>
     <string name="cd_rewind10">10 Sekunden zurück</string>
     <string name="cd_forward10">10 Sekunden vor</string>
     <string name="cd_repeat_off">Wiederholen: aus</string>
@@ -416,6 +425,8 @@
     <string name="settings_audio_focus_apps">Pausieren, wenn andere Apps Ton abspielen</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">Gesponserte Abschnitte in YouTube-Videos automatisch überspringen. In „Aktuelle Wiedergabe“ für einzelne Videos abschaltbar.</string>
+    <string name="settings_stable_volume">Stabile Lautstärke</string>
+    <string name="settings_stable_volume_hint">Gleicht laute und leise Passagen aus und spielt jeden Titel ähnlich laut ab.</string>
     <string name="sponsor_block_included">SponsorBlock für dieses Video aktiviert</string>
     <string name="sponsor_block_excluded">SponsorBlock für dieses Video deaktiviert</string>
     <string name="settings_sound">Sound</string>
@@ -660,4 +671,30 @@
     <string name="native_blocked_help">Bitte an einem Arbeits- oder Schul-PC deinen Administrator, YMusic zuzulassen. Prüfe auf deinem eigenen PC die intelligente App-Steuerung in der Windows-Sicherheit.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">Wird aktualisiert</string>
+    <string name="a11y_loading">Wird geladen</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">Alle auswählen</string>
+    <string name="downloads_action_select">Auswählen</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">%1$d ausgewählt</item>
+        <item quantity="other">%1$d ausgewählt</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">%1$d Download aus der Liste entfernen?</item>
+        <item quantity="other">%1$d Downloads aus der Liste entfernen?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">Fertige Dateien bleiben auf diesem Gerät.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">%1$d Datei löschen?</item>
+        <item quantity="other">%1$d Dateien löschen?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">Gelöschte Dateien können nicht wiederhergestellt werden.</string>
+    <string name="downloads_cancel_selected">Downloads abbrechen</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">%1$d Download abbrechen?</item>
+        <item quantity="other">%1$d Downloads abbrechen?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">Bisher Heruntergeladenes wird gelöscht.</string>
+    <string name="downloads_cancel_selected_keep">Behalten</string>
+    <string name="data_dir_unusable">YMusic kann seinen Datenordner %1$s nicht öffnen. Stelle sicher, dass es ein Ordner ist, in den du schreiben kannst, und öffne YMusic dann erneut. (%2$s)</string>
 </resources>

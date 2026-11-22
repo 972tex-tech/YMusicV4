@@ -6,24 +6,27 @@ use std::collections::HashMap;
 
 use futures::FutureExt;
 
-use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
-use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme, Icon, IconName, Selectable, Sizable, StyledExt, WindowExt, h_flex, v_flex};
+use gpui_kit::component::menu::PopupMenuItem;
+use gpui_kit::component::{ActiveTheme, Icon, Selectable, Sizable, StyledExt, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use ym_engine::EngineError;
 use ym_engine::yt::{YtComment, YtCommentPage, YtThumb, YtVideoDetails};
 use ym_i18n::{Str, t, tf};
+use ym_image_loader::async_image::async_image_of;
 
-use crate::a11y::{FocusList, alert, announced};
-use crate::action_icon::{HIT, action_icon};
+use crate::a11y::{FocusList, LoadMoreFocus, alert, announced};
+use crate::action_icon::{HIT, action_icon, auto_mirrored};
+use crate::assets::MaterialIcon;
 use crate::elevated_dialog::{ConfirmDialog, button_bar, chrome, press, scroll_body, text_button, title_bar};
-use crate::feed::{FeedSource, Navigate, error_text, thumb_for};
+use crate::feed::{FeedSource, Navigate, error_text};
 use crate::graph::{AppGraph, on_core};
+use crate::item_menu::{ItemMenu, on_right_click};
 use crate::settings_view::HOVER_ALPHA;
 use crate::spinner::Spinner;
+use crate::youtube_thumbnails::thumb_request_sources;
 
 const LIKE: &str = "LIKE";
 const DISLIKE: &str = "DISLIKE";
@@ -48,7 +51,7 @@ struct CommentList {
 }
 
 /// Which list a page loads into: the top-level comments, or one thread's replies.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 enum ListKey {
     Top,
     Replies(String),
@@ -87,6 +90,14 @@ pub struct VideoDetailsView {
     focus: FocusList,
     /// The next stop's index while rendering: stops are numbered in render order.
     next_stop: std::cell::Cell<usize>,
+    /// A page the user asked for, and the list it loads into.
+    more_focus: LoadMoreFocus,
+    more_list: Option<ListKey>,
+    /// This render's stops: each comment's, by id; each list's Show more or Retry; each thread's
+    /// replies toggle, by its comment's id.
+    comment_stops: std::cell::RefCell<HashMap<String, std::ops::Range<usize>>>,
+    footer_stops: std::cell::RefCell<HashMap<ListKey, usize>>,
+    toggle_stops: std::cell::RefCell<HashMap<String, usize>>,
     focused_first: bool,
     scroll: ScrollHandle,
     _subscriptions: Vec<Subscription>,
@@ -141,6 +152,11 @@ impl VideoDetailsView {
             edit_input,
             focus: FocusList::modal(Some(scroll.clone()), cx),
             next_stop: std::cell::Cell::new(0),
+            more_focus: LoadMoreFocus::new(cx),
+            more_list: None,
+            comment_stops: Default::default(),
+            footer_stops: Default::default(),
+            toggle_stops: Default::default(),
             focused_first: false,
             scroll,
             _subscriptions: subscriptions,
@@ -231,14 +247,62 @@ impl VideoDetailsView {
         .detach();
     }
 
-    fn toggle_replies(&mut self, comment: &YtComment, cx: &mut Context<Self>) {
+    fn toggle_replies(&mut self, comment: &YtComment, window: &mut Window, cx: &mut Context<Self>) {
         if self.replies.remove(&comment.id).is_some() {
             cx.notify();
             return;
         }
         let list = CommentList { continuation: comment.replies_continuation.clone(), ..CommentList::default() };
         self.replies.insert(comment.id.clone(), list);
-        self.load_more(ListKey::Replies(comment.id.clone()), true, cx);
+        self.load_more_asked(ListKey::Replies(comment.id.clone()), window, cx);
+    }
+
+    /// A page the user asked for (Show more, more replies, Retry, opening a thread), which keeps
+    /// focus in place: see [`LoadMoreFocus`].
+    fn load_more_asked(&mut self, key: ListKey, window: &mut Window, cx: &mut Context<Self>) {
+        self.load_more(key.clone(), true, cx);
+        let Some(list) = self.list_mut(&key) else { return };
+        if !list.loading {
+            return;
+        }
+        let loaded = list.comments.len();
+        self.more_focus.start(loaded, window, cx);
+        self.more_list = Some(key);
+    }
+
+    /// Where focus goes once that page settles, from this render's stops.
+    fn settle_more_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(key) = self.more_list.clone() else { return };
+        let list = match &key {
+            ListKey::Top => Some(&self.comments),
+            ListKey::Replies(id) => self.replies.get(id),
+        };
+        let (loading, ids, control_back) = list.map_or((false, Vec::new(), false), |list| {
+            let ids: Vec<String> = list.comments.iter().map(|comment| comment.id.clone()).collect();
+            (list.loading, ids, list.error.is_some() || list.continuation.is_some())
+        });
+        let settled = self.more_focus.settle(loading, ids.len(), window);
+        if !self.more_focus.pending() {
+            self.more_list = None;
+        }
+        let Some(settled) = settled else { return };
+        let (comments, footers, toggles) =
+            (self.comment_stops.borrow(), self.footer_stops.borrow(), self.toggle_stops.borrow());
+        let stop = |index: usize| self.focus.handle(index, cx);
+        let item = |index: usize| {
+            let stops = comments.get(ids.get(index)?)?;
+            (!stops.is_empty()).then(|| stop(stops.start))
+        };
+        let control = footers.get(&key).filter(|_| control_back).map(|index| stop(*index));
+        let fallback = match &key {
+            ListKey::Top => None,
+            ListKey::Replies(id) => toggles.get(id).map(|index| stop(*index)),
+        };
+        let target = settled.target(item, control, fallback);
+        drop((comments, footers, toggles));
+        if let Some(target) = target {
+            window.focus(&target, cx);
+        }
     }
 
     fn signed_out_notice(window: &mut Window, cx: &mut App) {
@@ -517,13 +581,20 @@ impl VideoDetailsView {
 
     fn avatar(thumbs: &[YtThumb], size: f32, cx: &App) -> Div {
         let frame = div().size(px(size)).flex_shrink_0().rounded_full().overflow_hidden().bg(cx.theme().secondary);
-        match thumb_for(thumbs, (size * 2.) as i32) {
-            Some(url) => frame.child(img(url).size_full().rounded_full().object_fit(ObjectFit::Cover)),
-            None => frame
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(Icon::new(Lucide::User).size(px(size / 2.)).text_color(cx.theme().muted_foreground)),
+        let person =
+            Icon::new(MaterialIcon::PersonOutlined).size(px(size / 2.)).text_color(cx.theme().muted_foreground);
+        match thumb_request_sources(thumbs) {
+            Some(request) => frame.child(
+                async_image_of(Some(request))
+                    .size_full()
+                    .rounded_full()
+                    .object_fit(ObjectFit::Cover)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .placeholder(person),
+            ),
+            None => frame.flex().items_center().justify_center().child(person),
         }
     }
 
@@ -532,7 +603,7 @@ impl VideoDetailsView {
     }
 
     /// A segment of a [`Self::pill`]: `icon`, and whatever the caller adds after it.
-    fn pill_button(id: &'static str, icon: Lucide) -> Button {
+    fn pill_button(id: &'static str, icon: MaterialIcon) -> Button {
         Button::new(id).ghost().rounded_full().h(px(PILL_HEIGHT)).px_4().child(Icon::new(icon).size(px(PILL_ICON)))
     }
 
@@ -611,7 +682,7 @@ impl VideoDetailsView {
         let rating = Self::pill(cx)
             .child(
                 self.stop(
-                    Self::pill_button("details-like", Lucide::ThumbsUp)
+                    Self::pill_button("details-like", thumb_up(liked))
                         .when_some(like_count, |button, count| button.child(count))
                         .selected(liked)
                         .accessibility_label(like_label)
@@ -622,15 +693,15 @@ impl VideoDetailsView {
             .child(div().w(px(1.)).h(px(20.)).bg(theme.border))
             .child(
                 self.stop(
-                    Self::pill_button("details-dislike", Lucide::ThumbsDown)
+                    Self::pill_button("details-dislike", thumb_down(disliked))
                         .selected(disliked)
                         .accessibility_label(t(Str::VideoDetailsDislike))
                         .on_click(cx.listener(|view, _, window, cx| view.toggle_rating(DISLIKE, window, cx))),
                     cx,
                 ),
             );
-        let link = format!("https://youtu.be/{}", self.video_id);
-        let share = Self::pill_button("details-share", Lucide::Share2)
+        let link = crate::feed::youtube_share_link("video", &self.video_id).unwrap_or_default();
+        let share = Self::pill_button("details-share", MaterialIcon::ShareOutlined)
             .accessibility_label(t(Str::CdShare))
             .tooltip(t(Str::CdShare))
             .on_click(move |_, window, cx| {
@@ -694,12 +765,12 @@ impl VideoDetailsView {
                     .child(div().flex_1().child(Textarea::new(input)))
                     .when(draft == Draft::Edit && !busy, |row| {
                         row.child(self.stop(
-                            action_icon("cancel-edit", IconName::Close, t(Str::DialogCancel)).on_click(cx.listener(
-                                |view, _, _, cx| {
+                            action_icon("cancel-edit", MaterialIcon::Close, t(Str::DialogCancel)).on_click(
+                                cx.listener(|view, _, _, cx| {
                                     view.editing = None;
                                     cx.notify();
-                                },
-                            )),
+                                }),
+                            ),
                             cx,
                         ))
                     })
@@ -713,7 +784,7 @@ impl VideoDetailsView {
                             .into_any_element()
                     } else {
                         self.stop(
-                            action_icon(id, Lucide::Send, t(Str::VideoDetailsPost))
+                            action_icon(id, auto_mirrored(MaterialIcon::Send), t(Str::VideoDetailsPost))
                                 .on_click(cx.listener(move |view, _, window, cx| view.send(draft, window, cx))),
                             cx,
                         )
@@ -738,7 +809,7 @@ impl VideoDetailsView {
                     .items_center()
                     .text_xs()
                     .text_color(theme.muted_foreground)
-                    .child(Icon::new(Lucide::Pin).size(px(12.)))
+                    .child(Icon::new(MaterialIcon::PushPinOutlined).size(px(12.)))
                     .child(pinned.clone()),
             );
         }
@@ -760,7 +831,8 @@ impl VideoDetailsView {
                     }
                 })),
         );
-        if self.editing.as_ref() == Some(&comment.id) {
+        let editing = self.editing.as_ref() == Some(&comment.id);
+        if editing {
             body = body.child(self.render_field(Draft::Edit, cx));
         } else {
             body = body
@@ -770,7 +842,38 @@ impl VideoDetailsView {
         let own = comment.edit_token.is_some() || comment.delete_token.is_some();
         let menu_comment = comment.clone();
         let view = cx.entity().downgrade();
-        h_flex()
+        let menu = own.then(|| {
+            ItemMenu::new(move |menu, _, cx| {
+                // Material's own icon size and tint: the JVM menu sets neither.
+                let tint = cx.theme().muted_foreground;
+                let mut menu = menu.restyle(|style| {
+                    style.icon_size = Some(px(24.));
+                    style.icon_color = Some(tint);
+                });
+                if menu_comment.edit_token.is_some() {
+                    let (view, comment) = (view.clone(), menu_comment.clone());
+                    menu = menu.item(
+                        PopupMenuItem::new(t(Str::VideoDetailsEdit))
+                            .icon(Icon::new(MaterialIcon::EditOutlined))
+                            .on_click(move |_, window, cx| {
+                                view.update(cx, |view, cx| view.start_edit(&comment, window, cx)).ok();
+                            }),
+                    );
+                }
+                if menu_comment.delete_token.is_some() {
+                    let (view, comment) = (view.clone(), menu_comment.clone());
+                    menu = menu.item(
+                        PopupMenuItem::new(t(Str::VideoDetailsDelete))
+                            .icon(Icon::new(MaterialIcon::DeleteOutlined))
+                            .on_click(move |_, window, cx| {
+                                view.update(cx, |view, cx| view.confirm_delete(comment.clone(), window, cx)).ok();
+                            }),
+                    );
+                }
+                menu
+            })
+        });
+        let row = h_flex()
             .id(id.clone())
             .gap_4()
             .items_start()
@@ -779,41 +882,17 @@ impl VideoDetailsView {
             .py_2()
             .child(Self::avatar(&comment.author_thumbs, if indent { 24. } else { 32. }, cx))
             .child(body)
-            .when(own, |row| {
+            .when_some(menu.as_ref(), |row, menu| {
                 let index = self.next_stop();
                 let more_id = SharedString::from(format!("{id}-more"));
-                row.child(
-                    self.focus.wrap(
-                        index,
-                        action_icon(more_id, IconName::EllipsisVertical, t(Str::CdMore))
-                            .track_focus(&self.focus.handle(index, cx))
-                            .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
-                                if menu_comment.edit_token.is_some() {
-                                    let (view, comment) = (view.clone(), menu_comment.clone());
-                                    menu = menu.item(PopupMenuItem::new(t(Str::VideoDetailsEdit)).on_click(
-                                        move |_, window, cx| {
-                                            view.update(cx, |view, cx| view.start_edit(&comment, window, cx)).ok();
-                                        },
-                                    ));
-                                }
-                                if menu_comment.delete_token.is_some() {
-                                    let (view, comment) = (view.clone(), menu_comment.clone());
-                                    menu = menu.item(PopupMenuItem::new(t(Str::VideoDetailsDelete)).on_click(
-                                        move |_, window, cx| {
-                                            view.update(cx, |view, cx| {
-                                                view.confirm_delete(comment.clone(), window, cx)
-                                            })
-                                            .ok();
-                                        },
-                                    ));
-                                }
-                                menu
-                            }),
-                        cx,
-                    ),
-                )
-            })
-            .into_any_element()
+                let more = action_icon(more_id, MaterialIcon::MoreVert, t(Str::CdMore))
+                    .track_focus(&self.focus.handle(index, cx));
+                row.child(self.focus.wrap(index, menu.dropdown(more, Anchor::TopRight), cx))
+            });
+        match &menu {
+            Some(menu) => on_right_click(row, (!editing).then_some(menu)).into_any_element(),
+            None => row.into_any_element(),
+        }
     }
 
     /// Like (count) · dislike, toggles when signed in, else just the count · creator heart · Reply.
@@ -839,7 +918,7 @@ impl VideoDetailsView {
                     Button::new(SharedString::from(format!("like-{id}")))
                         .ghost()
                         .xsmall()
-                        .icon(Icon::new(Lucide::ThumbsUp))
+                        .icon(Icon::new(thumb_up(liked)))
                         .when_some(count.clone(), |button, count| button.label(count))
                         .selected(liked)
                         .accessibility_label(label)
@@ -848,8 +927,8 @@ impl VideoDetailsView {
                 ),
             );
         } else if let Some(count) = count {
-            row = row
-                .child(h_flex().gap_1().items_center().child(Icon::new(Lucide::ThumbsUp).size(px(14.))).child(count));
+            row =
+                row.child(h_flex().gap_1().items_center().child(Icon::new(thumb_up(liked)).size(px(14.))).child(count));
         }
         if can_dislike {
             let target = comment.clone();
@@ -858,7 +937,7 @@ impl VideoDetailsView {
                     Button::new(SharedString::from(format!("dislike-{id}")))
                         .ghost()
                         .xsmall()
-                        .icon(Icon::new(Lucide::ThumbsDown))
+                        .icon(Icon::new(thumb_down(disliked)))
                         .selected(disliked)
                         .accessibility_label(t(Str::VideoDetailsDislike))
                         .on_click(
@@ -869,7 +948,7 @@ impl VideoDetailsView {
             );
         }
         if comment.hearted {
-            row = row.child(Icon::new(Lucide::Heart).size(px(14.)).text_color(theme.primary));
+            row = row.child(Icon::new(MaterialIcon::Favorite).size(px(14.)).text_color(theme.primary));
         }
         if replyable {
             let target = comment.clone();
@@ -899,46 +978,55 @@ impl VideoDetailsView {
             ListKey::Replies(parent) => SharedString::from(format!("replies-more-{parent}")),
         };
         if list.loading {
-            return Some(h_flex().pl(px(start)).py_3().justify_center().child(Spinner::new()).into_any_element());
+            let spinner = if self.more_list.as_ref() == Some(&key) {
+                self.more_focus
+                    .indicator(format!("{id}-loading"), t(Str::A11yLoading), Spinner::new(), cx)
+                    .into_any_element()
+            } else {
+                Spinner::new().into_any_element()
+            };
+            return Some(h_flex().pl(px(start)).py_3().justify_center().child(spinner).into_any_element());
         }
         if let Some(error) = &list.error {
             let retry = key.clone();
+            self.footer_stops.borrow_mut().insert(key.clone(), self.next_stop.get());
             return Some(
                 h_flex()
                     .pl(px(start))
                     .gap_2()
                     .items_center()
                     .child(announced(format!("{id}-error"), error_text(error)).text_xs())
-                    .child(
-                        self.stop(
-                            Button::new(id)
-                                .ghost()
-                                .xsmall()
-                                .label(t(Str::Retry))
-                                .on_click(cx.listener(move |view, _, _, cx| view.load_more(retry.clone(), true, cx))),
-                            cx,
+                    .child(self.stop(
+                        Button::new(id).ghost().xsmall().label(t(Str::Retry)).on_click(
+                            cx.listener(move |view, _, window, cx| view.load_more_asked(retry.clone(), window, cx)),
                         ),
-                    )
+                        cx,
+                    ))
                     .into_any_element(),
             );
         }
         let label = more?;
         list.continuation.as_ref()?;
+        self.footer_stops.borrow_mut().insert(key.clone(), self.next_stop.get());
         Some(
             div()
                 .pl(px(start))
-                .child(
-                    self.stop(
-                        Button::new(id)
-                            .ghost()
-                            .xsmall()
-                            .label(label)
-                            .on_click(cx.listener(move |view, _, _, cx| view.load_more(key.clone(), true, cx))),
-                        cx,
+                .child(self.stop(
+                    Button::new(id).ghost().xsmall().label(label).on_click(
+                        cx.listener(move |view, _, window, cx| view.load_more_asked(key.clone(), window, cx)),
                     ),
-                )
+                    cx,
+                ))
                 .into_any_element(),
         )
+    }
+
+    /// [`Self::render_comment`], recording the stops it takes for [`Self::settle_more_focus`].
+    fn render_comment_recorded(&self, comment: &YtComment, indent: bool, cx: &mut Context<Self>) -> AnyElement {
+        let start = self.next_stop.get();
+        let element = self.render_comment(comment, indent, cx);
+        self.comment_stops.borrow_mut().insert(comment.id.clone(), start..self.next_stop.get());
+        element
     }
 
     fn render_comments(&self, details: &YtVideoDetails, cx: &mut Context<Self>) -> Div {
@@ -984,7 +1072,7 @@ impl VideoDetailsView {
         }
         let mut column = v_flex().child(top);
         for comment in &self.comments.comments {
-            column = column.child(self.render_comment(comment, false, cx));
+            column = column.child(self.render_comment_recorded(comment, false, cx));
             if self.replying_to.as_ref() == Some(&comment.id) {
                 column = column.child(div().pl(px(REPLY_INDENT)).pr_4().child(self.render_field(Draft::Reply, cx)));
             }
@@ -996,6 +1084,7 @@ impl VideoDetailsView {
                     tf(Str::VideoDetailsReplies, &[&comment.reply_count.clone().unwrap_or_default()])
                 };
                 let target = comment.clone();
+                self.toggle_stops.borrow_mut().insert(comment.id.clone(), self.next_stop.get());
                 column = column.child(
                     div().pl(px(REPLY_INDENT)).child(
                         self.stop(
@@ -1003,7 +1092,9 @@ impl VideoDetailsView {
                                 .ghost()
                                 .xsmall()
                                 .label(label)
-                                .on_click(cx.listener(move |view, _, _, cx| view.toggle_replies(&target, cx))),
+                                .on_click(
+                                    cx.listener(move |view, _, window, cx| view.toggle_replies(&target, window, cx)),
+                                ),
                             cx,
                         ),
                     ),
@@ -1011,7 +1102,7 @@ impl VideoDetailsView {
             }
             if let Some(list) = self.replies.get(&comment.id) {
                 for reply in &list.comments {
-                    column = column.child(self.render_comment(reply, true, cx));
+                    column = column.child(self.render_comment_recorded(reply, true, cx));
                 }
                 if let Some(footer) =
                     self.render_footer(ListKey::Replies(comment.id.clone()), Some(t(Str::VideoDetailsMoreReplies)), cx)
@@ -1033,6 +1124,9 @@ impl VideoDetailsView {
 impl Render for VideoDetailsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.next_stop.set(0);
+        self.comment_stops.borrow_mut().clear();
+        self.footer_stops.borrow_mut().clear();
+        self.toggle_stops.borrow_mut().clear();
         if self.details.is_some() && !self.focused_first {
             self.focused_first = true;
             let first = self.focus.handle(0, cx);
@@ -1074,10 +1168,21 @@ impl Render for VideoDetailsView {
             cx,
         );
         let stops = self.next_stop.get();
+        self.settle_more_focus(window, cx);
         self.focus
             .container(v_flex().id("video-details").w_full(), 0..stops, cx)
             .child(title_bar(t(Str::VideoDetails), cx))
             .child(scroll_body("video-details-body", &self.scroll, div().w_full().pb_4().child(body), window, cx))
             .child(button_bar(close, cx))
     }
+}
+
+/// The JVM app's like glyph: filled while the like is the user's.
+fn thumb_up(liked: bool) -> MaterialIcon {
+    if liked { MaterialIcon::ThumbUp } else { MaterialIcon::ThumbUpOutlined }
+}
+
+/// The JVM app's dislike glyph: filled while the dislike is the user's.
+fn thumb_down(disliked: bool) -> MaterialIcon {
+    if disliked { MaterialIcon::ThumbDown } else { MaterialIcon::ThumbDownOutlined }
 }

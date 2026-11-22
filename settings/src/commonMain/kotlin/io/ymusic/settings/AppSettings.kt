@@ -105,11 +105,29 @@ object AppSettings {
     /** UI language override (BCP-47); empty = follow the system locale. */
     val uiLanguage = StringSetting("app.uiLanguage", "")
 
-    /** The main section (Discover / Library / YtMusic) the app reopens on: an AppSection id, 0 = none yet. */
-    val lastSection = IntSetting("app.lastSection", 0)
+    /** The main section (Discover / Library / YtMusic) the app reopens on: an AppSection key, blank = none yet. */
+    val lastSection = StringSetting("nav.lastSection", "")
 
-    /** The Discover tab the app reopens on: a DiscoverTab id, 0 = none yet. */
-    val lastDiscoverTab = IntSetting("app.lastDiscoverTab", 0)
+    /** The rail's state as the user last toggled it, `true` = expanded; blank = never toggled, the window width decides. */
+    val railExpanded = StringSetting("nav.railExpanded", "")
+
+    /** The Discover tab the app reopens on: a DiscoverTab key, blank = none yet. */
+    val lastDiscoverTab = StringSetting("discover.lastTab", "")
+
+    /** Keys no build reads any more; the app deletes them at start. */
+    val retiredKeys = listOf("app.lastSection", "app.lastDiscoverTab", "app.lastLibraryTab", "app.lastYtMusicTab")
+
+    /** The codes of the caption tracks last picked anywhere (Now Playing, download pickers), most recent first. */
+    val recentTranslateLanguages = StringSetSetting("captions.recentTranslateLanguages")
+
+    /** The YT Music tab the app reopens on: a YtMusicTab key, blank = none yet. */
+    val lastYtMusicTab = StringSetting("ytmusic.lastTab", "")
+
+    /** The Library tab the app reopens on: a LibraryTab key, blank = none yet. */
+    val lastLibraryTab = StringSetting("library.lastTab", "")
+
+    /** The folder the Folders tab reopens on: its bucket id in decimal, blank = the root. */
+    val libraryFoldersOpen = StringSetting("library.folders.open", "")
 
     /** A Library list's sort choice, `"<option index>,<1 = descending>"`; blank = the list's default. */
     fun librarySort(id: String) = StringSetting("library.sort.$id", "")
@@ -198,6 +216,13 @@ object AppSettings {
      * excludes individual videos.
      */
     val sponsorBlockEnabled = BoolSetting("playback.sponsorBlock", true)
+
+    /**
+     * YouTube's Stable volume: playback applies the loudness gain (streams, and files whose measured gain
+     * was stored) and picks YouTube's dynamic-range-compressed track. Downloads and scans store the gain
+     * either way. player.js reads this key over the settings protocol.
+     */
+    val stableVolume = BoolSetting("playback.stableVolume", true)
 
     /**
      * Overlay pictures-per-second on the Now Playing / fullscreen video hole.

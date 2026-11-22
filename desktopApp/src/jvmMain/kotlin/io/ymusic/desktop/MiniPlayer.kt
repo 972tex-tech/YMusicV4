@@ -28,7 +28,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -44,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.Window
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.ymusic.imageloader.AsyncImage
 import io.ymusic.player.isPlaying
 import io.ymusic.ui.AppGraph
@@ -94,7 +94,7 @@ fun ApplicationScope.MiniPlayerWindow(
             ComposeWindow().apply {
                 // No taskbar button on Windows. The type can only be set before the window is shown.
                 if (isWindows) type = java.awt.Window.Type.UTILITY
-                title = "YMusic"
+                title = DevInstance.appTitle
                 isUndecorated = true
                 isTransparent = true
                 if (isWindows) followRendererTransparency()
@@ -171,10 +171,10 @@ private enum class TrayEdge { Top, Bottom, Left, Right }
 @Composable
 private fun MiniPlayerContent(graph: AppGraph, onOpenApp: () -> Unit, onClose: () -> Unit) {
     val player = graph.player
-    val status by player.status.collectAsState()
-    val progress by player.progress.collectAsState()
-    val queue by player.queue.collectAsState()
-    val skipSegments by player.skipSegments.collectAsState()
+    val status by player.status.collectAsStateWithLifecycle()
+    val progress by player.progress.collectAsStateWithLifecycle()
+    val queue by player.queue.collectAsStateWithLifecycle()
+    val skipSegments by player.skipSegments.collectAsStateWithLifecycle()
     val item = queue.currentItem
     val playing = status.state.isPlaying()
 
@@ -321,7 +321,7 @@ fun PlayerTray(icon: Painter, logger: Logger, menu: PopupMenu?, onClick: (screen
                     *TRAY_SCALES.map { s -> icon.rasterize(kotlin.math.ceil(px * s).toInt()) }.toTypedArray(),
                 )
             }
-            TrayIcon(image, "YMusic").apply {
+            TrayIcon(image, DevInstance.appTitle).apply {
                 addMouseListener(
                     object : MouseAdapter() {
                         // TrayIcon events carry SCREEN coordinates (there is no component space).

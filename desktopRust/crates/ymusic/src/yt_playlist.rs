@@ -1,11 +1,10 @@
 //! The viewer's YouTube playlists: add a video to one (or a new one), and create a playlist from
 //! videos, which is also how the queue is saved. Signed out, each says it needs sign-in.
 
-use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{ActiveTheme, Icon, IconName, Selectable, WindowExt, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme, Icon, Selectable, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use ym_engine::EngineError;
@@ -13,12 +12,14 @@ use ym_engine::yt::YtPlaylistTarget;
 use ym_i18n::{Str, t, tf};
 
 use crate::a11y::FocusList;
+use crate::assets::MaterialIcon;
 use crate::elevated_dialog::{
     DEFAULT_WIDTH, ROW_HORIZONTAL, ROW_VERTICAL, bar_spinner, button_bar, chrome, message, press, scroll_body,
     text_button, title_bar,
 };
 use crate::feed::error_text;
 use crate::graph::{AppGraph, on_core};
+use crate::lazy_rows::LazyRows;
 use crate::settings_view::HOVER_ALPHA;
 use crate::spinner::Spinner;
 
@@ -30,7 +31,6 @@ const PRIVACY: [(&str, Str); 3] = [
 
 enum Targets {
     Loading,
-    SignedOut,
     Failed(EngineError),
     Ready(Vec<YtPlaylistTarget>),
 }
@@ -43,11 +43,17 @@ pub struct AddToPlaylist {
     adding: Option<String>,
     focus: FocusList,
     scroll: ScrollHandle,
+    rows: LazyRows,
     focused_first: bool,
 }
 
+const TARGET_ROW_ESTIMATE: f32 = 48.;
+
 impl AddToPlaylist {
     pub fn open(video_id: String, window: &mut Window, cx: &mut App) {
+        if !signed_in_or_notify(window, cx) {
+            return;
+        }
         let view = cx.new(|cx| {
             let scroll = ScrollHandle::new();
             let mut view = Self {
@@ -55,6 +61,7 @@ impl AddToPlaylist {
                 targets: Targets::Loading,
                 adding: None,
                 focus: FocusList::modal(Some(scroll.clone()), cx),
+                rows: LazyRows::new(scroll.clone(), TARGET_ROW_ESTIMATE),
                 scroll,
                 focused_first: false,
             };
@@ -76,18 +83,12 @@ impl AddToPlaylist {
     fn load(&mut self, cx: &mut Context<Self>) {
         let graph = cx.global::<AppGraph>();
         let (engine, log, video_id) = (graph.engine(), graph.log.fork("yt-playlist"), self.video_id.clone());
-        let request = on_core(cx, async move {
-            if !engine.account_info(false, &log).await?.signed_in {
-                return Ok(None);
-            }
-            engine.playlist_targets(&video_id, &log).await.map(Some)
-        });
+        let request = on_core(cx, async move { engine.playlist_targets(&video_id, &log).await });
         cx.spawn(async move |this, cx| {
             let result = request.await;
             this.update(cx, |view, cx| {
                 view.targets = match result {
-                    Some(Ok(Some(targets))) => Targets::Ready(targets),
-                    Some(Ok(None)) => Targets::SignedOut,
+                    Some(Ok(targets)) => Targets::Ready(targets),
                     Some(Err(error)) => Targets::Failed(error),
                     None => return,
                 };
@@ -154,7 +155,6 @@ impl Render for AddToPlaylist {
         let mut count = 0;
         let body = match &self.targets {
             Targets::Loading => h_flex().w_full().justify_center().py_6().child(Spinner::new()).into_any_element(),
-            Targets::SignedOut => notice(t(Str::YtPlaylistSignIn).to_owned(), cx),
             Targets::Failed(error) => notice(error_text(error), cx),
             Targets::Ready(targets) => {
                 if !self.focused_first {
@@ -162,15 +162,19 @@ impl Render for AddToPlaylist {
                     let first = self.focus.handle(0, cx);
                     window.defer(cx, move |window, cx| window.focus(&first, cx));
                 }
-                let new_icon = Icon::new(IconName::Plus).text_color(theme.primary);
+                let new_icon = Icon::new(MaterialIcon::Add).text_color(theme.primary);
                 let new_row =
                     Self::row("new-playlist", new_icon, t(Str::AddToPlaylistNew).to_owned(), false, false, cx)
                         .on_click(cx.listener(|view, _, window, cx| view.create_new(window, cx)))
                         .on_action(cx.listener(|view, _: &Confirm, window, cx| view.create_new(window, cx)));
-                let mut list = v_flex().w_full().child(self.focus.item(0, new_row, cx));
-                for (index, target) in targets.clone().into_iter().enumerate() {
-                    let icon =
-                        if target.contains_video { Icon::new(IconName::Check) } else { Icon::new(Lucide::ListPlus) };
+                let kept = self.focus.kept_stops(1..targets.len() + 1, window);
+                let rows = self.rows.render(targets.len(), 0., kept, window, |index| {
+                    let target = targets[index].clone();
+                    let icon = if target.contains_video {
+                        Icon::new(MaterialIcon::Check)
+                    } else {
+                        crate::action_icon::auto_mirrored(MaterialIcon::PlaylistPlay)
+                    };
                     let busy = self.adding.as_ref() == Some(&target.playlist_id);
                     let (label, faint, enter_target) = (target.title.clone(), target.contains_video, target.clone());
                     let row =
@@ -179,8 +183,9 @@ impl Render for AddToPlaylist {
                             .on_action(cx.listener(move |view, _: &Confirm, window, cx| {
                                 view.add(enter_target.clone(), window, cx)
                             }));
-                    list = list.child(self.focus.item(index + 1, row, cx));
-                }
+                    self.focus.item(index + 1, row, cx).into_any_element()
+                });
+                let list = v_flex().w_full().child(self.focus.item(0, new_row, cx)).child(rows);
                 count = targets.len() + 1;
                 scroll_body("playlist-targets", &self.scroll, list, window, cx).into_any_element()
             }
@@ -209,7 +214,6 @@ pub struct CreatePlaylist {
     from_queue: bool,
     name: Entity<InputState>,
     privacy: &'static str,
-    signed_in: Option<bool>,
     busy: bool,
     focus: FocusList,
     _subscription: Subscription,
@@ -222,6 +226,9 @@ const STOP_CREATE: usize = STOP_CANCEL + 1;
 
 impl CreatePlaylist {
     pub fn open(video_ids: Vec<String>, from_queue: bool, window: &mut Window, cx: &mut App) {
+        if !signed_in_or_notify(window, cx) {
+            return;
+        }
         let view = cx.new(|cx| {
             let name = cx.new(|cx| InputState::new(window, cx).placeholder(t(Str::PlaylistNameHint)));
             name.update(cx, |input, cx| input.focus(window, cx));
@@ -231,18 +238,15 @@ impl CreatePlaylist {
                 }
                 cx.notify();
             });
-            let mut view = Self {
+            Self {
                 video_ids,
                 from_queue,
                 name,
                 privacy: PRIVACY[0].0,
-                signed_in: None,
                 busy: false,
                 focus: FocusList::modal(None, cx),
                 _subscription: subscription,
-            };
-            view.check_account(cx);
-            view
+            }
         });
         window.open_dialog(cx, move |dialog, window, _| {
             let submit = view.downgrade();
@@ -255,31 +259,9 @@ impl CreatePlaylist {
         });
     }
 
-    fn check_account(&mut self, cx: &mut Context<Self>) {
-        let graph = cx.global::<AppGraph>();
-        let (engine, log) = (graph.engine(), graph.log.fork("yt-playlist"));
-        let request = on_core(cx, async move { engine.account_info(false, &log).await });
-        cx.spawn(async move |this, cx| {
-            let result = request.await;
-            this.update(cx, |view, cx| {
-                view.signed_in = Some(match result {
-                    Some(Ok(account)) => account.signed_in,
-                    Some(Err(error)) => {
-                        cx.global::<AppGraph>().log.warn("account check failed", Some(&error));
-                        false
-                    }
-                    None => return,
-                });
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-    }
-
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let title = self.name.read(cx).value().trim().to_owned();
-        if self.busy || title.is_empty() || self.signed_in != Some(true) {
+        if self.busy || title.is_empty() {
             return;
         }
         self.busy = true;
@@ -312,7 +294,7 @@ impl CreatePlaylist {
 impl Render for CreatePlaylist {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
-        let can_submit = !self.busy && self.signed_in == Some(true) && !self.name.read(cx).value().trim().is_empty();
+        let can_submit = !self.busy && !self.name.read(cx).value().trim().is_empty();
         let cancel = press(
             &self.focus,
             STOP_CANCEL,
@@ -322,10 +304,6 @@ impl Render for CreatePlaylist {
             cx,
         );
         let title = title_bar(t(Str::PlaylistCreateTitle), cx);
-        if self.signed_in == Some(false) {
-            let notice = message(t(Str::YtPlaylistSignIn), cx).text_color(theme.muted_foreground);
-            return v_flex().w_full().child(title).child(notice).child(button_bar(cancel, cx));
-        }
         let mut chips = h_flex().flex_wrap().gap_2();
         for (offset, (value, label)) in PRIVACY.into_iter().enumerate() {
             let selected = self.privacy == value;
@@ -381,4 +359,13 @@ impl Render for CreatePlaylist {
             )
             .child(button_bar(h_flex().child(cancel).child(create), cx))
     }
+}
+
+/// The JVM `YtPlaylistActions` gate: signed out, a notice instead of the dialog.
+fn signed_in_or_notify(window: &mut Window, cx: &mut App) -> bool {
+    let signed_in = crate::account::AccountController::global(cx).read(cx).signed_in;
+    if !signed_in {
+        window.push_notification(t(Str::YtPlaylistSignIn), cx);
+    }
+    signed_in
 }

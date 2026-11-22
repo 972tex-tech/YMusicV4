@@ -383,7 +383,8 @@ impl EqualizerDialog {
             .dropdown_caret(true)
             .accessibility_label(format!("{}, {name}", t(Str::SoundEq)))
             .track_focus(&self.focus.handle(STOP_PRESET, cx))
-            .dropdown_menu(move |mut menu, _, _| {
+            .dropdown_menu(move |menu, _, _| {
+                let mut menu = menu.restyle(|style| style.check_visible = Some(false));
                 for (index, (label, bands)) in EQ_PRESETS.into_iter().enumerate() {
                     let selected = current == Some(index);
                     let view = view.clone();
@@ -395,7 +396,7 @@ impl EqualizerDialog {
                             .child(
                                 div()
                                     .text_size(px(14.))
-                                    .when(selected, |text| text.font_semibold())
+                                    .font_weight(if selected { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
                                     .text_color(if selected { accent } else { ink })
                                     .child(t(label)),
                             )
@@ -613,15 +614,19 @@ impl Render for EqualizerDialog {
             .py(px(16.))
             .gap(px(16.))
             .child(
-                v_flex().w_full().px(px(16.)).child(self.fader_bank(&tone, lit, cx)).child(
-                    div()
-                        .w_full()
-                        .pt(px(8.))
-                        .text_size(px(11.))
-                        .text_center()
-                        .text_color(theme.muted_foreground)
-                        .child(t(Str::SoundEqHint)),
-                ),
+                v_flex()
+                    .w_full()
+                    .px(px(16.))
+                    .child(self.fader_bank(&tone, lit, cx).layout_direction(LayoutDirection::Ltr))
+                    .child(
+                        div()
+                            .w_full()
+                            .pt(px(8.))
+                            .text_size(px(11.))
+                            .text_center()
+                            .text_color(theme.muted_foreground)
+                            .child(t(Str::SoundEqHint)),
+                    ),
             )
             .child(
                 h_flex()

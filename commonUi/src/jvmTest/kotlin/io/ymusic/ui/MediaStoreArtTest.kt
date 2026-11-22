@@ -8,11 +8,15 @@ import io.ymusic.mediastore.BetterMediaStore
 import io.ymusic.mediastore.mediaStoreJdbcDriver
 import io.ymusic.mediastore.model.MediaItemDraft
 import io.ymusic.mediastore.model.MediaStoreItem
+import kmpcommon.log.Crumb
+import kmpcommon.log.CrumbLogger
+import kmpcommon.log.Logger
 import kmpcommon.uri.Uri
 import kmpffmpeg.metadata.FfmpegMetadataGetter
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -56,8 +60,9 @@ class MediaStoreArtTest {
     }
 
     @Test
-    fun nothing_to_show_stays_null() {
-        assertNull(localArtUrl(item()))
+    fun nothing_to_show_still_has_the_art_url() {
+        assertEquals("art://pic/7", localArtUrl(item()))
+        assertFalse(hasArtSource(item()))
     }
 
     @Test
@@ -84,7 +89,7 @@ class MediaStoreArtTest {
             requested = videoId
             DecodedImage(ImageBitmap(4, 4), 4, 4)
         }
-        val fetcher = mediaStoreArtFetcher(FfmpegMetadataGetter("ffmpeg-never-run"), store, youtubeArt)
+        val fetcher = mediaStoreArtFetcher(FfmpegMetadataGetter("ffmpeg-never-run"), store, youtubeArt, PrintLogger())
 
         assertNull(
             fetcher.fetch(Uri.parse("https://example.com/x.png"), IntSize(64, 64), ImageScale.Cover),
@@ -93,5 +98,13 @@ class MediaStoreArtTest {
         val decoded = fetcher.fetch(Uri.parse("art://pic/${stored.id}"), IntSize(64, 64), ImageScale.Cover)
         assertNotNull(decoded, "fetcher returned null for its own scheme")
         assertEquals("dQw4w9WgXcQ", requested)
+    }
+}
+
+private class PrintLogger(crumbs: List<Crumb> = emptyList()) : CrumbLogger(crumbs) {
+    override fun fork(crumbs: List<Crumb>): CrumbLogger = PrintLogger(crumbs)
+
+    override fun log(level: Logger.Level, message: String, error: Throwable?) {
+        println("[$level] $path: $message" + (error?.let { " ($it)" } ?: ""))
     }
 }

@@ -199,6 +199,11 @@
     <string name="menu_remove_from_playlist">பிளேலிஸ்ட்டிலிருந்து அகற்று</string>
     <string name="playlist_delete_title">பிளேலிஸ்ட்டை நீக்கவா?</string>
     <string name="playlist_delete_message">“%1$s” அகற்றப்படும். பாடல்கள் உங்கள் லைப்ரரியில் இருக்கும்.</string>
+    <plurals name="playlist_remove_selected_title">
+        <item quantity="one">பிளேலிஸ்ட்டிலிருந்து %1$d பாடலை அகற்றவா?</item>
+        <item quantity="other">பிளேலிஸ்ட்டிலிருந்து %1$d பாடல்களை அகற்றவா?</item>
+    </plurals>
+    <string name="playlist_remove_selected_message">பாடல்கள் உங்கள் லைப்ரரியில் இருக்கும்.</string>
     <string name="add_to_playlist_new">புதிய பிளேலிஸ்ட்…</string>
     <string name="playlist_recent_play">சமீபத்திய இயக்கம்</string>
     <string name="playlist_top_tracks">சிறந்த பாடல்கள்</string>
@@ -304,10 +309,14 @@
     <string name="cd_download">பதிவிறக்கு</string>
     <string name="cd_fullscreen">முழுத்திரை</string>
     <string name="cd_exit_fullscreen">முழுத்திரையிலிருந்து வெளியேறு</string>
+    <string name="cd_show_queue">வரிசையைக் காட்டு</string>
+    <string name="cd_hide_queue">வரிசையை மறை</string>
     <string name="cd_fit_video">வீடியோவைப் பொருத்து</string>
     <string name="cd_fill_video">திரையை நிரப்பு</string>
-    <string name="cd_lock_rotation">சுழற்சியைப் பூட்டு</string>
-    <string name="cd_unlock_rotation">சுழற்சியைத் திற</string>
+    <string name="cd_screen_rotation">திரைச் சுழற்சி</string>
+    <string name="rotation_lock_landscape">கிடைமட்டமாகப் பூட்டு</string>
+    <string name="rotation_lock_portrait">செங்குத்தாகப் பூட்டு</string>
+    <string name="rotation_free">தடையற்ற சுழற்சி</string>
     <string name="cd_rewind10">10 வினாடிகள் பின்னோக்கி</string>
     <string name="cd_forward10">10 வினாடிகள் முன்னோக்கி</string>
     <string name="cd_repeat_off">மீண்டும் இயக்கு: முடக்கம்</string>
@@ -416,6 +425,8 @@
     <string name="settings_audio_focus_apps">பிற ஆப்ஸ் ஒலி இயக்கும்போது இடைநிறுத்து</string>
     <string name="settings_sponsor_block">SponsorBlock</string>
     <string name="settings_sponsor_block_hint">YouTube வீடியோக்களில் ஸ்பான்சர் பகுதிகளைத் தானாகத் தவிர்க்கவும். Now Playing இலிருந்து ஒரு வீடியோவுக்கு முடக்கலாம்.</string>
+    <string name="settings_stable_volume">நிலையான ஒலியளவு</string>
+    <string name="settings_stable_volume_hint">உரத்த மற்றும் மென்மையான பகுதிகளைச் சமன்செய்து ஒவ்வொரு பாடலையும் ஏறக்குறைய ஒரே ஒலியளவில் இயக்கும்.</string>
     <string name="sponsor_block_included">இந்த வீடியோவுக்கு SponsorBlock இயக்கப்பட்டது</string>
     <string name="sponsor_block_excluded">இந்த வீடியோவுக்கு SponsorBlock முடக்கப்பட்டது</string>
     <string name="settings_sound">ஒலி</string>
@@ -660,4 +671,30 @@
     <string name="native_blocked_help">பணி அல்லது பள்ளி PC-யில், YMusic-ஐ அனுமதிக்க உங்கள் நிர்வாகியிடம் கேளுங்கள். உங்கள் சொந்த PC-யில், Windows Security-இல் Smart App Control-ஐச் சரிபார்க்கவும்.</string>
     <!-- A feed reloading in place (desktop) -->
     <string name="a11y_refreshing">புதுப்பிக்கிறது</string>
+    <string name="a11y_loading">ஏற்றுகிறது</string>
+    <!-- Download manager multi-select -->
+    <string name="select_all">அனைத்தையும் தேர்ந்தெடு</string>
+    <string name="downloads_action_select">தேர்ந்தெடு</string>
+    <plurals name="downloads_selected_count">
+        <item quantity="one">%1$d தேர்ந்தெடுக்கப்பட்டது</item>
+        <item quantity="other">%1$d தேர்ந்தெடுக்கப்பட்டன</item>
+    </plurals>
+    <plurals name="downloads_remove_selected_title">
+        <item quantity="one">பட்டியலிலிருந்து %1$d பதிவிறக்கத்தை அகற்றவா?</item>
+        <item quantity="other">பட்டியலிலிருந்து %1$d பதிவிறக்கங்களை அகற்றவா?</item>
+    </plurals>
+    <string name="downloads_remove_selected_message">முடிந்த கோப்புகள் இந்தச் சாதனத்திலேயே இருக்கும்.</string>
+    <plurals name="downloads_delete_selected_title">
+        <item quantity="one">%1$d கோப்பை நீக்கவா?</item>
+        <item quantity="other">%1$d கோப்புகளை நீக்கவா?</item>
+    </plurals>
+    <string name="downloads_delete_selected_message">நீக்கிய கோப்புகளை மீட்டெடுக்க முடியாது.</string>
+    <string name="downloads_cancel_selected">பதிவிறக்கங்களை ரத்துசெய்</string>
+    <plurals name="downloads_cancel_selected_title">
+        <item quantity="one">%1$d பதிவிறக்கத்தை ரத்துசெய்யவா?</item>
+        <item quantity="other">%1$d பதிவிறக்கங்களை ரத்துசெய்யவா?</item>
+    </plurals>
+    <string name="downloads_cancel_selected_message">இதுவரை பதிவிறக்கியவை நீக்கப்படும்.</string>
+    <string name="downloads_cancel_selected_keep">வைத்திரு</string>
+    <string name="data_dir_unusable">YMusic அதன் தரவுக் கோப்புறையான %1$s ஐத் திறக்க முடியவில்லை. அது நீங்கள் எழுதக்கூடிய கோப்புறை என்பதை உறுதிசெய்து, பிறகு YMusic ஐ மீண்டும் திறக்கவும். (%2$s)</string>
 </resources>

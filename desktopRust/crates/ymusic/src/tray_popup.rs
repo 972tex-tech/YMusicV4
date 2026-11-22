@@ -3,24 +3,27 @@
 //! a system notification.
 
 use futures::channel::mpsc::UnboundedSender;
-use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::base::slider::{SliderEvent, SliderState};
 use gpui_kit::component::slider::Slider;
 use gpui_kit::component::{ActiveTheme, Disableable, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use ym_i18n::{Str, t};
+use ym_image_loader::ImageSource;
+use ym_image_loader::async_image::async_image;
 
-use crate::action_icon::{hit_target, lucide_size, sized_action_icon};
+use crate::action_icon::{auto_mirrored, hit_target, sized_action_icon};
+use crate::assets::MaterialIcon;
 use crate::desktop::TrayCommand;
 use crate::mini_player::PlayClock;
-use crate::playback::{PlayState, Playback};
+use crate::playback::Playback;
 use crate::spinner::Spinner;
 
 pub const WIDTH: f32 = 340.;
 pub const HEIGHT: f32 = 132.;
 const MARGIN: f32 = 8.;
 const COVER: f32 = 44.;
+const PLACEHOLDER_ICON: f32 = 24.;
 const HEADER_ICON: f32 = 16.;
 const HEADER_HIT: f32 = 30.;
 const SKIP_ICON: f32 = 20.;
@@ -143,12 +146,10 @@ impl Render for TrayPopup {
         let theme = cx.theme().clone();
         let playback = self.playback.read(cx);
         let item = playback.current().cloned();
-        let state = playback.state.clone();
-        let playing = matches!(state, PlayState::Playing | PlayState::Buffering);
+        let (playing, loading) = (playback.state.is_playing(), item.is_some() && playback.is_buffering_or_loading());
         let (position, duration) = (playback.position_ms, playback.duration_ms);
         let (live, seekable) = (playback.live, playback.seekable);
         let segments = segment_fractions(playback.skip_segments(), duration);
-        let has_next = playback.has_next();
         let title =
             item.as_ref().map_or_else(|| t(Str::MiniPlayerNothingPlaying).to_owned(), |item| item.title.clone());
         let artist = item.as_ref().and_then(|item| item.artist.clone());
@@ -161,9 +162,17 @@ impl Render for TrayPopup {
             .flex()
             .items_center()
             .justify_center()
-            .child(Icon::new(Lucide::Music).text_color(theme.muted_foreground))
-            .when_some(item.as_ref().and_then(|item| item.thumb(160)), |frame, url| {
-                frame.child(img(url).absolute().inset_0().size_full().rounded(px(5.)).object_fit(ObjectFit::Cover))
+            .child(Icon::new(MaterialIcon::MusicNote).size(px(PLACEHOLDER_ICON)).text_color(theme.muted_foreground))
+            .when_some(item.as_ref().and_then(|item| item.display_thumbnail_url()), |frame, url| {
+                let identity = ym_image_loader::image_cache_key(&url);
+                frame.child(
+                    async_image(Some(identity), vec![ImageSource::new(url.to_string())])
+                        .absolute()
+                        .inset_0()
+                        .size_full()
+                        .rounded(px(5.))
+                        .object_fit(ObjectFit::Cover),
+                )
             });
         let play_label = t(if playing { Str::CdPause } else { Str::CdPlay });
         let play_clock = PlayClock::new(position, duration, live);
@@ -241,22 +250,29 @@ impl Render for TrayPopup {
                     .child(
                         sized_action_icon(
                             "tray-open-app",
-                            Lucide::ExternalLink,
+                            auto_mirrored(MaterialIcon::OpenInNew),
                             t(Str::CdOpenApp),
                             HEADER_ICON,
                             HEADER_HIT,
                         )
-                        .on_click(cx.listener(|popup, _, _, _| popup.command(TrayCommand::Open))),
+                        .on_click(cx.listener(|popup, _, _, _| popup.command(TrayCommand::Open(None)))),
                     )
                     .child(
-                        sized_action_icon("tray-dismiss", Lucide::X, t(Str::CdClose), HEADER_ICON, HEADER_HIT)
-                            .on_click(cx.listener(|popup, _, window, cx| popup.close(window, cx))),
+                        sized_action_icon(
+                            "tray-dismiss",
+                            MaterialIcon::Close,
+                            t(Str::CdClose),
+                            HEADER_ICON,
+                            HEADER_HIT,
+                        )
+                        .on_click(cx.listener(|popup, _, window, cx| popup.close(window, cx))),
                     ),
             )
             .child(
                 h_flex()
                     .gap_2()
                     .items_center()
+                    .layout_direction(LayoutDirection::Ltr)
                     .child(div().text_xs().text_color(theme.muted_foreground).child(elapsed))
                     .child(
                         div()
@@ -276,20 +292,27 @@ impl Render for TrayPopup {
                     .justify_center()
                     .items_center()
                     .gap(px(14.))
+                    .layout_direction(LayoutDirection::Ltr)
                     .child(
-                        sized_action_icon("tray-previous", Lucide::SkipBack, t(Str::CdPrevious), SKIP_ICON, SKIP_HIT)
-                            .disabled(item.is_none())
-                            .on_click(cx.listener(|popup, _, _, cx| {
-                                popup.playback.update(cx, |playback, cx| playback.previous(cx))
-                            })),
+                        sized_action_icon(
+                            "tray-previous",
+                            MaterialIcon::SkipPrevious,
+                            t(Str::CdPrevious),
+                            SKIP_ICON,
+                            SKIP_HIT,
+                        )
+                        .disabled(item.is_none())
+                        .on_click(cx.listener(|popup, _, _, cx| {
+                            popup.playback.update(cx, |playback, cx| playback.previous(cx))
+                        })),
                     )
                     .child(
                         hit_target("tray-play-pause", PLAY_HIT)
-                            .when(state == PlayState::Buffering, |button| button.child(Spinner::new().small()))
-                            .when(state != PlayState::Buffering, |button| {
+                            .when(loading, |button| button.child(Spinner::new().small()))
+                            .when(!loading, |button| {
                                 button.child(
-                                    Icon::new(if playing { Lucide::Pause } else { Lucide::Play })
-                                        .size(px(lucide_size(PLAY_ICON))),
+                                    Icon::new(if playing { MaterialIcon::Pause } else { MaterialIcon::PlayArrow })
+                                        .size(px(PLAY_ICON)),
                                 )
                             })
                             .accessibility_label(play_label)
@@ -300,8 +323,7 @@ impl Render for TrayPopup {
                             })),
                     )
                     .child(
-                        sized_action_icon("tray-next", Lucide::SkipForward, t(Str::CdNext), SKIP_ICON, SKIP_HIT)
-                            .disabled(!has_next)
+                        sized_action_icon("tray-next", MaterialIcon::SkipNext, t(Str::CdNext), SKIP_ICON, SKIP_HIT)
                             .on_click(cx.listener(|popup, _, _, cx| {
                                 popup.playback.update(cx, |playback, cx| playback.next(cx))
                             })),

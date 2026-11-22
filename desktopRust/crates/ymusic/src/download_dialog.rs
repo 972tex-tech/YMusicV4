@@ -3,38 +3,41 @@
 //! heights and containers, audio track, captions), its file name, where it goes, and its size.
 
 use std::cell::Cell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Mutex;
 
-use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::base::actions::Confirm;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::dialog::Dialog;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu, PopupMenu, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme, Colorize, Disableable, Icon, IconName, StyledExt, WindowExt, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme, Colorize, Disableable, Icon, StyledExt, WindowExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use ym_download::options::{CaptionOption, DownloadOptions, VideoOption};
 use ym_download::{AudioQuality, DownloadError, DownloadFormat, DownloadRequest, DownloadService, names};
 use ym_i18n::{Str, t, tf};
+use ym_image_loader::async_image::async_image_of;
 
 use crate::a11y::FocusList;
+use crate::account::AccountController;
 use crate::action_icon::action_icon;
+use crate::assets::MaterialIcon;
 use crate::downloads::{download_folder, offline_ids, pick_download_folder, usable_download_folder};
 use crate::downloads_view::{Playability, playability};
 use crate::elevated_dialog::{self, body_max_height, button_bar, chrome, scroll_shadows, text_button, title_bar};
 use crate::graph::{AppGraph, on_core};
 use crate::quick_download::{QuickPreset, confirm_redownload, save_preset, saved_preset};
+use crate::recent_captions::{in_recent_languages, recent_caption_languages, record_caption_language};
+use crate::youtube_thumbnails::art_request_sources;
 
 /// The video to download, as the card showed it.
 #[derive(Clone)]
 pub struct DownloadTarget {
     pub video_id: String,
     pub title: String,
-    pub artist: Option<String>,
     pub thumbnail_url: Option<String>,
 }
 
@@ -43,7 +46,6 @@ impl DownloadTarget {
         Self {
             video_id: item.id.clone(),
             title: item.title.clone(),
-            artist: item.channel_title.clone().or_else(|| item.subtitle_line1.clone()),
             thumbnail_url: item.thumbs.last().map(|thumb| {
                 if thumb.url.starts_with("//") { format!("https:{}", thumb.url) } else { thumb.url.clone() }
             }),
@@ -270,7 +272,11 @@ impl DownloadPicker {
         match playability(&code) {
             Some(Playability::SignInRequired) => (
                 t(Str::PlaybackSignInRequired).to_owned(),
-                if graph.guest { FailAction::Retry } else { FailAction::SignIn },
+                if graph.guest || AccountController::global(cx).read(cx).signed_in {
+                    FailAction::Retry
+                } else {
+                    FailAction::SignIn
+                },
             ),
             // YouTube's verdict, not a fault: a re-probe gets the same answer.
             Some(Playability::Unavailable) => (t(Str::PlaybackUnavailable).to_owned(), FailAction::None),
@@ -479,7 +485,7 @@ impl DownloadPicker {
         self.service.enqueue(DownloadRequest {
             video_id: target.video_id,
             title: target.title,
-            artist: target.artist,
+            artist: None,
             thumbnail_url: target.thumbnail_url,
             format,
             requested_height: if format.is_video() { self.height } else { None },
@@ -590,23 +596,71 @@ fn surface_dim(cx: &App) -> Hsla {
 }
 
 /// The JVM palette's InkSoft, between the foreground and the secondary ink.
-fn ink_soft(cx: &App) -> Hsla {
+pub fn ink_soft(cx: &App) -> Hsla {
     cx.theme().foreground.opacity(0.6)
+}
+
+/// The JVM app's `downloadPrimary`: the accent a step darker, under white text.
+pub fn download_primary(cx: &App) -> Hsla {
+    cx.theme().primary.darken(0.22)
+}
+
+/// The folder's name as the download location shows it.
+pub fn location_name(folder: Option<&Path>) -> String {
+    folder
+        .and_then(|folder| folder.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| t(Str::DownloadLocationNotSet).to_owned())
+}
+
+/// The JVM `DropdownField`: `value` in an outlined field with a caret, `focus`'s `stop`th stop. The
+/// caller adds the menu and wraps it with [`FocusList::wrap`].
+pub fn dropdown_field(
+    id: impl Into<ElementId>,
+    label: &str,
+    value: String,
+    focus: &FocusList,
+    stop: usize,
+    cx: &App,
+) -> Button {
+    let theme = cx.theme();
+    Button::new(id)
+        .outline()
+        .w_full()
+        .h(px(36.))
+        .px(px(8.))
+        .rounded(px(9.))
+        .border_color(theme.input)
+        .accessibility_label(format!("{label}, {value}"))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_left()
+                .text_size(px(14.))
+                .text_color(theme.foreground)
+                .truncate()
+                .child(value),
+        )
+        .child(Icon::new(MaterialIcon::KeyboardArrowDown).size(px(18.)).flex_shrink_0().text_color(ink_soft(cx)))
+        .track_focus(&focus.handle(stop, cx))
 }
 
 struct Choice {
     label: String,
     selected: bool,
     pick: Rc<dyn Fn(&mut DownloadPicker)>,
+    /// The caption language picking it records as recent.
+    recent_caption: Option<String>,
 }
 
 fn choice(label: String, selected: bool, pick: impl Fn(&mut DownloadPicker) + 'static) -> Choice {
-    Choice { label, selected, pick: Rc::new(pick) }
+    Choice { label, selected, pick: Rc::new(pick), recent_caption: None }
 }
 
 fn choice_items(mut menu: PopupMenu, choices: &[Choice], picker: &WeakEntity<DownloadPicker>) -> PopupMenu {
     for choice in choices {
-        let (pick, picker) = (choice.pick.clone(), picker.clone());
+        let (pick, picker, recent_caption) = (choice.pick.clone(), picker.clone(), choice.recent_caption.clone());
         menu =
             menu.item(PopupMenuItem::new(choice.label.clone()).checked(choice.selected).on_click(move |_, _, cx| {
                 picker
@@ -615,6 +669,9 @@ fn choice_items(mut menu: PopupMenu, choices: &[Choice], picker: &WeakEntity<Dow
                         cx.notify();
                     })
                     .ok();
+                if let Some(code) = &recent_caption {
+                    record_caption_language(code.clone(), cx);
+                }
             }));
     }
     menu
@@ -686,16 +743,54 @@ impl DownloadPicker {
         }
     }
 
-    fn caption_choices(&self) -> Vec<Choice> {
+    fn caption_choices(&self, cx: &App) -> Vec<Choice> {
         let mut choices = vec![choice(t(Str::DownloadCaptionsOff).to_owned(), self.caption.is_none(), |picker| {
             picker.caption = None
         })];
-        for caption in self.options().map(|options| options.captions.clone()).unwrap_or_default() {
+        for caption in self.ordered_captions(cx) {
             let key = caption.key();
             let selected = Some(&key) == self.caption.as_ref();
-            choices.push(choice(caption_label(&caption), selected, move |picker| picker.caption = Some(key.clone())));
+            let recent_caption = Some(caption.language_code.clone());
+            let mut entry = choice(caption_label(&caption), selected, move |picker| picker.caption = Some(key.clone()));
+            entry.recent_caption = recent_caption;
+            choices.push(entry);
         }
         choices
+    }
+
+    /// The selected track, the tracks in the recent caption languages (the video's own, uploaded
+    /// before auto-generated, else its auto-translation), then the rest in their order. Picking a
+    /// track records its language, as Now Playing does.
+    fn ordered_captions(&self, cx: &App) -> Vec<CaptionOption> {
+        let captions = self.options().map(|options| options.captions.clone()).unwrap_or_default();
+        let mut own: Vec<usize> = (0..captions.len()).filter(|index| !captions[*index].is_translated).collect();
+        own.sort_by_key(|index| captions[*index].is_asr);
+        let translated: Vec<usize> = (0..captions.len()).filter(|index| captions[*index].is_translated).collect();
+        let own_languages: Vec<&str> = own.iter().map(|index| captions[*index].language_code.as_str()).collect();
+        let translated_languages: Vec<&str> =
+            translated.iter().map(|index| captions[*index].language_code.as_str()).collect();
+        let recent: Vec<usize> = recent_caption_languages(cx)
+            .iter()
+            .filter_map(|code| {
+                let code = std::slice::from_ref(code);
+                in_recent_languages(&own_languages, code, |language| language)
+                    .first()
+                    .map(|position| own[*position])
+                    .or_else(|| {
+                        in_recent_languages(&translated_languages, code, |language| language)
+                            .first()
+                            .map(|position| translated[*position])
+                    })
+            })
+            .collect();
+        let selected = captions.iter().position(|caption| Some(caption.key()) == self.caption);
+        let mut order: Vec<usize> = selected.into_iter().collect();
+        for index in recent.into_iter().chain(0..captions.len()) {
+            if !order.contains(&index) {
+                order.push(index);
+            }
+        }
+        order.into_iter().map(|index| captions[index].clone()).collect()
     }
 
     fn container_choices(&self) -> Vec<Choice> {
@@ -711,11 +806,7 @@ impl DownloadPicker {
     }
 
     fn location_name(&self) -> String {
-        self.folder
-            .as_ref()
-            .and_then(|folder| folder.file_name())
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| t(Str::DownloadLocationNotSet).to_owned())
+        location_name(self.folder.as_deref())
     }
 
     /// "MP4 · 1080p60 · English · English · ≈ 92 MB".
@@ -740,7 +831,7 @@ impl DownloadPicker {
         parts.join(" · ")
     }
 
-    /// An outlined value with a caret that opens `choices` (the JVM `DropdownField`).
+    /// A [`dropdown_field`] that opens `menu`.
     fn dropdown(
         &self,
         id: &'static str,
@@ -750,28 +841,9 @@ impl DownloadPicker {
         menu: impl Fn(PopupMenu) -> PopupMenu + 'static,
         cx: &App,
     ) -> Div {
-        let theme = cx.theme();
-        let field = Button::new(id)
-            .outline()
-            .w_full()
-            .h(px(36.))
-            .px(px(8.))
-            .rounded(px(9.))
-            .border_color(theme.input)
-            .dropdown_caret(true)
-            .accessibility_label(format!("{label}, {value}"))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .text_left()
-                    .text_size(px(14.))
-                    .text_color(theme.foreground)
-                    .truncate()
-                    .child(value),
-            )
-            .track_focus(&self.focus.handle(stop, cx))
-            .dropdown_menu(move |popup, _, _| menu(popup.scrollable(true).max_h(px(360.))));
+        let field = dropdown_field(id, label, value, &self.focus, stop, cx).dropdown_menu(move |popup, _, cx| {
+            menu(crate::settings_view::field_menu(popup, cx).scrollable(true).max_h(px(360.)))
+        });
         self.focus.wrap(stop, field, cx).w_full()
     }
 
@@ -891,9 +963,16 @@ impl DownloadPicker {
             .flex()
             .items_center()
             .justify_center()
-            .child(Icon::new(Lucide::Image).size(px(26.)).text_color(theme.muted_foreground))
+            .child(Icon::new(MaterialIcon::ImageOutlined).size(px(26.)).text_color(theme.muted_foreground))
             .when_some(self.target.thumbnail_url.clone(), |frame, url| {
-                frame.child(img(url).absolute().inset_0().size_full().rounded(px(10.)).object_fit(ObjectFit::Cover))
+                frame.child(
+                    async_image_of(Some(art_request_sources(&url)))
+                        .absolute()
+                        .inset_0()
+                        .size_full()
+                        .rounded(px(10.))
+                        .object_fit(ObjectFit::Cover),
+                )
             })
             .when_some(duration, |frame, ms| {
                 frame.child(
@@ -924,7 +1003,7 @@ impl DownloadPicker {
                     .flex_1()
                     .min_w_0()
                     .gap(px(8.))
-                    .child(Icon::new(Lucide::Folder).size(px(16.)).text_color(ink_soft(cx)))
+                    .child(Icon::new(MaterialIcon::FolderOutlined).size(px(16.)).text_color(ink_soft(cx)))
                     .child(
                         div()
                             .flex_1()
@@ -970,7 +1049,7 @@ impl DownloadPicker {
 
     fn track_row(
         &self,
-        icon: Lucide,
+        icon: MaterialIcon,
         title: &'static str,
         align_top: bool,
         content: impl IntoElement,
@@ -1056,7 +1135,13 @@ impl DownloadPicker {
         let has_captions = !options.captions.is_empty();
         let format = self.format();
         let mut rows = v_flex().w_full();
-        rows = rows.child(self.track_row(Lucide::File, t(Str::DownloadFormat), false, self.format_dropdown(cx), cx));
+        rows = rows.child(self.track_row(
+            MaterialIcon::InsertDriveFileOutlined,
+            t(Str::DownloadFormat),
+            false,
+            self.format_dropdown(cx),
+            cx,
+        ));
         if self.shows_audio_quality() {
             let field = self.choice_dropdown(
                 "download-quality",
@@ -1066,7 +1151,13 @@ impl DownloadPicker {
                 STOP_QUALITY,
                 cx,
             );
-            rows = rows.child(self.track_row(Lucide::Gauge, t(Str::DownloadQuality), false, field, cx));
+            rows = rows.child(self.track_row(
+                MaterialIcon::HighQualityOutlined,
+                t(Str::DownloadQuality),
+                false,
+                field,
+                cx,
+            ));
         }
         let audio = self.choice_dropdown(
             "download-audio",
@@ -1076,7 +1167,8 @@ impl DownloadPicker {
             STOP_AUDIO,
             cx,
         );
-        rows = rows.child(self.track_row(Lucide::Volume2, t(Str::DownloadAudioLanguage), false, audio, cx));
+        rows =
+            rows.child(self.track_row(MaterialIcon::VolumeUpOutlined, t(Str::DownloadAudioLanguage), false, audio, cx));
         if has_captions && self.captions_supported() {
             let lyrics = format.captions_as_lyrics();
             let field = v_flex()
@@ -1085,12 +1177,18 @@ impl DownloadPicker {
                     "download-captions",
                     t(Str::DownloadSubtitles),
                     self.caption_summary(),
-                    self.caption_choices(),
+                    self.caption_choices(cx),
                     STOP_CAPTIONS,
                     cx,
                 ))
                 .when(lyrics, |column| column.child(Self::note(t(Str::DownloadLyricsNote), cx)));
-            rows = rows.child(self.track_row(Lucide::Captions, t(Str::DownloadSubtitles), lyrics, field, cx));
+            rows = rows.child(self.track_row(
+                MaterialIcon::SubtitlesOutlined,
+                t(Str::DownloadSubtitles),
+                lyrics,
+                field,
+                cx,
+            ));
         }
         if format.is_video() {
             let field = v_flex()
@@ -1099,7 +1197,13 @@ impl DownloadPicker {
                 .when(format == DownloadFormat::VideoMp4, |column| {
                     column.child(Self::note(t(Str::DownloadMp4Note), cx))
                 });
-            rows = rows.child(self.track_row(Lucide::Rows2, t(Str::DownloadContainer), false, field, cx));
+            rows = rows.child(self.track_row(
+                MaterialIcon::ViewAgendaOutlined,
+                t(Str::DownloadContainer),
+                false,
+                field,
+                cx,
+            ));
         }
         rows
     }
@@ -1244,13 +1348,20 @@ impl DownloadPicker {
             .items_center()
             .justify_center()
             .relative()
-            .child(Icon::new(Lucide::Music).size(px(24.)).text_color(theme.muted_foreground))
+            .child(Icon::new(MaterialIcon::MusicNoteOutlined).size(px(24.)).text_color(theme.muted_foreground))
             .when_some(self.target.thumbnail_url.clone(), |frame, url| {
-                frame.child(img(url).absolute().inset_0().size_full().rounded(px(8.)).object_fit(ObjectFit::Cover))
+                frame.child(
+                    async_image_of(Some(art_request_sources(&url)))
+                        .absolute()
+                        .inset_0()
+                        .size_full()
+                        .rounded(px(8.))
+                        .object_fit(ObjectFit::Cover),
+                )
             });
         let rename = action_icon(
             "download-rename",
-            Icon::new(Lucide::SquarePen).text_color(ink_soft(cx)),
+            Icon::new(MaterialIcon::EditOutlined).text_color(ink_soft(cx)),
             t(Str::DownloadEditName),
         )
         .on_click(cx.listener(|picker, _, window, cx| picker.rename(window, cx)));
@@ -1287,10 +1398,12 @@ impl DownloadPicker {
     fn kind_segments(&self, cx: &mut Context<Self>) -> Div {
         let theme = cx.theme().clone();
         let mut row = h_flex().w_full().rounded(px(12.)).bg(surface_dim(cx)).p(px(4.)).gap(px(4.));
-        for (index, (icon, label, audio_only)) in
-            [(Lucide::Headphones, t(Str::DownloadAudioOnly), true), (Lucide::Video, t(Str::DownloadVideo), false)]
-                .into_iter()
-                .enumerate()
+        for (index, (icon, label, audio_only)) in [
+            (MaterialIcon::HeadphonesOutlined, t(Str::DownloadAudioOnly), true),
+            (MaterialIcon::VideocamOutlined, t(Str::DownloadVideo), false),
+        ]
+        .into_iter()
+        .enumerate()
         {
             let selected = self.audio_only == audio_only;
             let color = if selected { theme.foreground } else { theme.muted_foreground };
@@ -1329,7 +1442,7 @@ impl DownloadPicker {
         label: String,
         detail: Option<String>,
         selected: Option<bool>,
-        on_pick: impl Fn(&mut Self) + 'static,
+        on_pick: impl Fn(&mut Self, &mut Window, &mut App) + 'static,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let theme = cx.theme().clone();
@@ -1366,12 +1479,12 @@ impl DownloadPicker {
             .when_some(detail, |tile, detail| {
                 tile.child(div().text_size(px(12.)).text_color(theme.muted_foreground).child(detail))
             })
-            .on_click(cx.listener(move |picker, _, _, cx| {
-                click(picker);
+            .on_click(cx.listener(move |picker, _, window, cx| {
+                click(picker, window, cx);
                 cx.notify();
             }))
-            .on_action(cx.listener(move |picker, _: &Confirm, _, cx| {
-                enter(picker);
+            .on_action(cx.listener(move |picker, _: &Confirm, window, cx| {
+                enter(picker, window, cx);
                 cx.notify();
             }));
         self.focus.item(stop, tile, cx)
@@ -1392,7 +1505,7 @@ impl DownloadPicker {
                     video_label(option),
                     Some(download_size(bytes)),
                     Some(Some(height) == self.height),
-                    move |picker| picker.height = Some(height),
+                    move |picker, _, _| picker.height = Some(height),
                     cx,
                 )
                 .into_any_element(),
@@ -1405,7 +1518,11 @@ impl DownloadPicker {
                     t(Str::DownloadLess).to_owned(),
                     None,
                     None,
-                    |picker| picker.all_qualities = false,
+                    |picker, window, cx| {
+                        picker.all_qualities = false;
+                        let more = picker.focus.handle(STOP_TILES + QUALITY_COLLAPSE_OVER - 1, cx);
+                        window.focus(&more, cx);
+                    },
                     cx,
                 )
             } else {
@@ -1415,7 +1532,7 @@ impl DownloadPicker {
                     tf(Str::DownloadMoreQualities, &[&(video.len() - shown)]),
                     Some(tf(Str::DownloadDownTo, &[&lowest])),
                     None,
-                    |picker| picker.all_qualities = true,
+                    |picker, _, _| picker.all_qualities = true,
                     cx,
                 )
             };
@@ -1510,7 +1627,7 @@ impl DownloadPicker {
     fn option_row(
         &self,
         id: &'static str,
-        icon: Lucide,
+        icon: MaterialIcon,
         title: &'static str,
         value: String,
         stop: usize,
@@ -1541,25 +1658,32 @@ impl DownloadPicker {
                             .child(value),
                     )
                     .child(
-                        Icon::new(IconName::ChevronRight).size(px(16.)).text_color(theme.muted_foreground.opacity(0.8)),
+                        crate::action_icon::auto_mirrored(MaterialIcon::KeyboardArrowRight)
+                            .size(px(16.))
+                            .text_color(theme.muted_foreground.opacity(0.8)),
                     ),
             )
     }
 
     fn choice_row(
         &self,
-        (id, icon, title): (&'static str, Lucide, &'static str),
+        (id, icon, title): (&'static str, MaterialIcon, &'static str),
         value: String,
         choices: Vec<Choice>,
         stop: usize,
         cx: &mut Context<Self>,
     ) -> Div {
         let picker = cx.entity().downgrade();
-        let row = self
-            .option_row(id, icon, title, value, stop, cx)
-            .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-                choice_items(menu.scrollable(true).max_h(px(360.)), &choices, &picker)
-            });
+        let row = self.option_row(id, icon, title, value, stop, cx).dropdown_menu_with_anchor(
+            Anchor::TopRight,
+            move |menu, _, cx| {
+                choice_items(
+                    crate::settings_view::field_menu(menu, cx).scrollable(true).max_h(px(360.)),
+                    &choices,
+                    &picker,
+                )
+            },
+        );
         self.focus.wrap(stop, row, cx).w_full()
     }
 
@@ -1575,7 +1699,7 @@ impl DownloadPicker {
             (Some(what), Some(bytes)) => tf(Str::DownloadActionDetail, &[&what, &download_size(bytes)]),
             _ => t(Str::DownloadAction).to_owned(),
         };
-        let fill = cx.theme().primary.darken(0.22);
+        let fill = download_primary(cx);
         let button = div()
             .id("download-start-sheet")
             .role(Role::Button)
@@ -1629,7 +1753,7 @@ impl DownloadPicker {
                 let mut rows = v_flex().w_full();
                 if format.is_video() {
                     rows = rows.child(self.choice_row(
-                        ("download-container", Lucide::File, t(Str::DownloadContainer)),
+                        ("download-container", MaterialIcon::InsertDriveFileOutlined, t(Str::DownloadContainer)),
                         format_name(format).to_owned(),
                         self.container_choices(),
                         STOP_CONTAINER,
@@ -1638,7 +1762,7 @@ impl DownloadPicker {
                 }
                 if self.shows_audio_quality() {
                     rows = rows.child(self.choice_row(
-                        ("download-quality", Lucide::Gauge, t(Str::DownloadQuality)),
+                        ("download-quality", MaterialIcon::HighQualityOutlined, t(Str::DownloadQuality)),
                         self.audio_quality_label(),
                         self.audio_quality_choices(),
                         STOP_QUALITY,
@@ -1646,7 +1770,7 @@ impl DownloadPicker {
                     ));
                 }
                 rows = rows.child(self.choice_row(
-                    ("download-audio", Lucide::AudioLines, t(Str::DownloadAudioTrack)),
+                    ("download-audio", MaterialIcon::RecordVoiceOverOutlined, t(Str::DownloadAudioTrack)),
                     self.audio_track_label(),
                     self.audio_track_choices(),
                     STOP_AUDIO,
@@ -1654,9 +1778,9 @@ impl DownloadPicker {
                 ));
                 if has_captions && self.captions_supported() {
                     rows = rows.child(self.choice_row(
-                        ("download-captions", Lucide::Captions, t(Str::DownloadCaptions)),
+                        ("download-captions", MaterialIcon::SubtitlesOutlined, t(Str::DownloadCaptions)),
                         self.caption_summary(),
-                        self.caption_choices(),
+                        self.caption_choices(cx),
                         STOP_CAPTIONS,
                         cx,
                     ));
@@ -1664,7 +1788,7 @@ impl DownloadPicker {
                 let location = self
                     .option_row(
                         "download-location",
-                        Lucide::Folder,
+                        MaterialIcon::FolderOutlined,
                         t(Str::DownloadSaveTo),
                         self.location_name(),
                         STOP_LOCATION,

@@ -2,17 +2,17 @@
 //! its own bar. First the QR to scan with the phone app (its cookies arrive over the device link),
 //! with the matching code; "Or paste cookies from a browser" switches to pasting a copied request.
 
-use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Textarea, TextareaState};
-use gpui_kit::component::{ActiveTheme, Disableable, IconName, StyledExt, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme, Disableable, StyledExt, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use ym_i18n::{Str, t, tf};
-use ym_signin::DeviceLinkOffer;
+use ym_signin::{DeviceLinkOffer, LinkError};
 
 use crate::a11y::{FocusList, alert, announced, announced_as, heading, label};
-use crate::action_icon::action_icon;
+use crate::action_icon::{action_icon, auto_mirrored};
+use crate::assets::MaterialIcon;
 use crate::cookie_guide::CookieGuide;
 use crate::cookie_lock::{ProtectEvent, ProtectStep};
 use crate::elevated_dialog::ConfirmDialog;
@@ -154,8 +154,11 @@ impl SignInView {
                 match result {
                     Some(Ok(offer)) => view.wait_for_phone(offer, cx),
                     Some(Err(error)) => {
-                        cx.global::<AppGraph>().log.info(&format!("device link unavailable: {error}"));
-                        view.error = Some(sign_in_error_text(&error, cx));
+                        cx.global::<AppGraph>()
+                            .log
+                            .fork("devicelink")
+                            .warn("device-link offer/poll failed", Some(&error));
+                        view.error = Some(sign_in_error_text(&error));
                         view.link = Link::Ended;
                     }
                     None => {}
@@ -192,7 +195,7 @@ impl SignInView {
             this.update(cx, |view, cx| match result {
                 Some(Ok(_)) => view.signed_in(cx),
                 Some(Err(error)) => {
-                    view.error = Some(sign_in_error_text(&error, cx));
+                    view.error = Some(sign_in_error_text(&error));
                     view.link = Link::Ended;
                     cx.notify();
                 }
@@ -231,7 +234,7 @@ impl SignInView {
                 view.submitting = false;
                 match result {
                     Some(Ok(_)) => view.signed_in(cx),
-                    Some(Err(error)) => view.error = Some(sign_in_error_text(&error, cx)),
+                    Some(Err(error)) => view.error = Some(sign_in_error_text(&error)),
                     None => {}
                 }
                 cx.notify();
@@ -336,7 +339,7 @@ impl SignInView {
                             STOP_RETRY,
                             Button::new("signin-retry")
                                 .ghost()
-                                .icon(Lucide::RefreshCw)
+                                .icon(MaterialIcon::Refresh)
                                 .label(t(Str::Retry))
                                 .on_click(cx.listener(|view, _, _, cx| view.start_link(cx))),
                             cx,
@@ -399,15 +402,15 @@ impl SignInView {
     }
 }
 
-fn sign_in_error_text(error: &SignInError, cx: &App) -> String {
-    match error {
-        SignInError::NotSignedIn => t(Str::SigninCookiesRejected).to_owned(),
-        SignInError::Engine(engine) => crate::feed::error_text(engine),
-        other => {
-            cx.global::<AppGraph>().log.warn("sign-in failed", Some(other));
-            tf(Str::ErrorGeneric, &[&"R90019"])
-        }
-    }
+fn sign_in_error_text(error: &SignInError) -> String {
+    t(match error {
+        SignInError::NotSignedIn => Str::SigninCookiesRejected,
+        SignInError::Link(LinkError::Network) => Str::DeviceLinkErrorNetwork,
+        SignInError::Link(LinkError::Timeout) => Str::DeviceLinkErrorTimeout,
+        SignInError::Link(LinkError::BadPayload) => Str::DeviceLinkErrorPayload,
+        SignInError::Engine(_) | SignInError::Store(_) => Str::DeviceLinkErrorGeneric,
+    })
+    .to_owned()
 }
 
 impl Render for SignInView {
@@ -429,7 +432,7 @@ impl Render for SignInView {
             .child(
                 self.focus.button(
                     STOP_BACK,
-                    action_icon("signin-back", IconName::ArrowLeft, t(Str::CdBack))
+                    action_icon("signin-back", auto_mirrored(MaterialIcon::ArrowBack), t(Str::CdBack))
                         .on_click(cx.listener(|view, _, _, cx| view.back(cx))),
                     cx,
                 ),
