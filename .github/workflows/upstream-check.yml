@@ -1,0 +1,53 @@
+name: upstream-check
+
+on:
+  schedule:
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Look for new upstream commits
+        id: look
+        run: |
+          git remote add upstream https://github.com/ymusic-io/YMusicV4.git
+          git fetch --quiet upstream master
+          behind=$(git rev-list --count HEAD..upstream/master)
+          echo "behind=$behind" >> "$GITHUB_OUTPUT"
+          echo "Upstream is $behind commit(s) ahead of master"
+
+      - name: Try the merge on a separate branch
+        if: steps.look.outputs.behind != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "upstream-check"
+          git config user.email "upstream-check@users.noreply.github.com"
+          git checkout -B upstream-sync
+          if git merge upstream/master --no-edit -m "Merge upstream/master"; then
+            git push --force origin upstream-sync
+            gh pr create --base master --head upstream-sync \
+              --title "Merge upstream/master" \
+              --body "Clean merge. Run build-android on branch upstream-sync before merging." \
+              || echo "A pull request already exists or could not be created"
+            echo "::error title=Upstream update ready::Merged cleanly into branch upstream-sync. Run build-android on that branch, then merge it."
+          else
+            git merge --abort
+            echo "::error title=Upstream update needs a manual merge::Upstream has new commits that conflict with your changes. Ask Claude to merge it."
+          fi
+          exit 1
